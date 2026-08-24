@@ -1,0 +1,53 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "py_web_researcher"
+version = "0.1.0"
+requires-python = ">=3.9"
+description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
+readme = "README.md"
+license = {text = "MIT OR Apache-2.0"}
+authors = [
+    {name = "stitch_crawler contributors"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+keywords = ["web-scraping", "llm", "agent", "search", "extraction", "rust", "pyo3"]
+
+[project.urls]
+Homepage = "https://github.com/stitch-crawler/stitch_crawler"
+Repository = "https://github.com/stitch-crawler/stitch_crawler"
+Changelog = "https://github.com/stitch-crawler/stitch_crawler/releases"
+
+[tool.maturin]
+module-name = "py_web_researcher._core"
+python-packages = ["py_web_researcher"]
+manifest-path = "Cargo.toml"
+include = [
+    "py_web_researcher/__init__.py",
+    "py_web_researcher/agent_tools.py",
+    "py_web_researcher/search_providers.py",
+    "py_web_researcher/structured_parser.py",
+    "py_web_researcher/token_budget.py",
+    "py_web_researcher/meta_extractor.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
