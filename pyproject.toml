@@ -3,14 +3,14 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "py_web_researcher"
+name = "stitch-web-researcher"
 version = "0.1.0"
 requires-python = ">=3.9"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
 authors = [
-    {name = "stitch_crawler contributors"},
+    {name = "stitch-web-researcher contributors"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -36,16 +36,16 @@ Repository = "https://github.com/stitch-crawler/stitch_crawler"
 Changelog = "https://github.com/stitch-crawler/stitch_crawler/releases"
 
 [tool.maturin]
-module-name = "py_web_researcher._core"
-python-packages = ["py_web_researcher"]
+module-name = "stitch_web_researcher._core"
+python-packages = ["stitch_web_researcher"]
 manifest-path = "Cargo.toml"
 include = [
-    "py_web_researcher/__init__.py",
-    "py_web_researcher/agent_tools.py",
-    "py_web_researcher/search_providers.py",
-    "py_web_researcher/structured_parser.py",
-    "py_web_researcher/token_budget.py",
-    "py_web_researcher/meta_extractor.py",
+    "stitch_web_researcher/__init__.py",
+    "stitch_web_researcher/agent_tools.py",
+    "stitch_web_researcher/search_providers.py",
+    "stitch_web_researcher/structured_parser.py",
+    "stitch_web_researcher/token_budget.py",
+    "stitch_web_researcher/meta_extractor.py",
 ]
 
 [tool.pytest.ini_options]

@@ -1,5 +1,5 @@
 """
-Two-tier caching layer for py_web_researcher.
+Two-tier caching layer for stitch_web_researcher.
 
 Provides:
   - In-memory LRU cache (fast, session-scoped)

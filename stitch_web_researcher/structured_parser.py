@@ -579,7 +579,7 @@ class StructuredOxideParser:
         ParsedDocumentPayload
             Validated payload with metadata, pages, and links.
         """
-        from py_web_researcher.meta_extractor import merge_into_document_metadata
+        from stitch_web_researcher.meta_extractor import merge_into_document_metadata
 
         # Build base metadata from URL
         from urllib.parse import urlparse

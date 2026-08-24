@@ -1,5 +1,5 @@
 """
-Performance benchmarks for py_web_researcher.
+Performance benchmarks for stitch_web_researcher.
 
 Run with:
     python benchmarks.py
@@ -51,7 +51,7 @@ def arrow(label: str, value: str):
 
 def bench_rust_fetch():
     print("\n=== Rust Core Fetch (example.com) ===")
-    from py_web_researcher._core import fetch_and_extract
+    from stitch_web_researcher._core import fetch_and_extract
 
     def fetch():
         return fetch_and_extract("https://example.com")
@@ -91,7 +91,7 @@ SAMPLE_HTML = """
 
 def bench_meta_oxide():
     print("\n=== meta-oxide Extraction ===")
-    from py_web_researcher import meta_extractor
+    from stitch_web_researcher import meta_extractor
 
     def extract():
         return meta_extractor.extract_all(SAMPLE_HTML, "https://example.com")
@@ -125,7 +125,7 @@ LONG_TEXT = "The quick brown fox jumps over the lazy dog. " * 5000  # ~300KB
 
 def bench_token_budget():
     print("\n=== Token Budget (tiktoken) ===")
-    from py_web_researcher import count_tokens, truncate_to_tokens
+    from stitch_web_researcher import count_tokens, truncate_to_tokens
 
     def count():
         return count_tokens(LONG_TEXT, "gpt-4o")
@@ -146,7 +146,7 @@ def bench_token_budget():
 
 def bench_batch_fetch():
     print("\n=== Batch Fetch (concurrent) ===")
-    from py_web_researcher._core import batch_research, fetch_and_extract
+    from stitch_web_researcher._core import batch_research, fetch_and_extract
 
     urls = ["https://example.com"] * 5  # same URL for consistent timing
 
@@ -174,7 +174,7 @@ def bench_batch_fetch():
 def bench_structured_parser():
     print("\n=== Structured Parser (pdf_oxide) ===")
     try:
-        from py_web_researcher import StructuredOxideParser
+        from stitch_web_researcher import StructuredOxideParser
 
         # Need a real PDF for this — skip if no sample available
         print("    (Skipped — requires a sample PDF file)")
@@ -188,7 +188,7 @@ def bench_structured_parser():
 
 def main():
     print("=" * 60)
-    print("  py_web_researcher — Performance Benchmarks")
+    print("  stitch_web_researcher — Performance Benchmarks")
     print("=" * 60)
 
     bench_rust_fetch()

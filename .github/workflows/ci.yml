@@ -73,4 +73,4 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff
-        run: ruff check py_web_researcher/
+        run: ruff check stitch_web_researcher/

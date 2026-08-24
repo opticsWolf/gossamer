@@ -1,4 +1,4 @@
-# py_web_researcher — High-Performance LLM Web Researcher
+# stitch_web_researcher — High-Performance LLM Web Researcher
 
 > A hybrid LLM web researcher combining a **Rust async core** (PyO3) for fetching, the **Oxide SDK family** for document extraction, and a **Python orchestration layer** for caching, rate limiting, structured parsing, token-aware budgeting, LLM tool routing, and multi-provider search.
 
@@ -83,7 +83,7 @@
 ### Build & Install
 
 ```bash
-cd stitch_crawler
+cd stitch-web-researcher
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -95,7 +95,7 @@ maturin develop --release
 ### Basic Usage
 
 ```python
-from py_web_researcher import WebResearcherToolbox
+from stitch_web_researcher import WebResearcherToolbox
 
 tools = WebResearcherToolbox(
     cache_dir="./cache",
@@ -170,7 +170,7 @@ for tool in llm_tools:
 ### Multi-Provider Search
 
 ```python
-from py_web_researcher import GoogleProvider, BingProvider, DuckDuckGoProvider
+from stitch_web_researcher import GoogleProvider, BingProvider, DuckDuckGoProvider
 
 # Configure providers (auto-detects API keys from environment)
 providers = [
@@ -188,7 +188,7 @@ results = tools.search_web("quantum computing", provider="google")
 ### Token Budgeting
 
 ```python
-from py_web_researcher import count_tokens, truncate_to_tokens, fit_context_window
+from stitch_web_researcher import count_tokens, truncate_to_tokens, fit_context_window
 
 tokens = count_tokens("Hello world", model_name="gpt-4o")
 print(f"Tokens: {tokens}")
@@ -209,7 +209,7 @@ final = fit_context_window(
 ### HTML Metadata Extraction
 
 ```python
-from py_web_researcher import extract_all, merge_into_document_metadata
+from stitch_web_researcher import extract_all, merge_into_document_metadata
 
 html = "<html><head><title>My Page</title>...</head>...</html>"
 
@@ -237,7 +237,7 @@ stitch_crawler/
 ├── README.md                         # This file
 ├── src/
 │   └── lib.rs                        # Rust async fetcher (shared Tokio runtime)
-├── py_web_researcher/
+├── stitch_web_researcher/
 │   ├── __init__.py                   # Package exports
 │   ├── agent_tools.py                # WebResearcherToolbox, smart fetch, caching
 │   ├── search_providers.py           # SearchProvider ABC + DuckDuckGo/Google/Bing/Exa

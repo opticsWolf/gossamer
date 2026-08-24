@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from py_web_researcher.cache import Cache
+from stitch_web_researcher.cache import Cache
 
 
 # ────────────────────────────────────────────────────────────────

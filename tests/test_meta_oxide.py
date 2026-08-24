@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from py_web_researcher.meta_extractor import (
+from stitch_web_researcher.meta_extractor import (
     extract_all,
     extract_meta,
     extract_opengraph,
@@ -221,7 +221,7 @@ class TestMergeIntoDocumentMetadata:
 
 class TestToolboxMetadata:
     def test_compact_metadata(self):
-        from py_web_researcher.agent_tools import WebResearcherToolbox
+        from stitch_web_researcher.agent_tools import WebResearcherToolbox
 
         toolbox = WebResearcherToolbox()
         raw = extract_all(SAMPLE_HTML, BASE_URL)
@@ -234,7 +234,7 @@ class TestToolboxMetadata:
         assert len(compact["jsonld"]) <= 2  # capped at 2
 
     def test_compact_metadata_empty(self):
-        from py_web_researcher.agent_tools import WebResearcherToolbox
+        from stitch_web_researcher.agent_tools import WebResearcherToolbox
 
         toolbox = WebResearcherToolbox()
         assert toolbox._compact_metadata({}) == {}
@@ -242,7 +242,7 @@ class TestToolboxMetadata:
 
     def test_fetch_smart_page_returns_metadata(self):
         """Verify fetch_smart_page returns a 3-tuple (md, links, metadata)."""
-        from py_web_researcher.agent_tools import fetch_smart_page
+        from stitch_web_researcher.agent_tools import fetch_smart_page
 
         # fetch_smart_page falls back to fetch_and_extract without browser_oxide
         result = fetch_smart_page("https://example.com")

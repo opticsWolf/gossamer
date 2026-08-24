@@ -26,7 +26,7 @@ max_file_size_bytes = 1048576
 [mutation]
 enabled = true
 default_dry_run = true
-allow = ["src/", "lib/", "tests/", "scripts/", "py_web_researcher/"]
+allow = ["src/", "lib/", "tests/", "scripts/", "stitch_web_researcher/"]
 deny = [".git/", ".coderadar/", "/migrations/", "/*.lock", "/generated/"]
 
 [resolution]

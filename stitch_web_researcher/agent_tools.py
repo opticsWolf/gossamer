@@ -14,15 +14,15 @@ import httpx
 from pdf_oxide import PdfDocument
 from office_oxide import Document as OfficeDoc
 
-from py_web_researcher._core import fetch_and_extract, batch_research
-from py_web_researcher.token_budget import truncate_to_tokens, count_tokens
-from py_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
-from py_web_researcher.search_providers import (
+from stitch_web_researcher._core import fetch_and_extract, batch_research
+from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
+from stitch_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
+from stitch_web_researcher.search_providers import (
     DuckDuckGoProvider,
     resolve_provider_name,
 )
-from py_web_researcher import meta_extractor
-from py_web_researcher.cache import Cache
+from stitch_web_researcher import meta_extractor
+from stitch_web_researcher.cache import Cache
 
 logger = logging.getLogger(__name__)
 

@@ -2,23 +2,23 @@
 High-Performance Web Researcher – Rust core + Oxide extractors.
 """
 
-from py_web_researcher._core import fetch_and_extract, batch_research
-from py_web_researcher.agent_tools import WebResearcherToolbox, fetch_smart_page
-from py_web_researcher.structured_parser import (
+from stitch_web_researcher._core import fetch_and_extract, batch_research
+from stitch_web_researcher.agent_tools import WebResearcherToolbox, fetch_smart_page
+from stitch_web_researcher.structured_parser import (
     StructuredOxideParser,
     ParsedDocumentPayload,
     DocumentMetadata,
     ExtractedPage,
     ExtractedTable,
 )
-from py_web_researcher.token_budget import (
+from stitch_web_researcher.token_budget import (
     count_tokens,
     truncate_to_tokens,
     fit_context_window,
     estimate_markdown_tokens,
     resolve_encoding,
 )
-from py_web_researcher.search_providers import (
+from stitch_web_researcher.search_providers import (
     SearchProvider,
     DuckDuckGoProvider,
     GoogleProvider,
@@ -27,8 +27,8 @@ from py_web_researcher.search_providers import (
     get_default_providers,
     resolve_provider_name,
 )
-from py_web_researcher import meta_extractor
-from py_web_researcher.meta_extractor import (
+from stitch_web_researcher import meta_extractor
+from stitch_web_researcher.meta_extractor import (
     extract_all,
     extract_meta,
     extract_opengraph,
@@ -36,7 +36,7 @@ from py_web_researcher.meta_extractor import (
     extract_jsonld,
     merge_into_document_metadata,
 )
-from py_web_researcher.cache import Cache
+from stitch_web_researcher.cache import Cache
 
 __all__ = [
     # Rust core

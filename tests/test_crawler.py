@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from py_web_researcher import (
+from stitch_web_researcher import (
     fetch_and_extract,
     batch_research,
     fetch_smart_page,
@@ -405,7 +405,7 @@ class TestXmpDatetimeParser:
     """Test the _parse_xmp_datetime helper."""
 
     def test_iso_8601_zulu(self):
-        from py_web_researcher.structured_parser import _parse_xmp_datetime
+        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
 
         dt = _parse_xmp_datetime("2024-01-15T10:30:00Z")
         assert dt is not None
@@ -414,21 +414,21 @@ class TestXmpDatetimeParser:
         assert dt.day == 15
 
     def test_iso_8601_with_tz(self):
-        from py_web_researcher.structured_parser import _parse_xmp_datetime
+        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
 
         dt = _parse_xmp_datetime("2024-01-15T10:30:00+05:00")
         assert dt is not None
         assert dt.year == 2024
 
     def test_date_only(self):
-        from py_web_researcher.structured_parser import _parse_xmp_datetime
+        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
 
         dt = _parse_xmp_datetime("2024-01-15")
         assert dt is not None
         assert dt.day == 15
 
     def test_garbage_returns_none(self):
-        from py_web_researcher.structured_parser import _parse_xmp_datetime
+        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
 
         assert _parse_xmp_datetime("not-a-date") is None
         assert _parse_xmp_datetime("") is None
@@ -443,7 +443,7 @@ class TestTokenBudget:
     """Verify token counting, truncation, and context window packing."""
 
     def test_count_tokens_basic(self):
-        from py_web_researcher.token_budget import count_tokens
+        from stitch_web_researcher.token_budget import count_tokens
 
         n = count_tokens("Hello world")
         assert n >= 1
@@ -451,12 +451,12 @@ class TestTokenBudget:
         assert n <= 5
 
     def test_count_tokens_empty(self):
-        from py_web_researcher.token_budget import count_tokens
+        from stitch_web_researcher.token_budget import count_tokens
 
         assert count_tokens("") == 0
 
     def test_count_tokens_long_text(self):
-        from py_web_researcher.token_budget import count_tokens
+        from stitch_web_researcher.token_budget import count_tokens
 
         long_text = "The quick brown fox jumps over the lazy dog. " * 100
         n = count_tokens(long_text)
@@ -464,7 +464,7 @@ class TestTokenBudget:
         assert 800 < n < 1500
 
     def test_count_tokens_different_models(self):
-        from py_web_researcher.token_budget import count_tokens
+        from stitch_web_researcher.token_budget import count_tokens
 
         text = "Token counting test across models."
         # Different models may give slightly different counts
@@ -477,14 +477,14 @@ class TestTokenBudget:
         assert 3 <= claude <= 10
 
     def test_truncate_to_tokens_no_truncation(self):
-        from py_web_researcher.token_budget import truncate_to_tokens
+        from stitch_web_researcher.token_budget import truncate_to_tokens
 
         short = "Hello world"
         result = truncate_to_tokens(short, 100)
         assert result == short  # no truncation needed
 
     def test_truncate_to_tokens_truncates(self):
-        from py_web_researcher.token_budget import truncate_to_tokens
+        from stitch_web_researcher.token_budget import truncate_to_tokens
 
         long_text = "The quick brown fox jumps over the lazy dog. " * 50
         result = truncate_to_tokens(long_text, 20)
@@ -492,38 +492,38 @@ class TestTokenBudget:
         assert "[truncated" in result
 
     def test_truncate_to_tokens_empty(self):
-        from py_web_researcher.token_budget import truncate_to_tokens
+        from stitch_web_researcher.token_budget import truncate_to_tokens
 
         assert truncate_to_tokens("", 10) == ""
 
     def test_truncate_to_tokens_custom_ellipsis(self):
-        from py_web_researcher.token_budget import truncate_to_tokens
+        from stitch_web_researcher.token_budget import truncate_to_tokens
 
         long_text = "The quick brown fox jumps over the lazy dog. " * 50
         result = truncate_to_tokens(long_text, 15, ellipsis="\n---END---")
         assert "---END---" in result
 
     def test_fit_context_window(self):
-        from py_web_researcher.token_budget import fit_context_window
+        from stitch_web_researcher.token_budget import fit_context_window
 
         pieces = ["Hello", "world", "this", "is", "a", "test"]
         result = fit_context_window(pieces, 100)
         assert len(result) == 6  # all fit
 
     def test_fit_context_window_budget_limited(self):
-        from py_web_researcher.token_budget import fit_context_window
+        from stitch_web_researcher.token_budget import fit_context_window
 
         pieces = ["The quick brown fox jumps over the lazy dog. " * 10] * 5
         result = fit_context_window(pieces, 50)
         assert len(result) < 5  # budget forces some pieces out
 
     def test_fit_context_window_empty(self):
-        from py_web_researcher.token_budget import fit_context_window
+        from stitch_web_researcher.token_budget import fit_context_window
 
         assert fit_context_window([], 100) == []
 
     def test_resolve_encoding_known(self):
-        from py_web_researcher.token_budget import resolve_encoding
+        from stitch_web_researcher.token_budget import resolve_encoding
 
         assert resolve_encoding("gpt-4o") == "cl100k_base"
         assert resolve_encoding("gpt-4") == "cl100k_base"
@@ -531,20 +531,20 @@ class TestTokenBudget:
         assert resolve_encoding("claude-3-sonnet") == "cl100k_base"
 
     def test_resolve_encoding_unknown(self):
-        from py_web_researcher.token_budget import resolve_encoding
+        from stitch_web_researcher.token_budget import resolve_encoding
 
         # Unknown models default to cl100k_base
         assert resolve_encoding("unknown-model-xyz") == "cl100k_base"
 
     def test_resolve_encoding_prefix_match(self):
-        from py_web_researcher.token_budget import resolve_encoding
+        from stitch_web_researcher.token_budget import resolve_encoding
 
         # Prefix match for date-suffixed variants
         assert resolve_encoding("gpt-4o-2024-08-06") == "cl100k_base"
         assert resolve_encoding("gpt-4-1106-preview") == "cl100k_base"
 
     def test_estimate_markdown_tokens(self):
-        from py_web_researcher.token_budget import estimate_markdown_tokens
+        from stitch_web_researcher.token_budget import estimate_markdown_tokens
 
         md = "# Hello\n\nThis is **bold** and *italic*."
         n = estimate_markdown_tokens(md)

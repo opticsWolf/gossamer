@@ -198,7 +198,7 @@
 |-------------|--------|-------|
 | Test matrix (OS × Python versions) | ✅ | ubuntu/windows × 3.9–3.13 |
 | Rust clippy lint | ✅ | `cargo clippy -- -D warnings` |
-| Python lint (ruff) | ✅ | `ruff check py_web_researcher/` |
+| Python lint (ruff) | ✅ | `ruff check stitch_web_researcher/` |
 | Wheel building (multi-platform) | ✅ | ubuntu/windows/macos on tag push |
 | sdist building | ✅ | Source distribution via `maturin sdist` |
 | PyPI publish | ✅ | `pypa/gh-action-pypi-publish` with token secret |
