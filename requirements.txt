@@ -4,8 +4,10 @@ pdf_oxide>=0.1
 office-oxide @ git+https://github.com/yfedoseev/office_oxide.git
 browser-oxide>=0.1
 # meta-oxide: Rust-backed HTML metadata extractor (OG, Twitter, JSON-LD, etc.)
-# NOTE: Upstream has packaging bug — build locally from git or install pre-built wheel.
-#   pip install git+https://github.com/yfedoseev/meta_oxide.git  # may need manual __init__.py fix
+# NOTE: Upstream has a packaging bug — pyproject declares `python-source = "bindings/python"`
+#   but that dir contains no package, so maturin fails. Workaround:
+#   git clone https://github.com/yfedoseev/meta_oxide.git
+#   cd meta_oxide && sed -i '/^python-source/d' pyproject.toml && uv pip install .
 # meta-oxide>=0.1
 pydantic>=2.7.0
 tiktoken>=0.5.0
