@@ -315,12 +315,125 @@ def get_default_providers() -> List[SearchProvider]:
     return providers
 
 
+# ────────────────────────────────────────────────────────────────
+# 5. Browser-Oxide Stealth Search Provider
+# ────────────────────────────────────────────────────────────────
+
+class BrowserOxideSearchProvider(SearchProvider):
+    """Search via browser_oxide's stealth headless engine.
+
+    Renders the DuckDuckGo HTML endpoint (no-JS friendly, parse-stable)
+    inside browser_oxide — a from-scratch Rust browser with real BoringSSL
+    TLS/JA4 fingerprinting and real JS execution — then parses result links
+    from the rendered DOM.
+
+    Useful when plain-HTTP scraping gets blocked but you want search
+    without any API keys. Requires ``browser_oxide`` to be installed.
+
+    Note: keep ONE instance per application; it persists its browser
+    engine across searches. Call :meth:`close` when done.
+    """
+
+    SEARCH_URL = "https://html.duckduckgo.com/html/?q={query}"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
+        self._last_search = 0.0
+        self._init_rate_limit(delay, fetch_delay)
+        self._browser = None
+
+    def _get_browser(self):
+        if self._browser is None:
+            import browser_oxide
+            # Profile is mandatory in v0.1.x — bare Browser() hits a fatal
+            # V8 HandleScope error at construction.
+            self._browser = browser_oxide.Browser(
+                profile=browser_oxide.Profile.chrome()
+            )
+        return self._browser
+
+    def close(self) -> None:
+        """Shut down the persistent browser engine thread."""
+        if self._browser is not None:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
+            self._browser = None
+
+    def __del__(self):
+        self.close()
+
+    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+        self._enforce_delay()
+        serp_html = self._render_results(query)
+
+        import html as html_mod
+        from urllib.parse import parse_qs, unquote, urlparse
+
+        out = []
+        for title, url, snippet in self._parse_results(serp_html):
+            # Unwrap DDG's /l/?uddg=<encoded-target> redirect links
+            if "uddg=" in url:
+                try:
+                    target = parse_qs(urlparse(url).query)["uddg"][0]
+                    url = unquote(target)
+                except Exception:
+                    pass
+            out.append({
+                "title": html_mod.unescape(title),
+                "url": url,
+                "snippet": html_mod.unescape(snippet),
+            })
+            if len(out) >= max_results:
+                break
+        return out
+
+    def _render_results(self, query: str) -> str:
+        browser = self._get_browser()
+        from urllib.parse import quote
+        page = browser.navigate(
+            self.SEARCH_URL.format(query=quote(query)),
+            max_iterations=8,
+        )
+        if page.is_challenge:
+            raise RuntimeError(
+                f"Anti-bot challenge detected ({page.verdict}) during search"
+            )
+        return page.html
+
+    @staticmethod
+    def _parse_results(html: str):
+        """Parse a DDG HTML-endpoint SERP into (title, url, snippet) triples."""
+        import re
+
+        results = []
+        for m in re.finditer(
+            r'<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+            html,
+            re.S,
+        ):
+            url, title = m.group(1), re.sub(r"<[^>]+>", "", m.group(2))
+            tail = html[m.end():m.end() + 4000]
+            snip = re.search(
+                r'class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>', tail, re.S
+            )
+            snippet = re.sub(r"<[^>]+>", "", snip.group(1)) if snip else ""
+            results.append((title.strip(), url.strip(), snippet.strip()))
+        return results
+
+
 PROVIDER_NAME_MAP: Dict[str, type] = {
     "duckduckgo": DuckDuckGoProvider,
     "ddg": DuckDuckGoProvider,
     "google": GoogleProvider,
     "bing": BingProvider,
     "exa": ExaProvider,
+    "browser": BrowserOxideSearchProvider,
+    "browser_oxide": BrowserOxideSearchProvider,
 }
 
 
