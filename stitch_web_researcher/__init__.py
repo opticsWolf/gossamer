@@ -24,6 +24,7 @@ from stitch_web_researcher.search_providers import (
     GoogleProvider,
     BingProvider,
     ExaProvider,
+    RateLimit,
     get_default_providers,
     resolve_provider_name,
 )

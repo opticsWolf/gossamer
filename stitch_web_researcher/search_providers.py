@@ -9,7 +9,8 @@ custom provider at runtime.
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 
@@ -19,6 +20,23 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────────────────────
 # 1. Abstract Search Provider Interface
 # ────────────────────────────────────────────────────────────────
+
+@dataclass
+class RateLimit:
+    """Per-provider rate limits.
+
+    Attributes:
+        search_interval: Minimum seconds between search-API calls to this
+            provider (queries to the engine itself).
+        fetch_interval: Minimum seconds between content downloads suggested
+            for sessions using this provider. Consumed by
+            ``WebResearcherToolbox`` as the default politeness delay when
+            fetching pages found through this provider.
+    """
+
+    search_interval: float = 3.0
+    fetch_interval: float = 5.0
+
 
 class SearchProvider(ABC):
     """Abstract base class for all search providers."""
@@ -34,6 +52,27 @@ class SearchProvider(ABC):
           - "snippet": str
         """
         ...
+
+    def _init_rate_limit(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ) -> None:
+        """Normalize constructor arguments into a RateLimit instance.
+
+        Accepts the legacy ``delay: float`` (search interval only) or a full
+        ``RateLimit``, plus an optional ``fetch_delay`` override.
+        """
+        if isinstance(delay, RateLimit):
+            self.rate_limit = delay
+        elif delay is not None:
+            self.rate_limit = RateLimit(search_interval=float(delay))
+        else:
+            self.rate_limit = RateLimit()
+        if fetch_delay is not None:
+            self.rate_limit.fetch_interval = float(fetch_delay)
+        # Back-compat attribute consumed by _enforce_delay()
+        self._delay = self.rate_limit.search_interval
 
     def _enforce_delay(self) -> None:
         """Simple per-provider rate limiting."""
@@ -54,9 +93,13 @@ class SearchProvider(ABC):
 class DuckDuckGoProvider(SearchProvider):
     """Search via DuckDuckGo using the ddgs library."""
 
-    def __init__(self, delay: float = 1.0):
-        self._delay = delay
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
         self._last_search = 0.0
+        self._init_rate_limit(delay, fetch_delay)
 
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         from ddgs import DDGS
@@ -97,13 +140,14 @@ class GoogleProvider(SearchProvider):
         self,
         api_key: Optional[str] = None,
         cx: Optional[str] = None,
-        delay: float = 1.0,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
     ):
         import os
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
         self.cx = cx or os.environ.get("GOOGLE_CX", "")
-        self._delay = delay
         self._last_search = 0.0
+        self._init_rate_limit(delay, fetch_delay)
 
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if not self.api_key or not self.cx:
@@ -147,11 +191,16 @@ class BingProvider(SearchProvider):
         - An API key (set BING_API_KEY env var or pass explicitly)
     """
 
-    def __init__(self, api_key: Optional[str] = None, delay: float = 1.0):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
         import os
         self.api_key = api_key or os.environ.get("BING_API_KEY", "")
-        self._delay = delay
         self._last_search = 0.0
+        self._init_rate_limit(delay, fetch_delay)
 
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if not self.api_key:
@@ -207,8 +256,9 @@ class ExaProvider(SearchProvider):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        delay: float = 0.5,
+        delay: Optional[Union[float, RateLimit]] = None,
         search_type: str = "auto",
+        fetch_delay: Optional[float] = None,
     ):
         import os
         if not _exa_available:
@@ -219,8 +269,8 @@ class ExaProvider(SearchProvider):
 
         self.api_key = api_key or os.environ.get("EXA_API_KEY", "")
         self.client = Exa(api_key=self.api_key)
-        self._delay = delay
         self._last_search = 0.0
+        self._init_rate_limit(delay, fetch_delay)
         self.search_type = search_type
 
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:

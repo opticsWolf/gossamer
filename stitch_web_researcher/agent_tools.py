@@ -19,6 +19,7 @@ from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
 from stitch_web_researcher.search_providers import (
     DuckDuckGoProvider,
+    RateLimit,
     resolve_provider_name,
 )
 from stitch_web_researcher import meta_extractor
@@ -315,6 +316,7 @@ class WebResearcherToolbox:
         max_links: int = 20,
         search_providers: Optional[list] = None,
         default_provider_index: int = 0,
+        fetch_delay: Optional[float] = None,
     ):
         # Two-tier cache (memory LRU + file TTL)
         self.cache = Cache(
@@ -334,6 +336,18 @@ class WebResearcherToolbox:
         else:
             self.providers = [DuckDuckGoProvider(delay=ddgs_delay)]
         self.default_provider = self.providers[default_provider_index]
+
+        # Effective content-fetch interval (per-domain politeness delay).
+        # Resolution order: explicit fetch_delay arg > active provider's
+        # RateLimit.fetch_interval > legacy domain_delay.
+        if fetch_delay is not None:
+            self._fetch_interval = float(fetch_delay)
+        else:
+            rl = getattr(self.default_provider, "rate_limit", None)
+            if isinstance(rl, RateLimit):
+                self._fetch_interval = rl.fetch_interval
+            else:
+                self._fetch_interval = self.domain_delay
 
         self.visited_urls: set[str] = set()
         self._domain_last_seen: dict[str, float] = defaultdict(float)
@@ -380,13 +394,13 @@ class WebResearcherToolbox:
             raise ValueError(f"Invalid URL (no host): {url}")
 
     def _rate_limit_domain(self, url: str) -> None:
-        """Enforce per-domain rate limiting."""
+        """Enforce per-domain rate limiting for content fetching."""
         parsed = urlparse(url)
         domain = parsed.netloc
         last_seen = self._domain_last_seen[domain]
         elapsed = time.time() - last_seen
-        if elapsed < self.domain_delay:
-            time.sleep(self.domain_delay - elapsed)
+        if elapsed < self._fetch_interval:
+            time.sleep(self._fetch_interval - elapsed)
         self._domain_last_seen[domain] = time.time()
 
     def _cache_key(self, url: str) -> str:
