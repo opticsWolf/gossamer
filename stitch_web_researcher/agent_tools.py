@@ -50,7 +50,9 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     from scraper import Html, Selector
     from url import Url
 
-    browser = browser_oxide.Browser()
+    # Profile.chrome() is mandatory in v0.1.x — bare Browser() hits a fatal
+    # V8 HandleScope error at construction.
+    browser = browser_oxide.Browser(profile=browser_oxide.Profile.chrome())
     try:
         page = browser.navigate(url, max_iterations=5)
         if page.is_challenge:
