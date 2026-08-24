@@ -35,3 +35,4 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+crash.log
