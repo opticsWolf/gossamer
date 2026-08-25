@@ -34,7 +34,7 @@ class RateLimit:
             fetching pages found through this provider.
     """
 
-    search_interval: float = 3.0
+    search_interval: float = 1.5
     fetch_interval: float = 5.0
 
 

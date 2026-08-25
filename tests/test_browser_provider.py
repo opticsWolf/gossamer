@@ -118,6 +118,6 @@ def test_close_shuts_down_engine():
 
 def test_rate_limit_defaults_and_registry():
     p = BrowserOxideSearchProvider()
-    assert (p.rate_limit.search_interval, p.rate_limit.fetch_interval) == (3.0, 5.0)
+    assert (p.rate_limit.search_interval, p.rate_limit.fetch_interval) == (1.5, 5.0)
     assert resolve_provider_name("browser") == "browser"
     assert resolve_provider_name("Browser_Oxide") == "browser_oxide"
