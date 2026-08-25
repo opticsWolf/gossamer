@@ -35,6 +35,12 @@ Homepage = "https://github.com/stitch-crawler/stitch_crawler"
 Repository = "https://github.com/stitch-crawler/stitch_crawler"
 Changelog = "https://github.com/stitch-crawler/stitch_crawler/releases"
 
+[project.optional-dependencies]
+mcp = ["mcp>=2.0"]
+
+[project.scripts]
+stitch-web-researcher-mcp = "stitch_web_researcher.mcp_server:main"
+
 [tool.maturin]
 module-name = "stitch_web_researcher._core"
 python-packages = ["stitch_web_researcher"]
@@ -46,6 +52,7 @@ include = [
     "stitch_web_researcher/structured_parser.py",
     "stitch_web_researcher/token_budget.py",
     "stitch_web_researcher/meta_extractor.py",
+    "stitch_web_researcher/mcp_server.py",
 ]
 
 [tool.pytest.ini_options]

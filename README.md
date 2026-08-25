@@ -202,6 +202,42 @@ chunks = [chunk1, chunk2, chunk3]
 final = fit_context_window(chunks, 8000, model_name="gpt-4o")
 ```
 
+### MCP Server
+
+Expose the toolbox as [Model Context Protocol](https://modelcontextprotocol.io) tools so any MCP client (pi, Claude Desktop, Cursor, …) can use them directly:
+
+```bash
+# install with the optional MCP dependency (v2 SDK)
+uv pip install "mcp>=2.0"
+
+# run over stdio
+python -m stitch_web_researcher.mcp_server
+```
+
+Exposed tools: `search_web`, `inspect_html_page`, `batch_inspect_pages`,
+`extract_document`, `extract_document_structured`, `inspect_html_structured`,
+`clear_cache`, `get_stats`.
+
+Example client config (Claude Desktop / generic MCP JSON):
+
+```json
+{
+  "mcpServers": {
+    "stitch-web-researcher": {
+      "command": "python",
+      "args": ["-m", "stitch_web_researcher.mcp_server"],
+      "env": {
+        "STITCH_MAX_TOKENS": "4000",
+        "STITCH_MODEL_NAME": "gpt-4o"
+      }
+    }
+  }
+}
+```
+
+All toolbox options are configurable via `STITCH_*` environment variables —
+see the module docstring in `stitch_web_researcher/mcp_server.py`.
+
 ### HTML Metadata Extraction
 
 ```python
