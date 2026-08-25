@@ -110,14 +110,15 @@ class TestToolbox:
             assert isinstance(data["markdown"], str)
 
     def test_inspect_html_smart(self, toolbox):
-        """Test HTML page inspection with use_smart=True (falls back to static)."""
+        """Test HTML page inspection with use_smart=True (stealth first, static fallback)."""
         result = toolbox.inspect_html_page("https://example.com", use_smart=True)
         data = json.loads(result)
         if "error" not in data:
             assert "markdown" in data
             assert "fetch_method" in data
-            # fetch_method will be "smart" if browser_oxide works, "static" if fallback
-            assert data["fetch_method"] in ("smart", "static")
+            # "browser" when stealth fetch works (needs browser_oxide),
+            # "static" when it fell back.
+            assert data["fetch_method"] in ("browser", "smart", "static")
 
     def test_visited_deduplication(self, toolbox):
         """Test that visited URLs are tracked."""
