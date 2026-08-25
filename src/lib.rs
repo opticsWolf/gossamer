@@ -128,7 +128,9 @@ async fn fetch_and_extract_inner(url: &str) -> Result<(String, Vec<String>), Str
             .get(url)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.5")
-            .header("Accept-Encoding", "gzip, deflate, br")
+            // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
+            // its automatic gzip/brotli/deflate decoding and response.text()
+            // yields raw compressed bytes.
             .header("DNT", "1")
             .header("Connection", "keep-alive")
             .send()
@@ -208,6 +210,22 @@ fn fetch_many(urls: Vec<String>) -> Vec<(String, Result<(String, Vec<String>), S
 // 8. Python bindings
 // ────────────────────────────────────────────────────────────────
 
+/// Python binding: process HTML already fetched/rendered by the caller
+/// (e.g. via browser_oxide) -> (markdown, list_of_links).
+#[pyfunction]
+fn process_rendered_html(
+    py: Python<'_>,
+    html: String,
+    url: String,
+) -> PyResult<(String, Vec<String>)> {
+    py.detach(|| {
+        match process_html(&html, &url) {
+            Ok((md, links)) => Ok((md, links)),
+            Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
+        }
+    })
+}
+
 /// Python binding: fetch one URL -> (markdown, list_of_links)
 #[pyfunction]
 fn fetch_and_extract(py: Python<'_>, url: String) -> PyResult<(String, Vec<String>)> {
@@ -247,5 +265,6 @@ fn batch_research(
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fetch_and_extract, m)?)?;
     m.add_function(wrap_pyfunction!(batch_research, m)?)?;
+    m.add_function(wrap_pyfunction!(process_rendered_html, m)?)?;
     Ok(())
 }

@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.27", features = ["extension-module", "abi3-py38"] }
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["json", "stream", "brotli"] }
+reqwest = { version = "0.12", features = ["json", "stream", "brotli", "gzip", "deflate"] }
 scraper = "0.22"
 html2md = "0.2"
 url = "2.5"

@@ -14,7 +14,7 @@ import httpx
 from pdf_oxide import PdfDocument
 from office_oxide import Document as OfficeDoc
 
-from stitch_web_researcher._core import fetch_and_extract, batch_research
+from stitch_web_researcher._core import fetch_and_extract, batch_research, process_rendered_html as _process_rendered_html
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
 from stitch_web_researcher.search_providers import (
@@ -42,16 +42,12 @@ except ImportError:
 def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     """Fetch a page using browser_oxide (stealth headless browser).
 
+    Navigation runs in browser_oxide; link extraction and markdown
+    conversion run in the Rust core (``_core.process_rendered_html``),
+    so only ``browser_oxide`` itself needs to be installed.
+
     Returns (markdown, links, metadata) tuple.
     """
-    from urllib.parse import urlparse
-
-    import html2md
-    from scraper import Html, Selector
-    from url import Url
-
-    # Profile.chrome() is mandatory in v0.1.x — bare Browser() hits a fatal
-    # V8 HandleScope error at construction.
     browser = browser_oxide.Browser(profile=browser_oxide.Profile.chrome())
     try:
         page = browser.navigate(url, max_iterations=5)
@@ -66,31 +62,8 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     # Extract HTML metadata via meta-oxide
     metadata = meta_extractor.extract_all(html, url)
 
-    # Process HTML through the same pipeline as fetch_and_extract
-    document = Html.parse_document(html)
-    base = Url.parse(url)
-
-    # Extract links
-    link_sel = Selector.parse("a[href]").unwrap()
-    links = []
-    seen = set()
-    for el in document.select(link_sel):
-        href = el.value().attr("href")
-        if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
-            continue
-        try:
-            abs_url = str(base.join(href))
-        except Exception:
-            continue
-        if abs_url not in seen and urlparse(abs_url).scheme in ("http", "https"):
-            seen.add(abs_url)
-            links.append(abs_url)
-            if len(links) >= 20:
-                break
-
-    # Extract main content
-    main_content = _extract_main_content(document)
-    markdown = html2md.parse_html(main_content)
+    # Links + markdown via the Rust core (same pipeline as fetch_and_extract)
+    markdown, links = _process_rendered_html(html, url)
     return markdown, links, metadata
 
 
