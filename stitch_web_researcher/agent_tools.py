@@ -363,9 +363,9 @@ class WebResearcherToolbox:
         self.visited_urls: set[str] = set()
         self._domain_last_seen: dict[str, float] = defaultdict(float)
         self._ua_index = 0
-        # Candidate pool size before LLM triage (bigger than max_links,
-        # which now applies AFTER title/type formatting).
-        self.link_cap = 100
+        # Candidate pool size: how many links we collect per page before
+        # handing ALL of them to the LLM for topic-based selection.
+        self.link_cap = 500
 
     def _truncate(
         self, text: str, char_limit: int, token_limit: int = 0
@@ -538,8 +538,9 @@ class WebResearcherToolbox:
                     "type": classify_link(url),
                 }
             )
-            if len(out) >= self.max_links:
-                break
+        # NOTE: no truncation here. The caller (LLM) performs relevance
+        # selection itself, based on the research topic; our job is to
+        # deliver the complete titled/typed candidate list.
         return out
 
     def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
