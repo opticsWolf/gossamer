@@ -197,9 +197,11 @@ def build_server() -> MCPServer:
 
 def main() -> None:
     """Entry point: run the MCP server over stdio."""
+    import asyncio
+
     logging.basicConfig(level=_env("STITCH_LOG_LEVEL", "INFO"))
     server = build_server()
-    server.run_stdio_async()
+    asyncio.run(server.run_stdio_async())
 
 
 if __name__ == "__main__":
