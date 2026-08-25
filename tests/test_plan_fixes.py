@@ -329,3 +329,63 @@ class TestSearchSpacingJitter:
         search_providers.SearchProvider._enforce_delay(prov)
         assert called == [], "jitter must not apply when delay is 0"
         assert sleeps == []
+
+
+class TestPerDomainDelayIsolation:
+    """Fetch delays apply ONLY between same-domain fetches; different
+    domains never wait on each other (incl. use_smart=True paths, since
+    _rate_limit_domain runs before _fetch_html regardless of mode)."""
+
+    def test_cross_domain_fetches_are_never_delayed(self, tmp_path, monkeypatch):
+        from stitch_web_researcher import agent_tools
+
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        tb = WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=1.0)
+        )
+        sleeps = []
+        monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
+
+        tb._rate_limit_domain("https://alpha.com/page")
+        tb._rate_limit_domain("https://beta.org/page")
+        tb._rate_limit_domain("https://gamma.net/page")
+
+        assert sleeps == [], "different domains must not wait on each other"
+
+    def test_same_domain_repeat_is_delayed(self, tmp_path, monkeypatch):
+        from stitch_web_researcher import agent_tools
+
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        tb = WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=1.0)
+        )
+        sleeps = []
+        monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
+
+        url_a, url_b = "https://alpha.com/a", "https://alpha.com/b"
+        tb._rate_limit_domain(url_a)
+        # different path, SAME domain -> must be spaced
+        tb._rate_limit_domain(url_b)
+
+        assert len(sleeps) == 1
+        assert sleeps[0] >= 1.0  # base interval; jitter may add up to 1s
+
+    def test_smart_and_static_fetches_share_one_delay_budget(self, tmp_path, monkeypatch):
+        """A smart (browser) fetch followed by a static fetch of the same
+        domain is still rate-limited as one domain."""
+        from stitch_web_researcher import agent_tools
+
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        tb = WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=1.0)
+        )
+        sleeps = []
+        monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
+
+        tb._rate_limit_domain("https://alpha.com/a")   # e.g. smart fetch
+        tb._rate_limit_domain("https://alpha.com/b")   # static fetch, same domain
+
+        assert len(sleeps) == 1 and sleeps[0] >= 1.0
