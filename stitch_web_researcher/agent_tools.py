@@ -8,7 +8,7 @@ from functools import wraps
 from pathlib import Path
 import tempfile
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import httpx
 from pydantic import BaseModel, Field
@@ -329,6 +329,52 @@ _LLM_TOOL_DEFINITIONS = [
 
 
 
+def normalize_url(raw: str, base: Optional[str] = None) -> str:
+    """Auto-convert URL-like strings into proper absolute URLs.
+
+    Handles the messy inputs an LLM tends to produce:
+      - surrounding whitespace / quotes / angle brackets
+      - missing scheme ("example.com/doc.pdf", "www.example.com/a")
+      - protocol-relative ("//cdn.example.com/x")
+      - page-relative paths ("/files/report.pdf") when *base* is given
+
+    Returns a clean absolute http(s) URL; raises ValueError for strings
+    that cannot be interpreted as one.
+    """
+    s = (raw or '').strip().strip('"\'').strip("<>").strip()
+    if not s:
+        raise ValueError("Empty URL")
+
+    # Page-relative or root-relative path: resolve against base first.
+    if base and not urlparse(s).scheme and not s.startswith("//"):
+        s = urljoin(base, s)
+
+    # Protocol-relative //host/path
+    if s.startswith("//"):
+        s = "https:" + s
+
+    parsed = urlparse(s)
+    if " " in s:
+        raise ValueError(f"Cannot interpret {raw!r} as a URL (contains spaces)")
+
+    if not parsed.scheme:
+        # Bare domain like "example.com/a" or "www.example.com".
+        # Only auto-prefix when the host looks domain-like; a bare word
+        # is more likely a mistake than an intranet hostname.
+        candidate_host = parsed.path.split("/")[0]
+        if "." not in candidate_host and candidate_host != "localhost":
+            raise ValueError(f"{raw!r} does not look like a URL")
+        s = "https://" + s
+        parsed = urlparse(s)
+
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme in {raw!r}")
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError(f"Cannot parse {raw!r} as a URL (no host)")
+    return s
+
+
 class WebResearcherToolbox:
     """LLM tool routing layer with caching, rate limiting, and token budgeting."""
 
@@ -352,6 +398,7 @@ class WebResearcherToolbox:
         default_provider_index: int = 0,
         fetch_delay: Optional[float] = None,
         fetch_mode: str = "auto",
+        candidate_cap: int = 500,
     ):
         # Two-tier cache (memory LRU + file TTL)
         self.cache = Cache(
@@ -394,7 +441,7 @@ class WebResearcherToolbox:
         self._ua_index = 0
         # Candidate pool size: how many links we collect per page before
         # handing ALL of them to the LLM for topic-based selection.
-        self.link_cap = 500
+        self.link_cap = max(1, int(candidate_cap))
 
     def _truncate(
         self, text: str, char_limit: int, token_limit: int = 0
@@ -699,6 +746,7 @@ class WebResearcherToolbox:
             If True, attempt headless JS rendering via browser_oxide first,
             then fall back to static reqwest fetch.
         """
+        url = normalize_url(url)
         if url in self.visited_urls:
             logger.warning("URL already visited: %s", url)
             return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
@@ -770,6 +818,7 @@ class WebResearcherToolbox:
 
     async def inspect_html_page_async(self, url: str, use_smart: Optional[bool] = None) -> str:
         """Async version of inspect_html_page."""
+        url = normalize_url(url)
         if url in self.visited_urls:
             logger.warning("URL already visited: %s", url)
             return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
@@ -860,8 +909,11 @@ class WebResearcherToolbox:
 
     def extract_document(self, source: str) -> str:
         """Extract text content from PDF, DOCX, or XLSX documents."""
-        parsed = urlparse(source)
-        is_url = parsed.scheme in ("http", "https")
+        try:
+            source = normalize_url(source)  # may still be a local path
+            is_url = True
+        except ValueError:
+            is_url = urlparse(source).scheme in ("http", "https")
 
         if is_url:
             self._validate_url(source)
@@ -1006,6 +1058,7 @@ class WebResearcherToolbox:
         str
             JSON-serialised ParsedDocumentPayload (token-truncated).
         """
+        url = normalize_url(url)
         if url in self.visited_urls:
             logger.warning("URL already visited: %s", url)
             return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
