@@ -1053,6 +1053,9 @@ class WebResearcherToolbox:
             if self.fetch_mode == "browser":
                 for url in pending:
                     try:
+                        # Sequential stealth-browser fetches honor the same
+                        # per-domain politeness gap as single fetches.
+                        self._rate_limit_domain(url)
                         md, links, meta, method = self._fetch_html(url)
                         truncated_md = self._truncate(
                             md, self.max_markdown_chars, self.max_tokens
@@ -1072,6 +1075,8 @@ class WebResearcherToolbox:
                 pending,
                 max_links=self.link_cap,
                 max_concurrency=self.max_concurrency,
+                # Same-domain staggering inside the batch engine (0 disables).
+                domain_gap_ms=int(self._fetch_interval * 1000),
             )
             output = []
             for url, md_opt, links_opt in results:

@@ -2,9 +2,9 @@ use pyo3::prelude::*;
 use scraper::{Html, Selector};
 use url::Url;
 use html2md::parse_html;
-use std::collections::HashSet;
-use std::sync::{Arc, OnceLock};
-use std::time::Duration;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // ────────────────────────────────────────────────────────────────
 // 1. Shared Tokio runtime (singleton, avoids cold-start per call)
@@ -237,17 +237,34 @@ fn fetch_and_extract_single_anchored(
 // 7. Batch fetch (concurrent)
 // ────────────────────────────────────────────────────────────────
 
+/// Cheap pseudo-random milliseconds in `0..bound`, used for politeness
+/// jitter. Not cryptographic — just enough to desynchronize access.
+fn jitter_ms(bound_ms: u64) -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64 % bound_ms.max(1))
+        .unwrap_or(0)
+}
+
 async fn fetch_many_inner(
     urls: Vec<String>,
     cap: usize,
     max_concurrency: usize,
+    domain_gap_ms: u64,
 ) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
     // Bounds simultaneous connections so a large same-domain batch cannot
     // open unbounded sockets (self-DoS / rude to the target).
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency.max(1)));
+    // Same-domain staggering: earliest allowed start per host, advanced by
+    // `gap + jitter` on every scheduling decision. Different domains never
+    // wait on each other; repeats of one domain are spaced apart so a batch
+    // cannot hammer a single server.
+    let schedule: Arc<Mutex<HashMap<String, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut handles = Vec::new();
     for url in urls {
         let semaphore = Arc::clone(&semaphore);
+        let schedule = Arc::clone(&schedule);
         let handle = tokio::spawn(async move {
             // NOTE: must stay fully async — calling the blocking
             // fetch_and_extract_single_anchored here would block_on() the
@@ -256,6 +273,32 @@ async fn fetch_many_inner(
                 .acquire_owned()
                 .await
                 .expect("semaphore closed unexpectedly");
+
+            if domain_gap_ms > 0 {
+                let domain = Url::parse(&url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_string));
+                if let Some(domain) = domain {
+                    // Hold the lock only to reserve a slot — never across await.
+                    let wait = {
+                        let mut sched = schedule
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        let now = Instant::now();
+                        let slot = sched.entry(domain).or_insert(now);
+                        let earliest = *slot;
+                        let step = Duration::from_millis(
+                            domain_gap_ms + jitter_ms(1000),
+                        );
+                        *slot = earliest + step;
+                        earliest.saturating_duration_since(now)
+                    };
+                    if !wait.is_zero() {
+                        tokio::time::sleep(wait).await;
+                    }
+                }
+            }
+
             let res = async {
                 let client = build_client()?;
                 let html = http_fetch_html(&client, &url).await?;
@@ -283,9 +326,10 @@ fn fetch_many(
     urls: Vec<String>,
     cap: usize,
     max_concurrency: usize,
+    domain_gap_ms: u64,
 ) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
     let rt = shared_runtime();
-    rt.block_on(fetch_many_inner(urls, cap, max_concurrency))
+    rt.block_on(fetch_many_inner(urls, cap, max_concurrency, domain_gap_ms))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -357,15 +401,16 @@ fn fetch_and_extract(py: Python<'_>, url: String) -> PyResult<(String, Vec<Strin
 /// Python binding: batch fetch multiple URLs.
 /// Returns list of tuples: (url, markdown_or_error, [(anchor_url, text)] or None)
 #[pyfunction]
-#[pyo3(signature = (urls, max_links = 500, max_concurrency = 8))]
+#[pyo3(signature = (urls, max_links = 500, max_concurrency = 8, domain_gap_ms = 0))]
 fn batch_research(
     py: Python<'_>,
     urls: Vec<String>,
     max_links: usize,
     max_concurrency: usize,
+    domain_gap_ms: u64,
 ) -> PyResult<Vec<(String, Option<String>, Option<Vec<(String, String)>>)>> {
     py.detach(|| {
-        let results = fetch_many(urls, max_links, max_concurrency);
+        let results = fetch_many(urls, max_links, max_concurrency, domain_gap_ms);
         let mut out = Vec::new();
         for (url, res) in results {
             match res {

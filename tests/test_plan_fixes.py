@@ -389,3 +389,68 @@ class TestPerDomainDelayIsolation:
         tb._rate_limit_domain("https://alpha.com/b")   # static fetch, same domain
 
         assert len(sleeps) == 1 and sleeps[0] >= 1.0
+
+
+class TestBatchSameDomainStaggering:
+    """Batch engine spaces same-domain starts (gap = _fetch_interval + jitter);
+    cross-domain URLs are never delayed relative to each other."""
+
+    def test_same_domain_batch_is_staggered(self, tmp_path):
+        import threading
+        import time as time_mod
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b"<html><body><h1>ok</h1></body></html>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            from stitch_web_researcher.agent_tools import ToolboxConfig
+
+            tb = WebResearcherToolbox(
+                ToolboxConfig(
+                    cache_dir=str(tmp_path / "c"),
+                    fetch_delay=0.5,  # -> domain_gap_ms=500 (+0-1s jitter in Rust)
+                    ddgs_delay=0.0,
+                )
+            )
+            port = server.server_address[1]
+            urls = [f"http://127.0.0.1:{port}/{i}" for i in range(3)]
+
+            start = time_mod.monotonic()
+            out = tb.batch_inspect_pages(urls)
+            elapsed = time_mod.monotonic() - start
+
+            results = [r for r in json.loads(out) if "error" not in r]
+            assert len(results) == 3
+            # Three same-domain starts must be spaced >= ~500ms apart (jitter
+            # only adds), so total elapsed must exceed two gaps minus tolerance.
+            assert elapsed >= 0.9, (
+                f"3 same-domain fetches completed in {elapsed:.2f}s -- "
+                "batch engine did not stagger"
+            )
+        finally:
+            server.shutdown()
+
+    def test_domain_gap_passed_to_engine(self, tmp_path):
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        tb = WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=0.75)
+        )
+        with patch("stitch_web_researcher.agent_tools.batch_research") as mock_batch:
+            mock_batch.return_value = []
+            tb.batch_inspect_pages(["https://example.com/x"])
+
+        _, kwargs = mock_batch.call_args
+        assert kwargs["domain_gap_ms"] == 750
