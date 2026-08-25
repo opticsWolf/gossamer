@@ -224,14 +224,20 @@ fn fetch_and_extract_single_anchored(
 
 async fn fetch_many_inner(
     urls: Vec<String>,
-) -> Vec<(String, Result<(String, Vec<String>), String>)> {
+    cap: usize,
+) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
     let mut handles = Vec::new();
     for url in urls {
         let handle = tokio::spawn(async move {
-            let res = fetch_and_extract_single_anchored(&url, 20)
-                .map(|(md, pairs)| {
-                    (md, pairs.into_iter().map(|(u, _)| u).collect::<Vec<String>>())
-                });
+            // NOTE: must stay fully async — calling the blocking
+            // fetch_and_extract_single_anchored here would block_on() the
+            // shared runtime from inside its own worker (panic).
+            let res = async {
+                let client = build_client()?;
+                let html = http_fetch_html(&client, &url).await?;
+                process_html_anchored(&html, &url, cap)
+            }
+            .await;
             (url, res)
         });
         handles.push(handle);
@@ -249,9 +255,12 @@ async fn fetch_many_inner(
     results
 }
 
-fn fetch_many(urls: Vec<String>) -> Vec<(String, Result<(String, Vec<String>), String>)> {
+fn fetch_many(
+    urls: Vec<String>,
+    cap: usize,
+) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
     let rt = shared_runtime();
-    rt.block_on(fetch_many_inner(urls))
+    rt.block_on(fetch_many_inner(urls, cap))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -321,14 +330,16 @@ fn fetch_and_extract(py: Python<'_>, url: String) -> PyResult<(String, Vec<Strin
 }
 
 /// Python binding: batch fetch multiple URLs.
-/// Returns list of tuples: (url, markdown_or_error, links_or_none)
+/// Returns list of tuples: (url, markdown_or_error, [(anchor_url, text)] or None)
 #[pyfunction]
+#[pyo3(signature = (urls, max_links = 500))]
 fn batch_research(
     py: Python<'_>,
     urls: Vec<String>,
-) -> PyResult<Vec<(String, Option<String>, Option<Vec<String>>)>> {
+    max_links: usize,
+) -> PyResult<Vec<(String, Option<String>, Option<Vec<(String, String)>>)>> {
     py.detach(|| {
-        let results = fetch_many(urls);
+        let results = fetch_many(urls, max_links);
         let mut out = Vec::new();
         for (url, res) in results {
             match res {

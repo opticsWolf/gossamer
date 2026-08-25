@@ -11,6 +11,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
+from pydantic import BaseModel, Field
 from pdf_oxide import PdfDocument
 from office_oxide import Document as OfficeDoc
 
@@ -32,6 +33,34 @@ from stitch_web_researcher import meta_extractor
 from stitch_web_researcher.cache import Cache
 
 logger = logging.getLogger(__name__)
+
+
+# ───────────────────────────────
+# Inspection output models (guarantee clean, schema-valid JSON)
+# ───────────────────────────────
+
+class FollowUpCandidate(BaseModel):
+    """One link candidate for LLM triage."""
+    title: str = "(untitled)"
+    url: str
+    type: str = "page"  # 'page' -> inspect_html_page, 'document' -> extract_document
+
+
+class InspectionResult(BaseModel):
+    """Structured result of an HTML page inspection.
+
+    ``truncated`` is True whenever the delivered link list is not the
+    complete set found on the page — either the collection cap was hit
+    (link_cap) or the output budget forced candidates to be dropped.
+    """
+    url: str
+    markdown: str = ""
+    markdown_tokens: int = 0
+    follow_up_links: list[FollowUpCandidate] = Field(default_factory=list)
+    total_links: int = 0
+    truncated: bool = False
+    fetch_method: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
 
 # ───────────────────────────────
 # Smart fetch (browser_oxide with fallback)
@@ -543,6 +572,50 @@ class WebResearcherToolbox:
         # deliver the complete titled/typed candidate list.
         return out
 
+    def _build_inspection_result(
+        self,
+        url: str,
+        markdown: str,
+        links_pairs,
+        meta_summary: dict,
+        fetch_method: Optional[str],
+    ) -> InspectionResult:
+        """Assemble an InspectionResult and enforce the output budget.
+
+        Budget enforcement drops candidates from the END (halving) until the
+        serialized JSON fits within max_markdown_chars / max_tokens. The
+        ``truncated`` flag records any loss — collection-cap hits AND
+        budget-driven drops — so the model always knows whether it saw
+        every link. The returned JSON is schema-valid by construction
+        (Pydantic serializes it; we never string-cut the output).
+        """
+        result = InspectionResult(
+            url=url,
+            markdown=markdown,
+            markdown_tokens=count_tokens(markdown, self.model_name),
+            follow_up_links=self._format_follow_ups(links_pairs),
+            total_links=len(links_pairs),
+            truncated=len(links_pairs) >= self.link_cap,
+            fetch_method=fetch_method,
+            metadata=meta_summary or {},
+        )
+
+        while True:
+            payload = result.model_dump_json()
+            over_chars = len(payload) > self.max_markdown_chars
+            over_tokens = (
+                self.max_tokens > 0
+                and count_tokens(payload, self.model_name) > self.max_tokens
+            )
+            if not (over_chars or over_tokens):
+                break
+            if not result.follow_up_links:
+                break  # nothing left to drop; markdown is already pre-truncated
+            keep = len(result.follow_up_links) // 2
+            result.follow_up_links = result.follow_up_links[:keep]
+            result.truncated = True
+        return result
+
     def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
         """Fetch an HTML page honoring ``self.fetch_mode``.
 
@@ -644,19 +717,9 @@ class WebResearcherToolbox:
             # Build compact metadata summary for LLM output
             meta_summary = self._compact_metadata(html_metadata)
 
-            return json.dumps(
-                {
-                    "url": url,
-                    "markdown": truncated_md,
-                    "markdown_tokens": count_tokens(truncated_md, self.model_name),
-                    "follow_up_links": self._format_follow_ups(links),
-                    "total_links": len(links),
-                    "fetch_method": fetch_method,
-                    "metadata": meta_summary,
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
+            return self._build_inspection_result(
+                url, truncated_md, links, meta_summary, fetch_method
+            ).model_dump_json()
         except Exception as e:
             logger.error("HTML inspection failed for %s: %s", url, e)
             return json.dumps(
@@ -723,19 +786,9 @@ class WebResearcherToolbox:
 
             meta_summary = self._compact_metadata(html_metadata)
 
-            return json.dumps(
-                {
-                    "url": url,
-                    "markdown": truncated_md,
-                    "markdown_tokens": count_tokens(truncated_md, self.model_name),
-                    "follow_up_links": self._format_follow_ups(links),
-                    "total_links": len(links),
-                    "fetch_method": fetch_method,
-                    "metadata": meta_summary,
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
+            return self._build_inspection_result(
+                url, truncated_md, links, meta_summary, fetch_method
+            ).model_dump_json()
         except Exception as e:
             logger.error("Async HTML inspection failed for %s: %s", url, e)
             return json.dumps(
@@ -770,21 +823,17 @@ class WebResearcherToolbox:
                             md, self.max_markdown_chars, self.max_tokens
                         )
                         output.append(
-                            {
-                                "url": url,
-                                "markdown": truncated_md,
-                                "markdown_tokens": count_tokens(
-                                    truncated_md, self.model_name
-                                ),
-                                "follow_up_links": self._format_follow_ups(links),
-                                "total_links": len(links),
-                            }
+                            json.loads(
+                                self._build_inspection_result(
+                                    url, truncated_md, links, {}, method
+                                ).model_dump_json()
+                            )
                         )
                     except Exception as e:
                         output.append({"url": url, "error": str(e)})
-                return json.dumps(output, indent=2, ensure_ascii=False)
+                return json.dumps(output, ensure_ascii=False)
 
-            results = batch_research(urls)
+            results = batch_research(urls, max_links=self.link_cap)
             output = []
             for url, md_opt, links_opt in results:
                 if md_opt is not None and links_opt is not None:
@@ -792,21 +841,15 @@ class WebResearcherToolbox:
                         md_opt, self.max_markdown_chars, self.max_tokens
                     )
                     output.append(
-                        {
-                            "url": url,
-                            "markdown": truncated_md,
-                            "markdown_tokens": count_tokens(
-                                truncated_md, self.model_name
-                            ),
-                            "follow_up_links": self._format_follow_ups(
-                                [(u, "") for u in links_opt]
-                            ),
-                            "total_links": len(links_opt),
-                        }
+                        json.loads(
+                            self._build_inspection_result(
+                                url, truncated_md, links_opt, {}, "static-batch"
+                            ).model_dump_json()
+                        )
                     )
                 else:
                     output.append({"url": url, "error": md_opt or "Unknown error"})
-            return json.dumps(output, indent=2, ensure_ascii=False)
+            return json.dumps(output, ensure_ascii=False)
         except Exception as e:
             logger.error("Batch inspection failed: %s", e)
             return json.dumps({"error": f"Batch inspection failed: {str(e)}"}, indent=2)
