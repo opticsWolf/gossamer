@@ -319,12 +319,18 @@ class WebResearcherToolbox:
         search_providers: Optional[list] = None,
         default_provider_index: int = 0,
         fetch_delay: Optional[float] = None,
+        fetch_mode: str = "auto",
     ):
         # Two-tier cache (memory LRU + file TTL)
         self.cache = Cache(
             cache_dir=cache_dir,
             ttl_seconds=cache_ttl_seconds,
         )
+        if fetch_mode not in ("auto", "browser", "static"):
+            raise ValueError(
+                f"Invalid fetch_mode {fetch_mode!r}; expected 'auto', 'browser', or 'static'"
+            )
+        self.fetch_mode = fetch_mode
         self.ddgs_delay = ddgs_delay
         self.domain_delay = domain_delay
         self.max_markdown_chars = max_markdown_chars
@@ -506,7 +512,76 @@ class WebResearcherToolbox:
     # HTML Page Inspection
     # ───────────────────────────────
 
-    def inspect_html_page(self, url: str, use_smart: bool = False) -> str:
+    def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
+        """Fetch an HTML page honoring ``self.fetch_mode``.
+
+        Returns ``(markdown, links, metadata, method)``.
+
+        Modes:
+            "browser": every fetch goes through the stealth browser;
+                failures propagate (strict).
+            "static": plain HTTP fetch via the Rust core only.
+            "auto": static first; falls back to the stealth browser when
+                the static fetch raises or returns non-text content.
+
+        ``use_smart`` overrides per call: ``False`` forces static-only,
+        ``True`` tries the stealth browser first (falling back to static).
+        """
+        if self.fetch_mode == "browser":
+            if use_smart is False:
+                md, links = fetch_and_extract(url)
+                return md, links, {}, "static"
+            md, links, meta = _fetch_with_browser_oxide(url)
+            return md, links, meta, "browser"
+
+        if use_smart is True:
+            try:
+                md, links, meta = _fetch_with_browser_oxide(url)
+                return md, links, meta, "browser"
+            except Exception as e:
+                logger.warning("Stealth fetch failed for %s: %s -- falling back to static", url, e)
+
+        if self.fetch_mode == "static" or use_smart is False:
+            md, links = fetch_and_extract(url)
+            return md, links, {}, "static"
+
+        # auto: static first, stealth fallback
+        try:
+            md, links = fetch_and_extract(url)
+            if self._looks_like_text(md):
+                return md, links, {}, "static"
+            logger.info("Static fetch returned non-text content for %s", url)
+        except Exception as e:
+            logger.warning("Static fetch failed for %s: %s -- trying stealth browser", url, e)
+
+        if not _browser_oxide_available:
+            raise RuntimeError(
+                f"Fetch failed for {url} and browser_oxide is not installed"
+            )
+        md, links, meta = _fetch_with_browser_oxide(url)
+        return md, links, meta, "stealth-fallback"
+
+    @staticmethod
+    def _looks_like_text(md: str) -> bool:
+        """Heuristic: reject empty or binary-garbage payloads (e.g. undecoded
+        compressed responses), which would otherwise poison LLM context.
+
+        Uses Unicode categories rather than printability: legitimate text in
+        any language (incl. CJK) contains almost no control/format/unassigned
+        codepoints, while binary bytes mis-decoded as text are full of them.
+        """
+        if not md or not md.strip():
+            return False
+        import unicodedata
+        sample = md[:2000]
+        bad = sum(
+            unicodedata.category(c) in ("Cc", "Cn", "Co", "Cs")
+            and c not in "\n\r\t"
+            for c in sample
+        )
+        return bad / len(sample) < 0.02
+
+    def inspect_html_page(self, url: str, use_smart: Optional[bool] = None) -> str:
         """
         Fetch and extract markdown + follow-up links + HTML metadata from a web page.
 
@@ -527,13 +602,7 @@ class WebResearcherToolbox:
         self._rate_limit_domain(url)
 
         try:
-            if use_smart:
-                markdown, links, html_metadata = fetch_smart_page(url)
-                fetch_method = "smart"
-            else:
-                markdown, links = fetch_and_extract(url)
-                html_metadata = {}
-                fetch_method = "static"
+            markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
             logger.info("Fetched %s via %s (%d chars, %d links)", url, fetch_method, len(markdown), len(links))
             truncated_md = self._truncate(
                 markdown, self.max_markdown_chars, self.max_tokens
@@ -603,7 +672,7 @@ class WebResearcherToolbox:
 
         return compact
 
-    async def inspect_html_page_async(self, url: str, use_smart: bool = False) -> str:
+    async def inspect_html_page_async(self, url: str, use_smart: Optional[bool] = None) -> str:
         """Async version of inspect_html_page."""
         if url in self.visited_urls:
             logger.warning("URL already visited: %s", url)
@@ -614,13 +683,7 @@ class WebResearcherToolbox:
         self._rate_limit_domain(url)
 
         try:
-            if use_smart:
-                markdown, links, html_metadata = fetch_smart_page(url)
-                fetch_method = "smart"
-            else:
-                markdown, links = fetch_and_extract(url)
-                html_metadata = {}
-                fetch_method = "static"
+            markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
             truncated_md = self._truncate(
                 markdown, self.max_markdown_chars, self.max_tokens
             )
@@ -653,6 +716,9 @@ class WebResearcherToolbox:
     def batch_inspect_pages(self, urls: list) -> str:
         """
         Fetch multiple pages concurrently using the Rust batch engine.
+
+        With ``fetch_mode="browser"`` every page is fetched sequentially
+        through the stealth browser instead (per-domain rate limits apply).
         """
         for url in urls:
             if url in self.visited_urls:
@@ -662,6 +728,29 @@ class WebResearcherToolbox:
             self.visited_urls.add(url)
 
         try:
+            output = []
+            if self.fetch_mode == "browser":
+                for url in urls:
+                    try:
+                        md, links, meta, method = self._fetch_html(url)
+                        truncated_md = self._truncate(
+                            md, self.max_markdown_chars, self.max_tokens
+                        )
+                        output.append(
+                            {
+                                "url": url,
+                                "markdown": truncated_md,
+                                "markdown_tokens": count_tokens(
+                                    truncated_md, self.model_name
+                                ),
+                                "follow_up_links": links[: self.max_links],
+                                "total_links": len(links),
+                            }
+                        )
+                    except Exception as e:
+                        output.append({"url": url, "error": str(e)})
+                return json.dumps(output, indent=2, ensure_ascii=False)
+
             results = batch_research(urls)
             output = []
             for url, md_opt, links_opt in results:
@@ -818,7 +907,7 @@ class WebResearcherToolbox:
     # HTML Structured Inspection
     # ───────────────────────────────
 
-    def inspect_html_structured(self, url: str, use_smart: bool = False) -> str:
+    def inspect_html_structured(self, url: str, use_smart: Optional[bool] = None) -> str:
         """
         Fetch a web page and return it as a structured ParsedDocumentPayload
         with metadata (OG, Twitter, JSON-LD), markdown content, and links.
@@ -848,13 +937,7 @@ class WebResearcherToolbox:
         self._rate_limit_domain(url)
 
         try:
-            if use_smart:
-                markdown, links, html_metadata = fetch_smart_page(url)
-                fetch_method = "smart"
-            else:
-                markdown, links = fetch_and_extract(url)
-                html_metadata = {}
-                fetch_method = "static"
+            markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
 
             # Build structured payload via unified parser
             parser = StructuredOxideParser()
