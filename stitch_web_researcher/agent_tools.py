@@ -325,6 +325,18 @@ _LLM_TOOL_DEFINITIONS = [
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "clear_cache",
+                "description": "Clear both the in-memory and disk research caches. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
 ]
 
 
@@ -493,9 +505,47 @@ class WebResearcherToolbox:
             time.sleep(self._fetch_interval - elapsed)
         self._domain_last_seen[domain] = time.time()
 
+    # Query parameters that never change page content -- stripped so that
+    # campaign-tagged variants of one document share a single cache entry.
+    _TRACKING_PARAM_PREFIXES = ("utm_", "fbclid", "gclid", "mc_", "ref_")
+
     def _cache_key(self, url: str) -> str:
-        """Generate cache key for a URL (use URL directly)."""
-        return url
+        """Canonical cache key for a URL, so variant spellings of the same
+        resource cannot produce 'double-tracked' cache entries:
+
+          https://WWW.Example.com:443/docs/report.pdf?x=1&utm_source=x#top
+          http-->https kept | host lowercased | default port dropped |
+          path de-slashes   | fragment dropped | utm_* etc. dropped
+
+        Two URLs mapping to the same key share one cache entry; different
+        resources still always map to different keys.
+        """
+        from urllib.parse import parse_qsl, urlencode, urlunparse
+
+        normalized = normalize_url(url)
+        parts = urlparse(normalized)
+
+        host = (parts.hostname or "").lower()
+        if host.startswith("www."):
+            host = host[len("www."):]
+        port = parts.port
+        default_port = {"http": 80, "https": 443}.get(parts.scheme)
+        netloc = host if (port is None or port == default_port) else f"{host}:{port}"
+
+        path = parts.path.rstrip("/") or "/"
+
+        query_items = sorted(
+            (k.lower(), v)
+            for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if not k.lower().startswith(self._TRACKING_PARAM_PREFIXES)
+        )
+        # Key names are lowercased: servers treat them case-sensitively,
+        # but for caching purposes ?ID=7 and ?id=7 are the same document.
+        query = urlencode(query_items)
+
+        # scheme preserved (http/https may genuinely serve different content),
+        # fragment dropped (never part of the fetched resource).
+        return urlunparse((parts.scheme, netloc, path, "", query, ""))
 
     # ───────────────────────────────
     # LLM Tool Definitions
@@ -919,7 +969,8 @@ class WebResearcherToolbox:
             self._validate_url(source)
             self._rate_limit_domain(source)
 
-        cached = self.cache.get(source)
+        cache_key = self._cache_key(source) if is_url else source
+        cached = self.cache.get(cache_key)
         if cached is not None:
             return json.dumps({"cache_hit": True, "content": cached}, indent=2)
 
@@ -929,7 +980,7 @@ class WebResearcherToolbox:
             else:
                 content = self._extract_local(source)
 
-            self.cache.put(source, content)
+            self.cache.put(cache_key, content)
             truncated = self._truncate(content, self.max_markdown_chars, self.max_tokens)
             return json.dumps(
                 {
