@@ -24,14 +24,8 @@ logger = logging.getLogger(__name__)
 # 1. Pydantic v2 Structural Schemas
 # ────────────────────────────────────────────────────────────────
 
-class DocumentMetadata(BaseModel):
-    """
-    Normalised metadata for documents and web pages.
-
-    For files: populated from PDF XMP / Office property streams.
-    For web pages: enriched with HTML metadata (OG, Twitter, JSON-LD, …)
-    via meta-oxide.
-    """
+class FileMeta(BaseModel):
+    """Core file/page identity fields (documents and web pages)."""
 
     file_name: str = Field("", description="Original file name or page URL slug.")
     file_size_bytes: int = Field(0, description="File size in bytes (0 for web pages).")
@@ -43,13 +37,19 @@ class DocumentMetadata(BaseModel):
     modified_at: Optional[datetime] = Field(None, description="UTC modification timestamp.")
     page_count: int = Field(default=1, description="Number of pages or sheets.")
 
-    # ── HTML / web-page metadata (populated by meta-oxide) ──────
+
+class WebBasicsMeta(BaseModel):
+    """Basic HTML-head metadata for web pages."""
+
     canonical: Optional[str] = Field(None, description="Canonical URL.")
     language: Optional[str] = Field(None, description="Page language (e.g. 'en').")
     keywords: Optional[List[str]] = Field(None, description="Meta keywords.")
     robots: Optional[str] = Field(None, description="Robots directive.")
 
-    # Open Graph
+
+class OpenGraphMeta(BaseModel):
+    """Open Graph protocol fields."""
+
     og_title: Optional[str] = Field(None, description="og:title.")
     og_type: Optional[str] = Field(None, description="og:type (e.g. 'article').")
     og_image: Optional[str] = Field(None, description="og:image URL.")
@@ -58,14 +58,20 @@ class DocumentMetadata(BaseModel):
     og_site_name: Optional[str] = Field(None, description="og:site_name.")
     og_url: Optional[str] = Field(None, description="og:url.")
 
-    # Twitter Cards
+
+class TwitterMeta(BaseModel):
+    """Twitter Card fields."""
+
     twitter_card: Optional[str] = Field(None, description="twitter:card type.")
     twitter_title: Optional[str] = Field(None, description="twitter:title.")
     twitter_description: Optional[str] = Field(None, description="twitter:description.")
     twitter_image: Optional[str] = Field(None, description="twitter:image URL.")
     twitter_site: Optional[str] = Field(None, description="twitter:site handle.")
 
-    # Structured data
+
+class StructuredDataMeta(BaseModel):
+    """Structured-data and passthrough metadata sections."""
+
     jsonld: Optional[List[Dict[str, Any]]] = Field(None, description="JSON-LD / Schema.org objects.")
     microdata: Optional[List[Dict[str, Any]]] = Field(None, description="HTML5 microdata items.")
     microformats: Optional[Dict[str, Any]] = Field(None, description="Microformats (h-card, …).")
@@ -78,6 +84,29 @@ class DocumentMetadata(BaseModel):
         default_factory=dict, description="Raw metadata key/value pairs."
     )
 
+
+class DocumentMetadata(
+    FileMeta,
+    WebBasicsMeta,
+    OpenGraphMeta,
+    TwitterMeta,
+    StructuredDataMeta,
+):
+    """
+    Normalised metadata for documents and web pages.
+
+    For files: populated from PDF XMP / Office property streams.
+    For web pages: enriched with HTML metadata (OG, Twitter, JSON-LD, …)
+    via meta-oxide.
+
+    Deliberately **flat**: it is a public serialization schema consumed by
+    LLM tooling, so all fields remain top-level. Logical grouping lives in
+    the mixin bases (:class:`FileMeta`, :class:`WebBasicsMeta`,
+    :class:`OpenGraphMeta`, :class:`TwitterMeta`,
+    :class:`StructuredDataMeta`); composing them here changes nothing about
+    the serialized output.
+    """
+    
 
 class ExtractedTable(BaseModel):
     """Tabular grid data extracted from a PDF page or Excel sheet."""
@@ -297,6 +326,80 @@ class StructuredOxideParser:
 
     # ── Main entry point ───────────────────────────────────────
 
+    # Format families → handler methods (dispatch table).
+    _SPREADSHEET_FORMATS = frozenset({"xlsx", "xls", "xlsb", "ods"})
+    _OFFICE_TEXT_FORMATS = frozenset({"docx", "doc", "pptx", "ppt"})
+
+    def _parse_pdf(
+        self,
+        path: Path,
+        detect_headings: bool,
+    ) -> ParsedDocumentPayload:
+        """Parse a PDF into per-page content plus flattened tables."""
+        logger.info("Parsing PDF: %s", path.name)
+        with PdfDocument(str(path)) as doc:
+            metadata = self._extract_pdf_metadata(path, doc)
+            pages: List[ExtractedPage] = []
+
+            for page in doc:
+                pages.append(
+                    ExtractedPage(
+                        page_number=page.index + 1,  # 1-based
+                        raw_text=page.text,
+                        markdown=page.markdown(detect_headings=detect_headings),
+                        tables=self._tables_from_pdf_page(page),
+                    )
+                )
+
+            # Flatten per-page tables into the top-level list too.
+            all_tables: List[ExtractedTable] = [
+                table for p in pages for table in p.tables
+            ]
+            return ParsedDocumentPayload(
+                metadata=metadata,
+                pages=pages,
+                tables=all_tables,
+            )
+
+    def _parse_spreadsheet(self, path: Path) -> ParsedDocumentPayload:
+        """Parse an Excel-family file; tables come from the office IR."""
+        format_type = path.suffix.lower().lstrip(".") or "xlsx"
+        logger.info("Parsing Excel: %s", path.name)
+        with OfficeDoc.open(str(path)) as doc:
+            metadata = self._extract_office_metadata(path, doc, format_type)
+            tables = self._tables_from_office_ir(doc, format_type)
+            pages = [
+                ExtractedPage(
+                    page_number=1,
+                    raw_text=doc.plain_text(),
+                    markdown=doc.to_markdown(),
+                )
+            ]
+            return ParsedDocumentPayload(
+                metadata=metadata,
+                pages=pages,
+                tables=tables,
+            )
+
+    def _parse_office_document(self, path: Path) -> ParsedDocumentPayload:
+        """Parse a Word/PowerPoint file into a single-page payload."""
+        format_type = path.suffix.lower().lstrip(".") or "docx"
+        logger.info("Parsing %s: %s", format_type.upper(), path.name)
+        with OfficeDoc.open(str(path)) as doc:
+            metadata = self._extract_office_metadata(path, doc, format_type)
+            pages = [
+                ExtractedPage(
+                    page_number=1,
+                    raw_text=doc.plain_text(),
+                    markdown=doc.to_markdown(),
+                )
+            ]
+            return ParsedDocumentPayload(
+                metadata=metadata,
+                pages=pages,
+                tables=[],
+            )
+
     def parse_file(
         self,
         file_path: Union[str, Path],
@@ -330,130 +433,17 @@ class StructuredOxideParser:
 
         suffix = path.suffix.lower().lstrip(".")
 
-        # ── PDF path ───────────────────────────────────────────
         if suffix == "pdf":
-            logger.info("Parsing PDF: %s", path.name)
-            with PdfDocument(str(path)) as doc:
-                metadata = self._extract_pdf_metadata(path, doc)
-                pages: List[ExtractedPage] = []
+            return self._parse_pdf(path, detect_headings=detect_headings)
+        if suffix in self._SPREADSHEET_FORMATS:
+            return self._parse_spreadsheet(path)
+        if suffix in self._OFFICE_TEXT_FORMATS:
+            return self._parse_office_document(path)
 
-                for page in doc:
-                    page_num = page.index + 1  # 1-based
-
-                    # Extract text
-                    raw_text = page.text
-
-                    # Extract Markdown
-                    markdown = page.markdown(detect_headings=detect_headings)
-
-                    # Extract tables
-                    tables = self._tables_from_pdf_page(page)
-
-                    pages.append(
-                        ExtractedPage(
-                            page_number=page_num,
-                            raw_text=raw_text,
-                            markdown=markdown,
-                            tables=tables,
-                        )
-                    )
-
-                # Flatten per-page tables into top-level list too
-                all_tables: List[ExtractedTable] = []
-                for p in pages:
-                    all_tables.extend(p.tables)
-
-                return ParsedDocumentPayload(
-                    metadata=metadata,
-                    pages=pages,
-                    tables=all_tables,
-                )
-
-        # ── Excel path ─────────────────────────────────────────
-        elif suffix in ("xlsx", "xls", "xlsb", "ods"):
-            logger.info("Parsing Excel: %s", path.name)
-            with OfficeDoc.open(str(path)) as doc:
-                metadata = self._extract_office_metadata(
-                    path, doc, suffix or "xlsx"
-                )
-
-                # office_oxide gives us Markdown and plain text;
-                # for tabular data we rely on the IR JSON
-                md = doc.to_markdown()
-                raw_text = doc.plain_text()
-
-                # Try to extract sheet-level tables from IR
-                tables = self._tables_from_office_ir(doc, suffix or "xlsx")
-
-                pages = [
-                    ExtractedPage(
-                        page_number=1,
-                        raw_text=raw_text,
-                        markdown=md,
-                    )
-                ]
-
-                return ParsedDocumentPayload(
-                    metadata=metadata,
-                    pages=pages,
-                    tables=tables,
-                )
-
-        # ── Word path ──────────────────────────────────────────
-        elif suffix in ("docx", "doc"):
-            logger.info("Parsing Word: %s", path.name)
-            with OfficeDoc.open(str(path)) as doc:
-                metadata = self._extract_office_metadata(
-                    path, doc, suffix or "docx"
-                )
-
-                md = doc.to_markdown()
-                raw_text = doc.plain_text()
-
-                pages = [
-                    ExtractedPage(
-                        page_number=1,
-                        raw_text=raw_text,
-                        markdown=md,
-                    )
-                ]
-
-                return ParsedDocumentPayload(
-                    metadata=metadata,
-                    pages=pages,
-                    tables=[],
-                )
-
-        # ── PowerPoint path ────────────────────────────────────
-        elif suffix in ("pptx", "ppt"):
-            logger.info("Parsing PowerPoint: %s", path.name)
-            with OfficeDoc.open(str(path)) as doc:
-                metadata = self._extract_office_metadata(
-                    path, doc, suffix or "pptx"
-                )
-
-                md = doc.to_markdown()
-                raw_text = doc.plain_text()
-
-                pages = [
-                    ExtractedPage(
-                        page_number=1,
-                        raw_text=raw_text,
-                        markdown=md,
-                    )
-                ]
-
-                return ParsedDocumentPayload(
-                    metadata=metadata,
-                    pages=pages,
-                    tables=[],
-                )
-
-        else:
-            raise ValueError(
-                f"Unsupported file format '.{suffix}'. "
-                "Supported: pdf, docx, xlsx, pptx, xls, ppt, xlsb, ods, doc."
-            )
+        raise ValueError(
+            f"Unsupported file format '.{suffix}'. "
+            "Supported: pdf, docx, xlsx, pptx, xls, ppt, xlsb, ods, doc."
+        )
 
     # ── Office IR table extraction ─────────────────────────────
 

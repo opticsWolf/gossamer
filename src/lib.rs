@@ -148,50 +148,63 @@ fn process_html_anchored(
 // 6. Fetch + extract (static, reqwest-based)
 // ────────────────────────────────────────────────────────────────
 
+/// Outcome of one fetch attempt.
+/// `Err((message, retryable))`: only retryable errors consume another attempt.
+async fn fetch_attempt(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<String, (String, bool)> {
+    // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
+    // its automatic gzip/brotli/deflate decoding and response.text()
+    // yields raw compressed bytes.
+    let response = client
+        .get(url)
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header("Accept-Language", "en-US,en;q=0.5")
+        .header("DNT", "1")
+        .header("Connection", "keep-alive")
+        .send()
+        .await
+        .map_err(|e| (format!("Request failed: {}", e), true))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        // Only server-side errors are worth retrying.
+        let retryable = status.as_u16() >= 500;
+        return Err((format!("HTTP error: {}", status), retryable));
+    }
+
+    response
+        .text()
+        .await
+        .map_err(|e| (format!("Body read failed: {}", e), true))
+}
+
 async fn http_fetch_html(client: &reqwest::Client, url: &str) -> Result<String, String> {
-    let max_attempts = 3;
-    let mut attempts = 0;
+    const MAX_ATTEMPTS: u32 = 3;
     let mut last_error = String::new();
 
-    while attempts < max_attempts {
-        match client
-            .get(url)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-            .header("Accept-Language", "en-US,en;q=0.5")
-            // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
-            // its automatic gzip/brotli/deflate decoding and response.text()
-            // yields raw compressed bytes.
-            .header("DNT", "1")
-            .header("Connection", "keep-alive")
-            .send()
-            .await
-        {
-            Ok(response) => {
-                let status = response.status();
-                if status.is_success() {
-                    match response.text().await {
-                        Ok(html) => return Ok(html),
-                        Err(e) => last_error = format!("Body read failed: {}", e),
-                    }
-                } else if status.as_u16() >= 500 && attempts < max_attempts - 1 {
-                    last_error = format!("HTTP {} — will retry", status);
-                } else {
-                    return Err(format!("HTTP error: {}", status));
+    for attempt in 0..MAX_ATTEMPTS {
+        match fetch_attempt(client, url).await {
+            Ok(html) => return Ok(html),
+            Err((msg, retryable)) => {
+                if !retryable {
+                    return Err(msg);
                 }
+                last_error = msg;
+                if attempt == MAX_ATTEMPTS - 1 {
+                    break;
+                }
+                // Exponential backoff: 500ms, 1s, …
+                let delay = Duration::from_millis(500 * 2u64.pow(attempt));
+                tokio::time::sleep(delay).await;
             }
-            Err(e) => last_error = format!("Request failed: {}", e),
-        }
-
-        attempts += 1;
-        if attempts < max_attempts {
-            let delay = Duration::from_millis(500 * 2u64.pow(attempts - 1));
-            tokio::time::sleep(delay).await;
         }
     }
 
     Err(format!(
         "All {} attempts failed. Last error: {}",
-        max_attempts, last_error
+        MAX_ATTEMPTS, last_error
     ))
 }
 

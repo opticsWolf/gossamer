@@ -3,7 +3,9 @@ import copy
 import json
 import logging
 import time
+import warnings
 from collections import defaultdict
+from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
 import tempfile
@@ -390,6 +392,41 @@ def normalize_url(raw: str, base: Optional[str] = None) -> str:
     return s
 
 
+@dataclass
+class ToolboxConfig:
+    """Construction options for :class:`WebResearcherToolbox`.
+
+    Grouping the knobs in one object keeps the toolbox constructor stable as
+    options grow. All fields have the same defaults the toolbox historically
+    used.
+    """
+
+    cache_dir: str = ".web_research_cache"
+    cache_ttl_seconds: int = 3600
+    ddgs_delay: float = 1.0
+    domain_delay: float = 0.5
+    max_markdown_chars: int = 8000
+    max_tokens: int = 0
+    model_name: str = "gpt-4o"
+    max_links: int = 20
+    search_providers: Optional[list] = None
+    default_provider_index: int = 0
+    fetch_delay: Optional[float] = None
+    fetch_mode: str = "auto"
+    candidate_cap: int = 500
+    max_concurrency: int = 8
+
+    def __post_init__(self):
+        if self.fetch_mode not in ("auto", "browser", "static"):
+            raise ValueError(
+                f"Invalid fetch_mode {self.fetch_mode!r}; expected 'auto', 'browser', or 'static'"
+            )
+        if self.candidate_cap < 1:
+            raise ValueError("candidate_cap must be >= 1")
+        if self.max_concurrency < 1:
+            raise ValueError("max_concurrency must be >= 1")
+
+
 class WebResearcherToolbox:
     """LLM tool routing layer with caching, rate limiting, and token budgeting."""
 
@@ -399,67 +436,84 @@ class WebResearcherToolbox:
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     ]
 
-    def __init__(
-        self,
-        cache_dir: str = ".web_research_cache",
-        cache_ttl_seconds: int = 3600,
-        ddgs_delay: float = 1.0,
-        domain_delay: float = 0.5,
-        max_markdown_chars: int = 8000,
-        max_tokens: int = 0,
-        model_name: str = "gpt-4o",
-        max_links: int = 20,
-        search_providers: Optional[list] = None,
-        default_provider_index: int = 0,
-        fetch_delay: Optional[float] = None,
-        fetch_mode: str = "auto",
-        candidate_cap: int = 500,
-        max_concurrency: int = 8,
-    ):
+    def __init__(self, config: Optional[ToolboxConfig] = None, **legacy_kwargs):
+        """
+        Parameters
+        ----------
+        config : ToolboxConfig, optional
+            Preferred construction style::
+
+                WebResearcherToolbox(ToolboxConfig(max_tokens=4000))
+
+        **legacy_kwargs :
+            Deprecated passthrough of the former keyword arguments
+            (``cache_dir=…``, ``max_tokens=…``, …). Will be removed in a
+            future release; passing them emits a DeprecationWarning.
+        """
+        if config is None:
+            if legacy_kwargs:
+                warnings.warn(
+                    "Passing keyword arguments to WebResearcherToolbox is "
+                    "deprecated; construct with ToolboxConfig(...) instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            config = ToolboxConfig(**legacy_kwargs)
+        elif legacy_kwargs:
+            raise TypeError(
+                "Pass either a ToolboxConfig or legacy keyword arguments, not both."
+            )
+
         # Two-tier cache (memory LRU + file TTL)
         self.cache = Cache(
-            cache_dir=cache_dir,
-            ttl_seconds=cache_ttl_seconds,
+            cache_dir=config.cache_dir,
+            ttl_seconds=config.cache_ttl_seconds,
         )
-        if fetch_mode not in ("auto", "browser", "static"):
-            raise ValueError(
-                f"Invalid fetch_mode {fetch_mode!r}; expected 'auto', 'browser', or 'static'"
-            )
-        self.fetch_mode = fetch_mode
-        self.ddgs_delay = ddgs_delay
-        self.domain_delay = domain_delay
-        self.max_markdown_chars = max_markdown_chars
-        self.max_tokens = max_tokens
-        self.model_name = model_name
-        self.max_links = max_links
+        self.fetch_mode = config.fetch_mode
+        self.ddgs_delay = config.ddgs_delay
+        self.domain_delay = config.domain_delay
+        self.max_markdown_chars = config.max_markdown_chars
+        self.max_tokens = config.max_tokens
+        self.model_name = config.model_name
+        self.max_links = config.max_links
 
         # Search providers: default to DuckDuckGo if none specified
-        if search_providers:
-            self.providers = search_providers
+        if config.search_providers:
+            self.providers = config.search_providers
         else:
-            self.providers = [DuckDuckGoProvider(delay=ddgs_delay)]
-        self.default_provider = self.providers[default_provider_index]
+            self.providers = [DuckDuckGoProvider(delay=config.ddgs_delay)]
+        idx = config.default_provider_index
+        try:
+            self.default_provider = self.providers[idx]
+        except IndexError as e:
+            raise IndexError(
+                f"default_provider_index {idx} out of range for "
+                f"{len(self.providers)} provider(s)"
+            ) from e
 
-        # Effective content-fetch interval (per-domain politeness delay).
-        # Resolution order: explicit fetch_delay arg > active provider's
-        # RateLimit.fetch_interval > legacy domain_delay.
-        if fetch_delay is not None:
-            self._fetch_interval = float(fetch_delay)
-        else:
-            rl = getattr(self.default_provider, "rate_limit", None)
-            if isinstance(rl, RateLimit):
-                self._fetch_interval = rl.fetch_interval
-            else:
-                self._fetch_interval = self.domain_delay
+        self._fetch_interval = self._resolve_fetch_interval(config)
 
         self.visited_urls: set[str] = set()
         self._domain_last_seen: dict[str, float] = defaultdict(float)
         self._ua_index = 0
         # Candidate pool size: how many links we collect per page before
         # handing ALL of them to the LLM for topic-based selection.
-        self.link_cap = max(1, int(candidate_cap))
+        self.link_cap = max(1, int(config.candidate_cap))
         # Upper bound on simultaneous connections opened by batch fetching.
-        self.max_concurrency = max(1, int(max_concurrency))
+        self.max_concurrency = max(1, int(config.max_concurrency))
+
+    def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
+        """Effective content-fetch interval (per-domain politeness delay).
+
+        Resolution order: explicit fetch_delay > active provider's
+        RateLimit.fetch_interval > legacy domain_delay.
+        """
+        if config.fetch_delay is not None:
+            return float(config.fetch_delay)
+        rl = getattr(self.default_provider, "rate_limit", None)
+        if isinstance(rl, RateLimit):
+            return rl.fetch_interval
+        return config.domain_delay
 
     def _truncate(
         self, text: str, char_limit: int, token_limit: int = 0
@@ -719,12 +773,21 @@ class WebResearcherToolbox:
             result.truncated = True
         return result
 
+    # ── Fetch strategies ─────────────────────────────
+    # Each returns the full (markdown, anchored_links, metadata, method) tuple.
+
+    def _static_fetch(self, url: str):
+        """Plain HTTP fetch via the Rust core."""
+        md, links = fetch_and_extract_linked(url, self.link_cap)
+        return md, links, {}, "static"
+
+    def _browser_fetch(self, url: str):
+        """Stealth-browser fetch; failures propagate (strict)."""
+        md, links, meta = _fetch_with_browser_oxide(url)
+        return md, links, meta, "browser"
+
     def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
         """Fetch an HTML page honoring ``self.fetch_mode``.
-
-        Returns ``(markdown, anchored_links, metadata, method)`` where
-        ``anchored_links`` is a list of ``(url, anchor_text)`` pairs for
-        LLM link triage.
 
         Modes:
             "browser": every fetch goes through the stealth browser;
@@ -738,27 +801,25 @@ class WebResearcherToolbox:
         """
         if self.fetch_mode == "browser":
             if use_smart is False:
-                md, links = fetch_and_extract_linked(url, self.link_cap)
-                return md, links, {}, "static"
-            md, links, meta = _fetch_with_browser_oxide(url)
-            return md, links, meta, "browser"
+                return self._static_fetch(url)
+            return self._browser_fetch(url)
 
         if use_smart is True:
             try:
-                md, links, meta = _fetch_with_browser_oxide(url)
-                return md, links, meta, "browser"
+                return self._browser_fetch(url)
             except Exception as e:
-                logger.warning("Stealth fetch failed for %s: %s -- falling back to static", url, e)
+                logger.warning(
+                    "Stealth fetch failed for %s: %s -- falling back to static", url, e
+                )
 
         if self.fetch_mode == "static" or use_smart is False:
-            md, links = fetch_and_extract_linked(url, self.link_cap)
-            return md, links, {}, "static"
+            return self._static_fetch(url)
 
-        # auto: static first, stealth fallback
+        # auto: static first, stealth fallback on failure or non-text content
         try:
-            md, links = fetch_and_extract_linked(url, self.link_cap)
-            if self._looks_like_text(md):
-                return md, links, {}, "static"
+            result = self._static_fetch(url)
+            if self._looks_like_text(result[0]):
+                return result
             logger.info("Static fetch returned non-text content for %s", url)
         except Exception as e:
             logger.warning("Static fetch failed for %s: %s -- trying stealth browser", url, e)

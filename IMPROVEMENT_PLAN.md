@@ -17,7 +17,17 @@
 > | §4.3 Option A binding `extract_main_content_markdown(html) -> (selector_label, markdown)` | ✅ done (+tests); wired into `_fetch_with_browser_oxide` as `metadata["content_selector"]`; re-exported from package root |
 > | Bonus: removed dead `extract_links` wrapper in `lib.rs` (found by `cargo check`) | ✅ done |
 > | Housekeeping: `.gitignore` scratch artifacts | ✅ done |
-> | P2 items 7–12 | ⬜ open |
+> | P2-#7 flatten `_fetch_html` mode matrix | ✅ done — strategy helpers `_static_fetch` / `_browser_fetch`; deep-nesting finding eliminated |
+> | P2-#8 dispatch-table `parse_file` | ✅ done — `_parse_pdf` / `_parse_spreadsheet` / `_parse_office_document`; 157 → ~25 LOC |
+> | P2-#9 split `DocumentMetadata` | ✅ done — grouped mixins (`FileMeta`, `WebBasicsMeta`, `OpenGraphMeta`, `TwitterMeta`, `StructuredDataMeta`) composed into a deliberately flat `DocumentMetadata`; serialized schema unchanged |
+> | P2-#10 `ToolboxConfig` dataclass | ✅ done — legacy kwargs still accepted with `DeprecationWarning`; mixing styles raises `TypeError` (+tests) |
+> | P2-#11 extract `http_fetch_html` attempt loop | ✅ done — per-attempt `fetch_attempt(msg, retryable)` helper |
+> | P2-#12 browser-provider integration test | ✅ done — `tests/test_browser_integration.py`, marked `slow`, deselected by default via `addopts = "-m 'not slow'"` |
+>
+> Post-P2: **166 tests passing** (+1 slow, opt-in). CodeRadar: all four original
+> High-severity structural findings eliminated. Remaining findings are inherent
+> to schema/config classes (data-class on Pydantic DTOs & `ToolboxConfig` —
+> field-bags by design) or small-medium leftovers documented above.
 >
 > Post-implementation: **161 tests passing** (145 → 161). Remaining smell findings
 > (34) map entirely to the P2 backlog.

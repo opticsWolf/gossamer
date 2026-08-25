@@ -161,3 +161,58 @@ class TestBatchConcurrencyParam:
 
         _, kwargs = mock_batch.call_args
         assert kwargs.get("max_concurrency") == 3
+
+
+class TestToolboxConfig:
+    """P2-#10: config-object construction with legacy kwargs passthrough."""
+
+    def test_config_object_style(self, tmp_path):
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        tb = WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), domain_delay=0.0)
+        )
+        assert tb.fetch_mode == "auto"
+        assert tb.max_concurrency == 8
+        assert tb.link_cap == 500
+
+    def test_legacy_kwargs_still_work_with_warning(self, tmp_path):
+        with pytest.warns(DeprecationWarning):
+            tb = WebResearcherToolbox(cache_dir=str(tmp_path / "c"), domain_delay=0.25)
+        assert tb.domain_delay == 0.25
+
+    def test_config_and_kwargs_rejected_together(self):
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        with pytest.raises(TypeError):
+            WebResearcherToolbox(ToolboxConfig(), max_tokens=5)
+
+    def test_invalid_fetch_mode_rejected_in_config(self):
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        with pytest.raises(ValueError, match="fetch_mode"):
+            ToolboxConfig(fetch_mode="nope")
+
+    def test_provider_rate_limit_drives_fetch_interval(self, tmp_path):
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from stitch_web_researcher.search_providers import RateLimit
+
+        prov = _FakeProvider(RateLimit(search_interval=0.0, fetch_interval=2.5))
+        tb = WebResearcherToolbox(
+            ToolboxConfig(
+                cache_dir=str(tmp_path / "c"),
+                search_providers=[prov],
+                ddgs_delay=0.0,
+            )
+        )
+        assert tb._fetch_interval == 2.5
+
+
+class _FakeProvider:
+    """Minimal provider stand-in for config-resolution tests."""
+
+    def __init__(self, rate_limit=None):
+        self.rate_limit = rate_limit
+
+    def search(self, query, max_results=5):
+        return []

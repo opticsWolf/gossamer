@@ -51,3 +51,7 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
+addopts = "-m 'not slow'"
+markers = [
+  "slow: slow/integration tests (live network, real browser); run with -m slow",
+]
