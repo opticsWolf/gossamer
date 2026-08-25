@@ -46,6 +46,18 @@ class FollowUpCandidate(BaseModel):
     type: str = "page"  # 'page' -> inspect_html_page, 'document' -> extract_document
 
 
+class ExtractionResult(BaseModel):
+    """Unified result of a document extraction (cache hit or fresh).
+
+    Both paths serialize to the same schema so consumers never need to
+    branch on how the content was obtained.
+    """
+    source: str
+    content: str = ""
+    content_tokens: int = 0
+    cache_hit: bool = False
+
+
 class InspectionResult(BaseModel):
     """Structured result of an HTML page inspection.
 
@@ -972,7 +984,12 @@ class WebResearcherToolbox:
         cache_key = self._cache_key(source) if is_url else source
         cached = self.cache.get(cache_key)
         if cached is not None:
-            return json.dumps({"cache_hit": True, "content": cached}, indent=2)
+            return ExtractionResult(
+                source=source,
+                content=cached,
+                content_tokens=count_tokens(cached, self.model_name),
+                cache_hit=True,
+            ).model_dump_json()
 
         try:
             if is_url:
@@ -982,15 +999,12 @@ class WebResearcherToolbox:
 
             self.cache.put(cache_key, content)
             truncated = self._truncate(content, self.max_markdown_chars, self.max_tokens)
-            return json.dumps(
-                {
-                    "source": source,
-                    "content": truncated,
-                    "content_tokens": count_tokens(truncated, self.model_name),
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
+            return ExtractionResult(
+                source=source,
+                content=truncated,
+                content_tokens=count_tokens(truncated, self.model_name),
+                cache_hit=False,
+            ).model_dump_json()
         except Exception as e:
             logger.error("Document extraction failed for %s: %s", source, e)
             return json.dumps(
@@ -1164,7 +1178,3 @@ class WebResearcherToolbox:
         """Clear both memory and disk caches."""
         self.cache.clear()
         return json.dumps({"cache_cleared": True, "stats": self.cache.stats()}, indent=2)
-
-    def get_cache_stats(self) -> str:
-        """Return detailed cache statistics."""
-        return json.dumps(self.cache.stats(), indent=2)
