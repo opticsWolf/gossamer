@@ -36,3 +36,7 @@ env/
 .DS_Store
 Thumbs.db
 crash.log
+
+# Scratch artifacts
+step1_links.json
+wiki_topics.json

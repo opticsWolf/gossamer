@@ -196,14 +196,10 @@ print(f"Tokens: {tokens}")
 truncated = truncate_to_tokens(long_text, 1000, model_name="claude-3-sonnet")
 print(f"Truncated to ~{count_tokens(truncated, 'claude-3-sonnet')} tokens")
 
-# Fit multiple inputs into a context window
-final = fit_context_window(
-    system_prompt="You are a helpful assistant.",
-    user_input="Tell me about...",
-    context_chunks=[chunk1, chunk2, chunk3],
-    budget=8000,
-    model_name="gpt-4o",
-)
+# Fit multiple text chunks into a token budget (greedy packing;
+# the last kept chunk may be truncated to fit)
+chunks = [chunk1, chunk2, chunk3]
+final = fit_context_window(chunks, 8000, model_name="gpt-4o")
 ```
 
 ### HTML Metadata Extraction

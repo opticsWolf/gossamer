@@ -179,31 +179,28 @@ class TestToolbox:
             toolbox.inspect_html_page("ftp://example.com/file.txt")
 
     def test_caching(self, toolbox, tmp_path):
-        """Test that caching works and respects TTL."""
+        """inspect_html_page caches fetches; repeats are served from cache."""
         url = "https://example.com"
 
-        # First fetch should hit network
-        result1 = toolbox.inspect_html_page(url)
-        data1 = json.loads(result1)
-
-        # Second fetch should use cache (but inspect_html_page doesn't cache HTML,
-        # only extract_document does). Let's test document caching conceptually.
-        # For HTML, we verify the visited set works.
+        # First call hits the network and populates both cache tiers.
+        result1 = json.loads(toolbox.inspect_html_page(url))
         assert url in toolbox.visited_urls
+        assert result1["cache_hit"] is False
 
-        # Test cache metadata structure
         cache_files = list(Path(toolbox.cache.cache_path).glob("*.meta"))
-        # No meta files yet because inspect_html_page doesn't cache
-        assert len(cache_files) == 0
+        assert len(cache_files) >= 1
+
+        # Bypass the visited-URL guard: the repeat must come from cache.
+        toolbox.visited_urls.clear()
+        toolbox._domain_last_seen.clear()
+        result2 = json.loads(toolbox.inspect_html_page(url))
+        assert result2["cache_hit"] is True
 
     def test_domain_rate_limiting(self, toolbox):
-        """Test that per-domain rate limiting is enforced."""
-        url = "https://example.com"
+        """Per-domain rate limiting applies to distinct-URL real fetches."""
         start = time.time()
-        toolbox.inspect_html_page(url)
-        # Second request to same domain should be rate-limited
-        toolbox.visited_urls.clear()  # bypass visited check
-        toolbox.inspect_html_page(url)
+        toolbox.inspect_html_page("https://example.com/rate-a")
+        toolbox.inspect_html_page("https://example.com/rate-b")
         elapsed = time.time() - start
         # Should take at least domain_delay (0.1s) between requests
         assert elapsed >= 0.08  # small tolerance
@@ -678,9 +675,9 @@ class TestHTMLStructuredParsing:
         assert payload.metadata.format == "html"
         assert len(payload.pages) == 1
 
-    def test_inspect_html_structured_basic(self):
+    def test_inspect_html_structured_basic(self, tmp_path):
         """inspect_html_structured returns valid JSON."""
-        tb = WebResearcherToolbox(domain_delay=0.1)
+        tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
         result = tb.inspect_html_structured("https://example.com")
         data = json.loads(result)
         assert "metadata" in data
@@ -688,17 +685,17 @@ class TestHTMLStructuredParsing:
         assert len(data["pages"]) == 1
         assert data["metadata"]["format"] == "html"
 
-    def test_inspect_html_structured_with_smart(self):
+    def test_inspect_html_structured_with_smart(self, tmp_path):
         """inspect_html_structured with use_smart=True."""
-        tb = WebResearcherToolbox(domain_delay=0.1)
+        tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
         result = tb.inspect_html_structured("https://example.com", use_smart=True)
         data = json.loads(result)
         assert "metadata" in data
         assert "pages" in data
 
-    def test_inspect_html_structured_token_truncation(self):
+    def test_inspect_html_structured_token_truncation(self, tmp_path):
         """inspect_html_structured respects token budget (may truncate JSON)."""
-        tb = WebResearcherToolbox(max_tokens=100, domain_delay=0.1)
+        tb = WebResearcherToolbox(max_tokens=100, domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
         result = tb.inspect_html_structured("https://example.com")
         # With aggressive token budget, output may be truncated (not valid JSON)
         # The key is that it's short
@@ -710,9 +707,9 @@ class TestHTMLStructuredParsing:
         except json.JSONDecodeError:
             pass  # Truncated output is expected with very low budgets
 
-    def test_inspect_html_structured_already_visited(self):
+    def test_inspect_html_structured_already_visited(self, tmp_path):
         """inspect_html_structured warns on already-visited URL."""
-        tb = WebResearcherToolbox(domain_delay=0.1)
+        tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
         tb.visited_urls.add("https://example.com")
         result = tb.inspect_html_structured("https://example.com")
         data = json.loads(result)

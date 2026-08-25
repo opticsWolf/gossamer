@@ -21,6 +21,7 @@ from stitch_web_researcher._core import (
     fetch_and_extract_linked,
     extract_links_from_html as _extract_links_from_html,
     process_rendered_html as _process_rendered_html,
+    extract_main_content_markdown,
 )
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
@@ -72,6 +73,7 @@ class InspectionResult(BaseModel):
     total_links: int = 0
     truncated: bool = False
     fetch_method: Optional[str] = None
+    cache_hit: bool = False
     metadata: dict = Field(default_factory=dict)
 
 # ───────────────────────────────
@@ -109,26 +111,15 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     # Extract HTML metadata via meta-oxide
     metadata = meta_extractor.extract_all(html, url)
 
+    # Debug visibility: record which main-content container the Rust core's
+    # heuristics selected (article / main / [role='main'] / .content / …).
+    selector_label, _md = extract_main_content_markdown(html)
+    metadata["content_selector"] = selector_label
+
     # Anchored links + markdown via the Rust core
     links = _extract_links_from_html(html, url, 100)
     markdown, _ = _process_rendered_html(html, url)
     return markdown, links, metadata
-
-
-def _extract_main_content(document) -> str:
-    """Extract main textual content from HTML using heuristics."""
-    from scraper import Selector
-
-    for sel_str in ["article", "main", "[role='main']", ".content", "#content"]:
-        sel = Selector.parse(sel_str).unwrap()
-        for el in document.select(sel):
-            return el.html()
-
-    body_sel = Selector.parse("body").unwrap()
-    for body in document.select(body_sel):
-        return body.html()
-
-    return document.html()
 
 
 # ───────────────────────────────
@@ -423,6 +414,7 @@ class WebResearcherToolbox:
         fetch_delay: Optional[float] = None,
         fetch_mode: str = "auto",
         candidate_cap: int = 500,
+        max_concurrency: int = 8,
     ):
         # Two-tier cache (memory LRU + file TTL)
         self.cache = Cache(
@@ -466,6 +458,8 @@ class WebResearcherToolbox:
         # Candidate pool size: how many links we collect per page before
         # handing ALL of them to the LLM for topic-based selection.
         self.link_cap = max(1, int(candidate_cap))
+        # Upper bound on simultaneous connections opened by batch fetching.
+        self.max_concurrency = max(1, int(max_concurrency))
 
     def _truncate(
         self, text: str, char_limit: int, token_limit: int = 0
@@ -796,9 +790,112 @@ class WebResearcherToolbox:
         )
         return bad / len(sample) < 0.02
 
+    # ── Page-level two-tier cache helpers ───────────────
+
+    def _page_cache_get(self, url: str):
+        """Return a cached (markdown, links, meta, method) tuple, or None.
+
+        Entries store the *untruncated* fetch result so budget changes
+        between calls are honored on every read. Keys are namespaced
+        ("page:") so they can never collide with structured-payload or
+        document entries for the same URL.
+        """
+        raw = self.cache.get("page:" + self._cache_key(url))
+        if raw is None:
+            return None
+        try:
+            entry = json.loads(raw)
+            return (
+                entry.get("markdown", ""),
+                [tuple(pair) for pair in entry.get("links", [])],
+                entry.get("meta") or {},
+                entry.get("method"),
+            )
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            logger.warning("Corrupt page-cache entry for %s -- refetching", url)
+            return None
+
+    def _page_cache_put(
+        self,
+        url: str,
+        markdown: str,
+        links: list,
+        metadata: dict,
+        method: Optional[str],
+    ) -> None:
+        """Cache an untruncated fetch result under the canonical URL key."""
+        self.cache.put(
+            "page:" + self._cache_key(url),
+            json.dumps(
+                {
+                    "markdown": markdown,
+                    "links": links,
+                    "meta": metadata,
+                    "method": method,
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+    def _inspect_html_page_impl(self, url: str, use_smart: Optional[bool] = None) -> str:
+        """Shared implementation behind ``inspect_html_page`` (sync + async).
+
+        Note on retries: the Rust core already retries transient HTTP
+        failures 3× with exponential backoff; a Python-layer retry here
+        would multiply attempts (3×3) and sleep redundantly, so none is
+        applied at this layer.
+        """
+        url = normalize_url(url)
+        if url in self.visited_urls:
+            logger.warning("URL already visited: %s", url)
+            return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
+
+        self._validate_url(url)
+        self.visited_urls.add(url)
+
+        cached = self._page_cache_get(url)
+        if cached is not None:
+            markdown, links, html_metadata, fetch_method = cached
+            logger.info("Cache hit for %s (%s)", url, fetch_method)
+        else:
+            # Politeness delay applies only when we will actually fetch.
+            self._rate_limit_domain(url)
+            try:
+                markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
+            except Exception as e:
+                logger.error("HTML inspection failed for %s: %s", url, e)
+                return json.dumps(
+                    {"error": f"HTML inspection failed: {str(e)}"}, indent=2
+                )
+            self._page_cache_put(url, markdown, links, html_metadata, fetch_method)
+
+        logger.info(
+            "%s %s via %s (%d chars, %d links)",
+            "Cached" if cached is not None else "Fetched",
+            url,
+            fetch_method,
+            len(markdown),
+            len(links),
+        )
+        truncated_md = self._truncate(
+            markdown, self.max_markdown_chars, self.max_tokens
+        )
+
+        # Build compact metadata summary for LLM output
+        meta_summary = self._compact_metadata(html_metadata)
+
+        result = self._build_inspection_result(
+            url, truncated_md, links, meta_summary, fetch_method
+        )
+        if cached is not None:
+            result.cache_hit = True
+        return result.model_dump_json()
+
     def inspect_html_page(self, url: str, use_smart: Optional[bool] = None) -> str:
         """
         Fetch and extract markdown + follow-up links + HTML metadata from a web page.
+
+        Results are served from the two-tier cache when a fresh entry exists.
 
         Parameters
         ----------
@@ -808,33 +905,7 @@ class WebResearcherToolbox:
             If True, attempt headless JS rendering via browser_oxide first,
             then fall back to static reqwest fetch.
         """
-        url = normalize_url(url)
-        if url in self.visited_urls:
-            logger.warning("URL already visited: %s", url)
-            return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
-
-        self._validate_url(url)
-        self.visited_urls.add(url)
-        self._rate_limit_domain(url)
-
-        try:
-            markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
-            logger.info("Fetched %s via %s (%d chars, %d links)", url, fetch_method, len(markdown), len(links))
-            truncated_md = self._truncate(
-                markdown, self.max_markdown_chars, self.max_tokens
-            )
-
-            # Build compact metadata summary for LLM output
-            meta_summary = self._compact_metadata(html_metadata)
-
-            return self._build_inspection_result(
-                url, truncated_md, links, meta_summary, fetch_method
-            ).model_dump_json()
-        except Exception as e:
-            logger.error("HTML inspection failed for %s: %s", url, e)
-            return json.dumps(
-                {"error": f"HTML inspection failed: {str(e)}"}, indent=2
-            )
+        return self._inspect_html_page_impl(url, use_smart)
 
     def _compact_metadata(self, raw: dict) -> dict:
         """
@@ -879,32 +950,12 @@ class WebResearcherToolbox:
         return compact
 
     async def inspect_html_page_async(self, url: str, use_smart: Optional[bool] = None) -> str:
-        """Async version of inspect_html_page."""
-        url = normalize_url(url)
-        if url in self.visited_urls:
-            logger.warning("URL already visited: %s", url)
-            return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
-
-        self._validate_url(url)
-        self.visited_urls.add(url)
-        self._rate_limit_domain(url)
-
-        try:
-            markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
-            truncated_md = self._truncate(
-                markdown, self.max_markdown_chars, self.max_tokens
-            )
-
-            meta_summary = self._compact_metadata(html_metadata)
-
-            return self._build_inspection_result(
-                url, truncated_md, links, meta_summary, fetch_method
-            ).model_dump_json()
-        except Exception as e:
-            logger.error("Async HTML inspection failed for %s: %s", url, e)
-            return json.dumps(
-                {"error": f"HTML inspection failed: {str(e)}"}, indent=2
-            )
+        """Async version of inspect_html_page (shared implementation,
+        executed in the default executor to stay non-blocking)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._inspect_html_page_impl, url, use_smart
+        )
 
     # ───────────────────────────────
     # Batch Inspection
@@ -917,17 +968,20 @@ class WebResearcherToolbox:
         With ``fetch_mode="browser"`` every page is fetched sequentially
         through the stealth browser instead (per-domain rate limits apply).
         """
+        # Validate once; only genuinely new URLs reach the fetch engines.
+        pending = []
         for url in urls:
             if url in self.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
             self._validate_url(url)
             self.visited_urls.add(url)
+            pending.append(url)
 
         try:
             output = []
             if self.fetch_mode == "browser":
-                for url in urls:
+                for url in pending:
                     try:
                         md, links, meta, method = self._fetch_html(url)
                         truncated_md = self._truncate(
@@ -944,7 +998,11 @@ class WebResearcherToolbox:
                         output.append({"url": url, "error": str(e)})
                 return json.dumps(output, ensure_ascii=False)
 
-            results = batch_research(urls, max_links=self.link_cap)
+            results = batch_research(
+                pending,
+                max_links=self.link_cap,
+                max_concurrency=self.max_concurrency,
+            )
             output = []
             for url, md_opt, links_opt in results:
                 if md_opt is not None and links_opt is not None:
@@ -1130,9 +1188,20 @@ class WebResearcherToolbox:
 
         self._validate_url(url)
         self.visited_urls.add(url)
-        self._rate_limit_domain(url)
+
+        # Cache stores the untruncated payload JSON; budgets are re-applied
+        # on every read so changed limits are honored.
+        cached_json = self.cache.get("structured:" + self._cache_key(url))
+        if cached_json is None:
+            self._rate_limit_domain(url)
 
         try:
+            if cached_json is not None:
+                logger.info("Cache hit (structured) for %s", url)
+                return self._truncate(
+                    cached_json, self.max_markdown_chars, self.max_tokens
+                )
+
             markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
 
             # Build structured payload via unified parser
@@ -1145,8 +1214,10 @@ class WebResearcherToolbox:
                 max_links=self.max_links,
             )
 
+            payload_json = payload.to_json()
+            self.cache.put("structured:" + self._cache_key(url), payload_json)
             truncated_json = self._truncate(
-                payload.to_json(), self.max_markdown_chars, self.max_tokens
+                payload_json, self.max_markdown_chars, self.max_tokens
             )
             return truncated_json
         except Exception as e:

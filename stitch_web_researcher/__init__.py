@@ -3,6 +3,7 @@ High-Performance Web Researcher – Rust core + Oxide extractors.
 """
 
 from stitch_web_researcher._core import fetch_and_extract, batch_research
+from stitch_web_researcher._core import extract_main_content_markdown
 from stitch_web_researcher.agent_tools import WebResearcherToolbox, fetch_smart_page
 from stitch_web_researcher.structured_parser import (
     StructuredOxideParser,
@@ -45,6 +46,7 @@ __all__ = [
     "fetch_and_extract",
     "batch_research",
     "fetch_smart_page",
+    "extract_main_content_markdown",
     # Toolbox
     "WebResearcherToolbox",
     # Document parsing

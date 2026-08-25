@@ -3,7 +3,7 @@ use scraper::{Html, Selector};
 use url::Url;
 use html2md::parse_html;
 use std::collections::HashSet;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 // ────────────────────────────────────────────────────────────────
@@ -37,41 +37,43 @@ fn build_client() -> Result<reqwest::Client, String> {
 // 3. HTML content extraction
 // ────────────────────────────────────────────────────────────────
 
+/// Main-content heuristics, in priority order.
+const MAIN_CONTENT_SELECTORS: &[&str] = &[
+    "article",
+    "main",
+    "[role='main']",
+    ".content",
+    "#content",
+];
+
 /// Extract the main textual content from HTML using heuristics.
 fn extract_main_content(document: &Html) -> String {
-    let selectors = [
-        Selector::parse("article").unwrap(),
-        Selector::parse("main").unwrap(),
-        Selector::parse("[role='main']").unwrap(),
-        Selector::parse(".content").unwrap(),
-        Selector::parse("#content").unwrap(),
-    ];
+    extract_main_content_anchored(document).1
+}
 
-    for sel in &selectors {
-        let mut elements = document.select(sel);
-        if let Some(el) = elements.next() {
-            return el.html();
+/// Like [`extract_main_content`] but also reports which selector won:
+/// returns (selector_label, html_fragment). The label is one of the
+/// entries of MAIN_CONTENT_SELECTORS, or "body" / "document" fallbacks.
+fn extract_main_content_anchored(document: &Html) -> (String, String) {
+    for sel_str in MAIN_CONTENT_SELECTORS {
+        if let Ok(sel) = Selector::parse(sel_str) {
+            if let Some(el) = document.select(&sel).next() {
+                return ((*sel_str).to_string(), el.html());
+            }
         }
     }
 
     let body_sel = Selector::parse("body").unwrap();
     if let Some(body) = document.select(&body_sel).next() {
-        return body.html();
+        return ("body".to_string(), body.html());
     }
 
-    document.html()
+    ("document".to_string(), document.html())
 }
 
 // ────────────────────────────────────────────────────────────────
 // 4. Link extraction
 // ────────────────────────────────────────────────────────────────
-
-fn extract_links(document: &Html, base_url: &Url) -> Vec<String> {
-    extract_links_with_text(document, base_url, 20)
-        .into_iter()
-        .map(|(url, _text)| url)
-        .collect()
-}
 
 /// Extract (absolute_url, anchor_text) pairs from the document.
 fn extract_links_with_text(
@@ -225,13 +227,22 @@ fn fetch_and_extract_single_anchored(
 async fn fetch_many_inner(
     urls: Vec<String>,
     cap: usize,
+    max_concurrency: usize,
 ) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
+    // Bounds simultaneous connections so a large same-domain batch cannot
+    // open unbounded sockets (self-DoS / rude to the target).
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency.max(1)));
     let mut handles = Vec::new();
     for url in urls {
+        let semaphore = Arc::clone(&semaphore);
         let handle = tokio::spawn(async move {
             // NOTE: must stay fully async — calling the blocking
             // fetch_and_extract_single_anchored here would block_on() the
             // shared runtime from inside its own worker (panic).
+            let _permit = semaphore
+                .acquire_owned()
+                .await
+                .expect("semaphore closed unexpectedly");
             let res = async {
                 let client = build_client()?;
                 let html = http_fetch_html(&client, &url).await?;
@@ -258,9 +269,10 @@ async fn fetch_many_inner(
 fn fetch_many(
     urls: Vec<String>,
     cap: usize,
+    max_concurrency: usize,
 ) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
     let rt = shared_runtime();
-    rt.block_on(fetch_many_inner(urls, cap))
+    rt.block_on(fetch_many_inner(urls, cap, max_concurrency))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -332,14 +344,15 @@ fn fetch_and_extract(py: Python<'_>, url: String) -> PyResult<(String, Vec<Strin
 /// Python binding: batch fetch multiple URLs.
 /// Returns list of tuples: (url, markdown_or_error, [(anchor_url, text)] or None)
 #[pyfunction]
-#[pyo3(signature = (urls, max_links = 500))]
+#[pyo3(signature = (urls, max_links = 500, max_concurrency = 8))]
 fn batch_research(
     py: Python<'_>,
     urls: Vec<String>,
     max_links: usize,
+    max_concurrency: usize,
 ) -> PyResult<Vec<(String, Option<String>, Option<Vec<(String, String)>>)>> {
     py.detach(|| {
-        let results = fetch_many(urls, max_links);
+        let results = fetch_many(urls, max_links, max_concurrency);
         let mut out = Vec::new();
         for (url, res) in results {
             match res {
@@ -348,6 +361,22 @@ fn batch_research(
             }
         }
         Ok(out)
+    })
+}
+
+/// Python binding: run main-content heuristics on caller-supplied HTML.
+/// Returns (matched_selector_label, markdown_of_that_region) so callers
+/// gain visibility into which container the heuristic chose.
+#[pyfunction]
+#[pyo3(signature = (html))]
+fn extract_main_content_markdown(
+    py: Python<'_>,
+    html: String,
+) -> PyResult<(String, String)> {
+    py.detach(|| {
+        let document = Html::parse_document(&html);
+        let (label, fragment) = extract_main_content_anchored(&document);
+        Ok((label, parse_html(&fragment)))
     })
 }
 
@@ -362,5 +391,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(process_rendered_html, m)?)?;
     m.add_function(wrap_pyfunction!(fetch_and_extract_linked, m)?)?;
     m.add_function(wrap_pyfunction!(extract_links_from_html, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_main_content_markdown, m)?)?;
     Ok(())
 }
