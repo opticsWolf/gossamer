@@ -2,6 +2,7 @@ import asyncio
 import copy
 import json
 import logging
+import random
 import time
 import warnings
 from collections import defaultdict
@@ -556,13 +557,21 @@ class WebResearcherToolbox:
             raise ValueError(f"Invalid URL (no host): {url}")
 
     def _rate_limit_domain(self, url: str) -> None:
-        """Enforce per-domain rate limiting for content fetching."""
+        """Enforce per-domain rate limiting for content fetching.
+
+        The minimum gap between same-domain fetches is the resolved
+        ``_fetch_interval`` plus a random 0–1 s jitter (only when the
+        interval is non-zero), which desynchronizes access patterns.
+        """
         parsed = urlparse(url)
         domain = parsed.netloc
         last_seen = self._domain_last_seen[domain]
         elapsed = time.time() - last_seen
-        if elapsed < self._fetch_interval:
-            time.sleep(self._fetch_interval - elapsed)
+        gap = self._fetch_interval
+        if gap > 0:
+            gap += random.uniform(0.0, 1.0)
+        if elapsed < gap:
+            time.sleep(gap - elapsed)
         self._domain_last_seen[domain] = time.time()
 
     # Query parameters that never change page content -- stripped so that

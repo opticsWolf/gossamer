@@ -216,3 +216,116 @@ class _FakeProvider:
 
     def search(self, query, max_results=5):
         return []
+
+
+class TestFetchSpacingJitter:
+    """Page fetch spacing = base interval + random 0-1s jitter."""
+
+    def _toolbox(self, tmp_path, **cfg):
+        from stitch_web_researcher.agent_tools import ToolboxConfig
+
+        return WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), **cfg)
+        )
+
+    def test_gap_is_base_plus_jitter(self, tmp_path, monkeypatch):
+        from stitch_web_researcher import agent_tools
+
+        tb = self._toolbox(tmp_path, fetch_delay=0.5)
+        sleeps = []
+        monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
+        monkeypatch.setattr(agent_tools.random, "uniform", lambda a, b: 0.7)
+
+        # Simulate a fetch that just happened on this domain.
+        domain = "example.com"
+        tb._domain_last_seen[domain] = agent_tools.time.time()
+
+        tb._rate_limit_domain("https://example.com/page")
+
+        assert len(sleeps) == 1
+        # expected gap: 0.5 base + 0.7 jitter = 1.2s
+        assert sleeps[0] == pytest.approx(1.2, abs=0.05)
+
+    def test_no_sleep_when_gap_already_elapsed(self, tmp_path, monkeypatch):
+        from stitch_web_researcher import agent_tools
+
+        tb = self._toolbox(tmp_path, fetch_delay=0.5)
+        sleeps = []
+        monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
+
+        # Last fetch long ago -> no wait needed even with max jitter.
+        tb._domain_last_seen["example.com"] = agent_tools.time.time() - 10
+
+        tb._rate_limit_domain("https://example.com/page")
+        assert sleeps == []
+
+    def test_zero_interval_disables_jitter(self, tmp_path, monkeypatch):
+        from stitch_web_researcher import agent_tools
+
+        tb = self._toolbox(tmp_path, fetch_delay=0.0)
+        called = []
+        monkeypatch.setattr(
+            agent_tools.random, "uniform",
+            lambda a, b: called.append((a, b)) or 0.0,
+        )
+        sleeps = []
+        monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
+
+        tb._domain_last_seen["example.com"] = agent_tools.time.time()
+        tb._rate_limit_domain("https://example.com/page")
+
+        assert called == [], "jitter must not apply when interval is 0"
+        assert sleeps == []
+
+
+class TestSearchSpacingJitter:
+    """Search call spacing = search_interval + random 0-1s jitter."""
+
+    def test_gap_is_interval_plus_jitter(self, monkeypatch):
+        from stitch_web_researcher import agent_tools, search_providers
+
+        prov = _FakeProvider()
+        prov._last_search = 0.0
+        prov._delay = 1.0
+        sleeps = []
+        monkeypatch.setattr(search_providers.time, "sleep", sleeps.append)
+        monkeypatch.setattr(search_providers.random, "uniform", lambda a, b: 0.4)
+
+        # Simulate a search that just happened.
+        prov._last_search = search_providers.time.time()
+        search_providers.SearchProvider._enforce_delay(prov)
+
+        assert len(sleeps) == 1
+        assert sleeps[0] == pytest.approx(1.4, abs=0.05)
+        assert prov._last_search > 0
+        del agent_tools  # imported only to mirror module layout
+
+    def test_no_sleep_when_gap_elapsed(self, monkeypatch):
+        from stitch_web_researcher import search_providers
+
+        prov = _FakeProvider()
+        prov._delay = 1.0
+        prov._last_search = search_providers.time.time() - 10
+        sleeps = []
+        monkeypatch.setattr(search_providers.time, "sleep", sleeps.append)
+
+        search_providers.SearchProvider._enforce_delay(prov)
+        assert sleeps == []
+
+    def test_zero_delay_disables_jitter(self, monkeypatch):
+        from stitch_web_researcher import search_providers
+
+        prov = _FakeProvider()
+        prov._delay = 0.0
+        prov._last_search = search_providers.time.time()
+        called = []
+        monkeypatch.setattr(
+            search_providers.random, "uniform",
+            lambda a, b: called.append((a, b)) or 0.0,
+        )
+        sleeps = []
+        monkeypatch.setattr(search_providers.time, "sleep", sleeps.append)
+
+        search_providers.SearchProvider._enforce_delay(prov)
+        assert called == [], "jitter must not apply when delay is 0"
+        assert sleeps == []

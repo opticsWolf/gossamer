@@ -7,6 +7,7 @@ custom provider at runtime.
 """
 
 import logging
+import random
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -34,8 +35,8 @@ class RateLimit:
             fetching pages found through this provider.
     """
 
-    search_interval: float = 1.5
-    fetch_interval: float = 5.0
+    search_interval: float = 1.0
+    fetch_interval: float = 0.5
 
 
 class SearchProvider(ABC):
@@ -75,10 +76,18 @@ class SearchProvider(ABC):
         self._delay = self.rate_limit.search_interval
 
     def _enforce_delay(self) -> None:
-        """Simple per-provider rate limiting."""
+        """Per-provider rate limiting for search-API calls.
+
+        The minimum gap between calls is ``self._delay`` plus a random
+        0–1 s jitter (only when the delay is non-zero), which
+        desynchronizes access patterns.
+        """
+        gap = self._delay
+        if gap > 0:
+            gap += random.uniform(0.0, 1.0)
         elapsed = time.time() - self._last_search
-        if elapsed < self._delay:
-            time.sleep(self._delay - elapsed)
+        if elapsed < gap:
+            time.sleep(gap - elapsed)
         self._last_search = time.time()
 
     # Subclasses must set these in __init__
