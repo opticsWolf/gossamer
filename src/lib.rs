@@ -67,6 +67,18 @@ fn extract_main_content(document: &Html) -> String {
 // ────────────────────────────────────────────────────────────────
 
 fn extract_links(document: &Html, base_url: &Url) -> Vec<String> {
+    extract_links_with_text(document, base_url, 20)
+        .into_iter()
+        .map(|(url, _text)| url)
+        .collect()
+}
+
+/// Extract (absolute_url, anchor_text) pairs from the document.
+fn extract_links_with_text(
+    document: &Html,
+    base_url: &Url,
+    cap: usize,
+) -> Vec<(String, String)> {
     let link_selector = Selector::parse("a[href]").unwrap();
     let mut links = Vec::new();
     let mut seen = HashSet::new();
@@ -86,8 +98,14 @@ fn extract_links(document: &Html, base_url: &Url) -> Vec<String> {
                 let scheme = absolute.scheme();
                 if (scheme == "http" || scheme == "https") && !seen.contains(&abs_str) {
                     seen.insert(abs_str.clone());
-                    links.push(abs_str);
-                    if links.len() >= 20 {
+                    let text = element
+                        .text()
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<&str>>()
+                        .join(" ");
+                    links.push((abs_str, text));
+                    if links.len() >= cap {
                         break;
                     }
                 }
@@ -103,11 +121,22 @@ fn extract_links(document: &Html, base_url: &Url) -> Vec<String> {
 // ────────────────────────────────────────────────────────────────
 
 fn process_html(html: &str, url: &str) -> Result<(String, Vec<String>), String> {
+    process_html_anchored(html, url, 20).map(|(md, pairs)| {
+        (md, pairs.into_iter().map(|(u, _)| u).collect())
+    })
+}
+
+/// Like process_html but keeps anchor text alongside each URL.
+fn process_html_anchored(
+    html: &str,
+    url: &str,
+    cap: usize,
+) -> Result<(String, Vec<(String, String)>), String> {
     let document = Html::parse_document(html);
     let base_url = Url::parse(url)
         .map_err(|e| format!("URL parse error: {}", e))?;
 
-    let links = extract_links(&document, &base_url);
+    let links = extract_links_with_text(&document, &base_url, cap);
     let main_html = extract_main_content(&document);
     let markdown = parse_html(&main_html);
     Ok((markdown, links))
@@ -117,8 +146,7 @@ fn process_html(html: &str, url: &str) -> Result<(String, Vec<String>), String> 
 // 6. Fetch + extract (static, reqwest-based)
 // ────────────────────────────────────────────────────────────────
 
-async fn fetch_and_extract_inner(url: &str) -> Result<(String, Vec<String>), String> {
-    let client = build_client()?;
+async fn http_fetch_html(client: &reqwest::Client, url: &str) -> Result<String, String> {
     let max_attempts = 3;
     let mut attempts = 0;
     let mut last_error = String::new();
@@ -140,9 +168,7 @@ async fn fetch_and_extract_inner(url: &str) -> Result<(String, Vec<String>), Str
                 let status = response.status();
                 if status.is_success() {
                     match response.text().await {
-                        Ok(html) => {
-                            return process_html(&html, url);
-                        }
+                        Ok(html) => return Ok(html),
                         Err(e) => last_error = format!("Body read failed: {}", e),
                     }
                 } else if status.as_u16() >= 500 && attempts < max_attempts - 1 {
@@ -167,10 +193,29 @@ async fn fetch_and_extract_inner(url: &str) -> Result<(String, Vec<String>), Str
     ))
 }
 
-/// Fetch a single URL with exponential backoff retry.
+async fn fetch_pairs_inner(
+    url: &str,
+    cap: usize,
+) -> Result<(String, Vec<(String, String)>), String> {
+    let client = build_client()?;
+    let html = http_fetch_html(&client, url).await?;
+    process_html_anchored(&html, url, cap)
+}
+
 fn fetch_and_extract_single(url: &str) -> Result<(String, Vec<String>), String> {
     let rt = shared_runtime();
-    rt.block_on(fetch_and_extract_inner(url))
+    rt.block_on(fetch_pairs_inner(url, 20)).map(|(md, pairs)| {
+        (md, pairs.into_iter().map(|(u, _)| u).collect())
+    })
+}
+
+/// Fetch with retry; keep (url, anchor_text) pairs for LLM link triage.
+fn fetch_and_extract_single_anchored(
+    url: &str,
+    cap: usize,
+) -> Result<(String, Vec<(String, String)>), String> {
+    let rt = shared_runtime();
+    rt.block_on(fetch_pairs_inner(url, cap))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -183,7 +228,10 @@ async fn fetch_many_inner(
     let mut handles = Vec::new();
     for url in urls {
         let handle = tokio::spawn(async move {
-            let res = fetch_and_extract_inner(&url).await;
+            let res = fetch_and_extract_single_anchored(&url, 20)
+                .map(|(md, pairs)| {
+                    (md, pairs.into_iter().map(|(u, _)| u).collect::<Vec<String>>())
+                });
             (url, res)
         });
         handles.push(handle);
@@ -223,6 +271,41 @@ fn process_rendered_html(
             Ok((md, links)) => Ok((md, links)),
             Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
         }
+    })
+}
+
+/// Python binding: fetch one URL -> (markdown, [(url, anchor_text)]) with
+/// a larger candidate pool for LLM link triage.
+#[pyfunction]
+#[pyo3(signature = (url, max_links = 100))]
+fn fetch_and_extract_linked(
+    py: Python<'_>,
+    url: String,
+    max_links: usize,
+) -> PyResult<(String, Vec<(String, String)>)> {
+    py.detach(|| {
+        match fetch_and_extract_single_anchored(&url, max_links) {
+            Ok(res) => Ok(res),
+            Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
+        }
+    })
+}
+
+/// Python binding: extract (url, anchor_text) pairs from HTML already
+/// fetched/rendered by the caller (e.g. via browser_oxide).
+#[pyfunction]
+#[pyo3(signature = (html, url, max_links = 100))]
+fn extract_links_from_html(
+    py: Python<'_>,
+    html: String,
+    url: String,
+    max_links: usize,
+) -> PyResult<Vec<(String, String)>> {
+    py.detach(|| {
+        let document = Html::parse_document(&html);
+        let base = Url::parse(&url)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("URL parse error: {}", e)))?;
+        Ok(extract_links_with_text(&document, &base, max_links))
     })
 }
 
@@ -266,5 +349,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fetch_and_extract, m)?)?;
     m.add_function(wrap_pyfunction!(batch_research, m)?)?;
     m.add_function(wrap_pyfunction!(process_rendered_html, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_and_extract_linked, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_links_from_html, m)?)?;
     Ok(())
 }

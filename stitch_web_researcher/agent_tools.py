@@ -14,7 +14,13 @@ import httpx
 from pdf_oxide import PdfDocument
 from office_oxide import Document as OfficeDoc
 
-from stitch_web_researcher._core import fetch_and_extract, batch_research, process_rendered_html as _process_rendered_html
+from stitch_web_researcher._core import (
+    fetch_and_extract,
+    batch_research,
+    fetch_and_extract_linked,
+    extract_links_from_html as _extract_links_from_html,
+    process_rendered_html as _process_rendered_html,
+)
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
 from stitch_web_researcher.search_providers import (
@@ -62,8 +68,9 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     # Extract HTML metadata via meta-oxide
     metadata = meta_extractor.extract_all(html, url)
 
-    # Links + markdown via the Rust core (same pipeline as fetch_and_extract)
-    markdown, links = _process_rendered_html(html, url)
+    # Anchored links + markdown via the Rust core
+    links = _extract_links_from_html(html, url, 100)
+    markdown, _ = _process_rendered_html(html, url)
     return markdown, links, metadata
 
 
@@ -81,6 +88,29 @@ def _extract_main_content(document) -> str:
         return body.html()
 
     return document.html()
+
+
+# ───────────────────────────────
+# Link classification & follow-up helpers
+# ───────────────────────────────
+
+DOCUMENT_EXTENSIONS = frozenset({
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".odt", ".ods", ".odp", ".rtf", ".csv", ".epub",
+})
+
+
+def classify_link(url: str) -> str:
+    """Classify a URL as 'document' (needs extract_document) or 'page'
+    (needs inspect_html_page), based on its path extension."""
+    try:
+        path = urlparse(url).path.lower()
+        for ext in DOCUMENT_EXTENSIONS:
+            if path.endswith(ext):
+                return "document"
+    except Exception:
+        pass
+    return "page"
 
 
 def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
@@ -333,6 +363,9 @@ class WebResearcherToolbox:
         self.visited_urls: set[str] = set()
         self._domain_last_seen: dict[str, float] = defaultdict(float)
         self._ua_index = 0
+        # Candidate pool size before LLM triage (bigger than max_links,
+        # which now applies AFTER title/type formatting).
+        self.link_cap = 100
 
     def _truncate(
         self, text: str, char_limit: int, token_limit: int = 0
@@ -485,10 +518,36 @@ class WebResearcherToolbox:
     # HTML Page Inspection
     # ───────────────────────────────
 
+    def _format_follow_ups(self, anchored_links) -> list:
+        """Turn (url, anchor_text) pairs into LLM-friendly candidates.
+
+        Each candidate carries the anchor text (so the model can judge
+        relevance by name) and a 'type' hint: 'document' links should be
+        fetched via extract_document, 'page' links via inspect_html_page.
+        """
+        out = []
+        seen = set()
+        for url, text in anchored_links:
+            if url in seen:
+                continue
+            seen.add(url)
+            out.append(
+                {
+                    "title": (text or "").strip() or "(untitled)",
+                    "url": url,
+                    "type": classify_link(url),
+                }
+            )
+            if len(out) >= self.max_links:
+                break
+        return out
+
     def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
         """Fetch an HTML page honoring ``self.fetch_mode``.
 
-        Returns ``(markdown, links, metadata, method)``.
+        Returns ``(markdown, anchored_links, metadata, method)`` where
+        ``anchored_links`` is a list of ``(url, anchor_text)`` pairs for
+        LLM link triage.
 
         Modes:
             "browser": every fetch goes through the stealth browser;
@@ -502,7 +561,7 @@ class WebResearcherToolbox:
         """
         if self.fetch_mode == "browser":
             if use_smart is False:
-                md, links = fetch_and_extract(url)
+                md, links = fetch_and_extract_linked(url, self.link_cap)
                 return md, links, {}, "static"
             md, links, meta = _fetch_with_browser_oxide(url)
             return md, links, meta, "browser"
@@ -515,12 +574,12 @@ class WebResearcherToolbox:
                 logger.warning("Stealth fetch failed for %s: %s -- falling back to static", url, e)
 
         if self.fetch_mode == "static" or use_smart is False:
-            md, links = fetch_and_extract(url)
+            md, links = fetch_and_extract_linked(url, self.link_cap)
             return md, links, {}, "static"
 
         # auto: static first, stealth fallback
         try:
-            md, links = fetch_and_extract(url)
+            md, links = fetch_and_extract_linked(url, self.link_cap)
             if self._looks_like_text(md):
                 return md, links, {}, "static"
             logger.info("Static fetch returned non-text content for %s", url)
@@ -589,7 +648,7 @@ class WebResearcherToolbox:
                     "url": url,
                     "markdown": truncated_md,
                     "markdown_tokens": count_tokens(truncated_md, self.model_name),
-                    "follow_up_links": links[: self.max_links],
+                    "follow_up_links": self._format_follow_ups(links),
                     "total_links": len(links),
                     "fetch_method": fetch_method,
                     "metadata": meta_summary,
@@ -668,7 +727,7 @@ class WebResearcherToolbox:
                     "url": url,
                     "markdown": truncated_md,
                     "markdown_tokens": count_tokens(truncated_md, self.model_name),
-                    "follow_up_links": links[: self.max_links],
+                    "follow_up_links": self._format_follow_ups(links),
                     "total_links": len(links),
                     "fetch_method": fetch_method,
                     "metadata": meta_summary,
@@ -716,7 +775,7 @@ class WebResearcherToolbox:
                                 "markdown_tokens": count_tokens(
                                     truncated_md, self.model_name
                                 ),
-                                "follow_up_links": links[: self.max_links],
+                                "follow_up_links": self._format_follow_ups(links),
                                 "total_links": len(links),
                             }
                         )
@@ -738,7 +797,9 @@ class WebResearcherToolbox:
                             "markdown_tokens": count_tokens(
                                 truncated_md, self.model_name
                             ),
-                            "follow_up_links": links_opt[: self.max_links],
+                            "follow_up_links": self._format_follow_ups(
+                                [(u, "") for u in links_opt]
+                            ),
                             "total_links": len(links_opt),
                         }
                     )
