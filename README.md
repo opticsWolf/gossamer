@@ -2,10 +2,10 @@
 
 > A hybrid LLM web researcher combining a **Rust async core** (PyO3) for fetching, the **Oxide SDK family** for document extraction, and a **Python orchestration layer** for caching, rate limiting, structured parsing, token-aware budgeting, LLM tool routing, and multi-provider search.
 
-[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-145%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-302%20passing-brightgreen)](tests/)
 
 ---
 
@@ -77,7 +77,7 @@
 ### Prerequisites
 
 - **Rust 1.70+** ([rustup](https://rustup.rs/))
-- **Python 3.9+**
+- **Python 3.10+**
 - **maturin**: `pip install maturin`
 
 ### Build & Install
@@ -262,24 +262,26 @@ merged = merge_into_document_metadata(metadata, base)
 ## Project Structure
 
 ```
-stitch_crawler/
+stitch-web-researcher/
 ├── Cargo.toml                        # Rust manifest (PyO3, reqwest, scraper, html2md)
-├── pyproject.toml                    # Python build config (maturin)
-├── requirements.txt                  # Python dependencies
+├── pyproject.toml                    # Build config (maturin) + dependency metadata
+├── requirements.txt                  # Dev/test dependencies (runtime deps live in pyproject)
 ├── README.md                         # This file
+├── SPEC_AUDIT.md                     # Feature audit vs. the original spec
 ├── src/
 │   └── lib.rs                        # Rust async fetcher (shared Tokio runtime)
 ├── stitch_web_researcher/
 │   ├── __init__.py                   # Package exports
-│   ├── agent_tools.py                # WebResearcherToolbox, smart fetch, caching
+│   ├── agent_tools.py                # WebResearcherToolbox, smart fetch, robots, rate limiting
+│   ├── cache.py                      # Disk cache with scoped clears + budgeting
+│   ├── mcp_server.py                 # MCP server (stdio) exposing the toolbox
+│   ├── robots.py                     # robots.txt compliance (per-host cache, UA groups)
 │   ├── search_providers.py           # SearchProvider ABC + DuckDuckGo/Google/Bing/Exa
+│   ├── ssrf.py                       # SSRF guard (blocks private/loopback targets)
 │   ├── structured_parser.py          # Pydantic v2 schemas + StructuredOxideParser
 │   ├── token_budget.py               # tiktoken-based token counting & truncation
 │   └── meta_extractor.py             # meta-oxide wrapper for HTML metadata
-└── tests/
-    ├── test_crawler.py               # Core tests (Rust, toolbox, schemas, tokens)
-    ├── test_providers.py             # Search provider conformance & fallback tests
-    └── test_meta_oxide.py            # HTML metadata extraction tests
+└── tests/                            # 25+ modules (unit + integration)
 ```
 
 ## Dependencies
@@ -295,10 +297,11 @@ stitch_crawler/
 | | `httpx >=0.27` | Async HTTP for providers |
 | | `pydantic >=2.7` | Data validation schemas |
 | | `tiktoken >=0.5.0` | Token counting & truncation |
-| **Oxide SDK** | `pdf_oxide >=0.1` | High-speed PDF extraction |
-| | `office_oxide` (git) | DOCX/XLSX/PPTX extraction |
+| **Oxide SDK** | `meta_oxide >=0.1` | HTML metadata extraction |
 | | `browser_oxide >=0.1` | Headless JS rendering |
-| | `meta_oxide >=0.1` | HTML metadata extraction |
+| **Optional — `[documents]`** | `pdf_oxide >=0.1` | High-speed PDF extraction |
+| | `office_oxide >=0.1` | DOCX/XLSX/PPTX extraction (PyPI) |
+| **Optional — `[mcp]`** | `mcp >=2.0` | MCP server runtime (Python 3.10+) |
 
 ## License
 

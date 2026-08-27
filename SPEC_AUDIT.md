@@ -1,6 +1,7 @@
 # v4 Spec Compliance Audit
 
 > Generated: 2026-06-15  
+> Re-verified: 2026-08-27 (post C1–C7, S1–S7, P1–P6; tool count + metadata-path claims corrected)  
 > Status: Feature-complete with minor gaps
 
 ---
@@ -37,7 +38,7 @@
 | Retry decorator | ✅ | exponential backoff, configurable |
 | Smart/fallback routing | ✅ | `use_smart` flag, browser_oxide → reqwest fallback |
 | Async variants | ✅ | `search_web_async`, `inspect_html_page_async` |
-| `get_llm_definitions()` | ✅ | 5 tools: search, inspect, batch, extract, extract_structured |
+| `get_llm_definitions()` | ✅ | 8 tools: search_web, inspect_html_page, batch_inspect_pages, extract_document, extract_document_structured, inspect_html_structured, clear_cache, reset_visited |
 | Token-aware truncation | ✅ | two-pass: tokens first, then char cap |
 | meta-oxide integration | ✅ | `_compact_metadata()` in inspect output |
 
@@ -109,7 +110,7 @@
 | `extract_twitter()` | ✅ | Twitter Cards |
 | `extract_jsonld()` | ✅ | JSON-LD / Schema.org |
 | `merge_into_document_metadata()` | ✅ | merges into base metadata dict |
-| Wired into fetch pipeline | ✅ | `fetch_smart_page` returns metadata |
+| Wired into fetch pipeline | ✅ | both the static and browser fetch paths return metadata (C2) |
 | Compact metadata for LLM | ✅ | `_compact_metadata()` in toolbox |
 | `DocumentMetadata` expanded | ✅ | 20+ new fields for HTML metadata |
 

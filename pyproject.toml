@@ -41,9 +41,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/stitch-crawler/stitch_crawler"
-Repository = "https://github.com/stitch-crawler/stitch_crawler"
-Changelog = "https://github.com/stitch-crawler/stitch_crawler/releases"
+Homepage = "https://github.com/opticsWolf/stitch-web-researcher"
+Repository = "https://github.com/opticsWolf/stitch-web-researcher"
+Changelog = "https://github.com/opticsWolf/stitch-web-researcher/releases"
 
 [project.optional-dependencies]
 mcp = ["mcp>=2.0"]
