@@ -1169,17 +1169,33 @@ class WebResearcherToolbox:
         Uses Unicode categories rather than printability: legitimate text in
         any language (incl. CJK) contains almost no control/format/unassigned
         codepoints, while binary bytes mis-decoded as text are full of them.
+
+        M14: samples head, middle and tail (not just the first 2000 chars),
+        because a payload that starts clean and degenerates later (e.g. a
+        partially decoded gzip) must also trip the gate. A page is rejected
+        if any sampled window exceeds the 2% bad-codepoint ratio.
         """
         if not md or not md.strip():
             return False
         import unicodedata
-        sample = md[:2000]
-        bad = sum(
-            unicodedata.category(c) in ("Cc", "Cn", "Co", "Cs")
-            and c not in "\n\r\t"
-            for c in sample
+
+        def _bad_ratio(chunk: str) -> float:
+            if not chunk:
+                return 0.0
+            bad = sum(
+                unicodedata.category(c) in ("Cc", "Cn", "Co", "Cs")
+                and c not in "\n\r\t"
+                for c in chunk
+            )
+            return bad / len(chunk)
+
+        n = len(md)
+        samples = (
+            md[:2000],
+            md[n // 2 - 1000 : n // 2 + 1000],
+            md[-2000:],
         )
-        return bad / len(sample) < 0.02
+        return all(_bad_ratio(s) < 0.02 for s in samples)
 
     # ── Page-level two-tier cache helpers ───────────────
 
