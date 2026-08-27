@@ -40,14 +40,23 @@ class TestAsyncDelegation:
         tb = _toolbox()
         calls = []
 
-        def fake_impl(url, use_smart=None):
-            calls.append((url, use_smart))
+        def fake_impl(url, use_smart=None, query=None):
+            # Tier 1.1 extended the shared impl with a query parameter;
+            # the async wrapper must forward it positionally, like the
+            # other two.
+            calls.append((url, use_smart, query))
             return f"RESULT:{url}"
 
         tb._inspect_html_page_impl = fake_impl
         result = asyncio.run(tb.inspect_html_page_async("https://example.com"))
-        assert calls == [("https://example.com", None)]
+        assert calls == [("https://example.com", None, None)]
         assert result == "RESULT:https://example.com"
+        result = asyncio.run(
+            tb.inspect_html_page_async(
+                "https://example.com", use_smart=True, query="my query"
+            )
+        )
+        assert calls[-1] == ("https://example.com", True, "my query")
 
 
 class TestNoDeprecatedApi:

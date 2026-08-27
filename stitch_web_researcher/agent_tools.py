@@ -40,6 +40,7 @@ from stitch_web_researcher import meta_extractor
 from stitch_web_researcher.cache import Cache
 from stitch_web_researcher.robots import RobotsChecker
 from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
+from stitch_web_researcher.sections import select_relevant_sections
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,13 @@ class InspectionResult(BaseModel):
     fetch_method: Optional[str] = None
     cache_hit: bool = False
     metadata: dict = Field(default_factory=dict)
+    # Tier 1.1: set only when the caller passed a research query and the
+    # page did not fit the output budget — the delivered markdown is then
+    # the query-relevant subset of the page's sections.
+    query: Optional[str] = None
+    sections_available: int = 0
+    sections_selected: int = 0
+    section_anchors: list[str] = Field(default_factory=list)
 
 
 # ───────────────────────────────
@@ -361,7 +369,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "inspect_html_page",
-        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). Returns markdown text and follow-up links.",
+        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first. Returns markdown text and follow-up links.",
         "inspect_html_page",
         (
             ToolParam("url", str, description="The URL to inspect"),
@@ -370,6 +378,12 @@ TOOL_REGISTRY = (
                 bool,
                 False,
                 "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
+            ),
+            ToolParam(
+                "query",
+                str,
+                None,
+                "The research query. When the page does not fit the output budget, only the sections most relevant to this query are returned; the payload reports sections_available / sections_selected / section_anchors.",
             ),
         ),
     ),
@@ -1244,7 +1258,12 @@ class WebResearcherToolbox:
             ),
         )
 
-    def _inspect_html_page_impl(self, url: str, use_smart: Optional[bool] = None) -> str:
+    def _inspect_html_page_impl(
+        self,
+        url: str,
+        use_smart: Optional[bool] = None,
+        query: Optional[str] = None,
+    ) -> str:
         """Shared implementation behind ``inspect_html_page`` (sync + async).
 
         Note on retries: the Rust core already retries transient HTTP
@@ -1307,20 +1326,45 @@ class WebResearcherToolbox:
             len(links),
         )
         md_chars, md_tokens = self._content_budget()
-        truncated_md = self._truncate(markdown, md_chars, md_tokens)
+        # Tier 1.1: when a research query is supplied and the page does
+        # not fit the budget, keep the query-relevant sections instead of
+        # truncating head-first. Selection happens at read time on the
+        # full cached markdown, so different queries over the same URL
+        # select different sections without re-fetching.
+        query = (query or "").strip()
+        selection = select_relevant_sections(markdown, query, md_chars) if query else None
+        if selection is not None:
+            # The selection already fits the char budget; _truncate here
+            # only enforces the token budget as a backstop (and is a no-op
+            # when max_tokens is 0).
+            truncated_md = self._truncate(selection.markdown, md_chars, md_tokens)
+            markdown_truncated = True
+        else:
+            truncated_md = self._truncate(markdown, md_chars, md_tokens)
+            markdown_truncated = truncated_md != markdown
 
         # Build compact metadata summary for LLM output
         meta_summary = self._compact_metadata(html_metadata)
 
         result = self._build_inspection_result(
             url, truncated_md, links, meta_summary, fetch_method,
-            markdown_truncated=truncated_md != markdown,
+            markdown_truncated=markdown_truncated,
         )
         if from_cache:
             result.cache_hit = True
+        if selection is not None:
+            result.query = query
+            result.sections_available = selection.total_sections
+            result.sections_selected = selection.selected_count
+            result.section_anchors = list(selection.anchors)
         return result.model_dump_json()
 
-    def inspect_html_page(self, url: str, use_smart: Optional[bool] = None) -> str:
+    def inspect_html_page(
+        self,
+        url: str,
+        use_smart: Optional[bool] = None,
+        query: Optional[str] = None,
+    ) -> str:
         """
         Fetch and extract markdown + follow-up links + HTML metadata from a web page.
 
@@ -1333,8 +1377,14 @@ class WebResearcherToolbox:
         use_smart : bool
             If True, attempt headless JS rendering via browser_oxide first,
             then fall back to static reqwest fetch.
+        query : str, optional
+            The research query. When the page does not fit the output
+            budget, only the sections most relevant to this query are
+            returned; the payload then reports sections_available / 
+            sections_selected / section_anchors so the caller knows what
+            it is (and is not) seeing.
         """
-        return self._inspect_html_page_impl(url, use_smart)
+        return self._inspect_html_page_impl(url, use_smart, query)
 
     def _compact_metadata(self, raw: dict) -> dict:
         """
@@ -1383,13 +1433,18 @@ class WebResearcherToolbox:
 
         return compact
 
-    async def inspect_html_page_async(self, url: str, use_smart: Optional[bool] = None) -> str:
+    async def inspect_html_page_async(
+        self,
+        url: str,
+        use_smart: Optional[bool] = None,
+        query: Optional[str] = None,
+    ) -> str:
         """Async version of inspect_html_page (shared implementation,
         executed in the default executor to stay non-blocking)."""
         # M6: get_running_loop() replaces the deprecated event-loop lookup.
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, self._inspect_html_page_impl, url, use_smart
+            None, self._inspect_html_page_impl, url, use_smart, query
         )
 
     # ───────────────────────────────
