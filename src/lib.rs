@@ -439,11 +439,17 @@ fn retry_after_seconds(headers: &reqwest::header::HeaderMap) -> Option<u64> {
 /// `Err((message, retryable, retry_after_secs))`: only retryable errors
 /// consume another attempt; `retry_after_secs` carries the server's
 /// Retry-After suggestion (M15) so the caller can honor it.
+/// HTTP provenance of a successful fetch: `(status, final_url,
+/// content_type)`. `final_url` is the URL after all redirects (every hop
+/// passed the SSRF guard); `content_type` is None when the server sent no
+/// Content-Type header. Tier 1.3: provenance in every payload.
+type FetchMeta = (u16, String, Option<String>);
+
 async fn fetch_attempt(
     client: &reqwest::Client,
     url: &str,
     max_bytes: usize,
-) -> Result<String, (String, bool, Option<u64>)> {
+) -> Result<(String, FetchMeta), (String, bool, Option<u64>)> {
     let mut current = match Url::parse(url) {
         Ok(u) => u,
         Err(e) => return Err((format!("URL parse error: {}", e), false, None)),
@@ -504,11 +510,12 @@ async fn fetch_attempt(
         // S3: content-type gate — binary bodies must not be lossily
         // UTF-8-decoded into the markdown pipeline. The error names the
         // real type so the agent can switch to extract_document.
-        if let Some(ctype) = response
+        let ctype: Option<String> = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-        {
+            .map(str::to_string);
+        if let Some(ctype) = &ctype {
             if !is_html_content_type(ctype) {
                 return Err((
                     format!(
@@ -556,7 +563,14 @@ async fn fetch_attempt(
             }
         }
         let html = String::from_utf8_lossy(&body).into_owned();
-        return Ok(html);
+        // Tier 1.3: provenance — status of the final hop, the URL after
+        // all redirects, and the content type the server advertised.
+        let meta: FetchMeta = (
+            status.as_u16(),
+            current.as_str().to_string(),
+            ctype,
+        );
+        return Ok((html, meta));
     }
 
     Err((
@@ -570,13 +584,13 @@ async fn http_fetch_html(
     client: &reqwest::Client,
     url: &str,
     max_bytes: usize,
-) -> Result<String, String> {
+) -> Result<(String, FetchMeta), String> {
     const MAX_ATTEMPTS: u32 = 3;
     let mut last_error = String::new();
 
     for attempt in 0..MAX_ATTEMPTS {
         match fetch_attempt(client, url, max_bytes).await {
-            Ok(html) => return Ok(html),
+            Ok(res) => return Ok(res),
             Err((msg, retryable, retry_after)) => {
                 if !retryable {
                     return Err(msg);
@@ -607,7 +621,7 @@ async fn fetch_pairs_inner(
     cap: usize,
     max_bytes: usize,
 ) -> Result<(String, Vec<(String, String)>), String> {
-    let html = http_fetch_html(shared_client(), url, max_bytes).await?;
+    let (html, _meta) = http_fetch_html(shared_client(), url, max_bytes).await?;
     let (md, pairs, _removed) = process_html_anchored(&html, url, cap)?;
     Ok((md, pairs))
 }
@@ -633,10 +647,12 @@ fn fetch_and_extract_single_anchored(
 }
 
 /// Fetch one URL and keep the raw HTML alongside the extraction results:
-/// (html, markdown, [(url, anchor_text)]). The HTML is retained so the
-/// caller can run its own metadata extraction (e.g. meta-oxide) on the
-/// exact bytes that were rendered into the markdown — no second network
-/// round-trip (C2 fix, CODE_REVIEW_2026-08-27).
+/// (html, markdown, [(url, anchor_text)], hidden_removed, FetchMeta). The
+/// HTML is retained so the caller can run its own metadata extraction
+/// (e.g. meta-oxide) on the exact bytes that were rendered into the
+/// markdown — no second network round-trip (C2 fix,
+/// CODE_REVIEW_2026-08-27). FetchMeta carries HTTP provenance: status,
+/// final URL after redirects, content type (Tier 1.3).
 fn fetch_html_full_single(
     url: &str,
     cap: usize,
@@ -644,9 +660,10 @@ fn fetch_html_full_single(
 ) -> Result<FullPage, String> {
     let rt = shared_runtime();
     rt.block_on(async {
-        let html = http_fetch_html(shared_client(), url, max_bytes).await?;
+        let (html, meta) =
+            http_fetch_html(shared_client(), url, max_bytes).await?;
         let (md, links, removed) = process_html_anchored(&html, url, cap)?;
-        Ok((html, md, links, removed))
+        Ok((html, md, links, removed, meta))
     })
 }
 
@@ -659,8 +676,9 @@ type AnchoredPage = (String, Vec<(String, String)>);
 /// Processed page: (markdown, [(url, anchor_text)], hidden_nodes_removed).
 type ProcessedPage = (String, Vec<(String, String)>, usize);
 /// Full fetch payload: (raw_html, markdown, [(url, anchor_text)],
-/// hidden_nodes_removed).
-type FullPage = (String, String, Vec<(String, String)>, usize);
+/// hidden_nodes_removed, provenance). The provenance tuple is
+/// FetchMeta: (http_status, final_url, content_type).
+type FullPage = (String, String, Vec<(String, String)>, usize, FetchMeta);
 type BatchOutcome = Vec<(String, Result<AnchoredPage, String>)>;
 type PyBatchResult = Vec<(String, Option<String>, Option<Vec<(String, String)>>)>;
 
@@ -729,7 +747,8 @@ async fn fetch_many_inner(
             }
 
             let res = async {
-                let html = http_fetch_html(shared_client(), &url, max_bytes).await?;
+                let (html, _meta) =
+                    http_fetch_html(shared_client(), &url, max_bytes).await?;
                 let (md, pairs, _removed) = process_html_anchored(&html, &url, cap)?;
                 Ok((md, pairs))
             }

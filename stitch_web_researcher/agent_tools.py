@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import hashlib
 import json
 import logging
 import random
@@ -9,6 +10,7 @@ import time
 import warnings
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse, urljoin
@@ -69,6 +71,16 @@ class ExtractionResult(BaseModel):
     page_start: Optional[int] = 0
     page_end: Optional[int] = 0
     total_pages: int = 0
+    # Tier 1.3: provenance. fetched_at is the download/parse time (None
+    # on cache hits — the stored content carries no timestamp);
+    # content_hash is the SHA-256 of the full untruncated content, tying
+    # range reads and cache hits back to the stored bytes. http_status /
+    # final_url / content_type are set for URL sources.
+    fetched_at: Optional[str] = None
+    http_status: Optional[int] = None
+    final_url: Optional[str] = None
+    content_type: Optional[str] = None
+    content_hash: Optional[str] = None
 
 
 class InspectionResult(BaseModel):
@@ -104,6 +116,56 @@ class InspectionResult(BaseModel):
     next_offset: Optional[int] = None
     has_more: bool = False
     chars_total: int = 0
+    # Tier 1.3: provenance — which fetch this read was served from.
+    # fetched_at is the original fetch time (the page cache preserves it
+    # across chunked reads and cache hits); final_url is the URL after
+    # redirects; content_hash is the SHA-256 of the full page markdown,
+    # so every chunk of one page shares the same hash. cache_hit (above)
+    # is the from_cache flag.
+    fetched_at: Optional[str] = None
+    http_status: Optional[int] = None
+    final_url: Optional[str] = None
+    content_type: Optional[str] = None
+    content_hash: Optional[str] = None
+
+
+# ───────────────────────────────
+# Provenance helpers (Tier 1.3)
+# ───────────────────────────────
+
+def _utc_now_iso() -> str:
+    """Current time in ISO-8601 UTC (fetch timestamps)."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _sha256_hex(text: str) -> str:
+    """SHA-256 of a string, for content provenance hashes."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _provenance_from_fetch_meta(meta: tuple, requested_url: str) -> dict:
+    """Normalize the Rust fetch's provenance tuple (http_status,
+    final_url, content_type) into the payload dict form."""
+    status, final_url, content_type = meta
+    return {
+        "fetched_at": _utc_now_iso(),
+        "http_status": status,
+        "final_url": final_url or requested_url,
+        "content_type": content_type,
+    }
+
+
+def _browser_provenance(requested_url: str) -> dict:
+    """Best-effort provenance for stealth-browser fetches. The browser
+    layer does not surface the HTTP status or post-redirect URL, so a
+    successful navigation is reported as 200 on the requested URL and
+    content_type is left unknown."""
+    return {
+        "fetched_at": _utc_now_iso(),
+        "http_status": 200,
+        "final_url": requested_url,
+        "content_type": None,
+    }
 
 
 # ───────────────────────────────
@@ -238,6 +300,9 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     # S2: report how many hidden nodes the Rust core stripped.
     if removed:
         metadata["hidden_blocks_removed"] = removed
+    # Tier 1.3: best-effort provenance (the browser layer does not
+    # surface the HTTP status or the post-redirect URL).
+    metadata["provenance"] = _browser_provenance(url)
     return markdown, links, metadata
 
 
@@ -274,10 +339,11 @@ def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
 
     # Fallback to static Rust fetch — fetch_html_full keeps the raw HTML so
     # metadata extraction matches the browser path (C2).
-    html, md, links, removed = fetch_html_full(url, 100)
+    html, md, links, removed, prov = fetch_html_full(url, 100)
     metadata = meta_extractor.extract_all(html, url)
     if removed:
         metadata["hidden_blocks_removed"] = removed
+    metadata["provenance"] = _provenance_from_fetch_meta(prov, url)
     return md, links, metadata
 
 
@@ -388,7 +454,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "inspect_html_page",
-        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first; or pass offset / max_chunks to page through the full document in budget-sized chunks. Returns markdown text and follow-up links.",
+        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first; or pass offset / max_chunks to page through the full document in budget-sized chunks. Returns markdown text, follow-up links, and provenance (fetched_at, http_status, final_url, content_type, content_hash; cache_hit flags from-cache reads).",
         "inspect_html_page",
         (
             ToolParam("url", str, description="The URL to inspect"),
@@ -1060,6 +1126,8 @@ class WebResearcherToolbox:
         meta_summary: dict,
         fetch_method: Optional[str],
         markdown_truncated: bool = False,
+        html_metadata: Optional[dict] = None,
+        page_markdown: Optional[str] = None,
     ) -> InspectionResult:
         """Assemble an InspectionResult and enforce the output budget.
 
@@ -1084,6 +1152,13 @@ class WebResearcherToolbox:
             fetch_method=fetch_method,
             metadata=meta_summary or {},
         )
+        # Tier 1.3: provenance is attached BEFORE the budget loop so the
+        # M11 invariant holds on exactly what is delivered — the hash and
+        # timestamps count against the budget, not just the rest.
+        if html_metadata is not None:
+            self._apply_provenance(
+                result, html_metadata, page_markdown if page_markdown is not None else markdown
+            )
 
         candidates = result.follow_up_links
         n_total = len(candidates)
@@ -1145,17 +1220,21 @@ class WebResearcherToolbox:
         links, so the static path runs the same meta-oxide metadata
         extraction as the browser path — no second network round-trip.
         """
-        html, md, links, removed = fetch_html_full(
+        html, md, links, removed, prov = fetch_html_full(
             url, self.link_cap, self.max_response_bytes
         )
         metadata = meta_extractor.extract_all(html, url)
         if removed:
             metadata["hidden_blocks_removed"] = removed
+        # Tier 1.3: provenance — status, final URL after redirects,
+        # content type, and the fetch time.
+        metadata["provenance"] = _provenance_from_fetch_meta(prov, url)
         return md, links, metadata, "static"
 
     def _browser_fetch(self, url: str):
         """Stealth-browser fetch; failures propagate (strict)."""
         md, links, meta = _fetch_with_browser_oxide(url)
+        meta.setdefault("provenance", _browser_provenance(url))
         return md, links, meta, "browser"
 
     def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
@@ -1210,6 +1289,7 @@ class WebResearcherToolbox:
                 f"Fetch failed for {url} and browser_oxide is not installed"
             )
         md, links, meta = _fetch_with_browser_oxide(url)
+        meta.setdefault("provenance", _browser_provenance(url))
         return md, links, meta, "stealth-fallback"
 
     @staticmethod
@@ -1294,6 +1374,24 @@ class WebResearcherToolbox:
                 ensure_ascii=False,
             ),
         )
+
+    def _apply_provenance(
+        self, result: InspectionResult, metadata: dict, markdown: str
+    ) -> None:
+        """Tier 1.3: stamp provenance onto an inspection result.
+
+        fetched_at / http_status / final_url / content_type come from the
+        fetch metadata — the page cache stores that dict, so a cache hit
+        reports the ORIGINAL fetch, not the read time. content_hash covers
+        the full untruncated markdown, so every chunked read of one page
+        shares the same hash (a citation can tie a slice to its source).
+        """
+        prov = metadata.get("provenance") or {}
+        result.fetched_at = prov.get("fetched_at")
+        result.http_status = prov.get("http_status")
+        result.final_url = prov.get("final_url")
+        result.content_type = prov.get("content_type")
+        result.content_hash = _sha256_hex(markdown)
 
     def _inspect_html_page_impl(
         self,
@@ -1412,9 +1510,14 @@ class WebResearcherToolbox:
         # Build compact metadata summary for LLM output
         meta_summary = self._compact_metadata(html_metadata)
 
+        # Tier 1.3: provenance is applied inside _build_inspection_result
+        # (before the M11 budget loop); the hash covers the full page
+        # markdown, not the delivered slice.
         result = self._build_inspection_result(
             url, truncated_md, links, meta_summary, fetch_method,
             markdown_truncated=markdown_truncated,
+            html_metadata=html_metadata,
+            page_markdown=markdown,
         )
         if from_cache:
             result.cache_hit = True
@@ -1722,9 +1825,14 @@ class WebResearcherToolbox:
         single-page ``inspect_html_page`` result (C6)."""
         md_chars, md_tokens = self._content_budget()
         truncated_md = self._truncate(md, md_chars, md_tokens)
+        # Tier 1.3: batch entries carry the same provenance as single
+        # page reads (meta comes from the fresh fetch or the page cache),
+        # attached before the budget loop.
         result = self._build_inspection_result(
             url, truncated_md, links, self._compact_metadata(meta), method,
             markdown_truncated=truncated_md != md,
+            html_metadata=meta,
+            page_markdown=md,
         )
         if cache_hit:
             result.cache_hit = True
@@ -1789,13 +1897,18 @@ class WebResearcherToolbox:
                 content=truncated,
                 content_tokens=count_tokens(truncated, self.model_name),
                 cache_hit=True,
+                # Tier 1.3: the stored content carries no fetch timestamp,
+                # so fetched_at stays None; the hash still ties the read
+                # back to the stored bytes.
+                content_hash=_sha256_hex(cached),
             ).model_dump_json()
 
         try:
             if is_url:
-                content = self._download_and_extract(source)
+                content, prov = self._download_and_extract(source)
             else:
                 content = self._extract_local(source)
+                prov = {"fetched_at": _utc_now_iso()}
 
             self.cache.put(cache_key, content)
             truncated = self._truncate(content, self.max_markdown_chars, self.max_tokens)
@@ -1804,6 +1917,10 @@ class WebResearcherToolbox:
                 content=truncated,
                 content_tokens=count_tokens(truncated, self.model_name),
                 cache_hit=False,
+                # Tier 1.3: provenance of the download (or parse time for
+                # local files) plus a hash of the full extracted content.
+                content_hash=_sha256_hex(content),
+                **prov,
             ).model_dump_json()
         except Exception as e:
             logger.error("Document extraction failed for %s: %s", source, e)
@@ -1811,12 +1928,28 @@ class WebResearcherToolbox:
                 {"error": f"Document extraction failed: {str(e)}"}, indent=2
             )
 
-    def _download_and_extract(self, url: str) -> str:
-        """Download a document from URL and extract its content."""
-        with httpx.Client(timeout=30) as client:
+    def _fetch_document_url(self, url: str) -> tuple[bytes, dict]:
+        """Tier 1.3: download a document URL; return (bytes, provenance).
+
+        Redirects are followed so provenance.final_url is the URL that
+        actually served the bytes — final_url != url tells the model the
+        content moved.
+        """
+        with httpx.Client(timeout=30, follow_redirects=True) as client:
             response = client.get(url, headers=self._next_headers())
             response.raise_for_status()
-            return self._extract_from_bytes(response.content, url)
+        prov = {
+            "fetched_at": _utc_now_iso(),
+            "http_status": response.status_code,
+            "final_url": str(response.url),
+            "content_type": response.headers.get("content-type"),
+        }
+        return response.content, prov
+
+    def _download_and_extract(self, url: str) -> tuple[str, dict]:
+        """Download a document from URL; returns (content, provenance)."""
+        data, prov = self._fetch_document_url(url)
+        return self._extract_from_bytes(data, url), prov
 
     # Tier 1.2: page-range reads. The flat extractor joins all pages into
     # one string, so a range can only be served by re-deriving the
@@ -1865,10 +1998,13 @@ class WebResearcherToolbox:
                 content_tokens=count_tokens(truncated, self.model_name),
                 cache_hit=True,
                 page_range=pages_spec,
+                # Tier 1.3: hash of the stored range content (the store
+                # keeps no fetch timestamp, so fetched_at stays None).
+                content_hash=_sha256_hex(cached),
             ).model_dump_json()
 
         try:
-            payload = self._parse_document_pages(source, is_url)
+            payload, prov = self._parse_document_pages(source, is_url)
             total = len(payload.pages)
             if total == 0:
                 return json.dumps(
@@ -1912,6 +2048,10 @@ class WebResearcherToolbox:
                 page_start=start,
                 page_end=end,
                 total_pages=total,
+                # Tier 1.3: hash of the delivered range plus download
+                # provenance (URL reads) or parse time (local reads).
+                content_hash=_sha256_hex(content),
+                **prov,
             ).model_dump_json()
         except Exception as e:
             logger.error("Page-range extraction failed for %s: %s", source, e)
@@ -1920,23 +2060,25 @@ class WebResearcherToolbox:
             )
 
     def _parse_document_pages(self, source: str, is_url: bool):
-        """Parse a document into a ParsedDocumentPayload (URL or local)."""
+        """Parse a document into a ParsedDocumentPayload (URL or local).
+
+        Returns (payload, provenance); for local files the provenance
+        carries only the parse time.
+        """
         import os
         import tempfile as tf
 
         parser = StructuredOxideParser()
         if not is_url:
-            return parser.parse_file(source)
-        with httpx.Client(timeout=30) as client:
-            response = client.get(source, headers=self._next_headers())
-            response.raise_for_status()
+            return parser.parse_file(source), {"fetched_at": _utc_now_iso()}
+        data, prov = self._fetch_document_url(source)
         suffix = Path(urlparse(source).path).suffix.lower() or ".pdf"
         tmp_path = None
         try:
             with tf.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                tmp.write(response.content)
+                tmp.write(data)
                 tmp_path = tmp.name
-            return parser.parse_file(tmp_path)
+            return parser.parse_file(tmp_path), prov
         finally:
             if tmp_path:
                 try:

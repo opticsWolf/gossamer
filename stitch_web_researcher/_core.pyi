@@ -44,8 +44,10 @@ def fetch_and_extract_linked(
 
 def fetch_html_full(
     url: str, max_links: int = 100, max_bytes: Optional[int] = None
-) -> Tuple[str, str, List[Tuple[str, str]], int]:
-    """Fetch *url*; return ``(html, markdown, links, hidden_removed)``."""
+) -> Tuple[str, str, List[Tuple[str, str]], int, Tuple[int, str, Optional[str]]]:
+    """Fetch *url*;
+    return ``(html, markdown, links, hidden_removed, provenance)`` where
+    provenance is ``(http_status, final_url, content_type)`` (Tier 1.3)."""
     ...
 
 def extract_links_from_html(

@@ -74,7 +74,7 @@ class TestSharedClientFetches:
         """Three sequential fetches share one client and all succeed."""
         url = f"{local_server}/one"
         for _ in range(3):
-            html, md, links, removed = fetch_html_full(url)
+            html, md, links, _removed, _prov = fetch_html_full(url)
             assert isinstance(html, str) and "Pooled" in html
             assert isinstance(md, str) and "Pooled" in md
             assert any("/other" in href for href, _text in links)
@@ -82,7 +82,7 @@ class TestSharedClientFetches:
     def test_fetch_html_full_across_hosts_paths(self, local_server):
         """Different paths on the same host reuse the pooled connection."""
         for path in ("/a", "/b", "/c"):
-            _html, md, _links, _removed = fetch_html_full(f"{local_server}{path}")
+            _html, md, _links, _removed, _prov = fetch_html_full(f"{local_server}{path}")
             assert "Pooled" in md
 
     def test_batch_research_uses_shared_client(self, local_server):

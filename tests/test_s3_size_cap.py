@@ -90,13 +90,13 @@ def server(monkeypatch):
 
 
 def test_small_page_ok(server):
-    _html, md, _links, _removed = _core.fetch_html_full(server + "/small", 10)
+    _html, md, _links, _removed, _prov = _core.fetch_html_full(server + "/small", 10)
     assert "small page" in md
 
 
 def test_default_cap_allows_large_text_page(server):
     # ~7 KB << 5 MiB default: the cap must not starve ordinary pages.
-    _html, md, _links, _removed = _core.fetch_html_full(server + "/big", 10)
+    _html, md, _links, _removed, _prov = _core.fetch_html_full(server + "/big", 10)
     assert "lorem ipsum" in md
 
 
@@ -129,7 +129,7 @@ def test_pdf_content_type_rejected(server):
 def test_missing_content_type_allowed(server):
     # No Content-Type header: allowed through (downstream _looks_like_text
     # remains the safety net).
-    _html, md, _links, _removed = _core.fetch_html_full(server + "/no-ctype", 10)
+    _html, md, _links, _removed, _prov = _core.fetch_html_full(server + "/no-ctype", 10)
     assert "no content type" in md
 
 

@@ -114,10 +114,14 @@ class TestProcessRenderedHtml:
 
 
 class TestFetchHtmlFull:
-    """The static-path binding returns the 4-tuple with a counter."""
+    """The static-path binding returns the 5-tuple with provenance."""
 
-    def test_four_tuple_and_hidden_stripped(self, http_server):
-        html, md, links, removed = _core.fetch_html_full(http_server + "/", 20)
+    def test_five_tuple_and_hidden_stripped(self, http_server):
+        html, md, links, removed, prov = _core.fetch_html_full(http_server + "/", 20)
+        # Tier 1.3: provenance is (status, final_url, content_type).
+        assert isinstance(prov, tuple) and len(prov) == 3
+        assert prov[0] == 200
+        assert prov[1] == http_server + "/"
         # Raw HTML is intact (metadata extraction still sees it)...
         assert "SECRET" in html
         # ...but the delivered markdown is clean.

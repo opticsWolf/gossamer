@@ -91,7 +91,7 @@ class TestRateLimitRetries:
     def test_429_is_retried_and_retry_after_honored(self, local_server):
         url = f"{local_server}/flaky-429"
         start = time.monotonic()
-        _html, md, _links, _removed = fetch_html_full(url)
+        _html, md, _links, _removed, _prov = fetch_html_full(url)
         elapsed = time.monotonic() - start
         assert "Recovered" in md
         assert _FlakyHandler.hits["/flaky-429"] == 2
@@ -100,7 +100,7 @@ class TestRateLimitRetries:
 
     def test_503_is_retried(self, local_server):
         url = f"{local_server}/flaky-503"
-        _html, md, _links, _removed = fetch_html_full(url)
+        _html, md, _links, _removed, _prov = fetch_html_full(url)
         assert "Recovered" in md
         assert _FlakyHandler.hits["/flaky-503"] == 2
 

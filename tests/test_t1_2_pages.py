@@ -217,12 +217,15 @@ class TestPageRangeOverUrl:
 
         class _FakeResponse:
             content = PDF_BYTES
+            url = "https://example.com/big.pdf"
+            status_code = 200
+            headers = {"content-type": "application/pdf"}
 
             def raise_for_status(self):
                 return None
 
         class _FakeClient:
-            def __init__(self, timeout=None):
+            def __init__(self, **kwargs):
                 pass
 
             def __enter__(self):
@@ -248,12 +251,15 @@ class TestPageRangeOverUrl:
     def test_url_out_of_bounds_errors_without_crash(self, tmp_path, monkeypatch):
         class _FakeResponse:
             content = PDF_BYTES
+            url = "https://example.com/big.pdf"
+            status_code = 200
+            headers = {"content-type": "application/pdf"}
 
             def raise_for_status(self):
                 return None
 
         class _FakeClient:
-            def __init__(self, timeout=None):
+            def __init__(self, **kwargs):
                 pass
 
             def __enter__(self):
