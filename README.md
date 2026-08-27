@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-424%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-430%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 

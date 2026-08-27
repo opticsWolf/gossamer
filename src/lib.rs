@@ -423,16 +423,30 @@ fn process_html_anchored(
 // 6. Fetch + extract (static, reqwest-based)
 // ────────────────────────────────────────────────────────────────
 
+/// Parse a numeric Retry-After header (delta-seconds form) into seconds,
+/// capped so a hostile header cannot stall the retry loop indefinitely
+/// (M15). HTTP-date values are ignored — the plain backoff applies.
+fn retry_after_seconds(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    const CAP_SECS: u64 = 60;
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|secs| secs.min(CAP_SECS))
+}
+
 /// Outcome of one fetch attempt.
-/// `Err((message, retryable))`: only retryable errors consume another attempt.
+/// `Err((message, retryable, retry_after_secs))`: only retryable errors
+/// consume another attempt; `retry_after_secs` carries the server's
+/// Retry-After suggestion (M15) so the caller can honor it.
 async fn fetch_attempt(
     client: &reqwest::Client,
     url: &str,
     max_bytes: usize,
-) -> Result<String, (String, bool)> {
+) -> Result<String, (String, bool, Option<u64>)> {
     let mut current = match Url::parse(url) {
         Ok(u) => u,
-        Err(e) => return Err((format!("URL parse error: {}", e), false)),
+        Err(e) => return Err((format!("URL parse error: {}", e), false, None)),
     };
 
     // The client is built with `redirect::Policy::none()`, so redirects are
@@ -444,6 +458,7 @@ async fn fetch_attempt(
             return Err((
                 format!("Blocked by SSRF guard: {}", reason),
                 false,
+                None,
             ));
         }
 
@@ -458,7 +473,7 @@ async fn fetch_attempt(
             .header("Connection", "keep-alive")
             .send()
             .await
-            .map_err(|e| (format!("Request failed: {}", e), true))?;
+            .map_err(|e| (format!("Request failed: {}", e), true, None))?;
 
         let status = response.status();
         if status.is_redirection() {
@@ -468,18 +483,22 @@ async fn fetch_attempt(
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_string)
                 .ok_or_else(|| {
-                    ("Redirect without Location header".to_string(), false)
+                    ("Redirect without Location header".to_string(), false, None)
                 })?;
             current = current
                 .join(&location)
-                .map_err(|e| (format!("Invalid redirect target: {}", e), false))?;
+                .map_err(|e| (format!("Invalid redirect target: {}", e), false, None))?;
             continue;
         }
 
         if !status.is_success() {
-            // Only server-side errors are worth retrying.
-            let retryable = status.as_u16() >= 500;
-            return Err((format!("HTTP error: {}", status), retryable));
+            // M15: rate limits (429) and service unavailability (503) are
+            // exactly the cases worth backing off on, alongside generic
+            // server errors (5xx). The server may suggest how long to wait.
+            let code = status.as_u16();
+            let retryable = code == 429 || code == 503 || code >= 500;
+            let retry_after = retry_after_seconds(response.headers());
+            return Err((format!("HTTP error: {}", status), retryable, retry_after));
         }
 
         // S3: content-type gate — binary bodies must not be lossily
@@ -497,6 +516,7 @@ async fn fetch_attempt(
                         ctype
                     ),
                     false,
+                    None,
                 ));
             }
         }
@@ -511,6 +531,7 @@ async fn fetch_attempt(
                         declared, max_bytes
                     ),
                     false,
+                    None,
                 ));
             }
         }
@@ -526,18 +547,23 @@ async fn fetch_attempt(
                                 max_bytes
                             ),
                             false,
+                            None,
                         ));
                     }
                 }
                 Ok(None) => break,
-                Err(e) => return Err((format!("Body read failed: {}", e), true)),
+                Err(e) => return Err((format!("Body read failed: {}", e), true, None)),
             }
         }
         let html = String::from_utf8_lossy(&body).into_owned();
         return Ok(html);
     }
 
-    Err((format!("Too many redirects (max {})", MAX_REDIRECTS), false))
+    Err((
+        format!("Too many redirects (max {})", MAX_REDIRECTS),
+        false,
+        None,
+    ))
 }
 
 async fn http_fetch_html(
@@ -551,7 +577,7 @@ async fn http_fetch_html(
     for attempt in 0..MAX_ATTEMPTS {
         match fetch_attempt(client, url, max_bytes).await {
             Ok(html) => return Ok(html),
-            Err((msg, retryable)) => {
+            Err((msg, retryable, retry_after)) => {
                 if !retryable {
                     return Err(msg);
                 }
@@ -559,8 +585,12 @@ async fn http_fetch_html(
                 if attempt == MAX_ATTEMPTS - 1 {
                     break;
                 }
-                // Exponential backoff: 500ms, 1s, …
-                let delay = Duration::from_millis(500 * 2u64.pow(attempt));
+                // Exponential backoff: 500ms, 1s, … — extended to the
+                // server-requested Retry-After when the server sent one (M15).
+                let mut delay = Duration::from_millis(500 * 2u64.pow(attempt));
+                if let Some(secs) = retry_after {
+                    delay = delay.max(Duration::from_secs(secs));
+                }
                 tokio::time::sleep(delay).await;
             }
         }
