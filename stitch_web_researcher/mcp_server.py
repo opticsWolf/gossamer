@@ -53,6 +53,13 @@ def _env(name: str, default=None, cast=str):
     return cast(raw) if raw not in (None, "") else default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _config_from_env() -> ToolboxConfig:
     fetch_delay = _env("STITCH_FETCH_DELAY", None, float)
     return ToolboxConfig(
@@ -68,6 +75,8 @@ def _config_from_env() -> ToolboxConfig:
         fetch_mode=_env("STITCH_FETCH_MODE", "auto"),
         candidate_cap=_env("STITCH_CANDIDATE_CAP", 500, int),
         max_concurrency=_env("STITCH_MAX_CONCURRENCY", 8, int),
+        # S4: robots.txt compliance; operators can opt out explicitly.
+        respect_robots=_env_bool("STITCH_RESPECT_ROBOTS", True),
     )
 
 

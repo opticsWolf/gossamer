@@ -153,7 +153,11 @@ class TestToolboxIntegration:
     @pytest.fixture()
     def toolbox(self, tmp_path, monkeypatch):
         monkeypatch.delenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", raising=False)
-        return WebResearcherToolbox(ToolboxConfig(cache_dir=str(tmp_path / "c")))
+        # respect_robots=False: batch tests use a fake example.com URL and a
+        # private IP; the SSRF guard is what's under test (S4 opt-out).
+        return WebResearcherToolbox(
+            ToolboxConfig(cache_dir=str(tmp_path / "c"), respect_robots=False)
+        )
 
     def test_inspect_html_page_blocks_metadata(self, toolbox):
         with pytest.raises(SsrfBlockedError):
@@ -196,7 +200,9 @@ class TestToolboxIntegration:
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            tb = WebResearcherToolbox(ToolboxConfig(cache_dir=str(tmp_path / "c")))
+            tb = WebResearcherToolbox(
+                ToolboxConfig(cache_dir=str(tmp_path / "c"), respect_robots=False)
+            )
             port = server.server_address[1]
             out = tb.inspect_html_page(f"http://127.0.0.1:{port}/")
             data = json.loads(out)

@@ -38,6 +38,7 @@ from stitch_web_researcher.search_providers import (
 )
 from stitch_web_researcher import meta_extractor
 from stitch_web_researcher.cache import Cache
+from stitch_web_researcher.robots import RobotsChecker
 from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
 
 logger = logging.getLogger(__name__)
@@ -431,6 +432,9 @@ class ToolboxConfig:
     # follow-up link list and JSON envelope, so budget enforcement never
     # starves link delivery on content-rich pages (C1).
     link_budget_ratio: float = 0.25
+    # S4: honor robots.txt (Disallow/Allow/Crawl-delay) for fetched URLs.
+    # Set False for an explicit opt-out (e.g. private test targets).
+    respect_robots: bool = True
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -534,6 +538,13 @@ class WebResearcherToolbox:
         self.max_concurrency = max(1, int(config.max_concurrency))
         # S3: response-body size cap, passed through to the Rust core.
         self.max_response_bytes = max(1, int(config.max_response_bytes))
+        # S4: robots.txt compliance (per-host fetch + cache, Disallow/
+        # Allow/Crawl-delay). The matched UA is the first rotation entry;
+        # all rotation entries are equivalent desktop Chrome UAs.
+        self._robots = RobotsChecker(
+            enabled=config.respect_robots,
+            user_agent=self.USER_AGENTS[0],
+        )
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
@@ -618,15 +629,38 @@ class WebResearcherToolbox:
             logger.warning("Blocked non-public URL %s: %s", url, e)
             raise
 
+    def _robots_disallows(self, url: str) -> bool:
+        """S4: True if the host's robots.txt forbids fetching ``url``.
+
+        The checker fails open by design (fetch/parse errors are treated
+        as *allowed*), so a checker bug can at worst over-fetch, never
+        break fetching.
+        """
+        try:
+            return not self._robots.is_allowed(url)
+        except Exception:
+            logger.debug("robots.txt check failed for %s", url, exc_info=True)
+            return False
+
     def _rate_limit_domain(self, url: str) -> None:
         """Enforce per-domain rate limiting for content fetching.
 
         The minimum gap between same-domain fetches is the resolved
         ``_fetch_interval`` plus a random 0–1 s jitter (only when the
-        interval is non-zero), which desynchronizes access patterns.
+        interval is non-zero), which desynchronizes access patterns. A
+        Crawl-delay requested in the site's robots.txt (S4) raises the
+        gap floor.
         """
         parsed = urlparse(url)
         domain = parsed.netloc
+        # S4: resolve the Crawl-delay *before* taking the throttle lock --
+        # the first probe of a host performs a robots.txt network fetch,
+        # which must not hold the lock.
+        crawl_delay: Optional[float] = None
+        try:
+            crawl_delay = self._robots.crawl_delay(url)
+        except Exception:
+            logger.debug("robots Crawl-delay lookup failed", exc_info=True)
         # S5: the read-sleep-write on the per-domain timestamp happens
         # under a lock so concurrent tool calls share one politeness gap
         # instead of each sleeping independently.
@@ -636,6 +670,8 @@ class WebResearcherToolbox:
             gap = self._fetch_interval
             if gap > 0:
                 gap += random.uniform(0.0, 1.0)
+            if crawl_delay is not None and crawl_delay > gap:
+                gap = crawl_delay
             if elapsed < gap:
                 time.sleep(gap - elapsed)
             self._domain_last_seen[domain] = time.time()
@@ -1021,6 +1057,14 @@ class WebResearcherToolbox:
         cached = self._page_cache_get(url)
         from_cache = cached is not None
         if cached is None:
+            # S4: robots.txt compliance -- only on the fetch path; a cache
+            # hit performs no network fetch, so it is unaffected.
+            if self._robots_disallows(url):
+                logger.warning("URL disallowed by robots.txt: %s", url)
+                return json.dumps(
+                    {"warning": "URL disallowed by robots.txt", "url": url},
+                    indent=2,
+                )
             # S5: claim the URL so a concurrent call for the same page is
             # rejected here instead of double-fetching; C3 semantics are
             # kept because release on failure un-claims it.
@@ -1178,6 +1222,11 @@ class WebResearcherToolbox:
             if url in self.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
+            # S4: robots.txt says no -- skip without claiming so the URL
+            # stays available if the site changes its rules.
+            if self._robots_disallows(url):
+                logger.warning("Skipping robots-disallowed URL in batch: %s", url)
+                continue
             if not self._claim_in_flight(url):
                 # A concurrent single-page call claimed this URL between
                 # the check and the claim (S5); skip it rather than
@@ -1296,6 +1345,17 @@ class WebResearcherToolbox:
 
         if is_url:
             self._validate_url(source)
+            # S4: robots gate before rate-limiting, so a disallowed fetch
+            # does not burn a politeness delay.
+            if self._robots_disallows(source):
+                return json.dumps(
+                    {
+                        "error": (
+                            f"Document fetch disallowed by robots.txt: {source}"
+                        )
+                    },
+                    indent=2,
+                )
             self._rate_limit_domain(source)
 
         cache_key = self._cache_key(source) if is_url else source
@@ -1378,6 +1438,16 @@ class WebResearcherToolbox:
 
         if is_url:
             self._validate_url(source)
+            # S4: robots gate before rate-limiting.
+            if self._robots_disallows(source):
+                return json.dumps(
+                    {
+                        "error": (
+                            f"Document fetch disallowed by robots.txt: {source}"
+                        )
+                    },
+                    indent=2,
+                )
             self._rate_limit_domain(source)
 
         tmp_path = None
@@ -1457,6 +1527,12 @@ class WebResearcherToolbox:
                 logger.info("Cache hit (structured) for %s", url)
                 return self._truncate(
                     cached_json, self.max_markdown_chars, self.max_tokens
+                )
+            # S4: robots.txt compliance -- only on the fetch path.
+            if self._robots_disallows(url):
+                logger.warning("URL disallowed by robots.txt: %s", url)
+                return json.dumps(
+                    {"warning": "URL disallowed by robots.txt", "url": url}, indent=2
                 )
             if not self._claim_in_flight(url):
                 logger.warning("URL already visited or in flight: %s", url)

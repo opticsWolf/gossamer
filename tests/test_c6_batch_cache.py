@@ -18,8 +18,13 @@ FAKE_LINKS = [("https://example.com/child", "Child")]
 
 
 def _toolbox(tmp_path):
+    # respect_robots=False: batch_research/_fetch_html are mocked with fake
+    # example.com URLs, so no live robots.txt probe may run (S4).
     return WebResearcherToolbox(
-        cache_dir=str(tmp_path / "cache"), domain_delay=0.0, ddgs_delay=0.0
+        cache_dir=str(tmp_path / "cache"),
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
     )
 
 

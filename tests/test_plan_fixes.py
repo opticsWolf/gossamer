@@ -16,10 +16,13 @@ from stitch_web_researcher.agent_tools import WebResearcherToolbox
 
 
 def _toolbox(tmp_path):
+    # respect_robots=False: these tests mock the fetch layer with fake
+    # example.com URLs, so no live robots.txt probe may run (S4).
     return WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
         domain_delay=0.0,
         ddgs_delay=0.0,
+        respect_robots=False,
     )
 
 
@@ -224,7 +227,9 @@ class TestFetchSpacingJitter:
         from stitch_web_researcher.agent_tools import ToolboxConfig
 
         return WebResearcherToolbox(
-            ToolboxConfig(cache_dir=str(tmp_path / "c"), **cfg)
+            ToolboxConfig(
+                cache_dir=str(tmp_path / "c"), respect_robots=False, **cfg
+            )
         )
 
     def test_gap_is_base_plus_jitter(self, tmp_path, monkeypatch):
@@ -341,7 +346,9 @@ class TestPerDomainDelayIsolation:
         from stitch_web_researcher.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
-            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=1.0)
+            ToolboxConfig(
+                cache_dir=str(tmp_path / "c"), fetch_delay=1.0, respect_robots=False
+            )
         )
         sleeps = []
         monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
@@ -358,7 +365,9 @@ class TestPerDomainDelayIsolation:
         from stitch_web_researcher.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
-            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=1.0)
+            ToolboxConfig(
+                cache_dir=str(tmp_path / "c"), fetch_delay=1.0, respect_robots=False
+            )
         )
         sleeps = []
         monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
@@ -379,7 +388,9 @@ class TestPerDomainDelayIsolation:
         from stitch_web_researcher.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
-            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=1.0)
+            ToolboxConfig(
+                cache_dir=str(tmp_path / "c"), fetch_delay=1.0, respect_robots=False
+            )
         )
         sleeps = []
         monkeypatch.setattr(agent_tools.time, "sleep", sleeps.append)
@@ -447,7 +458,9 @@ class TestBatchSameDomainStaggering:
         from stitch_web_researcher.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
-            ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=0.75)
+            ToolboxConfig(
+                cache_dir=str(tmp_path / "c"), fetch_delay=0.75, respect_robots=False
+            )
         )
         with patch("stitch_web_researcher.agent_tools.batch_research") as mock_batch:
             mock_batch.return_value = []

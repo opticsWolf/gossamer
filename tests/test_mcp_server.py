@@ -35,6 +35,10 @@ def server(monkeypatch, tmp_path):
     monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("STITCH_DOMAIN_DELAY", "0")
     monkeypatch.setenv("STITCH_DDGS_DELAY", "0")
+    # S4: MCP tests mock the fetch layer with fake example.com URLs; no
+    # live robots.txt probe may run (robots compliance is covered in
+    # tests/test_s4_robots.py).
+    monkeypatch.setenv("STITCH_RESPECT_ROBOTS", "0")
     monkeypatch.setattr(mcp_server, "reset_toolbox", mcp_server.reset_toolbox)
     mcp_server.reset_toolbox()
     yield mcp_server.build_server()

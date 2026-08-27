@@ -17,7 +17,11 @@ URL = "https://example.com/big"
 
 
 def _toolbox(tmp_path, **overrides) -> WebResearcherToolbox:
-    cfg = ToolboxConfig(cache_dir=str(tmp_path / "cache"), **overrides)
+    # respect_robots=False: these tests mock the fetch layer with fake
+    # example.com URLs, so no live robots.txt probe may run (S4).
+    cfg = ToolboxConfig(
+        cache_dir=str(tmp_path / "cache"), respect_robots=False, **overrides
+    )
     return WebResearcherToolbox(cfg)
 
 

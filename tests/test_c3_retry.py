@@ -15,8 +15,13 @@ from stitch_web_researcher.agent_tools import WebResearcherToolbox
 
 
 def _toolbox(tmp_path) -> WebResearcherToolbox:
+    # respect_robots=False: the fetch layer is mocked with fake
+    # example.com URLs, so no live robots.txt probe may run (S4).
     return WebResearcherToolbox(
-        cache_dir=str(tmp_path / "cache"), domain_delay=0.0, ddgs_delay=0.0
+        cache_dir=str(tmp_path / "cache"),
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
     )
 
 

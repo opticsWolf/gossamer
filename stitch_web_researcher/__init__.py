@@ -45,6 +45,7 @@ from stitch_web_researcher.meta_extractor import (
     merge_into_document_metadata,
 )
 from stitch_web_researcher.cache import Cache
+from stitch_web_researcher.robots import RobotsChecker
 from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
 
 __all__ = [
@@ -89,6 +90,8 @@ __all__ = [
     "merge_into_document_metadata",
     # Caching
     "Cache",
+    # robots.txt compliance (S4)
+    "RobotsChecker",
     # SSRF guard (S1)
     "SsrfBlockedError",
     "validate_public_url",
