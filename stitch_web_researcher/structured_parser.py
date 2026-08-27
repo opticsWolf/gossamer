@@ -20,6 +20,73 @@ from office_oxide import Document as OfficeDoc
 logger = logging.getLogger(__name__)
 
 
+class FollowUpCandidate(BaseModel):
+    """A follow-up link candidate surfaced to the calling agent.
+
+    Lives in this (schema) module so that both the page-inspection
+    result (``InspectionResult``) and the structured payload
+    (``ParsedDocumentPayload``) share one model without circular
+    imports.
+    """
+
+    title: str = "(untitled)"
+    url: str
+    type: str = "page"  # 'page' -> inspect_html_page, 'document' -> extract_document
+
+
+DOCUMENT_EXTENSIONS = frozenset({
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".odt", ".ods", ".odp", ".rtf", ".csv", ".epub",
+})
+
+
+def classify_link(url: str) -> str:
+    """Classify a URL as 'document' (needs extract_document) or 'page'
+    (needs inspect_html_page), based on its path extension."""
+    from urllib.parse import urlparse
+
+    try:
+        path = urlparse(url).path.lower()
+        for ext in DOCUMENT_EXTENSIONS:
+            if path.endswith(ext):
+                return "document"
+    except Exception:
+        pass
+    return "page"
+
+
+def build_follow_up_candidates(
+    anchored_links: List, max_links: int = 0
+) -> List[FollowUpCandidate]:
+    """Turn (url, anchor_text) pairs into validated FollowUpCandidate models.
+
+    Deduplicates by URL and (when *max_links* > 0) truncates to that many.
+    Each candidate carries the anchor text so the model can judge relevance
+    by name, plus a 'type' hint: 'document' links should be fetched via
+    extract_document, 'page' links via inspect_html_page.
+    """
+    out: List[FollowUpCandidate] = []
+    seen: set = set()
+    for item in anchored_links or []:
+        if max_links > 0 and len(out) >= max_links:
+            break
+        if isinstance(item, tuple) and len(item) == 2:
+            url, text = item
+        else:
+            url, text = str(item), ""
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append(
+            FollowUpCandidate(
+                title=(text or "").strip() or "(untitled)",
+                url=url,
+                type=classify_link(url),
+            )
+        )
+    return out
+
+
 # ────────────────────────────────────────────────────────────────
 # 1. Pydantic v2 Structural Schemas
 # ────────────────────────────────────────────────────────────────
@@ -142,6 +209,13 @@ class ParsedDocumentPayload(BaseModel):
     metadata: DocumentMetadata
     pages: List[ExtractedPage] = Field(default_factory=list)
     tables: List[ExtractedTable] = Field(default_factory=list)
+    links: List[FollowUpCandidate] = Field(
+        default_factory=list,
+        description=(
+            "Follow-up link candidates found on the page "
+            "(populated for HTML pages; empty for files)."
+        ),
+    )
 
     def to_json(self, indent: int = 2) -> str:
         """Serialize the full payload to a pretty-printed JSON string."""
@@ -538,7 +612,7 @@ class StructuredOxideParser:
     @staticmethod
     def parse_html(
         markdown: str,
-        links: List[str],
+        links: List[tuple],
         html_metadata: Dict[str, Any],
         url: str,
         max_links: int = 20,
@@ -555,8 +629,9 @@ class StructuredOxideParser:
         ----------
         markdown : str
             Markdown content extracted from the page.
-        links : list[str]
-            Follow-up links found on the page.
+        links : list[tuple(str, str)]
+            Follow-up links found on the page as (url, anchor_text)
+            pairs, as produced by the Rust core's link extractor.
         html_metadata : dict
             Raw output from meta_oxide.extract_all().
         url : str
@@ -609,10 +684,15 @@ class StructuredOxideParser:
             markdown=markdown,
         )
 
+        # C5: the tool description promises links in this payload —
+        # actually populate them (deduped, titled, typed, capped).
+        candidates = build_follow_up_candidates(links, max_links=max_links)
+
         return ParsedDocumentPayload(
             metadata=metadata,
             pages=[page],
             tables=[],
+            links=candidates,
         )
 
 

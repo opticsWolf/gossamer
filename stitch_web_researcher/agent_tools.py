@@ -27,7 +27,14 @@ from stitch_web_researcher._core import (
     extract_main_content_markdown,
 )
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
-from stitch_web_researcher.structured_parser import StructuredOxideParser, ParsedDocumentPayload
+from stitch_web_researcher.structured_parser import (
+    StructuredOxideParser,
+    ParsedDocumentPayload,
+    FollowUpCandidate,
+    DOCUMENT_EXTENSIONS,
+    classify_link,
+    build_follow_up_candidates,
+)
 from stitch_web_researcher.search_providers import (
     DuckDuckGoProvider,
     RateLimit,
@@ -42,13 +49,6 @@ logger = logging.getLogger(__name__)
 # ───────────────────────────────
 # Inspection output models (guarantee clean, schema-valid JSON)
 # ───────────────────────────────
-
-class FollowUpCandidate(BaseModel):
-    """One link candidate for LLM triage."""
-    title: str = "(untitled)"
-    url: str
-    type: str = "page"  # 'page' -> inspect_html_page, 'document' -> extract_document
-
 
 class ExtractionResult(BaseModel):
     """Unified result of a document extraction (cache hit or fresh).
@@ -128,25 +128,10 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
 
 # ───────────────────────────────
 # Link classification & follow-up helpers
+# (moved to structured_parser.py in 0.1.4 so the structured payload can
+#  share the same FollowUpCandidate model; re-exported above for
+#  backwards compatibility)
 # ───────────────────────────────
-
-DOCUMENT_EXTENSIONS = frozenset({
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".odt", ".ods", ".odp", ".rtf", ".csv", ".epub",
-})
-
-
-def classify_link(url: str) -> str:
-    """Classify a URL as 'document' (needs extract_document) or 'page'
-    (needs inspect_html_page), based on its path extension."""
-    try:
-        path = urlparse(url).path.lower()
-        for ext in DOCUMENT_EXTENSIONS:
-            if path.endswith(ext):
-                return "document"
-    except Exception:
-        pass
-    return "page"
 
 
 def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
@@ -754,24 +739,13 @@ class WebResearcherToolbox:
         Each candidate carries the anchor text (so the model can judge
         relevance by name) and a 'type' hint: 'document' links should be
         fetched via extract_document, 'page' links via inspect_html_page.
+
+        No truncation here: the caller (LLM) performs relevance selection
+        itself, based on the research topic; we deliver the complete
+        titled/typed candidate list. (The structured payload path, in
+        contrast, honors max_links.)
         """
-        out = []
-        seen = set()
-        for url, text in anchored_links:
-            if url in seen:
-                continue
-            seen.add(url)
-            out.append(
-                {
-                    "title": (text or "").strip() or "(untitled)",
-                    "url": url,
-                    "type": classify_link(url),
-                }
-            )
-        # NOTE: no truncation here. The caller (LLM) performs relevance
-        # selection itself, based on the research topic; our job is to
-        # deliver the complete titled/typed candidate list.
-        return out
+        return build_follow_up_candidates(anchored_links)
 
     def _build_inspection_result(
         self,
