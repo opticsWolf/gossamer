@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use scraper::{Html, Selector};
+use scraper::{node::Element, ElementRef, Html, Selector};
 use url::{Host, Url};
 use html2md::parse_html;
 use std::collections::{HashMap, HashSet};
@@ -162,29 +162,144 @@ const MAIN_CONTENT_SELECTORS: &[&str] = &[
     "#content",
 ];
 
-/// Extract the main textual content from HTML using heuristics.
-fn extract_main_content(document: &Html) -> String {
-    extract_main_content_anchored(document).1
+/// S2: HTML void elements — re-serialized without a closing tag.
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+];
+
+/// S2 (CODE_REVIEW §3.2): true for nodes a human visitor cannot see —
+/// the classic carrier for indirect prompt injection against browsing
+/// agents. Covers the `hidden` attribute, `aria-hidden`, `noscript`,
+/// `<template>`, and display/visibility/off-screen style tricks.
+fn is_hidden_node(el: &Element) -> bool {
+    let name = el.name();
+    if name == "noscript" || name == "template" {
+        return true;
+    }
+    // Boolean `hidden` attribute — presence hides regardless of value.
+    if el.attr("hidden").is_some() {
+        return true;
+    }
+    if el.attr("aria-hidden").is_some_and(|v| v.eq_ignore_ascii_case("true")) {
+        return true;
+    }
+    if let Some(style) = el.attr("style") {
+        // Normalize: lowercase + strip all whitespace so both
+        // "display: none" and "display:none" (and CRLF variants) match.
+        let norm: String = style
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if norm.contains("display:none")
+            || norm.contains("visibility:hidden")
+            || norm.contains("left:-9999px")
+            || norm.contains("top:-9999px")
+            || norm.contains("left:-9999em")
+            || norm.contains("top:-9999em")
+        {
+            return true;
+        }
+    }
+    false
 }
 
-/// Like [`extract_main_content`] but also reports which selector won:
-/// returns (selector_label, html_fragment). The label is one of the
-/// entries of MAIN_CONTENT_SELECTORS, or "body" / "document" fallbacks.
-fn extract_main_content_anchored(document: &Html) -> (String, String) {
+/// Re-escape attribute values for re-serialization (scraper hands back
+/// already-unescaped values).
+fn escape_attr_value(out: &mut String, value: &str) {
+    for c in value.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            _ => out.push(c),
+        }
+    }
+}
+
+/// S2: re-serialize an element subtree, skipping hidden nodes. Scraper's
+/// DOM is immutable, so the fragment is rebuilt instead of mutated.
+fn serialize_visible(el: ElementRef<'_>, out: &mut String, removed: &mut usize) {
+    if is_hidden_node(el.value()) {
+        *removed += 1;
+        return;
+    }
+    let name = el.value().name();
+    out.push('<');
+    out.push_str(name);
+    for (attr_name, attr_value) in el.value().attrs() {
+        out.push(' ');
+        out.push_str(attr_name);
+        out.push_str("=\"");
+        escape_attr_value(out, attr_value);
+        out.push('"');
+    }
+    out.push('>');
+    for child in el.children() {
+        let child_node = child.value();
+        if child_node.is_element() {
+            if let Some(child_el) = ElementRef::wrap(child) {
+                serialize_visible(child_el, out, removed);
+            }
+        } else if let Some(text) = child_node.as_text() {
+            out.push_str(text);
+        } else if let Some(comment) = child_node.as_comment() {
+            out.push_str("<!--");
+            out.push_str(comment);
+            out.push_str("-->");
+        }
+    }
+    if !VOID_ELEMENTS.contains(&name) {
+        out.push_str("</");
+        out.push_str(name);
+        out.push('>');
+    }
+}
+
+/// S2: strip hidden subtrees from an HTML fragment.
+/// Returns (cleaned_html, number_of_removed_nodes).
+fn strip_hidden(fragment: &str) -> (String, usize) {
+    let doc = Html::parse_fragment(fragment);
+    let mut out = String::new();
+    let mut removed = 0;
+    for child in doc.root_element().children() {
+        let child_node = child.value();
+        if child_node.is_element() {
+            if let Some(el) = ElementRef::wrap(child) {
+                serialize_visible(el, &mut out, &mut removed);
+            }
+        } else if let Some(text) = child_node.as_text() {
+            out.push_str(text);
+        }
+    }
+    (out, removed)
+}
+
+/// Extract the main content with heuristics.
+///
+/// Returns (selector_label, cleaned_html_fragment, hidden_nodes_removed)
+/// (S2): the fragment has hidden subtrees stripped, and the label is one
+/// of the entries of MAIN_CONTENT_SELECTORS, or the "body" / "document"
+/// fallbacks.
+fn extract_main_content_anchored(document: &Html) -> (String, String, usize) {
     for sel_str in MAIN_CONTENT_SELECTORS {
         if let Ok(sel) = Selector::parse(sel_str) {
             if let Some(el) = document.select(&sel).next() {
-                return ((*sel_str).to_string(), el.html());
+                let (clean, removed) = strip_hidden(&el.html());
+                return ((*sel_str).to_string(), clean, removed);
             }
         }
     }
 
     let body_sel = Selector::parse("body").unwrap();
     if let Some(body) = document.select(&body_sel).next() {
-        return ("body".to_string(), body.html());
+        let (clean, removed) = strip_hidden(&body.html());
+        return ("body".to_string(), clean, removed);
     }
 
-    ("document".to_string(), document.html())
+    let (clean, removed) = strip_hidden(&document.html());
+    ("document".to_string(), clean, removed)
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -238,26 +353,29 @@ fn extract_links_with_text(
 // 5. Process rendered HTML (shared between static and smart fetch)
 // ────────────────────────────────────────────────────────────────
 
-fn process_html(html: &str, url: &str) -> Result<(String, Vec<String>), String> {
-    process_html_anchored(html, url, 20).map(|(md, pairs)| {
-        (md, pairs.into_iter().map(|(u, _)| u).collect())
+fn process_html(html: &str, url: &str) -> Result<(String, Vec<String>, usize), String> {
+    process_html_anchored(html, url, 20).map(|(md, pairs, removed)| {
+        (md, pairs.into_iter().map(|(u, _)| u).collect(), removed)
     })
 }
 
 /// Like process_html but keeps anchor text alongside each URL.
+/// Third tuple member: hidden nodes stripped from the fragment (S2).
 fn process_html_anchored(
     html: &str,
     url: &str,
     cap: usize,
-) -> Result<(String, Vec<(String, String)>), String> {
+) -> Result<ProcessedPage, String> {
     let document = Html::parse_document(html);
     let base_url = Url::parse(url)
         .map_err(|e| format!("URL parse error: {}", e))?;
 
     let links = extract_links_with_text(&document, &base_url, cap);
-    let main_html = extract_main_content(&document);
+    // S2: the fragment is re-serialized without hidden subtrees before
+    // markdown conversion.
+    let (_label, main_html, removed) = extract_main_content_anchored(&document);
     let markdown = parse_html(&main_html);
-    Ok((markdown, links))
+    Ok((markdown, links, removed))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -365,7 +483,8 @@ async fn fetch_pairs_inner(
 ) -> Result<(String, Vec<(String, String)>), String> {
     let client = build_client()?;
     let html = http_fetch_html(&client, url).await?;
-    process_html_anchored(&html, url, cap)
+    let (md, pairs, _removed) = process_html_anchored(&html, url, cap)?;
+    Ok((md, pairs))
 }
 
 fn fetch_and_extract_single(url: &str) -> Result<(String, Vec<String>), String> {
@@ -394,8 +513,8 @@ fn fetch_html_full_single(url: &str, cap: usize) -> Result<FullPage, String> {
     rt.block_on(async {
         let client = build_client()?;
         let html = http_fetch_html(&client, url).await?;
-        let (md, links) = process_html_anchored(&html, url, cap)?;
-        Ok((html, md, links))
+        let (md, links, removed) = process_html_anchored(&html, url, cap)?;
+        Ok((html, md, links, removed))
     })
 }
 
@@ -405,8 +524,11 @@ fn fetch_html_full_single(url: &str, cap: usize) -> Result<FullPage, String> {
 
 // Type aliases keep the batch return types within clippy's complexity budget.
 type AnchoredPage = (String, Vec<(String, String)>);
-/// Full fetch payload: (raw_html, markdown, [(url, anchor_text)]).
-type FullPage = (String, String, Vec<(String, String)>);
+/// Processed page: (markdown, [(url, anchor_text)], hidden_nodes_removed).
+type ProcessedPage = (String, Vec<(String, String)>, usize);
+/// Full fetch payload: (raw_html, markdown, [(url, anchor_text)],
+/// hidden_nodes_removed).
+type FullPage = (String, String, Vec<(String, String)>, usize);
 type BatchOutcome = Vec<(String, Result<AnchoredPage, String>)>;
 type PyBatchResult = Vec<(String, Option<String>, Option<Vec<(String, String)>>)>;
 
@@ -476,7 +598,8 @@ async fn fetch_many_inner(
             let res = async {
                 let client = build_client()?;
                 let html = http_fetch_html(&client, &url).await?;
-                process_html_anchored(&html, &url, cap)
+                let (md, pairs, _removed) = process_html_anchored(&html, &url, cap)?;
+                Ok((md, pairs))
             }
             .await;
             (url, res)
@@ -511,16 +634,16 @@ fn fetch_many(
 // ────────────────────────────────────────────────────────────────
 
 /// Python binding: process HTML already fetched/rendered by the caller
-/// (e.g. via browser_oxide) -> (markdown, list_of_links).
+/// (e.g. via browser_oxide) -> (markdown, list_of_links, hidden_removed).
 #[pyfunction]
 fn process_rendered_html(
     py: Python<'_>,
     html: String,
     url: String,
-) -> PyResult<(String, Vec<String>)> {
+) -> PyResult<(String, Vec<String>, usize)> {
     py.detach(|| {
         match process_html(&html, &url) {
-            Ok((md, links)) => Ok((md, links)),
+            Ok((md, links, removed)) => Ok((md, links, removed)),
             Err(e) => Err(pyo3::exceptions::PyValueError::new_err(e)),
         }
     })
@@ -621,7 +744,7 @@ fn extract_main_content_markdown(
 ) -> PyResult<(String, String)> {
     py.detach(|| {
         let document = Html::parse_document(&html);
-        let (label, fragment) = extract_main_content_anchored(&document);
+        let (label, fragment, _removed) = extract_main_content_anchored(&document);
         Ok((label, parse_html(&fragment)))
     })
 }

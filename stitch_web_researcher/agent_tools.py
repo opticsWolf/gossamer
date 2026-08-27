@@ -18,9 +18,7 @@ from pdf_oxide import PdfDocument
 from office_oxide import Document as OfficeDoc
 
 from stitch_web_researcher._core import (
-    fetch_and_extract,
     batch_research,
-    fetch_and_extract_linked,
     fetch_html_full,
     extract_links_from_html as _extract_links_from_html,
     process_rendered_html as _process_rendered_html,
@@ -120,7 +118,10 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
 
     # Anchored links + markdown via the Rust core
     links = _extract_links_from_html(html, url, 100)
-    markdown, _ = _process_rendered_html(html, url)
+    markdown, _links, removed = _process_rendered_html(html, url)
+    # S2: report how many hidden nodes the Rust core stripped.
+    if removed:
+        metadata["hidden_blocks_removed"] = removed
     return markdown, links, metadata
 
 
@@ -157,8 +158,10 @@ def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
 
     # Fallback to static Rust fetch — fetch_html_full keeps the raw HTML so
     # metadata extraction matches the browser path (C2).
-    html, md, links = fetch_html_full(url, 100)
+    html, md, links, removed = fetch_html_full(url, 100)
     metadata = meta_extractor.extract_all(html, url)
+    if removed:
+        metadata["hidden_blocks_removed"] = removed
     return md, links, metadata
 
 
@@ -825,8 +828,10 @@ class WebResearcherToolbox:
         links, so the static path runs the same meta-oxide metadata
         extraction as the browser path — no second network round-trip.
         """
-        html, md, links = fetch_html_full(url, self.link_cap)
+        html, md, links, removed = fetch_html_full(url, self.link_cap)
         metadata = meta_extractor.extract_all(html, url)
+        if removed:
+            metadata["hidden_blocks_removed"] = removed
         return md, links, metadata, "static"
 
     def _browser_fetch(self, url: str):
@@ -1062,6 +1067,11 @@ class WebResearcherToolbox:
             compact["canonical"] = rel["canonical"][0]
         if rel.get("alternate"):
             compact["alternates"] = rel["alternate"]
+
+        # S2: surface how many hidden nodes were stripped from the
+        # main-content fragment before markdown conversion.
+        if raw.get("hidden_blocks_removed"):
+            compact["hidden_blocks_removed"] = raw["hidden_blocks_removed"]
 
         return compact
 
