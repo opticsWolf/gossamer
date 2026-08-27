@@ -10,7 +10,6 @@ Provides:
 import json
 import logging
 import os
-import shutil
 import tempfile
 import threading
 import time
@@ -127,7 +126,13 @@ class Cache:
         self._disk_put(key, content)
 
     def clear(self) -> None:
-        """Clear both memory and disk caches."""
+        """Clear both memory and disk caches.
+
+        S6: disk clearing is *scoped* to cache-owned files -- the
+        configured directory itself is never deleted and unrelated
+        files are never touched, because ``cache_dir`` is
+        user-configurable and ``clear_cache`` is LLM-invocable.
+        """
         with self._lock:
             self._memory.clear()
         self._clear_disk()
@@ -256,12 +261,30 @@ class Cache:
                     pass
 
     def _clear_disk(self) -> None:
-        """Remove all cached files from disk."""
-        try:
-            shutil.rmtree(self.cache_path)
-            self.cache_path.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            logger.warning("Failed to clear disk cache: %s", e)
+        """Remove cache-owned files (``*.cache``, ``*.meta``, ``*.tmp``).
+
+        S6: never ``shutil.rmtree`` the configured directory and never
+        touch unrelated files or subdirectories. The directory is
+        user-configurable and ``clear_cache`` can be invoked by an LLM,
+        so a misconfigured path must not become a data-loss path.
+        """
+        if not self.cache_path.exists():
+            return
+        removed = 0
+        for f in self.cache_path.iterdir():
+            if f.is_file() and f.suffix in (".cache", ".meta", ".tmp"):
+                try:
+                    f.unlink()
+                    removed += 1
+                except OSError:
+                    logger.debug(
+                        "Could not remove cache file %s", f, exc_info=True
+                    )
+        logger.info(
+            "Disk cache cleared (%d files removed from %s)",
+            removed,
+            self.cache_path,
+        )
 
     def _disk_size_bytes(self) -> int:
         """Calculate total size of disk cache in bytes.

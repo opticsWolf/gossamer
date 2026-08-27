@@ -1515,7 +1515,11 @@ class WebResearcherToolbox:
 
     def clear_cache(self) -> str:
         """Clear both memory and disk caches and the visited-URL set (C3:
-        after a cache reset, previously visited URLs can be re-fetched)."""
+        after a cache reset, previously visited URLs can be re-fetched).
+
+        S6: the disk cache is cleared by removing only cache-owned
+        files (``*.cache``/``*.meta``/``*.tmp``) -- the configured cache
+        directory and any unrelated files in it are left intact."""
         self.cache.clear()
         self.reset_visited()
         return json.dumps({"cache_cleared": True, "stats": self.cache.stats()}, indent=2)
