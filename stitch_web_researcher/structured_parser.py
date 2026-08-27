@@ -6,7 +6,6 @@ tables, and metadata from PDF / DOCX / XLSX / PPTX files.
 All outputs are validated through Pydantic v2 schemas.
 """
 
-import json
 import logging
 from datetime import datetime
 from pathlib import Path

@@ -72,6 +72,8 @@ __all__ = [
     "GoogleProvider",
     "BingProvider",
     "ExaProvider",
+    "BrowserOxideSearchProvider",
+    "RateLimit",
     "get_default_providers",
     "resolve_provider_name",
     # HTML metadata extraction

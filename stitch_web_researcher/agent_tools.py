@@ -6,10 +6,9 @@ import random
 import time
 import warnings
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-import tempfile
 from typing import Optional
 from urllib.parse import urlparse, urljoin
 
@@ -29,10 +28,7 @@ from stitch_web_researcher._core import (
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import (
     StructuredOxideParser,
-    ParsedDocumentPayload,
     FollowUpCandidate,
-    DOCUMENT_EXTENSIONS,
-    classify_link,
     build_follow_up_candidates,
 )
 from stitch_web_researcher.search_providers import (

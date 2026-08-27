@@ -237,6 +237,12 @@ fn fetch_and_extract_single_anchored(
 // 7. Batch fetch (concurrent)
 // ────────────────────────────────────────────────────────────────
 
+// Type aliases keep the batch return types within clippy's complexity budget.
+type AnchoredPage = (String, Vec<(String, String)>);
+type BatchOutcome = Vec<(String, Result<AnchoredPage, String>)>;
+type PyBatchResult = Vec<(String, Option<String>, Option<Vec<(String, String)>>)>;
+
+
 /// Cheap pseudo-random milliseconds in `0..bound`, used for politeness
 /// jitter. Not cryptographic — just enough to desynchronize access.
 fn jitter_ms(bound_ms: u64) -> u64 {
@@ -251,7 +257,7 @@ async fn fetch_many_inner(
     cap: usize,
     max_concurrency: usize,
     domain_gap_ms: u64,
-) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
+) -> BatchOutcome {
     // Bounds simultaneous connections so a large same-domain batch cannot
     // open unbounded sockets (self-DoS / rude to the target).
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency.max(1)));
@@ -327,7 +333,7 @@ fn fetch_many(
     cap: usize,
     max_concurrency: usize,
     domain_gap_ms: u64,
-) -> Vec<(String, Result<(String, Vec<(String, String)>), String>)> {
+) -> BatchOutcome {
     let rt = shared_runtime();
     rt.block_on(fetch_many_inner(urls, cap, max_concurrency, domain_gap_ms))
 }
@@ -408,7 +414,7 @@ fn batch_research(
     max_links: usize,
     max_concurrency: usize,
     domain_gap_ms: u64,
-) -> PyResult<Vec<(String, Option<String>, Option<Vec<(String, String)>>)>> {
+) -> PyResult<PyBatchResult> {
     py.detach(|| {
         let results = fetch_many(urls, max_links, max_concurrency, domain_gap_ms);
         let mut out = Vec::new();
