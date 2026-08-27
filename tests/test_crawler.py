@@ -18,6 +18,90 @@ from stitch_web_researcher import (
 )
 
 
+# ============================================
+# P9: local HTTP server (deterministic fetch tests)
+# ============================================
+# Tests that only need "a page to fetch" run against a local server
+# instead of example.com/httpbin.org.  Truly live tests (search
+# providers, browser rendering) are marked @pytest.mark.slow and are
+# excluded from the default run (pyproject: -m 'not slow').
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+_ALLOW_PRIVATE_ENV = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+
+
+def _page_html(slug: str, port: int) -> str:
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Local Test Page {slug}</title>
+<meta name="description" content="Deterministic local test page {slug}.">
+<meta property="og:title" content="OG {slug}">
+</head>
+<body>
+<article>
+<h1>Local page {slug}</h1>
+<p>Stable content served by the P9 local HTTP fixture.</p>
+<p>Second paragraph, for markdown extraction.</p>
+<a href="/page-two">second page</a>
+<a href="http://127.0.0.1:{port}/page-three">third page</a>
+</article>
+</body>
+</html>
+"""
+
+
+class _LocalHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):
+        pass  # keep test output clean
+
+    def do_GET(self):
+        port = self.server.server_address[1]
+        if self.path == "/robots.txt":
+            body = b"User-agent: *\nAllow: /\n"
+            ctype = "text/plain"
+        else:
+            slug = self.path.strip("/") or "root"
+            body = _page_html(slug, port).encode("utf-8")
+            ctype = "text/html; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+@pytest.fixture(scope="module")
+def local_server():
+    """Local HTTP server standing in for the open web (P9)."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _LocalHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}"
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _allow_local_origin():
+    """The S1 SSRF guard blocks loopback by default; its documented
+    escape hatch (see ssrf.py) lets these tests hit the local server."""
+    old = os.environ.get(_ALLOW_PRIVATE_ENV)
+    os.environ[_ALLOW_PRIVATE_ENV] = "1"
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop(_ALLOW_PRIVATE_ENV, None)
+        else:
+            os.environ[_ALLOW_PRIVATE_ENV] = old
+
+
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Rust Core Tests
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -25,11 +109,11 @@ from stitch_web_researcher import (
 class TestRustCore:
     """Tests for the Rust core bindings."""
 
-    def test_fetch_single(self):
-        """Test fetching a well-known simple page."""
-        md, links = fetch_and_extract("https://example.com")
+    def test_fetch_single(self, local_server):
+        """Test fetching a page (local server, P9)."""
+        md, links = fetch_and_extract(f"{local_server}/alpha")
         assert isinstance(md, str)
-        assert "example" in md.lower()
+        assert "alpha" in md.lower()
         assert isinstance(links, list)
 
     def test_fetch_nonexistent_domain(self):
@@ -37,9 +121,9 @@ class TestRustCore:
         with pytest.raises(Exception):
             fetch_and_extract("https://this-domain-definitely-does-not-exist-12345.com")
 
-    def test_batch_research(self):
-        """Test batch fetching multiple pages."""
-        urls = ["https://example.com", "https://httpbin.org/html"]
+    def test_batch_research(self, local_server):
+        """Test batch fetching multiple pages (local server, P9)."""
+        urls = [f"{local_server}/alpha", f"{local_server}/beta"]
         results = batch_research(urls)
         assert len(results) == 2
 
@@ -48,12 +132,15 @@ class TestRustCore:
             if md_opt is not None and links_opt is not None:
                 assert isinstance(md_opt, str)
                 assert isinstance(links_opt, list)
+                assert md_opt  # local server always yields markdown
 
-    def test_fetch_smart_page(self):
-        """Test smart fetch with headless JS rendering (falls back to static)."""
-        md, links, metadata = fetch_smart_page("https://example.com")
+    @pytest.mark.slow
+    def test_fetch_smart_page(self, local_server):
+        """Smart fetch (stealth browser when available, static fallback).
+        May launch browser_oxide, so marked slow (P9)."""
+        md, links, metadata = fetch_smart_page(f"{local_server}/alpha")
         assert isinstance(md, str)
-        assert "example" in md.lower()
+        assert "alpha" in md.lower()
         assert isinstance(links, list)
         assert isinstance(metadata, dict)
 
@@ -62,14 +149,14 @@ class TestRustCore:
         with pytest.raises(Exception):
             fetch_smart_page("https://this-domain-definitely-does-not-exist-12345.com")
 
-    def test_shared_runtime_reuse(self):
+    def test_shared_runtime_reuse(self, local_server):
         """Verify that multiple calls share the same Tokio runtime (no cold-start penalty)."""
+        url = f"{local_server}/warm"
         start = time.time()
         for _ in range(3):
-            fetch_and_extract("https://example.com")
+            fetch_and_extract(url)
         elapsed = time.time() - start
-        # 3 sequential fetches with shared runtime should be fast
-        # (each fetch ~1-2s, total < 10s)
+        # 3 sequential local fetches with shared runtime: well under 15s
         assert elapsed < 15
 
 
@@ -90,48 +177,54 @@ class TestToolbox:
             domain_delay=0.1,
         )
 
+    @pytest.mark.slow
     def test_search_web(self, toolbox):
-        """Test DuckDuckGo search."""
+        """Test DuckDuckGo search (live provider — slow, P9)."""
         result = toolbox.search_web("rust programming language", max_results=2)
         data = json.loads(result)
-        if "error" not in data:
-            assert isinstance(data, list)
-            assert len(data) <= 2
-            if len(data) > 0:
-                assert "url" in data[0] or "href" in data[0]
+        if isinstance(data, dict) and "error" in data:
+            pytest.skip(f"live search provider unavailable: {data['error']}")
+        assert isinstance(data, list)
+        assert 0 < len(data) <= 2
+        assert all("url" in r for r in data)
 
-    def test_inspect_html(self, toolbox):
-        """Test HTML page inspection."""
-        result = toolbox.inspect_html_page("https://example.com")
+    def test_inspect_html(self, toolbox, local_server):
+        """Test HTML page inspection (local server, P9)."""
+        result = toolbox.inspect_html_page(f"{local_server}/alpha")
         data = json.loads(result)
-        if "error" not in data:
-            assert "markdown" in data
-            assert "follow_up_links" in data
-            assert isinstance(data["markdown"], str)
+        assert "error" not in data
+        assert "markdown" in data
+        assert "follow_up_links" in data
+        assert isinstance(data["markdown"], str)
+        assert "alpha" in data["markdown"]
+        assert len(data["follow_up_links"]) >= 1
 
-    def test_inspect_html_smart(self, toolbox):
-        """Test HTML page inspection with use_smart=True (stealth first, static fallback)."""
-        result = toolbox.inspect_html_page("https://example.com", use_smart=True)
+    @pytest.mark.slow
+    def test_inspect_html_smart(self, toolbox, local_server):
+        """use_smart=True (stealth first, static fallback). May launch
+        browser_oxide, so marked slow (P9)."""
+        result = toolbox.inspect_html_page(f"{local_server}/alpha", use_smart=True)
         data = json.loads(result)
-        if "error" not in data:
-            assert "markdown" in data
-            assert "fetch_method" in data
-            # "browser" when stealth fetch works (needs browser_oxide),
-            # "static" when it fell back.
-            assert data["fetch_method"] in ("browser", "smart", "static")
+        assert "error" not in data
+        assert "markdown" in data
+        assert "fetch_method" in data
+        # "browser" when stealth fetch works (needs browser_oxide),
+        # "static" when it fell back.
+        assert data["fetch_method"] in ("browser", "smart", "static")
 
-    def test_visited_deduplication(self, toolbox):
+    def test_visited_deduplication(self, toolbox, local_server):
         """Repeat visits to fetched URLs are served from cache (C3):
         a successfully fetched URL is re-served with cache_hit=true instead
-        of a content-free warning; a failed URL is retried, not blacklisted."""
-        url = "https://example.com"
+        of a content-free warning; a failed URL is retried, not blacklisted.
+        (local server, P9)"""
+        url = f"{local_server}/alpha"
         first = json.loads(toolbox.inspect_html_page(url))
+        assert "error" not in first
         result2 = toolbox.inspect_html_page(url)
         data2 = json.loads(result2)
         assert "warning" not in data2
-        if "error" not in first:
-            assert data2["cache_hit"] is True
-            assert data2["markdown"] == first["markdown"]
+        assert data2["cache_hit"] is True
+        assert data2["markdown"] == first["markdown"]
 
     def test_llm_definitions(self, toolbox):
         """Test LLM tool definitions schema."""
@@ -158,23 +251,24 @@ class TestToolbox:
         assert "cache" in stats
         assert "memory_entries" in stats["cache"]
 
-    def test_reset_visited(self, toolbox):
-        """Test resetting visited URLs."""
-        toolbox.inspect_html_page("https://example.com")
+    def test_reset_visited(self, toolbox, local_server):
+        """Test resetting visited URLs (local server, P9)."""
+        toolbox.inspect_html_page(f"{local_server}/alpha")
         assert len(toolbox.visited_urls) > 0
         toolbox.reset_visited()
         stats = json.loads(toolbox.get_stats())
         assert stats["visited_urls_count"] == 0
 
-    def test_batch_inspect(self, toolbox):
-        """Test batch page inspection."""
-        urls = ["https://example.com", "https://httpbin.org/html"]
+    def test_batch_inspect(self, toolbox, local_server):
+        """Test batch page inspection (local server, P9)."""
+        urls = [f"{local_server}/alpha", f"{local_server}/beta"]
         result = toolbox.batch_inspect_pages(urls)
         data = json.loads(result)
         assert isinstance(data, list)
         assert len(data) == 2
         for item in data:
             assert "url" in item
+            assert "error" not in item
 
     def test_url_validation(self, toolbox):
         """Test URL validation catches malformed URLs."""
@@ -183,9 +277,10 @@ class TestToolbox:
         with pytest.raises(ValueError):
             toolbox.inspect_html_page("ftp://example.com/file.txt")
 
-    def test_caching(self, toolbox, tmp_path):
-        """inspect_html_page caches fetches; repeats are served from cache."""
-        url = "https://example.com"
+    def test_caching(self, toolbox, tmp_path, local_server):
+        """inspect_html_page caches fetches; repeats are served from cache
+        (local server, P9)."""
+        url = f"{local_server}/alpha"
 
         # First call hits the network and populates both cache tiers.
         result1 = json.loads(toolbox.inspect_html_page(url))
@@ -201,20 +296,23 @@ class TestToolbox:
         result2 = json.loads(toolbox.inspect_html_page(url))
         assert result2["cache_hit"] is True
 
-    def test_domain_rate_limiting(self, toolbox):
-        """Per-domain rate limiting applies to distinct-URL real fetches."""
+    def test_domain_rate_limiting(self, toolbox, local_server):
+        """Per-domain rate limiting applies to distinct-URL real fetches
+        (local server, P9)."""
         start = time.time()
-        toolbox.inspect_html_page("https://example.com/rate-a")
-        toolbox.inspect_html_page("https://example.com/rate-b")
+        toolbox.inspect_html_page(f"{local_server}/rate-a")
+        toolbox.inspect_html_page(f"{local_server}/rate-b")
         elapsed = time.time() - start
         # Should take at least domain_delay (0.1s) between requests
         assert elapsed >= 0.08  # small tolerance
 
+    @pytest.mark.slow
     def test_retry_decorator(self):
-        """Test that retry decorator works on failures."""
+        """Retry decorator on a live search (slow, P9)."""
         tb = WebResearcherToolbox(ddgs_delay=0.0)
         result = tb.search_web("test query that should work")
-        assert "error" in json.loads(result) or isinstance(json.loads(result), list)
+        data = json.loads(result)
+        assert "error" in data or isinstance(data, list)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -225,17 +323,21 @@ class TestToolbox:
 class TestAsyncToolbox:
     """Tests for async variants."""
 
+    @pytest.mark.slow
     async def test_search_web_async(self):
+        """Live DuckDuckGo search (slow, P9)."""
         tb = WebResearcherToolbox(ddgs_delay=0.1)
         result = await tb.search_web_async("python programming", max_results=2)
         data = json.loads(result)
         assert "error" in data or isinstance(data, list)
 
-    async def test_inspect_html_async(self):
+    async def test_inspect_html_async(self, local_server):
         tb = WebResearcherToolbox(domain_delay=0.1)
-        result = await tb.inspect_html_page_async("https://example.com")
+        result = await tb.inspect_html_page_async(f"{local_server}/alpha")
         data = json.loads(result)
-        assert "markdown" in data or "error" in data
+        assert "error" not in data
+        assert "markdown" in data
+        assert "alpha" in data["markdown"]
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -583,24 +685,24 @@ class TestToolboxTokenBudget:
         assert stats["max_tokens"] == 200
         assert stats["model_name"] == "gpt-4o"
 
-    def test_inspect_returns_token_count(self):
-        """inspect_html_page includes markdown_tokens in output."""
+    def test_inspect_returns_token_count(self, local_server):
+        """inspect_html_page includes markdown_tokens in output (P9)."""
         tb = WebResearcherToolbox(max_tokens=500, domain_delay=0.1)
-        result = tb.inspect_html_page("https://example.com")
+        result = tb.inspect_html_page(f"{local_server}/alpha")
         data = json.loads(result)
-        if "error" not in data:
-            assert "markdown_tokens" in data
-            assert isinstance(data["markdown_tokens"], int)
-            assert data["markdown_tokens"] <= 500  # respects budget
+        assert "error" not in data
+        assert "markdown_tokens" in data
+        assert isinstance(data["markdown_tokens"], int)
+        assert data["markdown_tokens"] <= 500  # respects budget
 
-    def test_inspect_without_token_limit(self):
-        """Without max_tokens, truncation is char-only."""
+    def test_inspect_without_token_limit(self, local_server):
+        """Without max_tokens, truncation is char-only (P9)."""
         tb = WebResearcherToolbox(max_markdown_chars=100, domain_delay=0.1)
-        result = tb.inspect_html_page("https://example.com")
+        result = tb.inspect_html_page(f"{local_server}/alpha")
         data = json.loads(result)
-        if "error" not in data:
-            # char limit + ellipsis suffix ("\n\n... [truncated]" = 17 chars)
-            assert len(data["markdown"]) <= 120
+        assert "error" not in data
+        # char limit + ellipsis suffix ("\n\n... [truncated]" = 17 chars)
+        assert len(data["markdown"]) <= 120
 
 
 # ────────────────────────────────────────────────────────────────
@@ -680,28 +782,30 @@ class TestHTMLStructuredParsing:
         assert payload.metadata.format == "html"
         assert len(payload.pages) == 1
 
-    def test_inspect_html_structured_basic(self, tmp_path):
-        """inspect_html_structured returns valid JSON."""
+    def test_inspect_html_structured_basic(self, tmp_path, local_server):
+        """inspect_html_structured returns valid JSON (local server, P9)."""
         tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
-        result = tb.inspect_html_structured("https://example.com")
+        result = tb.inspect_html_structured(f"{local_server}/alpha")
         data = json.loads(result)
         assert "metadata" in data
         assert "pages" in data
         assert len(data["pages"]) == 1
         assert data["metadata"]["format"] == "html"
+        assert data["metadata"]["title"] == "Local Test Page alpha"
 
-    def test_inspect_html_structured_with_smart(self, tmp_path):
-        """inspect_html_structured with use_smart=True."""
+    @pytest.mark.slow
+    def test_inspect_html_structured_with_smart(self, tmp_path, local_server):
+        """use_smart=True (may launch browser_oxide — slow, P9)."""
         tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
-        result = tb.inspect_html_structured("https://example.com", use_smart=True)
+        result = tb.inspect_html_structured(f"{local_server}/alpha", use_smart=True)
         data = json.loads(result)
         assert "metadata" in data
         assert "pages" in data
 
-    def test_inspect_html_structured_token_truncation(self, tmp_path):
+    def test_inspect_html_structured_token_truncation(self, tmp_path, local_server):
         """inspect_html_structured respects token budget (may truncate JSON)."""
         tb = WebResearcherToolbox(max_tokens=100, domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
-        result = tb.inspect_html_structured("https://example.com")
+        result = tb.inspect_html_structured(f"{local_server}/alpha")
         # With aggressive token budget, output may be truncated (not valid JSON)
         # The key is that it's short
         assert len(result) < 500
