@@ -10,7 +10,7 @@ import logging
 import random
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
 from typing import Dict, List, Optional, Union
 
@@ -115,7 +115,10 @@ class SearchProvider(ABC):
         ``RateLimit``, plus an optional ``fetch_delay`` override.
         """
         if isinstance(delay, RateLimit):
-            self.rate_limit = delay
+            # M13: keep a private copy — the fetch_delay override below
+            # (and any future mutation) must not leak into a RateLimit
+            # shared with other providers.
+            self.rate_limit = replace(delay)
         elif delay is not None:
             self.rate_limit = RateLimit(search_interval=float(delay))
         else:
