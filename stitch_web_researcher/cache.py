@@ -7,6 +7,7 @@ Provides:
   - Configurable max entries, TTL, and cache directory
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -179,9 +180,13 @@ class Cache:
     # ── Internal: Disk TTL ────────────────────────────────────
 
     def _disk_key(self, key: str) -> str:
-        """Convert cache key to filename-safe string."""
-        import hashlib
-        return hashlib.md5(key.encode()).hexdigest()
+        """Convert cache key to filename-safe string.
+
+        S7: blake2b instead of MD5 -- same 16-byte digest length, but
+        MD5 trips security scanners and FIPS-mode interpreters even
+        when it is not used as a security boundary.
+        """
+        return hashlib.blake2b(key.encode("utf-8"), digest_size=16).hexdigest()
 
     def _disk_get(self, key: str) -> Optional[str]:
         """Retrieve from file-based cache if not expired."""

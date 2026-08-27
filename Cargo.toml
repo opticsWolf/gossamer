@@ -1,6 +1,6 @@
 [package]
 name = "_stitch_web_researcher_core"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2021"
 
 [lib]
