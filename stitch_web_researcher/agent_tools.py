@@ -862,8 +862,9 @@ class WebResearcherToolbox:
         """Async version of search_web."""
         # Search is I/O-bound but ddgs/google/bing SDKs are sync;
         # run in executor for non-blocking behaviour.
-        import asyncio
-        loop = asyncio.get_event_loop()
+        # M6/F6: get_running_loop() replaces the deprecated event-loop
+        # lookup; the module-level asyncio import suffices.
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self.search_web, query, max_results, provider
         )
@@ -1216,7 +1217,8 @@ class WebResearcherToolbox:
     async def inspect_html_page_async(self, url: str, use_smart: Optional[bool] = None) -> str:
         """Async version of inspect_html_page (shared implementation,
         executed in the default executor to stay non-blocking)."""
-        loop = asyncio.get_event_loop()
+        # M6: get_running_loop() replaces the deprecated event-loop lookup.
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self._inspect_html_page_impl, url, use_smart
         )
