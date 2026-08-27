@@ -11,6 +11,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import wraps
 from typing import Dict, List, Optional, Union
 
 import httpx
@@ -39,6 +40,37 @@ class RateLimit:
     fetch_interval: float = 0.5
 
 
+def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
+    """Exponential-backoff retry decorator for Python-layer methods.
+
+    Retries the wrapped call on any exception, sleeping ``delay``
+    seconds between attempts (multiplied by ``backoff`` after each
+    failure). The final attempt's exception propagates to the caller.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            _delay = delay
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_attempts - 1:
+                        logger.error(
+                            "Function %s failed after %d attempts: %s",
+                            func.__name__, max_attempts, e
+                        )
+                        raise
+                    logger.warning(
+                        "Attempt %d/%d for %s failed: %s. Retrying in %.1fs",
+                        attempt + 1, max_attempts, func.__name__, e, _delay
+                    )
+                    time.sleep(_delay)
+                    _delay *= backoff
+        return wrapper
+    return decorator
+
+
 class SearchProvider(ABC):
     """Abstract base class for all search providers."""
 
@@ -47,10 +79,23 @@ class SearchProvider(ABC):
     #: instead of deriving names from ``__class__.__name__``.
     name: str = ""
 
-    @abstractmethod
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         """
         Execute a web search and return a list of results.
+
+        Public entry point: retries the provider's ``_search_impl``
+        with exponential backoff on any exception (M3: the old
+        ``@retry`` on ``WebResearcherToolbox.search_web`` was dead
+        code because that method catches every provider exception
+        and returns an error dict, so it never raised).
+        """
+        return self._search_impl(query, max_results)
+
+    @abstractmethod
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+        """
+        Provider-specific search implementation.
 
         Each result dict should contain at least:
           - "title": str
@@ -117,7 +162,7 @@ class DuckDuckGoProvider(SearchProvider):
         self._last_search = 0.0
         self._init_rate_limit(delay, fetch_delay)
 
-    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         from ddgs import DDGS
 
         self._enforce_delay()
@@ -167,7 +212,7 @@ class GoogleProvider(SearchProvider):
         self._last_search = 0.0
         self._init_rate_limit(delay, fetch_delay)
 
-    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if not self.api_key or not self.cx:
             raise RuntimeError(
                 "GoogleProvider requires GOOGLE_API_KEY and GOOGLE_CX environment "
@@ -222,7 +267,7 @@ class BingProvider(SearchProvider):
         self._last_search = 0.0
         self._init_rate_limit(delay, fetch_delay)
 
-    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if not self.api_key:
             raise RuntimeError(
                 "BingProvider requires BING_API_KEY environment variable "
@@ -295,7 +340,7 @@ class ExaProvider(SearchProvider):
         self._init_rate_limit(delay, fetch_delay)
         self.search_type = search_type
 
-    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         self._enforce_delay()
 
         result = self.client.search(
@@ -391,7 +436,7 @@ class BrowserOxideSearchProvider(SearchProvider):
     def __del__(self):
         self.close()
 
-    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         self._enforce_delay()
         serp_html = self._render_results(query)
 

@@ -8,7 +8,6 @@ import time
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import wraps
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse, urljoin
@@ -165,36 +164,6 @@ def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
     if removed:
         metadata["hidden_blocks_removed"] = removed
     return md, links, metadata
-
-
-# ───────────────────────────────
-# Retry & Rate-Limit Utilities
-# ───────────────────────────────
-
-def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
-    """Exponential-backoff retry decorator for Python-layer methods."""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            _delay = delay
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    if attempt == max_attempts - 1:
-                        logger.error(
-                            "Function %s failed after %d attempts: %s",
-                            func.__name__, max_attempts, e
-                        )
-                        raise
-                    logger.warning(
-                        "Attempt %d/%d for %s failed: %s. Retrying in %.1fs",
-                        attempt + 1, max_attempts, func.__name__, e, _delay
-                    )
-                    time.sleep(_delay)
-                    _delay *= backoff
-        return wrapper
-    return decorator
 
 
 # ───────────────────────────────
@@ -816,7 +785,6 @@ class WebResearcherToolbox:
     # Search
     # ───────────────────────────────
 
-    @retry(max_attempts=3, delay=1.0, backoff=2.0)
     def search_web(
         self,
         query: str,
