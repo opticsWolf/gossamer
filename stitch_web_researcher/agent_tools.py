@@ -201,157 +201,190 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
 # WebResearcherToolbox
 # ───────────────────────────────
 
-# Module-level LLM function-calling tool definitions (static data).
-_LLM_TOOL_DEFINITIONS = [
-        {
+# ───────────────────────────────
+# P8: Tool registry — single source of truth
+# ───────────────────────────────
+# Every surface (LLM function-calling definitions, MCP server tools, and
+# the execute_tool dispatcher) is generated from TOOL_REGISTRY, so the
+# tool surface cannot drift across entry points.
+
+_MISSING = object()  # sentinel: parameter is required (no default)
+
+
+class ToolParam:
+    """One parameter of a registry tool."""
+
+    __slots__ = ("name", "type", "default", "description", "enum")
+
+    def __init__(self, name, type, default=_MISSING, description="", enum=None):
+        self.name = name
+        self.type = type  # Python annotation: str / int / bool / list[str]
+        self.default = default  # _MISSING when required
+        self.description = description
+        self.enum = enum  # optional list of allowed values
+
+    @property
+    def required(self) -> bool:
+        return self.default is _MISSING
+
+    @property
+    def json_schema(self) -> dict:
+        if self.type is str:
+            schema = {"type": "string"}
+        elif self.type is int:
+            schema = {"type": "integer"}
+        elif self.type is bool:
+            schema = {"type": "boolean"}
+        else:  # list[str]
+            schema = {"type": "array", "items": {"type": "string"}}
+        if self.enum is not None:
+            schema["enum"] = self.enum
+        if self.description:
+            schema["description"] = self.description
+        if not self.required:
+            schema["default"] = self.default
+        return schema
+
+
+class ToolSpec:
+    """One registry tool: surface description plus the
+    ``WebResearcherToolbox`` method it dispatches to."""
+
+    __slots__ = ("name", "description", "method", "params")
+
+    def __init__(self, name, description, method, params):
+        self.name = name
+        self.description = description
+        self.method = method
+        self.params = tuple(params)
+
+    def llm_definition(self) -> dict:
+        """Function-calling definition for LLM consumers."""
+        return {
             "type": "function",
             "function": {
-                "name": "search_web",
-                "description": "Search the web using one or more search providers. Set provider to choose a specific engine; falls back through others on failure.",
+                "name": self.name,
+                "description": self.description,
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query",
-                        },
-                        "max_results": {
-                            "type": "integer",
-                            "description": "Maximum number of results to return (default: 5)",
-                            "default": 5,
-                        },
-                        "provider": {
-                            "type": "string",
-                            "enum": ["duckduckgo", "google", "bing", "exa"],
-                            "description": "Search engine to prefer. Falls back through other providers on failure.",
-                            "default": "duckduckgo",
-                        },
-                    },
-                    "required": ["query"],
+                    "properties": {p.name: p.json_schema for p in self.params},
+                    "required": [p.name for p in self.params if p.required],
                 },
             },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "inspect_html_page",
-                "description": "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). Returns markdown text and follow-up links.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "description": "The URL to inspect",
-                        },
-                        "use_smart": {
-                            "type": "boolean",
-                            "description": "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
-                            "default": False,
-                        },
-                    },
-                    "required": ["url"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "batch_inspect_pages",
-                "description": "Fetch multiple web pages concurrently. Returns markdown and links for each.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "urls": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "List of URLs to inspect",
-                        },
-                    },
-                    "required": ["urls"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "extract_document",
-                "description": "Extract text content from PDF, DOCX, or XLSX documents via URL or local path.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "source": {
-                            "type": "string",
-                            "description": "URL or local file path to the document",
-                        },
-                    },
-                    "required": ["source"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "extract_document_structured",
-                "description": "Extract structured content (metadata, pages, tables) from PDF, DOCX, XLSX, or PPTX documents via URL or local path. Returns a validated ParsedDocumentPayload as JSON.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "source": {
-                            "type": "string",
-                            "description": "URL or local file path to the document",
-                        },
-                    },
-                    "required": ["source"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "inspect_html_structured",
-                "description": "Fetch a web page and return it as a structured ParsedDocumentPayload with metadata (OG, Twitter, JSON-LD), markdown content, and links. Set use_smart=True for JS-rendered pages.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "description": "The URL to inspect",
-                        },
-                        "use_smart": {
-                            "type": "boolean",
-                            "description": "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
-                            "default": False,
-                        },
-                    },
-                    "required": ["url"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "clear_cache",
-                "description": "Clear both the in-memory and disk research caches and the visited-URL set. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "reset_visited",
-                "description": "Forget all previously visited URLs so they can be fetched again (caches are NOT cleared). Use after a fetch failure you want to retry, or when starting a new research session on the same pages.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                },
-            },
-        },
-]
+        }
+
+    def kwargs(self, arguments: Optional[dict] = None) -> dict:
+        """Registry defaults plus caller-supplied arguments."""
+        merged = {p.name: p.default for p in self.params if not p.required}
+        merged.update(arguments or {})
+        return merged
+
+
+TOOL_REGISTRY = (
+    ToolSpec(
+        "search_web",
+        "Search the web using one or more search providers. Set provider to choose a specific engine; falls back through others on failure.",
+        "search_web",
+        (
+            ToolParam("query", str, description="The search query"),
+            ToolParam(
+                "max_results",
+                int,
+                5,
+                "Maximum number of results to return (default: 5)",
+            ),
+            ToolParam(
+                "provider",
+                str,
+                "duckduckgo",
+                "Search engine to prefer. Falls back through other providers on failure.",
+                enum=["duckduckgo", "google", "bing", "exa"],
+            ),
+        ),
+    ),
+    ToolSpec(
+        "inspect_html_page",
+        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). Returns markdown text and follow-up links.",
+        "inspect_html_page",
+        (
+            ToolParam("url", str, description="The URL to inspect"),
+            ToolParam(
+                "use_smart",
+                bool,
+                False,
+                "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
+            ),
+        ),
+    ),
+    ToolSpec(
+        "batch_inspect_pages",
+        "Fetch multiple web pages concurrently. Returns markdown and links for each.",
+        "batch_inspect_pages",
+        (
+            ToolParam("urls", list[str], description="List of URLs to inspect"),
+        ),
+    ),
+    ToolSpec(
+        "extract_document",
+        "Extract text content from PDF, DOCX, or XLSX documents via URL or local path.",
+        "extract_document",
+        (
+            ToolParam(
+                "source",
+                str,
+                description="URL or local file path to the document",
+            ),
+        ),
+    ),
+    ToolSpec(
+        "extract_document_structured",
+        "Extract structured content (metadata, pages, tables) from PDF, DOCX, XLSX, or PPTX documents via URL or local path. Returns a validated ParsedDocumentPayload as JSON.",
+        "extract_document_structured",
+        (
+            ToolParam(
+                "source",
+                str,
+                description="URL or local file path to the document",
+            ),
+        ),
+    ),
+    ToolSpec(
+        "inspect_html_structured",
+        "Fetch a web page and return it as a structured ParsedDocumentPayload with metadata (OG, Twitter, JSON-LD), markdown content, and links. Set use_smart=True for JS-rendered pages.",
+        "inspect_html_structured",
+        (
+            ToolParam("url", str, description="The URL to inspect"),
+            ToolParam(
+                "use_smart",
+                bool,
+                False,
+                "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
+            ),
+        ),
+    ),
+    ToolSpec(
+        "clear_cache",
+        "Clear both the in-memory and disk research caches and the visited-URL set. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
+        "clear_cache",
+        (),
+    ),
+    ToolSpec(
+        "reset_visited",
+        "Forget all previously visited URLs so they can be fetched again (caches are NOT cleared). Use after a fetch failure you want to retry, or when starting a new research session on the same pages.",
+        "reset_visited",
+        (),
+    ),
+    ToolSpec(
+        "get_stats",
+        "Return toolbox statistics: visited URLs, cache hit rate and size, token budget settings.",
+        "get_stats",
+        (),
+    ),
+)
+
+# Module-level LLM function-calling tool definitions — derived from the
+# registry (P8) so the LLM surface can never drift from it.
+_LLM_TOOL_DEFINITIONS = tuple(spec.llm_definition() for spec in TOOL_REGISTRY)
 
 
 
@@ -744,7 +777,30 @@ class WebResearcherToolbox:
 
     def get_llm_definitions(self) -> list[dict]:
         """Return tool definitions for LLM function calling."""
-        return copy.deepcopy(_LLM_TOOL_DEFINITIONS)
+        return copy.deepcopy(list(_LLM_TOOL_DEFINITIONS))
+
+    def execute_tool(self, name: str, arguments: Optional[dict] = None) -> str:
+        """Dispatch a tool call by name (P8).
+
+        Single dispatcher shared by every surface: LLM function-calling
+        consumers and scripted automation can drive the toolbox with a
+        ``(name, arguments)`` pair and get the tool's JSON string reply.
+
+        Args:
+            name: Registered tool name (see ``TOOL_REGISTRY``).
+            arguments: Keyword arguments for the tool; omitted optional
+                parameters fall back to the registry defaults.
+
+        Raises:
+            ValueError: if *name* is not a registered tool.
+        """
+        for spec in TOOL_REGISTRY:
+            if spec.name == name:
+                return getattr(self, spec.method)(**spec.kwargs(arguments))
+        raise ValueError(
+            f"Unknown tool: {name!r}. Valid tools: "
+            + ", ".join(spec.name for spec in TOOL_REGISTRY)
+        )
 
     # ───────────────────────────────
     # Search
@@ -1583,11 +1639,17 @@ class WebResearcherToolbox:
             indent=2,
         )
 
-    def reset_visited(self) -> None:
-        """Clear the visited URL set (and in-flight claims, S5)."""
+    def reset_visited(self) -> str:
+        """Clear the visited URL set (and in-flight claims, S5).
+
+        P8: returns a confirmation JSON (was ``None``) so every surface —
+        MCP tool, LLM tool, and execute_tool — gets the same reply."""
         with self._visit_lock:
             self.visited_urls.clear()
             self._in_flight.clear()
+        return json.dumps(
+            {"visited_cleared": True, "visited_urls_count": 0}, indent=2
+        )
 
     def clear_cache(self) -> str:
         """Clear both memory and disk caches and the visited-URL set (C3:

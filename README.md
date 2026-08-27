@@ -156,15 +156,17 @@ asyncio.run(research())
 tools = WebResearcherToolbox()
 llm_tools = tools.get_llm_definitions()
 
-# Returns list of OpenAI-compatible function definitions:
-# - search_web(query, max_results, provider)
-# - inspect_html_page(url, use_smart)
-# - batch_inspect_pages(urls)
-# - extract_document(source)
-# - extract_document_structured(source)
+# Returns OpenAI-compatible function definitions for all nine tools:
+# search_web, inspect_html_page, batch_inspect_pages, extract_document,
+# extract_document_structured, inspect_html_structured, clear_cache,
+# reset_visited, get_stats.
 
 for tool in llm_tools:
     print(tool["function"]["name"], "—", tool["function"]["description"])
+
+# All surfaces (LLM defs, MCP tools) are generated from one tool
+# registry, and the same toolbox can be driven directly by name:
+result = tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 ```
 
 ### Multi-Provider Search
