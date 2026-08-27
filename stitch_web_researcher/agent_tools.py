@@ -15,8 +15,6 @@ from urllib.parse import urlparse, urljoin
 
 import httpx
 from pydantic import BaseModel, Field
-from pdf_oxide import PdfDocument
-from office_oxide import Document as OfficeDoc
 
 from stitch_web_researcher._core import (
     batch_research,
@@ -30,6 +28,8 @@ from stitch_web_researcher.structured_parser import (
     StructuredOxideParser,
     FollowUpCandidate,
     build_follow_up_candidates,
+    require_office_oxide,
+    require_pdf_oxide,
 )
 from stitch_web_researcher.search_providers import (
     DuckDuckGoProvider,
@@ -1412,10 +1412,10 @@ class WebResearcherToolbox:
         suffix = Path(source).suffix.lower()
 
         if suffix == ".pdf":
-            doc = PdfDocument.from_bytes(data)
+            doc = require_pdf_oxide().from_bytes(data)
             return doc.to_markdown_all()
         elif suffix in (".docx", ".xlsx", ".pptx"):
-            doc = OfficeDoc.from_bytes(data)
+            doc = require_office_oxide().from_bytes(data)
             return doc.to_markdown()
         else:
             raise ValueError(f"Unsupported document format: {suffix}")

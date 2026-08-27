@@ -4,6 +4,10 @@ Structured document extraction with Pydantic v2 validation.
 Uses pdf_oxide and office_oxide to extract layout-aware content,
 tables, and metadata from PDF / DOCX / XLSX / PPTX files.
 All outputs are validated through Pydantic v2 schemas.
+
+The extractors are optional dependencies (the ``documents`` extra);
+this module imports fine without them and raises an actionable error
+at parse time instead.
 """
 
 import logging
@@ -13,8 +17,44 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
-from pdf_oxide import PdfDocument
-from office_oxide import Document as OfficeDoc
+# ────────────────────────────────────────────────────────────────
+# Optional document extractors
+#
+# pdf_oxide / office_oxide ship in the ``documents`` extra
+# (``pip install "stitch-web-researcher[documents]"``). The import is
+# best-effort so the rest of the package (HTML research, search) works
+# without them; the error surfaces at parse time with an install hint.
+# ────────────────────────────────────────────────────────────────
+
+try:
+    from pdf_oxide import PdfDocument
+except ImportError:  # optional extra not installed
+    PdfDocument = None
+
+try:
+    from office_oxide import Document as OfficeDoc
+except ImportError:  # optional extra not installed
+    OfficeDoc = None
+
+DOCUMENTS_EXTRA_HINT = (
+    "PDF/Office extraction requires the 'documents' extra — "
+    'install it with: pip install "stitch-web-researcher[documents]"'
+)
+
+
+def require_pdf_oxide():
+    """Return the ``pdf_oxide.PdfDocument`` class, or raise with an install hint."""
+    if PdfDocument is None:
+        raise ImportError(DOCUMENTS_EXTRA_HINT)
+    return PdfDocument
+
+
+def require_office_oxide():
+    """Return the ``office_oxide.Document`` class, or raise with an install hint."""
+    if OfficeDoc is None:
+        raise ImportError(DOCUMENTS_EXTRA_HINT)
+    return OfficeDoc
+
 
 logger = logging.getLogger(__name__)
 
@@ -410,7 +450,8 @@ class StructuredOxideParser:
     ) -> ParsedDocumentPayload:
         """Parse a PDF into per-page content plus flattened tables."""
         logger.info("Parsing PDF: %s", path.name)
-        with PdfDocument(str(path)) as doc:
+        PdfDoc = require_pdf_oxide()
+        with PdfDoc(str(path)) as doc:
             metadata = self._extract_pdf_metadata(path, doc)
             pages: List[ExtractedPage] = []
 
@@ -438,7 +479,8 @@ class StructuredOxideParser:
         """Parse an Excel-family file; tables come from the office IR."""
         format_type = path.suffix.lower().lstrip(".") or "xlsx"
         logger.info("Parsing Excel: %s", path.name)
-        with OfficeDoc.open(str(path)) as doc:
+        Office = require_office_oxide()
+        with Office.open(str(path)) as doc:
             metadata = self._extract_office_metadata(path, doc, format_type)
             tables = self._tables_from_office_ir(doc, format_type)
             pages = [
@@ -458,7 +500,8 @@ class StructuredOxideParser:
         """Parse a Word/PowerPoint file into a single-page payload."""
         format_type = path.suffix.lower().lstrip(".") or "docx"
         logger.info("Parsing %s: %s", format_type.upper(), path.name)
-        with OfficeDoc.open(str(path)) as doc:
+        Office = require_office_oxide()
+        with Office.open(str(path)) as doc:
             metadata = self._extract_office_metadata(path, doc, format_type)
             pages = [
                 ExtractedPage(
