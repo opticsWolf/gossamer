@@ -233,12 +233,29 @@ fn fetch_and_extract_single_anchored(
     rt.block_on(fetch_pairs_inner(url, cap))
 }
 
+/// Fetch one URL and keep the raw HTML alongside the extraction results:
+/// (html, markdown, [(url, anchor_text)]). The HTML is retained so the
+/// caller can run its own metadata extraction (e.g. meta-oxide) on the
+/// exact bytes that were rendered into the markdown — no second network
+/// round-trip (C2 fix, CODE_REVIEW_2026-08-27).
+fn fetch_html_full_single(url: &str, cap: usize) -> Result<FullPage, String> {
+    let rt = shared_runtime();
+    rt.block_on(async {
+        let client = build_client()?;
+        let html = http_fetch_html(&client, url).await?;
+        let (md, links) = process_html_anchored(&html, url, cap)?;
+        Ok((html, md, links))
+    })
+}
+
 // ────────────────────────────────────────────────────────────────
 // 7. Batch fetch (concurrent)
 // ────────────────────────────────────────────────────────────────
 
 // Type aliases keep the batch return types within clippy's complexity budget.
 type AnchoredPage = (String, Vec<(String, String)>);
+/// Full fetch payload: (raw_html, markdown, [(url, anchor_text)]).
+type FullPage = (String, String, Vec<(String, String)>);
 type BatchOutcome = Vec<(String, Result<AnchoredPage, String>)>;
 type PyBatchResult = Vec<(String, Option<String>, Option<Vec<(String, String)>>)>;
 
@@ -375,6 +392,20 @@ fn fetch_and_extract_linked(
     })
 }
 
+/// Python binding: fetch one URL -> (html, markdown, [(url, anchor_text)]).
+/// Like `fetch_and_extract_linked` but also returns the raw HTML so the
+/// caller can extract metadata from it (C2).
+#[pyfunction]
+#[pyo3(signature = (url, max_links = 100))]
+fn fetch_html_full(py: Python<'_>, url: String, max_links: usize) -> PyResult<FullPage> {
+    py.detach(|| {
+        match fetch_html_full_single(&url, max_links) {
+            Ok(res) => Ok(res),
+            Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
+        }
+    })
+}
+
 /// Python binding: extract (url, anchor_text) pairs from HTML already
 /// fetched/rendered by the caller (e.g. via browser_oxide).
 #[pyfunction]
@@ -454,6 +485,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(batch_research, m)?)?;
     m.add_function(wrap_pyfunction!(process_rendered_html, m)?)?;
     m.add_function(wrap_pyfunction!(fetch_and_extract_linked, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_html_full, m)?)?;
     m.add_function(wrap_pyfunction!(extract_links_from_html, m)?)?;
     m.add_function(wrap_pyfunction!(extract_main_content_markdown, m)?)?;
     Ok(())

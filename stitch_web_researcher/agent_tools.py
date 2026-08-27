@@ -21,6 +21,7 @@ from stitch_web_researcher._core import (
     fetch_and_extract,
     batch_research,
     fetch_and_extract_linked,
+    fetch_html_full,
     extract_links_from_html as _extract_links_from_html,
     process_rendered_html as _process_rendered_html,
     extract_main_content_markdown,
@@ -133,8 +134,9 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
 def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
     """Fetch a page with headless JS rendering via browser_oxide.
 
-    Falls back to static fetch_and_extract if browser_oxide is unavailable
-    or fails.
+    Falls back to a static Rust fetch if browser_oxide is unavailable or
+    fails. The fallback now extracts metadata from the fetched HTML too
+    (C2), so both paths return the same (markdown, links, metadata) shape.
 
     Returns (markdown, links, metadata) tuple.
     """
@@ -147,10 +149,11 @@ def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
                 url, e,
             )
 
-    # Fallback to static Rust fetch
-    md, links = fetch_and_extract(url)
-    # Rust core doesn't return HTML, so metadata is empty for static fallback
-    return md, links, {}
+    # Fallback to static Rust fetch — fetch_html_full keeps the raw HTML so
+    # metadata extraction matches the browser path (C2).
+    html, md, links = fetch_html_full(url, 100)
+    metadata = meta_extractor.extract_all(html, url)
+    return md, links, metadata
 
 
 # ───────────────────────────────
@@ -800,9 +803,15 @@ class WebResearcherToolbox:
     # Each returns the full (markdown, anchored_links, metadata, method) tuple.
 
     def _static_fetch(self, url: str):
-        """Plain HTTP fetch via the Rust core."""
-        md, links = fetch_and_extract_linked(url, self.link_cap)
-        return md, links, {}, "static"
+        """Plain HTTP fetch via the Rust core.
+
+        C2: the Rust core returns the raw HTML alongside the markdown and
+        links, so the static path runs the same meta-oxide metadata
+        extraction as the browser path — no second network round-trip.
+        """
+        html, md, links = fetch_html_full(url, self.link_cap)
+        metadata = meta_extractor.extract_all(html, url)
+        return md, links, metadata, "static"
 
     def _browser_fetch(self, url: str):
         """Stealth-browser fetch; failures propagate (strict)."""

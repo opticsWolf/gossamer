@@ -78,7 +78,7 @@ class TestRetryAfterFailure:
         # Retry the batch: only the previously-failed URL should go to the
         # engine; the visited (successful) one is skipped.
         with patch("stitch_web_researcher.agent_tools.batch_research", side_effect=fake_batch) as mock_batch:
-            second = json.loads(tb.batch_inspect_pages([ok, bad]))
+            json.loads(tb.batch_inspect_pages([ok, bad]))
         assert mock_batch.call_args[0][0] == [bad]
 
 

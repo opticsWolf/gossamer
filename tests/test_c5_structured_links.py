@@ -58,7 +58,7 @@ class TestParseHtmlLinks:
             max_links=20,
         )
         assert len(payload.links) == 20
-        assert [c.url for c in payload.links] == [l[0] for l in links[:20]]
+        assert [c.url for c in payload.links] == [p[0] for p in links[:20]]
 
     def test_parse_html_untitled_fallback(self):
         payload = StructuredOxideParser.parse_html(
