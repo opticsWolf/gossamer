@@ -174,12 +174,15 @@ def truncate_to_tokens(
         truncated = encoder.decode(truncated_tokens)
         return truncated + ellipsis
 
-    # Fallback: char-based heuristic
-    # Reserve ~4 chars per token for ellipsis
+    # Fallback: char-based heuristic (~4 chars per token)
     max_chars = max_tokens * 4
     if len(text) <= max_chars:
         return text
-    return text[: max_chars - len(ellipsis)] + ellipsis
+    # Reserve room for the ellipsis; clamp to 0 so a budget smaller
+    # than the ellipsis yields just the marker instead of a negative
+    # slice (which would return almost the whole string). (M4)
+    cut = max(0, max_chars - len(ellipsis))
+    return text[:cut] + ellipsis
 
 
 def fit_context_window(
