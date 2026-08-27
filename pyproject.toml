@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "stitch-web-researcher"
-version = "0.1.14"
-requires-python = ">=3.9"
+version = "0.1.15"
+requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
@@ -18,7 +18,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -30,6 +29,17 @@ classifiers = [
 ]
 keywords = ["web-scraping", "llm", "agent", "search", "extraction", "rust", "pyo3"]
 
+dependencies = [
+    # Core runtime dependencies (import-time or primary call paths).
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "tiktoken>=0.5",
+    "ddgs>=2.0",
+    # Rust-backed extractors (same ecosystem as the _core module).
+    "meta-oxide>=0.1",
+    "browser-oxide>=0.1",
+]
+
 [project.urls]
 Homepage = "https://github.com/stitch-crawler/stitch_crawler"
 Repository = "https://github.com/stitch-crawler/stitch_crawler"
@@ -37,6 +47,12 @@ Changelog = "https://github.com/stitch-crawler/stitch_crawler/releases"
 
 [project.optional-dependencies]
 mcp = ["mcp>=2.0"]
+# PDF/Office extraction; the package imports fine without them, but
+# extract_document / extract_document_structured require this extra.
+documents = [
+    "pdf-oxide>=0.1",
+    "office-oxide>=0.1",
+]
 
 [project.scripts]
 stitch-web-researcher-mcp = "stitch_web_researcher.mcp_server:main"

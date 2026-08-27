@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
@@ -37,46 +37,32 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-
 
-      # maturin 1.x requires an active virtualenv for `develop`; create one
-      # explicitly (setup-python alone does not provide one).
       - name: Create virtual environment
         run: python -m venv .venv
 
-      - name: Install dependencies (Linux/macOS)
+      # The maturin build backend is pulled in by pip's build isolation,
+      # so no separate maturin install or `maturin develop` step is needed.
+      # Installing the package via its metadata is what validates the
+      # runtime dependency declarations (P1).
+      - name: Install package with dependencies (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
-          ./.venv/bin/pip install maturin
+          ./.venv/bin/pip install -e ".[mcp,documents]"
           ./.venv/bin/pip install -r requirements.txt
 
-      - name: Install dependencies (Windows)
+      - name: Install package with dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          .venv\Scripts\pip.exe install maturin
+          .venv\Scripts\pip.exe install -e ".[mcp,documents]"
           .venv\Scripts\pip.exe install -r requirements.txt
-
-      - name: Build Rust core (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: |
-          ./.venv/bin/activate
-          maturin develop --release
-
-      - name: Build Rust core (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          .venv\Scripts\Activate.ps1
-          maturin develop --release
 
       - name: Run tests (Linux/macOS)
         if: runner.os != 'Windows'
-        run: |
-          ./.venv/bin/pip install pytest pytest-asyncio
-          ./.venv/bin/pytest tests/ -v --tb=short
+        run: ./.venv/bin/pytest tests/ -v --tb=short
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
-        run: |
-          .venv\Scripts\pip.exe install pytest pytest-asyncio
-          .venv\Scripts\pytest.exe tests/ -v --tb=short
+        run: .venv\Scripts\pytest.exe tests/ -v --tb=short
 
   lint:
     runs-on: ubuntu-latest
