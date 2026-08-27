@@ -398,7 +398,8 @@ def normalize_url(raw: str, base: Optional[str] = None) -> str:
       - page-relative paths ("/files/report.pdf") when *base* is given
 
     Returns a clean absolute http(s) URL; raises ValueError for strings
-    that cannot be interpreted as one.
+    that cannot be interpreted as one — including explicit relative paths
+    and existing local files, which are paths on disk, not URLs (M1).
     """
     s = (raw or '').strip().strip('"\'').strip("<>").strip()
     if not s:
@@ -417,6 +418,15 @@ def normalize_url(raw: str, base: Optional[str] = None) -> str:
         raise ValueError(f"Cannot interpret {raw!r} as a URL (contains spaces)")
 
     if not parsed.scheme:
+        # M1: an explicit relative path ("./report.pdf", "../a/b") or an
+        # existing local file ("report.pdf") must never be promoted to a
+        # URL — "report.pdf" is a path on disk, not the domain "report.pdf".
+        # Callers (e.g. extract_document) catch ValueError and fall back
+        # to disk.
+        if s.startswith(("./", "../", ".\\", "..\\")) or Path(s).exists():
+            raise ValueError(
+                f"{raw!r} looks like a local file path, not a URL"
+            )
         # Bare domain like "example.com/a" or "www.example.com".
         # Only auto-prefix when the host looks domain-like; a bare word
         # is more likely a mistake than an intranet hostname.
