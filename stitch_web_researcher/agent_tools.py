@@ -59,6 +59,16 @@ class ExtractionResult(BaseModel):
     content: str = ""
     content_tokens: int = 0
     cache_hit: bool = False
+    # Tier 1.2: set only for page-range reads (extract_document pages=...).
+    # page_range echoes the request; page_start/page_end are the 1-based
+    # inclusive bounds actually delivered (clamped to the document);
+    # total_pages is the document's full page count. On a cache hit of a
+    # range read the bounds are re-derivable only from the stored content,
+    # so they stay 0/None there.
+    page_range: Optional[str] = None
+    page_start: Optional[int] = 0
+    page_end: Optional[int] = 0
+    total_pages: int = 0
 
 
 class InspectionResult(BaseModel):
@@ -397,13 +407,19 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "extract_document",
-        "Extract text content from PDF, DOCX, or XLSX documents via URL or local path.",
+        "Extract text content from PDF, DOCX, or XLSX documents via URL or local path. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
         "extract_document",
         (
             ToolParam(
                 "source",
                 str,
                 description="URL or local file path to the document",
+            ),
+            ToolParam(
+                "pages",
+                str,
+                None,
+                "1-based inclusive page range for PDFs ('10', '10-20', '10-', '-20'); for XLSX the range selects sheets. Without it, the whole document is returned (subject to the output budget).",
             ),
         ),
     ),
@@ -1604,8 +1620,22 @@ class WebResearcherToolbox:
     # Document Extraction
     # ───────────────────────────────
 
-    def extract_document(self, source: str) -> str:
-        """Extract text content from PDF, DOCX, or XLSX documents."""
+    def extract_document(self, source: str, pages: Optional[str] = None) -> str:
+        """Extract text content from PDF, DOCX, or XLSX documents.
+
+        Parameters
+        ----------
+        source : str
+            URL or local file path.
+        pages : str, optional
+            1-based inclusive page range: ``"10"``, ``"10-20"``, ``"10-"``
+            or ``"-20"``. For PDFs this selects pages; for XLSX it
+            selects sheets (the parser's page blocks). Supported for
+            formats the structured parser yields per-page data for
+            (PDF, XLSX); for other formats the call errors with an
+            actionable message. The full document stays cached under its
+            own key, so range reads do not evict whole-document reads.
+        """
         try:
             source = normalize_url(source)  # may still be a local path
             is_url = True
@@ -1626,6 +1656,12 @@ class WebResearcherToolbox:
                     indent=2,
                 )
             self._rate_limit_domain(source)
+
+        # Tier 1.2: explicit page-range reads go through the structured
+        # parser (the only path with per-page structure) and are cached
+        # under a range-specific key.
+        if pages is not None and str(pages).strip():
+            return self._extract_document_pages(source, str(pages).strip(), is_url)
 
         cache_key = self._cache_key(source) if is_url else source
         cached = self.cache.get(cache_key)
@@ -1667,6 +1703,132 @@ class WebResearcherToolbox:
             response = client.get(url, headers=self._next_headers())
             response.raise_for_status()
             return self._extract_from_bytes(response.content, url)
+
+    # Tier 1.2: page-range reads. The flat extractor joins all pages into
+    # one string, so a range can only be served by re-deriving the
+    # per-page structure via StructuredOxideParser (Rust, fast). Formats
+    # without per-page structure (DOCX/PPTX parse as one page, text
+    # formats have no pages) are refused with an actionable message.
+    _PAGED_EXTRACT_SUFFIXES = (".pdf", ".xlsx")
+
+    def _extract_document_pages(
+        self, source: str, pages_spec: str, is_url: bool
+    ) -> str:
+        """Serve one page range of a document (see extract_document)."""
+        from stitch_web_researcher.structured_parser import parse_page_range
+
+        try:
+            start, end = parse_page_range(pages_spec)
+        except ValueError as e:
+            return json.dumps({"error": str(e)}, indent=2)
+
+        suffix = (
+            Path(urlparse(source).path).suffix if is_url else Path(source).suffix
+        ).lower()
+        if suffix not in self._PAGED_EXTRACT_SUFFIXES:
+            return json.dumps(
+                {
+                    "error": (
+                        f"Page selection is supported for PDF (pages) and "
+                        f"XLSX (sheets); this source is "
+                        f"{suffix or 'extensionless'}. Call extract_document "
+                        f"without pages, or convert the file to PDF."
+                    )
+                },
+                indent=2,
+            )
+
+        base_key = self._cache_key(source) if is_url else source
+        cache_key = f"{base_key}#pages={pages_spec}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            truncated = self._truncate(
+                cached, self.max_markdown_chars, self.max_tokens
+            )
+            return ExtractionResult(
+                source=source,
+                content=truncated,
+                content_tokens=count_tokens(truncated, self.model_name),
+                cache_hit=True,
+                page_range=pages_spec,
+            ).model_dump_json()
+
+        try:
+            payload = self._parse_document_pages(source, is_url)
+            total = len(payload.pages)
+            if total == 0:
+                return json.dumps(
+                    {"error": f"Document has no pages: {source}"}, indent=2
+                )
+            start = max(start, 1)
+            if start > total:
+                return json.dumps(
+                    {
+                        "error": (
+                            f"Page range {pages_spec!r} out of bounds: "
+                            f"document has {total} page(s)."
+                        )
+                    },
+                    indent=2,
+                )
+            end = min(end if end is not None else total, total)
+            end = max(end, start)
+            selected = payload.pages[start - 1 : end]
+            content = "\n\n".join(p.markdown for p in selected).strip()
+            if not content:
+                return json.dumps(
+                    {
+                        "error": (
+                            f"Page range {pages_spec!r} produced no text."
+                        )
+                    },
+                    indent=2,
+                )
+
+            self.cache.put(cache_key, content)
+            truncated = self._truncate(
+                content, self.max_markdown_chars, self.max_tokens
+            )
+            return ExtractionResult(
+                source=source,
+                content=truncated,
+                content_tokens=count_tokens(truncated, self.model_name),
+                cache_hit=False,
+                page_range=pages_spec,
+                page_start=start,
+                page_end=end,
+                total_pages=total,
+            ).model_dump_json()
+        except Exception as e:
+            logger.error("Page-range extraction failed for %s: %s", source, e)
+            return json.dumps(
+                {"error": f"Page-range extraction failed: {str(e)}"}, indent=2
+            )
+
+    def _parse_document_pages(self, source: str, is_url: bool):
+        """Parse a document into a ParsedDocumentPayload (URL or local)."""
+        import os
+        import tempfile as tf
+
+        parser = StructuredOxideParser()
+        if not is_url:
+            return parser.parse_file(source)
+        with httpx.Client(timeout=30) as client:
+            response = client.get(source, headers=self._next_headers())
+            response.raise_for_status()
+        suffix = Path(urlparse(source).path).suffix.lower() or ".pdf"
+        tmp_path = None
+        try:
+            with tf.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(response.content)
+                tmp_path = tmp.name
+            return parser.parse_file(tmp_path)
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def _extract_local(self, path: str) -> str:
         """Extract content from a local document file."""

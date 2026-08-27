@@ -100,6 +100,57 @@ def classify_link(url: str) -> str:
     return "page"
 
 
+def parse_page_range(spec: str) -> tuple[int, Optional[int]]:
+    """Parse a 1-based page-range spec into ``(start, end)``.
+
+    Accepted forms (page numbers are 1-based and inclusive):
+
+    - ``"10"``    -> ``(10, 10)``
+    - ``"10-20"`` -> ``(10, 20)``
+    - ``"10-"``   -> ``(10, None)``  (10 through the last page)
+    - ``"-20"``   -> ``(1, 20)``     (first page through 20)
+
+    ``end`` is ``None`` when the range is open-ended; the caller clamps
+    it to the actual page count. Raises ``ValueError`` for anything
+    that is not a well-formed positive page or range.
+    """
+    spec = (spec or "").strip()
+    if not spec or spec == "-":
+        return 1, None
+    if "-" in spec:
+        left, _, right = spec.partition("-")
+        left = left.strip()
+        right = right.strip()
+        if "-" in right:
+            raise ValueError(
+                f"Invalid page range: expected N, N-M, N- or -M, got {spec!r}."
+            )
+        start = 1 if left == "" else _parse_page_number(left, spec)
+        end = None if right == "" else _parse_page_number(right, spec)
+    else:
+        start = _parse_page_number(spec, spec)
+        end = start
+    if end is not None and end < start:
+        raise ValueError(
+            f"Invalid page range: start {start} is after end {end}."
+        )
+    return start, end
+
+
+def _parse_page_number(raw: str, spec: str) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Invalid page range: {raw!r} is not a page number."
+        ) from None
+    if value < 1:
+        raise ValueError(
+            "Invalid page range: page numbers are 1-based."
+        )
+    return value
+
+
 def build_follow_up_candidates(
     anchored_links: List, max_links: int = 0
 ) -> List[FollowUpCandidate]:
