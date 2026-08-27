@@ -155,7 +155,8 @@ class TestBingProvider:
 class TestResolveProviderName:
     def test_duckduckgo(self):
         assert resolve_provider_name("duckduckgo") == "duckduckgo"
-        assert resolve_provider_name("ddg") == "ddg"
+        # M2: aliases resolve to the canonical name, not to themselves.
+        assert resolve_provider_name("ddg") == "duckduckgo"
 
     def test_google(self):
         assert resolve_provider_name("google") == "google"

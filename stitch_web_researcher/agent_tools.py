@@ -298,7 +298,7 @@ TOOL_REGISTRY = (
                 str,
                 "duckduckgo",
                 "Search engine to prefer. Falls back through other providers on failure.",
-                enum=["duckduckgo", "google", "bing", "exa"],
+                enum=["duckduckgo", "google", "bing", "exa", "browser"],
             ),
         ),
     ),
@@ -833,7 +833,8 @@ class WebResearcherToolbox:
         max_results : int
             Maximum number of results to return.
         provider : str or None
-            Provider name (e.g., "duckduckgo", "google", "bing", "exa").
+            Provider name (e.g., "duckduckgo", "google", "bing", "exa",
+            "browser"). Aliases such as "ddg" and "browser_oxide" work.
             Falls back through all providers if the chosen one fails.
 
         Returns
@@ -870,10 +871,12 @@ class WebResearcherToolbox:
 
         canonical = resolve_provider_name(provider_name)
         if canonical:
-            # Find matching providers and put them first
+            # Match on the provider's explicit canonical name (M2: the old
+            # __class__.__name__ derivation made aliases like "ddg" and
+            # BrowserOxideSearchProvider unselectable).
             matched = [
                 p for p in self.providers
-                if resolve_provider_name(p.__class__.__name__.replace("Provider", "").lower()) == canonical
+                if getattr(p, "name", None) == canonical
             ]
             if matched:
                 others = [p for p in self.providers if p not in matched]

@@ -120,4 +120,5 @@ def test_rate_limit_defaults_and_registry():
     p = BrowserOxideSearchProvider()
     assert (p.rate_limit.search_interval, p.rate_limit.fetch_interval) == (1.0, 0.5)
     assert resolve_provider_name("browser") == "browser"
-    assert resolve_provider_name("Browser_Oxide") == "browser_oxide"
+    # M2: aliases resolve to the canonical name.
+    assert resolve_provider_name("Browser_Oxide") == "browser"

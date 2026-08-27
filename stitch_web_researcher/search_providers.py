@@ -42,6 +42,11 @@ class RateLimit:
 class SearchProvider(ABC):
     """Abstract base class for all search providers."""
 
+    #: Canonical selection name (M2). Subclasses must override; the
+    #: toolbox matches ``provider=`` arguments against this attribute
+    #: instead of deriving names from ``__class__.__name__``.
+    name: str = ""
+
     @abstractmethod
     def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         """
@@ -102,6 +107,8 @@ class SearchProvider(ABC):
 class DuckDuckGoProvider(SearchProvider):
     """Search via DuckDuckGo using the ddgs library."""
 
+    name = "duckduckgo"
+
     def __init__(
         self,
         delay: Optional[Union[float, RateLimit]] = None,
@@ -144,6 +151,8 @@ class GoogleProvider(SearchProvider):
 
     Free tier: 100 queries/day.
     """
+
+    name = "google"
 
     def __init__(
         self,
@@ -199,6 +208,8 @@ class BingProvider(SearchProvider):
     Requires:
         - An API key (set BING_API_KEY env var or pass explicitly)
     """
+
+    name = "bing"
 
     def __init__(
         self,
@@ -261,6 +272,8 @@ class ExaProvider(SearchProvider):
 
     Free tier: 1,000 requests/month.
     """
+
+    name = "exa"
 
     def __init__(
         self,
@@ -342,6 +355,8 @@ class BrowserOxideSearchProvider(SearchProvider):
     Note: keep ONE instance per application; it persists its browser
     engine across searches. Call :meth:`close` when done.
     """
+
+    name = "browser"
 
     SEARCH_URL = "https://html.duckduckgo.com/html/?q={query}"
 
@@ -435,21 +450,27 @@ class BrowserOxideSearchProvider(SearchProvider):
         return results
 
 
-PROVIDER_NAME_MAP: Dict[str, type] = {
-    "duckduckgo": DuckDuckGoProvider,
-    "ddg": DuckDuckGoProvider,
-    "google": GoogleProvider,
-    "bing": BingProvider,
-    "exa": ExaProvider,
-    "browser": BrowserOxideSearchProvider,
-    "browser_oxide": BrowserOxideSearchProvider,
+# Accepted spellings → canonical provider ``name`` (M2: aliases used to
+# resolve to themselves, so e.g. ``provider="ddg"`` never matched the
+# registered DuckDuckGoProvider, and BrowserOxideSearchProvider was
+# unselectable by name at all).
+PROVIDER_NAME_MAP: Dict[str, str] = {
+    "duckduckgo": "duckduckgo",
+    "ddg": "duckduckgo",
+    "google": "google",
+    "bing": "bing",
+    "exa": "exa",
+    "browser": "browser",
+    "browser_oxide": "browser",
+    "browseroxide": "browser",
 }
 
 
 def resolve_provider_name(name: str) -> Optional[str]:
-    """Case-insensitive provider name lookup. Returns canonical name or None."""
-    lower = name.lower().strip()
-    for key, _cls in PROVIDER_NAME_MAP.items():
-        if key == lower:
-            return key
-    return None
+    """Case-insensitive provider name/alias lookup.
+
+    Maps every accepted spelling (including aliases such as ``ddg`` and
+    ``browser_oxide``) to the provider's canonical ``name``; returns
+    ``None`` when unknown (M2).
+    """
+    return PROVIDER_NAME_MAP.get(name.lower().strip())
