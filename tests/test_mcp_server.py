@@ -19,6 +19,7 @@ EXPECTED_TOOLS = {
     "extract_document_structured",
     "inspect_html_structured",
     "clear_cache",
+    "reset_visited",
     "get_stats",
 }
 

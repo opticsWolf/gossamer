@@ -336,7 +336,19 @@ _LLM_TOOL_DEFINITIONS = [
             "type": "function",
             "function": {
                 "name": "clear_cache",
-                "description": "Clear both the in-memory and disk research caches. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
+                "description": "Clear both the in-memory and disk research caches and the visited-URL set. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "reset_visited",
+                "description": "Forget all previously visited URLs so they can be fetched again (caches are NOT cleared). Use after a fetch failure you want to retry, or when starting a new research session on the same pages.",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -946,34 +958,41 @@ class WebResearcherToolbox:
         failures 3× with exponential backoff; a Python-layer retry here
         would multiply attempts (3×3) and sleep redundantly, so none is
         applied at this layer.
+
+        Visited-URL semantics (C3): a URL is marked visited only after a
+        *successful* fetch, so a transient failure never blacklists it. A
+        repeat visit to a URL whose result is still cached is served from
+        the cache (``cache_hit: true``) instead of a content-free warning
+        — data beats a warning.
         """
         url = normalize_url(url)
-        if url in self.visited_urls:
-            logger.warning("URL already visited: %s", url)
-            return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
-
         self._validate_url(url)
-        self.visited_urls.add(url)
 
         cached = self._page_cache_get(url)
-        if cached is not None:
-            markdown, links, html_metadata, fetch_method = cached
-            logger.info("Cache hit for %s (%s)", url, fetch_method)
-        else:
+        from_cache = cached is not None
+        if cached is None:
+            if url in self.visited_urls:
+                logger.warning("URL already visited (not in cache): %s", url)
+                return json.dumps(
+                    {"warning": "URL already visited", "url": url}, indent=2
+                )
             # Politeness delay applies only when we will actually fetch.
             self._rate_limit_domain(url)
             try:
-                markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
+                cached = self._fetch_html(url, use_smart)
             except Exception as e:
                 logger.error("HTML inspection failed for %s: %s", url, e)
                 return json.dumps(
                     {"error": f"HTML inspection failed: {str(e)}"}, indent=2
                 )
-            self._page_cache_put(url, markdown, links, html_metadata, fetch_method)
+            # Mark visited and cache only after a successful fetch (C3).
+            self.visited_urls.add(url)
+            self._page_cache_put(url, *cached)
 
+        markdown, links, html_metadata, fetch_method = cached
         logger.info(
             "%s %s via %s (%d chars, %d links)",
-            "Cached" if cached is not None else "Fetched",
+            "Cached" if from_cache else "Fetched",
             url,
             fetch_method,
             len(markdown),
@@ -989,7 +1008,7 @@ class WebResearcherToolbox:
             url, truncated_md, links, meta_summary, fetch_method,
             markdown_truncated=truncated_md != markdown,
         )
-        if cached is not None:
+        if from_cache:
             result.cache_hit = True
         return result.model_dump_json()
 
@@ -1071,13 +1090,14 @@ class WebResearcherToolbox:
         through the stealth browser instead (per-domain rate limits apply).
         """
         # Validate once; only genuinely new URLs reach the fetch engines.
+        # Visited URLs are marked only after success (C3), so failed batch
+        # entries remain retryable.
         pending = []
         for url in urls:
             if url in self.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
             self._validate_url(url)
-            self.visited_urls.add(url)
             pending.append(url)
 
         try:
@@ -1089,6 +1109,7 @@ class WebResearcherToolbox:
                         # per-domain politeness gap as single fetches.
                         self._rate_limit_domain(url)
                         md, links, meta, method = self._fetch_html(url)
+                        self.visited_urls.add(url)  # success only (C3)
                         md_chars, md_tokens = self._content_budget()
                         truncated_md = self._truncate(md, md_chars, md_tokens)
                         output.append(
@@ -1114,6 +1135,7 @@ class WebResearcherToolbox:
             md_chars, md_tokens = self._content_budget()
             for url, md_opt, links_opt in results:
                 if md_opt is not None and links_opt is not None:
+                    self.visited_urls.add(url)  # success only (C3)
                     truncated_md = self._truncate(md_opt, md_chars, md_tokens)
                     output.append(
                         json.loads(
@@ -1289,18 +1311,12 @@ class WebResearcherToolbox:
             JSON-serialised ParsedDocumentPayload (token-truncated).
         """
         url = normalize_url(url)
-        if url in self.visited_urls:
-            logger.warning("URL already visited: %s", url)
-            return json.dumps({"warning": "URL already visited", "url": url}, indent=2)
-
         self._validate_url(url)
-        self.visited_urls.add(url)
 
         # Cache stores the untruncated payload JSON; budgets are re-applied
-        # on every read so changed limits are honored.
+        # on every read so changed limits are honored. A cached result is
+        # served on repeat visits too (C3: data beats a warning).
         cached_json = self.cache.get("structured:" + self._cache_key(url))
-        if cached_json is None:
-            self._rate_limit_domain(url)
 
         try:
             if cached_json is not None:
@@ -1308,6 +1324,12 @@ class WebResearcherToolbox:
                 return self._truncate(
                     cached_json, self.max_markdown_chars, self.max_tokens
                 )
+            if url in self.visited_urls:
+                logger.warning("URL already visited (not in cache): %s", url)
+                return json.dumps(
+                    {"warning": "URL already visited", "url": url}, indent=2
+                )
+            self._rate_limit_domain(url)
 
             markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
 
@@ -1323,6 +1345,7 @@ class WebResearcherToolbox:
 
             payload_json = payload.to_json()
             self.cache.put("structured:" + self._cache_key(url), payload_json)
+            self.visited_urls.add(url)  # success only (C3)
             truncated_json = self._truncate(
                 payload_json, self.max_markdown_chars, self.max_tokens
             )
@@ -1353,6 +1376,8 @@ class WebResearcherToolbox:
         self.visited_urls.clear()
 
     def clear_cache(self) -> str:
-        """Clear both memory and disk caches."""
+        """Clear both memory and disk caches and the visited-URL set (C3:
+        after a cache reset, previously visited URLs can be re-fetched)."""
         self.cache.clear()
+        self.visited_urls.clear()
         return json.dumps({"cache_cleared": True, "stats": self.cache.stats()}, indent=2)

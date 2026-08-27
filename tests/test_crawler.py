@@ -121,12 +121,17 @@ class TestToolbox:
             assert data["fetch_method"] in ("browser", "smart", "static")
 
     def test_visited_deduplication(self, toolbox):
-        """Test that visited URLs are tracked."""
+        """Repeat visits to fetched URLs are served from cache (C3):
+        a successfully fetched URL is re-served with cache_hit=true instead
+        of a content-free warning; a failed URL is retried, not blacklisted."""
         url = "https://example.com"
-        toolbox.inspect_html_page(url)
+        first = json.loads(toolbox.inspect_html_page(url))
         result2 = toolbox.inspect_html_page(url)
         data2 = json.loads(result2)
-        assert "warning" in data2
+        assert "warning" not in data2
+        if "error" not in first:
+            assert data2["cache_hit"] is True
+            assert data2["markdown"] == first["markdown"]
 
     def test_llm_definitions(self, toolbox):
         """Test LLM tool definitions schema."""

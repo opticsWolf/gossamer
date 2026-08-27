@@ -27,6 +27,7 @@ Configuration via environment variables (all optional):
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -182,9 +183,21 @@ def build_server() -> MCPServer:
 
     @server.tool()
     def clear_cache() -> str:
-        """Clear both in-memory and disk research caches (forces fresh
-        fetches on subsequent calls)."""
+        """Clear both in-memory and disk research caches and the visited-URL
+        set (forces fresh fetches on subsequent calls)."""
         return get_toolbox().clear_cache()
+
+    @server.tool()
+    def reset_visited() -> str:
+        """Forget all previously visited URLs so they can be fetched again.
+
+        Unlike clear_cache, the caches are NOT touched — a visited URL whose
+        result is still cached keeps being served from the cache. Use this
+        after a fetch failure you want to retry, or when starting a new
+        research session on the same pages.
+        """
+        get_toolbox().reset_visited()
+        return json.dumps({"visited_cleared": True, "visited_urls_count": 0}, indent=2)
 
     @server.tool()
     def get_stats() -> str:
