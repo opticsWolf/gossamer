@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import random
+import re
 import threading
 import time
 import warnings
@@ -117,6 +118,51 @@ def _normalize_batch_results(results) -> List[BatchEntry]:
         else:
             entries.append(BatchEntry(url=url, error=md_opt or "Unknown error"))
     return entries
+
+
+# ───────────────────────────────
+# Markdown link absolutization (M12, CODE_REVIEW_2026-08-27)
+# ───────────────────────────────
+
+# Inline markdown link: [text](target) or [text](target "title"). The
+# negative lookbehind skips image markers so ![alt](...) is untouched.
+_MD_INLINE_LINK_RE = re.compile(
+    r"(?<!!)\[([^\]]*)\]\(([^()\s]+)(?:\s+\"([^\"]*)\")?\)"
+)
+
+# Targets that are already self-contained or must not be rewritten.
+_MD_NON_LINK_PREFIXES = (
+    "#", "//", "mailto:", "tel:", "javascript:", "data:", "ftp:"
+)
+
+
+def _absolutize_markdown_links(markdown: str, base_url: str) -> str:
+    """Rewrite relative hrefs in a markdown body to absolute URLs (M12).
+
+    The Rust core's markdown conversion keeps hrefs exactly as written
+    (e.g. ``[A](/a)``); only the separate ``follow_up_links`` list is
+    absolute. A model copying a markdown link would get an unresolvable
+    URL, so the body is made self-contained via ``urljoin``. Absolute
+    URLs, protocol-relative (``//``), fragment-only (``#``) and
+    non-resource schemes (mailto/tel/data/javascript/ftp) pass through
+    unchanged. Idempotent: re-running on absolutized text is a no-op.
+    """
+    if not markdown or "(" not in markdown:
+        return markdown
+
+    def _rewrite(m: re.Match[str]) -> str:
+        target = m.group(2)
+        if target.lower().startswith(_MD_NON_LINK_PREFIXES):
+            return m.group(0)
+        absolute = urljoin(base_url, target)
+        if absolute == target:
+            return m.group(0)
+        title = m.group(3)
+        if title is not None:
+            return f"[{m.group(1)}]({absolute} \"{title}\")"
+        return f"[{m.group(1)}]({absolute})"
+
+    return _MD_INLINE_LINK_RE.sub(_rewrite, markdown)
 
 
 # ───────────────────────────────
@@ -1073,7 +1119,16 @@ class WebResearcherToolbox:
 
         ``use_smart`` overrides per call: ``False`` forces static-only,
         ``True`` tries the stealth browser first (falling back to static).
+
+        M12: the returned markdown has relative hrefs rewritten to
+        absolute URLs so the body is self-contained for the model.
         """
+        md, links, meta, method = self._fetch_html_dispatch(url, use_smart)
+        return _absolutize_markdown_links(md, url), links, meta, method
+
+    def _fetch_html_dispatch(self, url: str, use_smart: Optional[bool] = None):
+        """Dispatch a fetch per ``self.fetch_mode`` / ``use_smart`` (raw,
+        with relative markdown hrefs). See ``_fetch_html``."""
         if self.fetch_mode == "browser":
             if use_smart is False:
                 return self._static_fetch(url)
@@ -1411,15 +1466,20 @@ class WebResearcherToolbox:
                         raise
                 for entry in _normalize_batch_results(results):
                     if entry.ok:
+                        # M12: the Rust batch engine returns raw markdown
+                        # with relative hrefs; make the body self-contained.
+                        md = _absolutize_markdown_links(
+                            entry.markdown or "", entry.url
+                        )
                         self._mark_visited(entry.url)  # success only (C3)
                         # C6: store back into the shared page cache. The
                         # batch engine has no metadata, so meta stays empty.
                         self._page_cache_put(
-                            entry.url, entry.markdown, entry.links, {}, "static"
+                            entry.url, md, entry.links, {}, "static"
                         )
                         self._release_in_flight(entry.url)  # S5
                         fetched[entry.url] = self._batch_result(
-                            entry.url, entry.markdown, entry.links, {},
+                            entry.url, md, entry.links, {},
                             "static", cache_hit=False
                         )
                     else:
