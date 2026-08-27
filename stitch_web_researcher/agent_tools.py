@@ -73,6 +73,7 @@ class InspectionResult(BaseModel):
     markdown: str = ""
     markdown_tokens: int = 0
     follow_up_links: list[FollowUpCandidate] = Field(default_factory=list)
+    delivered_links: int = 0
     total_links: int = 0
     truncated: bool = False
     fetch_method: Optional[str] = None
@@ -416,6 +417,10 @@ class ToolboxConfig:
     fetch_mode: str = "auto"
     candidate_cap: int = 500
     max_concurrency: int = 8
+    # Fraction of the output budget (chars/tokens) reserved for the
+    # follow-up link list and JSON envelope, so budget enforcement never
+    # starves link delivery on content-rich pages (C1).
+    link_budget_ratio: float = 0.25
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -426,6 +431,8 @@ class ToolboxConfig:
             raise ValueError("candidate_cap must be >= 1")
         if self.max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
+        if not 0.0 <= self.link_budget_ratio < 0.9:
+            raise ValueError("link_budget_ratio must be in [0.0, 0.9)")
 
 
 class WebResearcherToolbox:
@@ -477,6 +484,7 @@ class WebResearcherToolbox:
         self.max_tokens = config.max_tokens
         self.model_name = config.model_name
         self.max_links = config.max_links
+        self.link_budget_ratio = config.link_budget_ratio
 
         # Search providers: default to DuckDuckGo if none specified
         if config.search_providers:
@@ -534,6 +542,21 @@ class WebResearcherToolbox:
         if len(text) > char_limit:
             text = text[:char_limit] + "\n\n... [truncated]"
         return text
+
+    def _content_budget(self) -> tuple[int, int]:
+        """(markdown_chars, markdown_tokens) budget with a links reserve.
+
+        A fraction of the output budget (``link_budget_ratio``) is held back
+        for the follow-up link list and the JSON envelope so that budget
+        enforcement in ``_build_inspection_result`` always has room to keep
+        at least some links on content-rich pages (C1: previously the
+        markdown was truncated to exactly the envelope budget, leaving zero
+        room for links, which were then all dropped).
+        """
+        keep = 1.0 - self.link_budget_ratio
+        chars = int(self.max_markdown_chars * keep)
+        tokens = int(self.max_tokens * keep) if self.max_tokens > 0 else 0
+        return chars, tokens
 
     def _next_headers(self) -> dict:
         """Rotate User-Agent and return full browser headers."""
@@ -745,15 +768,20 @@ class WebResearcherToolbox:
         links_pairs,
         meta_summary: dict,
         fetch_method: Optional[str],
+        markdown_truncated: bool = False,
     ) -> InspectionResult:
         """Assemble an InspectionResult and enforce the output budget.
 
         Budget enforcement drops candidates from the END (halving) until the
         serialized JSON fits within max_markdown_chars / max_tokens. The
-        ``truncated`` flag records any loss — collection-cap hits AND
-        budget-driven drops — so the model always knows whether it saw
-        every link. The returned JSON is schema-valid by construction
-        (Pydantic serializes it; we never string-cut the output).
+        markdown is expected to have been pre-truncated with a links reserve
+        (``_content_budget``) so that the envelope has room to keep some
+        links on content-rich pages (C1). The ``truncated`` flag records any
+        loss — collection-cap hits, markdown truncation, AND budget-driven
+        drops — so the model always knows whether it saw every link.
+        ``delivered_links`` makes the flag actionable. The returned JSON is
+        schema-valid by construction (Pydantic serializes it; we never
+        string-cut the output).
         """
         result = InspectionResult(
             url=url,
@@ -766,6 +794,7 @@ class WebResearcherToolbox:
             metadata=meta_summary or {},
         )
 
+        candidates = result.follow_up_links
         while True:
             payload = result.model_dump_json()
             over_chars = len(payload) > self.max_markdown_chars
@@ -780,6 +809,9 @@ class WebResearcherToolbox:
             keep = len(result.follow_up_links) // 2
             result.follow_up_links = result.follow_up_links[:keep]
             result.truncated = True
+        result.truncated = result.truncated or markdown_truncated
+        result.delivered_links = len(result.follow_up_links)
+        result.total_links = max(result.total_links, len(candidates))
         return result
 
     # ── Fetch strategies ─────────────────────────────
@@ -947,15 +979,15 @@ class WebResearcherToolbox:
             len(markdown),
             len(links),
         )
-        truncated_md = self._truncate(
-            markdown, self.max_markdown_chars, self.max_tokens
-        )
+        md_chars, md_tokens = self._content_budget()
+        truncated_md = self._truncate(markdown, md_chars, md_tokens)
 
         # Build compact metadata summary for LLM output
         meta_summary = self._compact_metadata(html_metadata)
 
         result = self._build_inspection_result(
-            url, truncated_md, links, meta_summary, fetch_method
+            url, truncated_md, links, meta_summary, fetch_method,
+            markdown_truncated=truncated_md != markdown,
         )
         if cached is not None:
             result.cache_hit = True
@@ -1057,13 +1089,13 @@ class WebResearcherToolbox:
                         # per-domain politeness gap as single fetches.
                         self._rate_limit_domain(url)
                         md, links, meta, method = self._fetch_html(url)
-                        truncated_md = self._truncate(
-                            md, self.max_markdown_chars, self.max_tokens
-                        )
+                        md_chars, md_tokens = self._content_budget()
+                        truncated_md = self._truncate(md, md_chars, md_tokens)
                         output.append(
                             json.loads(
                                 self._build_inspection_result(
-                                    url, truncated_md, links, {}, method
+                                    url, truncated_md, links, {}, method,
+                                    markdown_truncated=truncated_md != md,
                                 ).model_dump_json()
                             )
                         )
@@ -1079,15 +1111,15 @@ class WebResearcherToolbox:
                 domain_gap_ms=int(self._fetch_interval * 1000),
             )
             output = []
+            md_chars, md_tokens = self._content_budget()
             for url, md_opt, links_opt in results:
                 if md_opt is not None and links_opt is not None:
-                    truncated_md = self._truncate(
-                        md_opt, self.max_markdown_chars, self.max_tokens
-                    )
+                    truncated_md = self._truncate(md_opt, md_chars, md_tokens)
                     output.append(
                         json.loads(
                             self._build_inspection_result(
-                                url, truncated_md, links_opt, {}, "static-batch"
+                                url, truncated_md, links_opt, {}, "static-batch",
+                                markdown_truncated=truncated_md != md_opt,
                             ).model_dump_json()
                         )
                     )
