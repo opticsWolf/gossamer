@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import random
+import threading
 import time
 import warnings
 from collections import defaultdict
@@ -516,6 +517,16 @@ class WebResearcherToolbox:
         self.visited_urls: set[str] = set()
         self._domain_last_seen: dict[str, float] = defaultdict(float)
         self._ua_index = 0
+        # S5: the MCP SDK dispatches synchronous tools on worker threads,
+        # so tool calls run concurrently against this one instance. These
+        # locks protect the read-modify-write state below.
+        self._throttle_lock = threading.Lock()
+        self._visit_lock = threading.Lock()
+        # URLs currently being fetched (in-flight guard, see
+        # _claim_in_flight). Distinct from visited_urls on purpose: C3
+        # semantics mark a URL visited only after a *successful* fetch,
+        # while in-flight covers the fetch window itself.
+        self._in_flight: set[str] = set()
         # Candidate pool size: how many links we collect per page before
         # handing ALL of them to the LLM for topic-based selection.
         self.link_cap = max(1, int(config.candidate_cap))
@@ -572,9 +583,14 @@ class WebResearcherToolbox:
         return chars, tokens
 
     def _next_headers(self) -> dict:
-        """Rotate User-Agent and return full browser headers."""
-        ua = self.USER_AGENTS[self._ua_index % len(self.USER_AGENTS)]
-        self._ua_index += 1
+        """Rotate User-Agent and return full browser headers.
+
+        S5: the counter is shared across concurrent tool calls, so the
+        read-bump happens under a lock to keep rotations distinct.
+        """
+        with self._throttle_lock:
+            ua = self.USER_AGENTS[self._ua_index % len(self.USER_AGENTS)]
+            self._ua_index += 1
         return {
             "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -611,14 +627,38 @@ class WebResearcherToolbox:
         """
         parsed = urlparse(url)
         domain = parsed.netloc
-        last_seen = self._domain_last_seen[domain]
-        elapsed = time.time() - last_seen
-        gap = self._fetch_interval
-        if gap > 0:
-            gap += random.uniform(0.0, 1.0)
-        if elapsed < gap:
-            time.sleep(gap - elapsed)
-        self._domain_last_seen[domain] = time.time()
+        # S5: the read-sleep-write on the per-domain timestamp happens
+        # under a lock so concurrent tool calls share one politeness gap
+        # instead of each sleeping independently.
+        with self._throttle_lock:
+            last_seen = self._domain_last_seen[domain]
+            elapsed = time.time() - last_seen
+            gap = self._fetch_interval
+            if gap > 0:
+                gap += random.uniform(0.0, 1.0)
+            if elapsed < gap:
+                time.sleep(gap - elapsed)
+            self._domain_last_seen[domain] = time.time()
+
+    def _claim_in_flight(self, url: str) -> bool:
+        """Atomically claim a URL for fetching (S5).
+
+        Returns False if the URL is already visited or already being
+        fetched by another thread, so concurrent tool calls never
+        double-fetch the same new page. C3 semantics are preserved:
+        ``visited_urls`` still only gains a URL after a successful fetch;
+        the in-flight set covers the fetch window itself.
+        """
+        with self._visit_lock:
+            if url in self.visited_urls or url in self._in_flight:
+                return False
+            self._in_flight.add(url)
+            return True
+
+    def _release_in_flight(self, url: str) -> None:
+        """Release an in-flight claim (idempotent, always safe)."""
+        with self._visit_lock:
+            self._in_flight.discard(url)
 
     # Query parameters that never change page content -- stripped so that
     # campaign-tagged variants of one document share a single cache entry.
@@ -981,16 +1021,22 @@ class WebResearcherToolbox:
         cached = self._page_cache_get(url)
         from_cache = cached is not None
         if cached is None:
-            if url in self.visited_urls:
-                logger.warning("URL already visited (not in cache): %s", url)
+            # S5: claim the URL so a concurrent call for the same page is
+            # rejected here instead of double-fetching; C3 semantics are
+            # kept because release on failure un-claims it.
+            if not self._claim_in_flight(url):
+                logger.warning(
+                    "URL already visited or in flight: %s", url
+                )
                 return json.dumps(
                     {"warning": "URL already visited", "url": url}, indent=2
                 )
-            # Politeness delay applies only when we will actually fetch.
-            self._rate_limit_domain(url)
             try:
+                # Politeness delay applies only when we will actually fetch.
+                self._rate_limit_domain(url)
                 cached = self._fetch_html(url, use_smart)
             except Exception as e:
+                self._release_in_flight(url)
                 logger.error("HTML inspection failed for %s: %s", url, e)
                 return json.dumps(
                     {"error": f"HTML inspection failed: {str(e)}"}, indent=2
@@ -998,6 +1044,7 @@ class WebResearcherToolbox:
             # Mark visited and cache only after a successful fetch (C3).
             self.visited_urls.add(url)
             self._page_cache_put(url, *cached)
+            self._release_in_flight(url)
 
         markdown, links, html_metadata, fetch_method = cached
         logger.info(
@@ -1131,6 +1178,12 @@ class WebResearcherToolbox:
             if url in self.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
+            if not self._claim_in_flight(url):
+                # A concurrent single-page call claimed this URL between
+                # the check and the claim (S5); skip it rather than
+                # double-fetch.
+                logger.warning("URL already in flight: %s", url)
+                continue
             pending.append(url)
 
         try:
@@ -1144,32 +1197,44 @@ class WebResearcherToolbox:
                         entry = self._fetch_html(url)
                         self.visited_urls.add(url)  # success only (C3)
                         self._page_cache_put(url, *entry)  # C6
+                        self._release_in_flight(url)  # S5
                         fetched[url] = self._batch_result(
                             url, *entry, cache_hit=False
                         )
                     except Exception as e:
+                        self._release_in_flight(url)  # S5: stays retryable
                         fetched[url] = {"url": url, "error": str(e)}
             else:
                 results = []
                 if pending:
-                    results = batch_research(
-                        pending,
-                        max_links=self.link_cap,
-                        max_concurrency=self.max_concurrency,
-                        # Same-domain staggering inside the batch engine (0 disables).
-                        domain_gap_ms=int(self._fetch_interval * 1000),
-                        max_bytes=self.max_response_bytes,
-                    )
+                    try:
+                        results = batch_research(
+                            pending,
+                            max_links=self.link_cap,
+                            max_concurrency=self.max_concurrency,
+                            # Same-domain staggering inside the batch engine (0 disables).
+                            domain_gap_ms=int(self._fetch_interval * 1000),
+                            max_bytes=self.max_response_bytes,
+                        )
+                    except Exception:
+                        # The engine call failed wholesale (e.g. every URL
+                        # rejected at validation); release every claim so
+                        # the URLs remain retryable (S5).
+                        for claimed in pending:
+                            self._release_in_flight(claimed)
+                        raise
                 for url, md_opt, links_opt in results:
                     if md_opt is not None and links_opt is not None:
                         self.visited_urls.add(url)  # success only (C3)
                         # C6: store back into the shared page cache. The
                         # batch engine has no metadata, so meta stays empty.
                         self._page_cache_put(url, md_opt, links_opt, {}, "static")
+                        self._release_in_flight(url)  # S5
                         fetched[url] = self._batch_result(
                             url, md_opt, links_opt, {}, "static", cache_hit=False
                         )
                     else:
+                        self._release_in_flight(url)  # S5: stays retryable
                         fetched[url] = {
                             "url": url, "error": md_opt or "Unknown error"
                         }
@@ -1393,8 +1458,8 @@ class WebResearcherToolbox:
                 return self._truncate(
                     cached_json, self.max_markdown_chars, self.max_tokens
                 )
-            if url in self.visited_urls:
-                logger.warning("URL already visited (not in cache): %s", url)
+            if not self._claim_in_flight(url):
+                logger.warning("URL already visited or in flight: %s", url)
                 return json.dumps(
                     {"warning": "URL already visited", "url": url}, indent=2
                 )
@@ -1415,11 +1480,13 @@ class WebResearcherToolbox:
             payload_json = payload.to_json()
             self.cache.put("structured:" + self._cache_key(url), payload_json)
             self.visited_urls.add(url)  # success only (C3)
+            self._release_in_flight(url)  # S5
             truncated_json = self._truncate(
                 payload_json, self.max_markdown_chars, self.max_tokens
             )
             return truncated_json
         except Exception as e:
+            self._release_in_flight(url)  # S5: stays retryable
             logger.error("Structured HTML inspection failed for %s: %s", url, e)
             return json.dumps(
                 {"error": f"Structured HTML inspection failed: {str(e)}"}, indent=2
@@ -1441,12 +1508,14 @@ class WebResearcherToolbox:
         )
 
     def reset_visited(self) -> None:
-        """Clear the visited URL set."""
-        self.visited_urls.clear()
+        """Clear the visited URL set (and in-flight claims, S5)."""
+        with self._visit_lock:
+            self.visited_urls.clear()
+            self._in_flight.clear()
 
     def clear_cache(self) -> str:
         """Clear both memory and disk caches and the visited-URL set (C3:
         after a cache reset, previously visited URLs can be re-fetched)."""
         self.cache.clear()
-        self.visited_urls.clear()
+        self.reset_visited()
         return json.dumps({"cache_cleared": True, "stats": self.cache.stats()}, indent=2)

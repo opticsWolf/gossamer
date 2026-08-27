@@ -9,7 +9,10 @@ Provides:
 
 import json
 import logging
+import os
 import shutil
+import tempfile
+import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -49,11 +52,19 @@ class Cache:
         # In-memory LRU: OrderedDict keyed by URL
         self._memory: OrderedDict[str, tuple[str, float]] = OrderedDict()
 
+        # S5: guards the memory tier and the stat counters — the MCP SDK
+        # dispatches synchronous tools on worker threads, so several
+        # threads can be inside this Cache at once.
+        self._lock = threading.Lock()
+
         # Stats
         self._hits = 0
         self._misses = 0
         self._memory_hits = 0
         self._disk_hits = 0
+
+        # Drop *.tmp leftovers from a crash mid-write (S5).
+        self._cleanup_stale_tmp()
 
     def get(self, key: str) -> Optional[str]:
         """
@@ -74,29 +85,31 @@ class Cache:
             Cached content if found and valid, None otherwise.
         """
         # ── Tier 1: In-memory LRU ──────────────────────────────
-        if key in self._memory:
-            content, timestamp = self._memory[key]
-            if time.time() - timestamp <= self.ttl_seconds:
-                # Move to end (most recently used)
-                self._memory.move_to_end(key)
-                self._hits += 1
-                self._memory_hits += 1
-                return content
-            else:
+        with self._lock:
+            if key in self._memory:
+                content, timestamp = self._memory[key]
+                if time.time() - timestamp <= self.ttl_seconds:
+                    # Move to end (most recently used)
+                    self._memory.move_to_end(key)
+                    self._hits += 1
+                    self._memory_hits += 1
+                    return content
                 # Expired — remove from memory
                 del self._memory[key]
 
         # ── Tier 2: File-based TTL ─────────────────────────────
         content = self._disk_get(key)
         if content is not None:
-            self._hits += 1
-            self._disk_hits += 1
+            with self._lock:
+                self._hits += 1
+                self._disk_hits += 1
             # Promote to memory (write-through)
             self._memory_put(key, content)
             return content
 
         # ── Cache miss ─────────────────────────────────────────
-        self._misses += 1
+        with self._lock:
+            self._misses += 1
         return None
 
     def put(self, key: str, content: str) -> None:
@@ -115,26 +128,31 @@ class Cache:
 
     def clear(self) -> None:
         """Clear both memory and disk caches."""
-        self._memory.clear()
+        with self._lock:
+            self._memory.clear()
         self._clear_disk()
 
     def stats(self) -> Dict[str, Any]:
         """Return cache statistics."""
         disk_size = self._disk_size_bytes()
+        with self._lock:
+            entries = len(self._memory)
+            hits, misses = self._hits, self._misses
+            mem_hits, disk_hits = self._memory_hits, self._disk_hits
         return {
-            "memory_entries": len(self._memory),
+            "memory_entries": entries,
             "memory_max": self.max_memory_entries,
             "disk_size_bytes": disk_size,
             "disk_size_human": self._human_size(disk_size),
             "cache_dir": str(self.cache_path),
             "ttl_seconds": self.ttl_seconds,
-            "total_hits": self._hits,
-            "total_misses": self._misses,
-            "memory_hits": self._memory_hits,
-            "disk_hits": self._disk_hits,
+            "total_hits": hits,
+            "total_misses": misses,
+            "memory_hits": mem_hits,
+            "disk_hits": disk_hits,
             "hit_rate": (
-                round(self._hits / (self._hits + self._misses), 4)
-                if (self._hits + self._misses) > 0
+                round(hits / (hits + misses), 4)
+                if (hits + misses) > 0
                 else 0.0
             ),
         }
@@ -143,14 +161,15 @@ class Cache:
 
     def _memory_put(self, key: str, content: str) -> None:
         """Insert into in-memory LRU, evicting oldest if at capacity."""
-        if key in self._memory:
-            self._memory.move_to_end(key)
-            self._memory[key] = (content, time.time())
-        else:
-            # Evict oldest entries if at capacity
-            while len(self._memory) >= self.max_memory_entries:
-                self._memory.popitem(last=False)
-            self._memory[key] = (content, time.time())
+        with self._lock:
+            if key in self._memory:
+                self._memory.move_to_end(key)
+                self._memory[key] = (content, time.time())
+            else:
+                # Evict oldest entries if at capacity
+                while len(self._memory) >= self.max_memory_entries:
+                    self._memory.popitem(last=False)
+                self._memory[key] = (content, time.time())
 
     # ── Internal: Disk TTL ────────────────────────────────────
 
@@ -180,16 +199,50 @@ class Cache:
             return None
 
     def _disk_put(self, key: str, content: str) -> None:
-        """Store content in file-based cache with metadata."""
+        """Store content in file-based cache with metadata.
+
+        S5: each file is written to a temp file in the same directory and
+        ``os.replace``'d into place — atomic on POSIX *and* Windows — so a
+        concurrent reader sees either the old file or the new one, never a
+        half-written body.
+        """
         safe_key = self._disk_key(key)
         cache_file = self.cache_path / f"{safe_key}.cache"
         meta_file = self.cache_path / f"{safe_key}.meta"
 
         try:
-            cache_file.write_text(content, encoding="utf-8")
-            meta_file.write_text(json.dumps({"timestamp": time.time()}))
+            self._atomic_write(cache_file, content)
+            self._atomic_write(meta_file, json.dumps({"timestamp": time.time()}))
         except OSError as e:
             logger.warning("Disk cache write error for %s: %s", key, e)
+
+    @staticmethod
+    def _atomic_write(path: Path, text: str) -> None:
+        """Atomically write ``text`` to ``path`` (temp file + os.replace)."""
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent), prefix=path.name + ".", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(tmp_name, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+
+    def _cleanup_stale_tmp(self) -> None:
+        """Remove ``*.tmp`` leftovers from a crash mid-write (S5)."""
+        try:
+            for f in self.cache_path.glob("*.tmp"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
 
     def _remove_disk_files(self, safe_key: str) -> None:
         """Remove cached files for a given key."""
@@ -211,11 +264,15 @@ class Cache:
             logger.warning("Failed to clear disk cache: %s", e)
 
     def _disk_size_bytes(self) -> int:
-        """Calculate total size of disk cache in bytes."""
+        """Calculate total size of disk cache in bytes.
+
+        Only cache-owned files count (S5: temp files mid-replace are
+        transient and may be in flight from another thread).
+        """
         total = 0
         try:
             for f in self.cache_path.iterdir():
-                if f.is_file():
+                if f.is_file() and f.suffix in (".cache", ".meta"):
                     total += f.stat().st_size
         except OSError:
             pass
