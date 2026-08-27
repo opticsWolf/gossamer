@@ -1171,10 +1171,14 @@ class WebResearcherToolbox:
         cache_key = self._cache_key(source) if is_url else source
         cached = self.cache.get(cache_key)
         if cached is not None:
+            # Re-apply the budget on every read (C4): the cache holds
+            # untruncated content and the budget may have changed since the
+            # entry was stored — same read-time truncation as the page cache.
+            truncated = self._truncate(cached, self.max_markdown_chars, self.max_tokens)
             return ExtractionResult(
                 source=source,
-                content=cached,
-                content_tokens=count_tokens(cached, self.model_name),
+                content=truncated,
+                content_tokens=count_tokens(truncated, self.model_name),
                 cache_hit=True,
             ).model_dump_json()
 
