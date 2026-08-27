@@ -1,8 +1,9 @@
 use pyo3::prelude::*;
 use scraper::{Html, Selector};
-use url::Url;
+use url::{Host, Url};
 use html2md::parse_html;
 use std::collections::{HashMap, HashSet};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -29,8 +30,123 @@ fn build_client() -> Result<reqwest::Client, String> {
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
+        // Redirects are followed manually in fetch_attempt so that every
+        // hop passes the SSRF guard (S1).
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| format!("Client build error: {}", e))
+}
+
+// ────────────────────────────────────────────────────────────────
+// 2b. SSRF guard (S1, CODE_REVIEW_2026-08-27)
+// ────────────────────────────────────────────────────────────────
+
+/// Max redirect hops followed (matches reqwest's built-in default).
+const MAX_REDIRECTS: u32 = 10;
+
+/// Operator-controlled bypass for the SSRF guard (developers and tests
+/// that need local servers). The environment is under operator control,
+/// not the LLM's.
+fn ssrf_bypass() -> bool {
+    std::env::var("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE")
+        .ok()
+        .map(|v| {
+            matches!(
+                v.trim().to_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// True for addresses that must never be fetched: loopback, private
+/// (RFC1918 / ULA), link-local (cloud metadata), or unspecified.
+fn is_disallowed_ip(ip: IpAddr) -> bool {
+    // IPv4-mapped IPv6 (::ffff:a.b.c.d) inherits the v4 decision.
+    let ip = match ip {
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => IpAddr::V6(v6),
+        },
+        other => other,
+    };
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_unspecified()
+                || v4.is_loopback()
+                || v4.is_link_local() // 169.254.0.0/16 — AWS/Azure/GCP metadata
+                || v4.is_private()    // 10/8, 172.16/12, 192.168/16
+        }
+        IpAddr::V6(v6) => {
+            // `Ipv6Addr::is_private`/`is_link_local` are not stable yet, so
+            // the ULA prefix (fc00::/7, incl. GCP metadata fd00:ec2::254)
+            // is checked manually.
+            v6.is_unspecified()
+                || v6.is_loopback()
+                || v6.is_unicast_link_local() // fe80::/10
+                || (v6.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7 ULA
+        }
+    }
+}
+
+fn ip_check(ip: IpAddr) -> Result<(), String> {
+    if is_disallowed_ip(ip) {
+        Err(format!("address {} is not public", ip))
+    } else {
+        Ok(())
+    }
+}
+
+/// SSRF guard (S1): reject URLs whose host is not a public, resolvable
+/// address. Catches direct targets, CNAME chains, and — via a per-hop
+/// call in `fetch_attempt` — redirects. DNS is resolved here and again by
+/// the client; a hostile DNS could rebind between lookups, but the common
+/// SSRF vectors (metadata URLs, private ranges, internal names) are caught.
+async fn validate_public_host(url: &Url) -> Result<(), String> {
+    if ssrf_bypass() {
+        return Ok(());
+    }
+
+    let host = match url.host() {
+        Some(Host::Ipv4(ip)) => return ip_check(ip.into()),
+        Some(Host::Ipv6(ip)) => return ip_check(ip.into()),
+        Some(Host::Domain(d)) => d.to_string(),
+        None => return Err("URL has no host".to_string()),
+    };
+
+    let lower = host.to_ascii_lowercase();
+    if lower == "localhost"
+        || lower.ends_with(".local")
+        || lower.ends_with(".internal")
+        || lower.ends_with(".localhost")
+    {
+        return Err(format!("host '{}' is an internal name", host));
+    }
+
+    let port = url.port_or_known_default().unwrap_or(80);
+    let dns_host = host.clone();
+    let addrs = tokio::task::spawn_blocking(move || {
+        (dns_host.as_str(), port)
+            .to_socket_addrs()
+            .map(|a| a.collect::<Vec<_>>())
+    })
+    .await
+    .map_err(|e| format!("DNS task failed: {}", e))?
+    .map_err(|e| format!("DNS resolution failed: {}", e))?;
+
+    if addrs.is_empty() {
+        return Err(format!("DNS returned no addresses for '{}'", host));
+    }
+    for sa in &addrs {
+        if is_disallowed_ip(sa.ip()) {
+            return Err(format!(
+                "host '{}' resolves to non-public address {}",
+                host,
+                sa.ip()
+            ));
+        }
+    }
+    Ok(())
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -154,30 +270,65 @@ async fn fetch_attempt(
     client: &reqwest::Client,
     url: &str,
 ) -> Result<String, (String, bool)> {
-    // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
-    // its automatic gzip/brotli/deflate decoding and response.text()
-    // yields raw compressed bytes.
-    let response = client
-        .get(url)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-        .header("Accept-Language", "en-US,en;q=0.5")
-        .header("DNT", "1")
-        .header("Connection", "keep-alive")
-        .send()
-        .await
-        .map_err(|e| (format!("Request failed: {}", e), true))?;
+    let mut current = match Url::parse(url) {
+        Ok(u) => u,
+        Err(e) => return Err((format!("URL parse error: {}", e), false)),
+    };
 
-    let status = response.status();
-    if !status.is_success() {
-        // Only server-side errors are worth retrying.
-        let retryable = status.as_u16() >= 500;
-        return Err((format!("HTTP error: {}", status), retryable));
+    // The client is built with `redirect::Policy::none()`, so redirects are
+    // followed here — every hop must pass the SSRF guard (S1).
+    for _hop in 0..=MAX_REDIRECTS {
+        // S1: block loopback / RFC1918 / link-local (cloud metadata) /
+        // internal names, whether targeted directly or via CNAME/redirect.
+        if let Err(reason) = validate_public_host(&current).await {
+            return Err((
+                format!("Blocked by SSRF guard: {}", reason),
+                false,
+            ));
+        }
+
+        // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
+        // its automatic gzip/brotli/deflate decoding and response.text()
+        // yields raw compressed bytes.
+        let response = client
+            .get(current.as_str())
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("DNT", "1")
+            .header("Connection", "keep-alive")
+            .send()
+            .await
+            .map_err(|e| (format!("Request failed: {}", e), true))?;
+
+        let status = response.status();
+        if status.is_redirection() {
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    ("Redirect without Location header".to_string(), false)
+                })?;
+            current = current
+                .join(&location)
+                .map_err(|e| (format!("Invalid redirect target: {}", e), false))?;
+            continue;
+        }
+
+        if !status.is_success() {
+            // Only server-side errors are worth retrying.
+            let retryable = status.as_u16() >= 500;
+            return Err((format!("HTTP error: {}", status), retryable));
+        }
+
+        return response
+            .text()
+            .await
+            .map_err(|e| (format!("Body read failed: {}", e), true));
     }
 
-    response
-        .text()
-        .await
-        .map_err(|e| (format!("Body read failed: {}", e), true))
+    Err((format!("Too many redirects (max {})", MAX_REDIRECTS), false))
 }
 
 async fn http_fetch_html(client: &reqwest::Client, url: &str) -> Result<String, String> {

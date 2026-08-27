@@ -39,6 +39,7 @@ from stitch_web_researcher.search_providers import (
 )
 from stitch_web_researcher import meta_extractor
 from stitch_web_researcher.cache import Cache
+from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,11 @@ def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
 
     Returns (markdown, links, metadata) tuple.
     """
+    # S1: this function is reachable with LLM-supplied URLs; the Rust
+    # static path enforces the SSRF policy itself, but the browser path
+    # needs the check here.
+    validate_public_url(url)
+
     if _browser_oxide_available:
         try:
             return _fetch_with_browser_oxide(url)
@@ -568,12 +574,22 @@ class WebResearcherToolbox:
         }
 
     def _validate_url(self, url: str) -> None:
-        """Validate URL scheme and format."""
+        """Validate URL scheme and format, and apply the SSRF policy (S1).
+
+        ``url`` is LLM-supplied content in every tool that calls this,
+        so non-public destinations (cloud metadata, loopback, RFC1918,
+        internal names) are rejected before any network I/O happens.
+        """
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
         if not parsed.netloc:
             raise ValueError(f"Invalid URL (no host): {url}")
+        try:
+            validate_public_url(url)
+        except SsrfBlockedError as e:
+            logger.warning("Blocked non-public URL %s: %s", url, e)
+            raise
 
     def _rate_limit_domain(self, url: str) -> None:
         """Enforce per-domain rate limiting for content fetching.

@@ -40,3 +40,6 @@ crash.log
 # Scratch artifacts
 step1_links.json
 wiki_topics.json
+
+# Windows device-name artifact (prevents accidental indexing)
+nul

@@ -4,6 +4,7 @@ High-Performance Web Researcher – Rust core + Oxide extractors.
 
 from stitch_web_researcher._core import fetch_and_extract, batch_research
 from stitch_web_researcher._core import extract_main_content_markdown
+from stitch_web_researcher._core import fetch_html_full
 from stitch_web_researcher.agent_tools import (
     WebResearcherToolbox,
     ToolboxConfig,
@@ -44,6 +45,7 @@ from stitch_web_researcher.meta_extractor import (
     merge_into_document_metadata,
 )
 from stitch_web_researcher.cache import Cache
+from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
 
 __all__ = [
     # Rust core
@@ -51,6 +53,7 @@ __all__ = [
     "batch_research",
     "fetch_smart_page",
     "extract_main_content_markdown",
+    "fetch_html_full",
     # Toolbox
     "WebResearcherToolbox",
     "ToolboxConfig",
@@ -86,4 +89,7 @@ __all__ = [
     "merge_into_document_metadata",
     # Caching
     "Cache",
+    # SSRF guard (S1)
+    "SsrfBlockedError",
+    "validate_public_url",
 ]

@@ -394,7 +394,9 @@ class TestBatchSameDomainStaggering:
     """Batch engine spaces same-domain starts (gap = _fetch_interval + jitter);
     cross-domain URLs are never delayed relative to each other."""
 
-    def test_same_domain_batch_is_staggered(self, tmp_path):
+    def test_same_domain_batch_is_staggered(self, tmp_path, monkeypatch):
+        # SSRF guard (S1) blocks 127.0.0.1; this test only checks stagger.
+        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
         import threading
         import time as time_mod
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

@@ -55,7 +55,10 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture()
-def http_server():
+def http_server(monkeypatch):
+    # The SSRF guard (S1) blocks 127.0.0.1 targets; these tests exercise
+    # metadata extraction on a local server, so use the operator bypass.
+    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
