@@ -6,7 +6,7 @@ import random
 import threading
 import time
 import warnings
-from collections import defaultdict
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -466,6 +466,11 @@ class ToolboxConfig:
 class WebResearcherToolbox:
     """LLM tool routing layer with caching, rate limiting, and token budgeting."""
 
+    # M7: bounds for per-process state so a long-lived MCP server does
+    # not grow without limit (FIFO eviction of the oldest entries).
+    VISITED_URL_CAP = 20000
+    DOMAIN_TS_CAP = 4096
+
     USER_AGENTS = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -530,8 +535,10 @@ class WebResearcherToolbox:
 
         self._fetch_interval = self._resolve_fetch_interval(config)
 
-        self.visited_urls: set[str] = set()
-        self._domain_last_seen: dict[str, float] = defaultdict(float)
+        # M7: bounded OrderedDicts (FIFO) instead of an unbounded set
+        # and a defaultdict (whose reads insert unseen keys).
+        self.visited_urls: OrderedDict[str, None] = OrderedDict()
+        self._domain_last_seen: OrderedDict[str, float] = OrderedDict()
         self._ua_index = 0
         # S5: the MCP SDK dispatches synchronous tools on worker threads,
         # so tool calls run concurrently against this one instance. These
@@ -677,7 +684,9 @@ class WebResearcherToolbox:
         # under a lock so concurrent tool calls share one politeness gap
         # instead of each sleeping independently.
         with self._throttle_lock:
-            last_seen = self._domain_last_seen[domain]
+            # M7: .get instead of __getitem__ — the old defaultdict
+            # inserted an entry on every read of an unseen domain.
+            last_seen = self._domain_last_seen.get(domain, 0.0)
             elapsed = time.time() - last_seen
             gap = self._fetch_interval
             if gap > 0:
@@ -687,6 +696,10 @@ class WebResearcherToolbox:
             if elapsed < gap:
                 time.sleep(gap - elapsed)
             self._domain_last_seen[domain] = time.time()
+            self._domain_last_seen.move_to_end(domain)
+            # M7: keep the map bounded (evict least-recently-seen).
+            while len(self._domain_last_seen) > self.DOMAIN_TS_CAP:
+                self._domain_last_seen.popitem(last=False)
 
     def _claim_in_flight(self, url: str) -> bool:
         """Atomically claim a URL for fetching (S5).
@@ -707,6 +720,19 @@ class WebResearcherToolbox:
         """Release an in-flight claim (idempotent, always safe)."""
         with self._visit_lock:
             self._in_flight.discard(url)
+
+    def _mark_visited(self, url: str) -> None:
+        """Record a successful fetch (C3: success only, S5: locked).
+
+        M7: visited_urls is a bounded FIFO — once it exceeds the cap the
+        oldest entries are evicted down to half the cap (amortized
+        O(1) per insert). Eviction only affects future re-fetch dedup:
+        evicted URLs can still be served from the page cache."""
+        with self._visit_lock:
+            self.visited_urls[url] = None
+            if len(self.visited_urls) > self.VISITED_URL_CAP:
+                while len(self.visited_urls) > self.VISITED_URL_CAP // 2:
+                    self.visited_urls.popitem(last=False)
 
     # Query parameters that never change page content -- stripped so that
     # campaign-tagged variants of one document share a single cache entry.
@@ -1124,7 +1150,7 @@ class WebResearcherToolbox:
                     {"error": f"HTML inspection failed: {str(e)}"}, indent=2
                 )
             # Mark visited and cache only after a successful fetch (C3).
-            self.visited_urls.add(url)
+            self._mark_visited(url)
             self._page_cache_put(url, *cached)
             self._release_in_flight(url)
 
@@ -1283,7 +1309,7 @@ class WebResearcherToolbox:
                         # per-domain politeness gap as single fetches.
                         self._rate_limit_domain(url)
                         entry = self._fetch_html(url)
-                        self.visited_urls.add(url)  # success only (C3)
+                        self._mark_visited(url)  # success only (C3)
                         self._page_cache_put(url, *entry)  # C6
                         self._release_in_flight(url)  # S5
                         fetched[url] = self._batch_result(
@@ -1313,7 +1339,7 @@ class WebResearcherToolbox:
                         raise
                 for url, md_opt, links_opt in results:
                     if md_opt is not None and links_opt is not None:
-                        self.visited_urls.add(url)  # success only (C3)
+                        self._mark_visited(url)  # success only (C3)
                         # C6: store back into the shared page cache. The
                         # batch engine has no metadata, so meta stays empty.
                         self._page_cache_put(url, md_opt, links_opt, {}, "static")
@@ -1594,7 +1620,7 @@ class WebResearcherToolbox:
 
             payload_json = payload.to_json()
             self.cache.put("structured:" + self._cache_key(url), payload_json)
-            self.visited_urls.add(url)  # success only (C3)
+            self._mark_visited(url)  # success only (C3)
             self._release_in_flight(url)  # S5
             truncated_json = self._truncate(
                 payload_json, self.max_markdown_chars, self.max_tokens

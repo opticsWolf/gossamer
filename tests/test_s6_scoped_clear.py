@@ -71,7 +71,7 @@ class TestToolboxClearCache:
 
     def test_scoped_clear_resets_visited_and_keeps_foreign_files(self, tmp_path):
         tb = self._toolbox(tmp_path)
-        tb.visited_urls.add("https://example.com/old")
+        tb.visited_urls["https://example.com/old"] = None  # M7: bounded FIFO
         tb.cache.put("page:example", json.dumps({"markdown": "x"}))
         (tmp_path / "cache" / "readme.md").write_text("not a cache file")
 
@@ -79,7 +79,7 @@ class TestToolboxClearCache:
 
         assert out["cache_cleared"] is True
         # C3 behavior preserved: visited set reset so URLs can be re-fetched.
-        assert tb.visited_urls == set()
+        assert len(tb.visited_urls) == 0  # M7: visited is now a bounded FIFO
         assert tb._in_flight == set()
         # Cache file gone, foreign file and directory intact.
         assert not list((tmp_path / "cache").glob("*.cache"))

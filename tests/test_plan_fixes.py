@@ -31,7 +31,7 @@ class TestBatchVisitedSkip:
         """Already-visited URLs must never reach the fetch engines."""
         tb = _toolbox(tmp_path)
         url = "https://example.com/batch-skip"
-        tb.visited_urls.add(url)
+        tb.visited_urls[url] = None  # M7: bounded FIFO
 
         with patch(
             "stitch_web_researcher.agent_tools.batch_research"

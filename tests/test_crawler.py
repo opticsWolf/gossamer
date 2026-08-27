@@ -821,7 +821,7 @@ class TestHTMLStructuredParsing:
     def test_inspect_html_structured_already_visited(self, tmp_path):
         """inspect_html_structured warns on already-visited URL."""
         tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
-        tb.visited_urls.add("https://example.com")
+        tb.visited_urls["https://example.com"] = None  # M7: bounded FIFO
         result = tb.inspect_html_structured("https://example.com")
         data = json.loads(result)
         assert "warning" in data
