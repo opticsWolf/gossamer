@@ -1621,6 +1621,22 @@ class WebResearcherToolbox:
         content = file_path.read_bytes()
         return self._extract_from_bytes(content, str(file_path))
 
+    # M16: plain-text formats the extractor can really deliver — these are
+    # exactly what DOCUMENT_EXTENSIONS (structured_parser) may advertise in
+    # addition to pdf/OOXML. classify_link and _extract_from_bytes must stay
+    # in sync, or the model is promised an extraction that would raise.
+    _TEXT_SUFFIXES = (".csv", ".txt", ".md")
+    _UNSUPPORTED_FORMAT_HINTS = {
+        ".doc": "convert the file to .docx",
+        ".xls": "convert the file to .xlsx",
+        ".ppt": "convert the file to .pptx",
+        ".odt": "convert the file to .docx",
+        ".ods": "convert the file to .xlsx",
+        ".odp": "convert the file to .pptx",
+        ".rtf": "convert the file to .docx or PDF",
+        ".epub": "convert the file to PDF",
+    }
+
     def _extract_from_bytes(self, data: bytes, source: str) -> str:
         """Extract text from document bytes based on file type."""
         suffix = Path(source).suffix.lower()
@@ -1631,6 +1647,16 @@ class WebResearcherToolbox:
         elif suffix in (".docx", ".xlsx", ".pptx"):
             doc = require_office_oxide().from_bytes(data)
             return doc.to_markdown()
+        elif suffix in self._TEXT_SUFFIXES:
+            # M16: plain text is trivial to support and covers the
+            # CSV/TXT/MD links that classify_link advertises.
+            return data.decode("utf-8-sig", errors="replace")
+        elif suffix in self._UNSUPPORTED_FORMAT_HINTS:
+            # M16: honest, actionable failure for formats we cannot parse.
+            hint = self._UNSUPPORTED_FORMAT_HINTS[suffix]
+            raise ValueError(
+                f"Unsupported document format: {suffix} ({hint})."
+            )
         else:
             raise ValueError(f"Unsupported document format: {suffix}")
 

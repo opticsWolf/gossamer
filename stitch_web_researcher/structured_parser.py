@@ -73,9 +73,15 @@ class FollowUpCandidate(BaseModel):
     type: str = "page"  # 'page' -> inspect_html_page, 'document' -> extract_document
 
 
+# M16: exactly the formats extract_document can deliver (pdf, OOXML and
+# plain text). classify_link must never promise a format the extractor
+# raises on — the model would be sent into a guaranteed failure loop.
+# Legacy/binary formats (.doc/.xls/.ppt/.odt/.ods/.odp/.rtf/.epub) now
+# classify as 'page'; if the model still calls extract_document on them,
+# the extractor answers with an actionable conversion hint.
 DOCUMENT_EXTENSIONS = frozenset({
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".odt", ".ods", ".odp", ".rtf", ".csv", ".epub",
+    ".pdf", ".docx", ".xlsx", ".pptx",
+    ".csv", ".txt", ".md",
 })
 
 

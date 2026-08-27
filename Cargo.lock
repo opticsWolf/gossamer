@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "_stitch_web_researcher_core"
-version = "0.1.32"
+version = "0.1.33"
 dependencies = [
  "html2md",
  "pyo3",
