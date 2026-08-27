@@ -61,7 +61,9 @@ class TestRetryAfterFailure:
         tb = _toolbox(tmp_path)
         ok, bad = "https://example.com/batch-a", "https://example.com/batch-b"
 
-        def fake_batch(urls, max_links=500, max_concurrency=8, domain_gap_ms=0):
+        def fake_batch(
+            urls, max_links=500, max_concurrency=8, domain_gap_ms=0, max_bytes=None
+        ):
             return [
                 (u, "content", [("https://example.com/x", "x")]) if u == ok
                 else (u, "boom", None)

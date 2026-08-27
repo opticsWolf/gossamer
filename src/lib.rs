@@ -44,6 +44,39 @@ fn build_client() -> Result<reqwest::Client, String> {
 /// Max redirect hops followed (matches reqwest's built-in default).
 const MAX_REDIRECTS: u32 = 10;
 
+// ────────────────────────────────────────────────────────────────
+// 2c. Response size cap + content-type gate (S3, CODE_REVIEW_2026-08-27)
+// ────────────────────────────────────────────────────────────────
+
+/// S3: default response-body cap (5 MiB). A hostile or merely large
+/// URL must not be read fully into memory.
+const DEFAULT_MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
+
+/// S3: operator override (same pattern as the S1 bypass). The
+/// environment is under operator control, not the LLM's.
+fn max_response_bytes() -> usize {
+    std::env::var("STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_RESPONSE_BYTES)
+}
+
+/// S3: the HTML fetch path accepts text-family media types. A missing
+/// Content-Type header is allowed through (the Python-side
+/// `_looks_like_text` check remains the safety net).
+fn is_html_content_type(ctype: &str) -> bool {
+    let media = ctype
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    media.starts_with("text/")
+        || media == "application/xhtml+xml"
+        || media == "application/xml"
+}
+
 /// Operator-controlled bypass for the SSRF guard (developers and tests
 /// that need local servers). The environment is under operator control,
 /// not the LLM's.
@@ -387,6 +420,7 @@ fn process_html_anchored(
 async fn fetch_attempt(
     client: &reqwest::Client,
     url: &str,
+    max_bytes: usize,
 ) -> Result<String, (String, bool)> {
     let mut current = match Url::parse(url) {
         Ok(u) => u,
@@ -408,7 +442,7 @@ async fn fetch_attempt(
         // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
         // its automatic gzip/brotli/deflate decoding and response.text()
         // yields raw compressed bytes.
-        let response = client
+        let mut response = client
             .get(current.as_str())
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.5")
@@ -440,21 +474,74 @@ async fn fetch_attempt(
             return Err((format!("HTTP error: {}", status), retryable));
         }
 
-        return response
-            .text()
-            .await
-            .map_err(|e| (format!("Body read failed: {}", e), true));
+        // S3: content-type gate — binary bodies must not be lossily
+        // UTF-8-decoded into the markdown pipeline. The error names the
+        // real type so the agent can switch to extract_document.
+        if let Some(ctype) = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+        {
+            if !is_html_content_type(ctype) {
+                return Err((
+                    format!(
+                        "Unsupported content type: {} (HTML fetch accepts text/*, application/xhtml+xml, application/xml; use extract_document for binary formats)",
+                        ctype
+                    ),
+                    false,
+                ));
+            }
+        }
+
+        // S3: size cap — Content-Length allows an early reject; otherwise
+        // stream chunk by chunk and abort once the cap is exceeded.
+        if let Some(declared) = response.content_length() {
+            if declared as usize > max_bytes {
+                return Err((
+                    format!(
+                        "Response too large: declared {} bytes (cap {})",
+                        declared, max_bytes
+                    ),
+                    false,
+                ));
+            }
+        }
+        let mut body: Vec<u8> = Vec::new();
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    body.extend_from_slice(&chunk);
+                    if body.len() > max_bytes {
+                        return Err((
+                            format!(
+                                "Response exceeds size cap ({} bytes)",
+                                max_bytes
+                            ),
+                            false,
+                        ));
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => return Err((format!("Body read failed: {}", e), true)),
+            }
+        }
+        let html = String::from_utf8_lossy(&body).into_owned();
+        return Ok(html);
     }
 
     Err((format!("Too many redirects (max {})", MAX_REDIRECTS), false))
 }
 
-async fn http_fetch_html(client: &reqwest::Client, url: &str) -> Result<String, String> {
+async fn http_fetch_html(
+    client: &reqwest::Client,
+    url: &str,
+    max_bytes: usize,
+) -> Result<String, String> {
     const MAX_ATTEMPTS: u32 = 3;
     let mut last_error = String::new();
 
     for attempt in 0..MAX_ATTEMPTS {
-        match fetch_attempt(client, url).await {
+        match fetch_attempt(client, url, max_bytes).await {
             Ok(html) => return Ok(html),
             Err((msg, retryable)) => {
                 if !retryable {
@@ -480,16 +567,20 @@ async fn http_fetch_html(client: &reqwest::Client, url: &str) -> Result<String, 
 async fn fetch_pairs_inner(
     url: &str,
     cap: usize,
+    max_bytes: usize,
 ) -> Result<(String, Vec<(String, String)>), String> {
     let client = build_client()?;
-    let html = http_fetch_html(&client, url).await?;
+    let html = http_fetch_html(&client, url, max_bytes).await?;
     let (md, pairs, _removed) = process_html_anchored(&html, url, cap)?;
     Ok((md, pairs))
 }
 
-fn fetch_and_extract_single(url: &str) -> Result<(String, Vec<String>), String> {
+fn fetch_and_extract_single(
+    url: &str,
+    max_bytes: usize,
+) -> Result<(String, Vec<String>), String> {
     let rt = shared_runtime();
-    rt.block_on(fetch_pairs_inner(url, 20)).map(|(md, pairs)| {
+    rt.block_on(fetch_pairs_inner(url, 20, max_bytes)).map(|(md, pairs)| {
         (md, pairs.into_iter().map(|(u, _)| u).collect())
     })
 }
@@ -498,9 +589,10 @@ fn fetch_and_extract_single(url: &str) -> Result<(String, Vec<String>), String> 
 fn fetch_and_extract_single_anchored(
     url: &str,
     cap: usize,
+    max_bytes: usize,
 ) -> Result<(String, Vec<(String, String)>), String> {
     let rt = shared_runtime();
-    rt.block_on(fetch_pairs_inner(url, cap))
+    rt.block_on(fetch_pairs_inner(url, cap, max_bytes))
 }
 
 /// Fetch one URL and keep the raw HTML alongside the extraction results:
@@ -508,11 +600,15 @@ fn fetch_and_extract_single_anchored(
 /// caller can run its own metadata extraction (e.g. meta-oxide) on the
 /// exact bytes that were rendered into the markdown — no second network
 /// round-trip (C2 fix, CODE_REVIEW_2026-08-27).
-fn fetch_html_full_single(url: &str, cap: usize) -> Result<FullPage, String> {
+fn fetch_html_full_single(
+    url: &str,
+    cap: usize,
+    max_bytes: usize,
+) -> Result<FullPage, String> {
     let rt = shared_runtime();
     rt.block_on(async {
         let client = build_client()?;
-        let html = http_fetch_html(&client, url).await?;
+        let html = http_fetch_html(&client, url, max_bytes).await?;
         let (md, links, removed) = process_html_anchored(&html, url, cap)?;
         Ok((html, md, links, removed))
     })
@@ -547,6 +643,7 @@ async fn fetch_many_inner(
     cap: usize,
     max_concurrency: usize,
     domain_gap_ms: u64,
+    max_bytes: usize,
 ) -> BatchOutcome {
     // Bounds simultaneous connections so a large same-domain batch cannot
     // open unbounded sockets (self-DoS / rude to the target).
@@ -597,7 +694,7 @@ async fn fetch_many_inner(
 
             let res = async {
                 let client = build_client()?;
-                let html = http_fetch_html(&client, &url).await?;
+                let html = http_fetch_html(&client, &url, max_bytes).await?;
                 let (md, pairs, _removed) = process_html_anchored(&html, &url, cap)?;
                 Ok((md, pairs))
             }
@@ -624,9 +721,16 @@ fn fetch_many(
     cap: usize,
     max_concurrency: usize,
     domain_gap_ms: u64,
+    max_bytes: usize,
 ) -> BatchOutcome {
     let rt = shared_runtime();
-    rt.block_on(fetch_many_inner(urls, cap, max_concurrency, domain_gap_ms))
+    rt.block_on(fetch_many_inner(
+        urls,
+        cap,
+        max_concurrency,
+        domain_gap_ms,
+        max_bytes,
+    ))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -652,14 +756,16 @@ fn process_rendered_html(
 /// Python binding: fetch one URL -> (markdown, [(url, anchor_text)]) with
 /// a larger candidate pool for LLM link triage.
 #[pyfunction]
-#[pyo3(signature = (url, max_links = 100))]
+#[pyo3(signature = (url, max_links = 100, max_bytes = None))]
 fn fetch_and_extract_linked(
     py: Python<'_>,
     url: String,
     max_links: usize,
+    max_bytes: Option<usize>,
 ) -> PyResult<(String, Vec<(String, String)>)> {
+    let cap = max_bytes.unwrap_or_else(max_response_bytes);
     py.detach(|| {
-        match fetch_and_extract_single_anchored(&url, max_links) {
+        match fetch_and_extract_single_anchored(&url, max_links, cap) {
             Ok(res) => Ok(res),
             Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
         }
@@ -670,10 +776,16 @@ fn fetch_and_extract_linked(
 /// Like `fetch_and_extract_linked` but also returns the raw HTML so the
 /// caller can extract metadata from it (C2).
 #[pyfunction]
-#[pyo3(signature = (url, max_links = 100))]
-fn fetch_html_full(py: Python<'_>, url: String, max_links: usize) -> PyResult<FullPage> {
+#[pyo3(signature = (url, max_links = 100, max_bytes = None))]
+fn fetch_html_full(
+    py: Python<'_>,
+    url: String,
+    max_links: usize,
+    max_bytes: Option<usize>,
+) -> PyResult<FullPage> {
+    let cap = max_bytes.unwrap_or_else(max_response_bytes);
     py.detach(|| {
-        match fetch_html_full_single(&url, max_links) {
+        match fetch_html_full_single(&url, max_links, cap) {
             Ok(res) => Ok(res),
             Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
         }
@@ -700,9 +812,15 @@ fn extract_links_from_html(
 
 /// Python binding: fetch one URL -> (markdown, list_of_links)
 #[pyfunction]
-fn fetch_and_extract(py: Python<'_>, url: String) -> PyResult<(String, Vec<String>)> {
+#[pyo3(signature = (url, max_bytes = None))]
+fn fetch_and_extract(
+    py: Python<'_>,
+    url: String,
+    max_bytes: Option<usize>,
+) -> PyResult<(String, Vec<String>)> {
+    let cap = max_bytes.unwrap_or_else(max_response_bytes);
     py.detach(|| {
-        match fetch_and_extract_single(&url) {
+        match fetch_and_extract_single(&url, cap) {
             Ok((md, links)) => Ok((md, links)),
             Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
         }
@@ -712,16 +830,18 @@ fn fetch_and_extract(py: Python<'_>, url: String) -> PyResult<(String, Vec<Strin
 /// Python binding: batch fetch multiple URLs.
 /// Returns list of tuples: (url, markdown_or_error, [(anchor_url, text)] or None)
 #[pyfunction]
-#[pyo3(signature = (urls, max_links = 500, max_concurrency = 8, domain_gap_ms = 0))]
+#[pyo3(signature = (urls, max_links = 500, max_concurrency = 8, domain_gap_ms = 0, max_bytes = None))]
 fn batch_research(
     py: Python<'_>,
     urls: Vec<String>,
     max_links: usize,
     max_concurrency: usize,
     domain_gap_ms: u64,
+    max_bytes: Option<usize>,
 ) -> PyResult<PyBatchResult> {
+    let cap = max_bytes.unwrap_or_else(max_response_bytes);
     py.detach(|| {
-        let results = fetch_many(urls, max_links, max_concurrency, domain_gap_ms);
+        let results = fetch_many(urls, max_links, max_concurrency, domain_gap_ms, cap);
         let mut out = Vec::new();
         for (url, res) in results {
             match res {

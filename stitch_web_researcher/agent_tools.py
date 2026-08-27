@@ -422,6 +422,10 @@ class ToolboxConfig:
     fetch_mode: str = "auto"
     candidate_cap: int = 500
     max_concurrency: int = 8
+    # S3: cap (bytes) on response bodies fetched through the Rust core.
+    # Bodies larger than this are rejected before being fully read into
+    # memory (Content-Length early-reject + streaming chunk cap).
+    max_response_bytes: int = 5 * 1024 * 1024
     # Fraction of the output budget (chars/tokens) reserved for the
     # follow-up link list and JSON envelope, so budget enforcement never
     # starves link delivery on content-rich pages (C1).
@@ -436,6 +440,8 @@ class ToolboxConfig:
             raise ValueError("candidate_cap must be >= 1")
         if self.max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
+        if self.max_response_bytes < 1:
+            raise ValueError("max_response_bytes must be >= 1")
         if not 0.0 <= self.link_budget_ratio < 0.9:
             raise ValueError("link_budget_ratio must be in [0.0, 0.9)")
 
@@ -515,6 +521,8 @@ class WebResearcherToolbox:
         self.link_cap = max(1, int(config.candidate_cap))
         # Upper bound on simultaneous connections opened by batch fetching.
         self.max_concurrency = max(1, int(config.max_concurrency))
+        # S3: response-body size cap, passed through to the Rust core.
+        self.max_response_bytes = max(1, int(config.max_response_bytes))
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
@@ -828,7 +836,9 @@ class WebResearcherToolbox:
         links, so the static path runs the same meta-oxide metadata
         extraction as the browser path — no second network round-trip.
         """
-        html, md, links, removed = fetch_html_full(url, self.link_cap)
+        html, md, links, removed = fetch_html_full(
+            url, self.link_cap, self.max_response_bytes
+        )
         metadata = meta_extractor.extract_all(html, url)
         if removed:
             metadata["hidden_blocks_removed"] = removed
@@ -1148,6 +1158,7 @@ class WebResearcherToolbox:
                         max_concurrency=self.max_concurrency,
                         # Same-domain staggering inside the batch engine (0 disables).
                         domain_gap_ms=int(self._fetch_interval * 1000),
+                        max_bytes=self.max_response_bytes,
                     )
                 for url, md_opt, links_opt in results:
                     if md_opt is not None and links_opt is not None:
