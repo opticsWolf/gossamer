@@ -7,9 +7,14 @@ truncation if tiktoken is unavailable or the model is unrecognized.
 
 Supported model families
 ------------------------
-- OpenAI: gpt-4o, gpt-4, gpt-3.5-turbo  (cl100k_base / p50k_base)
+- OpenAI: gpt-4o (o200k_base), gpt-4, gpt-3.5-turbo  (cl100k_base / p50k_base)
 - Anthropic: claude-3-opus, claude-3-sonnet, claude-3-haiku  (cl100k_base)
 - Any other model defaults to cl100k_base (safe overestimate)
+
+When tiktoken is installed, resolve_encoding() prefers tiktoken's own
+model→encoding map (kept in sync with OpenAI releases) and falls back
+to the local table below for models tiktoken does not know (e.g.
+Anthropic) or when tiktoken is unavailable. (M5)
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ logger = logging.getLogger(__name__)
 # ────────────────────────────────────────────────────────────────
 
 _MODEL_ENCODING: dict[str, str] = {
-    # OpenAI cl100k_base models (GPT-4, GPT-3.5-turbo, GPT-4o, etc.)
+    # OpenAI cl100k_base models (GPT-4, GPT-3.5-turbo, etc.)
     "gpt-4": "cl100k_base",
     "gpt-4-0314": "cl100k_base",
     "gpt-4-0613": "cl100k_base",
@@ -35,10 +40,11 @@ _MODEL_ENCODING: dict[str, str] = {
     "gpt-4-1106-preview": "cl100k_base",
     "gpt-4-turbo": "cl100k_base",
     "gpt-4-turbo-2024-04-09": "cl100k_base",
-    "gpt-4o": "cl100k_base",
-    "gpt-4o-2024-05-13": "cl100k_base",
-    "gpt-4o-mini": "cl100k_base",
-    "gpt-4o-mini-2024-07-18": "cl100k_base",
+    # GPT-4o family uses o200k_base (M5: was wrongly cl100k_base)
+    "gpt-4o": "o200k_base",
+    "gpt-4o-2024-05-13": "o200k_base",
+    "gpt-4o-mini": "o200k_base",
+    "gpt-4o-mini-2024-07-18": "o200k_base",
     "gpt-3.5-turbo": "cl100k_base",
     "gpt-3.5-turbo-0301": "p50k_base",
     "gpt-3.5-turbo-0613": "cl100k_base",
@@ -87,18 +93,31 @@ def resolve_encoding(model_name: str) -> str:
     """
     Map a model name to a tiktoken encoding name.
 
-    Returns the encoding string (e.g. ``"cl100k_base"``).  Unknown
+    Returns the encoding string (e.g. ``"cl100k_base"``).  When
+    tiktoken is installed its own model map is authoritative (e.g.
+    ``gpt-4o -> o200k_base``); otherwise the local table is used.  Unknown
     models fall back to ``cl100k_base``.
     """
     # Normalize
     key = model_name.lower().strip()
+    # M5: prefer tiktoken's own model->encoding map; it tracks OpenAI
+    # releases (the local table below was stale: gpt-4o was mapped to
+    # cl100k_base, which over-counts tokens vs o200k_base).
+    if _tiktoken_available:
+        try:
+            import tiktoken
+
+            return tiktoken.encoding_for_model(key).name
+        except Exception:
+            pass  # model unknown to tiktoken -> fall back to the table
     # Exact match first
     if key in _MODEL_ENCODING:
         return _MODEL_ENCODING[key]
-    # Prefix match (e.g. "gpt-4o-2024-08-06")
-    for known, enc in _MODEL_ENCODING.items():
+    # Longest prefix match (e.g. "gpt-4o-2024-08-06" must hit "gpt-4o",
+    # not the shorter "gpt-4" key that precedes it in the table). (M5)
+    for known in sorted(_MODEL_ENCODING, key=len, reverse=True):
         if key.startswith(known):
-            return enc
+            return _MODEL_ENCODING[known]
     return _DEFAULT_ENCODING
 
 

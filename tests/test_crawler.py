@@ -552,7 +552,7 @@ class TestTokenBudget:
 
         n = count_tokens("Hello world")
         assert n >= 1
-        # "Hello world" is typically 2 tokens with cl100k_base
+        # "Hello world" is 2 tokens with both cl100k_base and o200k_base
         assert n <= 5
 
     def test_count_tokens_empty(self):
@@ -630,7 +630,8 @@ class TestTokenBudget:
     def test_resolve_encoding_known(self):
         from stitch_web_researcher.token_budget import resolve_encoding
 
-        assert resolve_encoding("gpt-4o") == "cl100k_base"
+        # M5: gpt-4o is o200k_base — tiktoken's map is now authoritative
+        assert resolve_encoding("gpt-4o") == "o200k_base"
         assert resolve_encoding("gpt-4") == "cl100k_base"
         assert resolve_encoding("gpt-3.5-turbo") == "cl100k_base"
         assert resolve_encoding("claude-3-sonnet") == "cl100k_base"
@@ -644,8 +645,9 @@ class TestTokenBudget:
     def test_resolve_encoding_prefix_match(self):
         from stitch_web_researcher.token_budget import resolve_encoding
 
-        # Prefix match for date-suffixed variants
-        assert resolve_encoding("gpt-4o-2024-08-06") == "cl100k_base"
+        # Date-suffixed variants: tiktoken maps gpt-4o-* to o200k_base
+        # and gpt-4-1106-preview to cl100k_base (M5)
+        assert resolve_encoding("gpt-4o-2024-08-06") == "o200k_base"
         assert resolve_encoding("gpt-4-1106-preview") == "cl100k_base"
 
     def test_estimate_markdown_tokens(self):
