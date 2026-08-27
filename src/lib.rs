@@ -25,16 +25,24 @@ fn shared_runtime() -> &'static tokio::runtime::Runtime {
 // 2. HTTP client builder
 // ────────────────────────────────────────────────────────────────
 
-fn build_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(10))
-        // Redirects are followed manually in fetch_attempt so that every
-        // hop passes the SSRF guard (S1).
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| format!("Client build error: {}", e))
+/// M9: the HTTP client is a process-wide singleton. A fresh client per
+/// request made every fetch pay TLS handshake + connection-pool setup;
+/// `reqwest::Client` pools connections per host, so sharing one client
+/// across the shared runtime reuses warm connections. Same OnceLock
+/// pattern as the runtime singleton above.
+fn shared_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))
+            // Redirects are followed manually in fetch_attempt so that
+            // every hop passes the SSRF guard (S1).
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("Failed to create shared HTTP client")
+    })
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -569,8 +577,7 @@ async fn fetch_pairs_inner(
     cap: usize,
     max_bytes: usize,
 ) -> Result<(String, Vec<(String, String)>), String> {
-    let client = build_client()?;
-    let html = http_fetch_html(&client, url, max_bytes).await?;
+    let html = http_fetch_html(shared_client(), url, max_bytes).await?;
     let (md, pairs, _removed) = process_html_anchored(&html, url, cap)?;
     Ok((md, pairs))
 }
@@ -607,8 +614,7 @@ fn fetch_html_full_single(
 ) -> Result<FullPage, String> {
     let rt = shared_runtime();
     rt.block_on(async {
-        let client = build_client()?;
-        let html = http_fetch_html(&client, url, max_bytes).await?;
+        let html = http_fetch_html(shared_client(), url, max_bytes).await?;
         let (md, links, removed) = process_html_anchored(&html, url, cap)?;
         Ok((html, md, links, removed))
     })
@@ -693,8 +699,7 @@ async fn fetch_many_inner(
             }
 
             let res = async {
-                let client = build_client()?;
-                let html = http_fetch_html(&client, &url, max_bytes).await?;
+                let html = http_fetch_html(shared_client(), &url, max_bytes).await?;
                 let (md, pairs, _removed) = process_html_anchored(&html, &url, cap)?;
                 Ok((md, pairs))
             }
