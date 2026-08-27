@@ -36,10 +36,9 @@ class TestBatchVisitedSkip:
             mock_batch.return_value = []
             tb.batch_inspect_pages([url])
 
-        assert mock_batch.call_count == 1
-        args, kwargs = mock_batch.call_args
-        assert args[0] == [], (
-            "already-visited URL was passed to batch_research despite 'skipping'"
+        # C6: with nothing pending, the engine is not called at all.
+        assert mock_batch.call_count == 0, (
+            "already-visited URL reached the fetch engine despite 'skipping'"
         )
 
     def test_fresh_urls_are_fetched(self, tmp_path):

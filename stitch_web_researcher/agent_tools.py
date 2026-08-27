@@ -1060,71 +1060,120 @@ class WebResearcherToolbox:
         """
         Fetch multiple pages concurrently using the Rust batch engine.
 
+        Pages already in the page cache are served straight from it (C6);
+        only genuinely new URLs reach the fetch engine, and fetched pages
+        are stored back into the cache so later single-page inspections
+        (and repeated batches) are nearly free. Output is merged back in
+        the caller's input order, and every entry has the same shape as an
+        ``inspect_html_page`` result (metadata, cache_hit, fetch_method).
+
         With ``fetch_mode="browser"`` every page is fetched sequentially
         through the stealth browser instead (per-domain rate limits apply).
         """
-        # Validate once; only genuinely new URLs reach the fetch engines.
-        # Visited URLs are marked only after success (C3), so failed batch
-        # entries remain retryable.
-        pending = []
-        for url in urls:
+        # Normalize (C6: single-page inspection normalizes too, so the same
+        # page can never occupy two cache/visited entries), then partition
+        # into cached vs. uncached. Visited URLs are marked only after
+        # success (C3), so failed batch entries remain retryable.
+        pending: list[str] = []
+        cached_entries: dict[str, tuple] = {}
+        seen = set()
+        for raw in urls:
+            url = normalize_url(raw)
+            if url in seen:
+                continue
+            seen.add(url)
+            self._validate_url(url)
+            cached = self._page_cache_get(url)
+            if cached is not None:
+                cached_entries[url] = cached
+                continue
             if url in self.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
-            self._validate_url(url)
             pending.append(url)
 
         try:
-            output = []
+            fetched: dict[str, dict] = {}
             if self.fetch_mode == "browser":
                 for url in pending:
                     try:
                         # Sequential stealth-browser fetches honor the same
                         # per-domain politeness gap as single fetches.
                         self._rate_limit_domain(url)
-                        md, links, meta, method = self._fetch_html(url)
+                        entry = self._fetch_html(url)
                         self.visited_urls.add(url)  # success only (C3)
-                        md_chars, md_tokens = self._content_budget()
-                        truncated_md = self._truncate(md, md_chars, md_tokens)
-                        output.append(
-                            json.loads(
-                                self._build_inspection_result(
-                                    url, truncated_md, links, {}, method,
-                                    markdown_truncated=truncated_md != md,
-                                ).model_dump_json()
-                            )
+                        self._page_cache_put(url, *entry)  # C6
+                        fetched[url] = self._batch_result(
+                            url, *entry, cache_hit=False
                         )
                     except Exception as e:
-                        output.append({"url": url, "error": str(e)})
-                return json.dumps(output, ensure_ascii=False)
+                        fetched[url] = {"url": url, "error": str(e)}
+            else:
+                results = []
+                if pending:
+                    results = batch_research(
+                        pending,
+                        max_links=self.link_cap,
+                        max_concurrency=self.max_concurrency,
+                        # Same-domain staggering inside the batch engine (0 disables).
+                        domain_gap_ms=int(self._fetch_interval * 1000),
+                    )
+                for url, md_opt, links_opt in results:
+                    if md_opt is not None and links_opt is not None:
+                        self.visited_urls.add(url)  # success only (C3)
+                        # C6: store back into the shared page cache. The
+                        # batch engine has no metadata, so meta stays empty.
+                        self._page_cache_put(url, md_opt, links_opt, {}, "static")
+                        fetched[url] = self._batch_result(
+                            url, md_opt, links_opt, {}, "static", cache_hit=False
+                        )
+                    else:
+                        fetched[url] = {
+                            "url": url, "error": md_opt or "Unknown error"
+                        }
 
-            results = batch_research(
-                pending,
-                max_links=self.link_cap,
-                max_concurrency=self.max_concurrency,
-                # Same-domain staggering inside the batch engine (0 disables).
-                domain_gap_ms=int(self._fetch_interval * 1000),
-            )
+            # Merge cached + fetched entries back in input order (C6).
             output = []
-            md_chars, md_tokens = self._content_budget()
-            for url, md_opt, links_opt in results:
-                if md_opt is not None and links_opt is not None:
-                    self.visited_urls.add(url)  # success only (C3)
-                    truncated_md = self._truncate(md_opt, md_chars, md_tokens)
+            emitted = set()
+            for raw in urls:
+                url = normalize_url(raw)
+                if url in emitted:
+                    continue
+                emitted.add(url)
+                if url in cached_entries:
+                    md, links, meta, method = cached_entries[url]
                     output.append(
-                        json.loads(
-                            self._build_inspection_result(
-                                url, truncated_md, links_opt, {}, "static-batch",
-                                markdown_truncated=truncated_md != md_opt,
-                            ).model_dump_json()
+                        self._batch_result(
+                            url, md, links, meta, method, cache_hit=True
                         )
                     )
-                else:
-                    output.append({"url": url, "error": md_opt or "Unknown error"})
+                elif url in fetched:
+                    output.append(fetched[url])
             return json.dumps(output, ensure_ascii=False)
         except Exception as e:
             logger.error("Batch inspection failed: %s", e)
             return json.dumps({"error": f"Batch inspection failed: {str(e)}"}, indent=2)
+
+    def _batch_result(
+        self,
+        url: str,
+        md: str,
+        links,
+        meta: dict,
+        method: str,
+        cache_hit: bool = False,
+    ) -> dict:
+        """Build one batch output entry with the same shape as a
+        single-page ``inspect_html_page`` result (C6)."""
+        md_chars, md_tokens = self._content_budget()
+        truncated_md = self._truncate(md, md_chars, md_tokens)
+        result = self._build_inspection_result(
+            url, truncated_md, links, self._compact_metadata(meta), method,
+            markdown_truncated=truncated_md != md,
+        )
+        if cache_hit:
+            result.cache_hit = True
+        return json.loads(result.model_dump_json())
 
     # ───────────────────────────────
     # Document Extraction
