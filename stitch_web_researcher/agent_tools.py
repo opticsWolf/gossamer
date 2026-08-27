@@ -9,7 +9,7 @@ import warnings
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import urlparse, urljoin
 
 import httpx
@@ -76,6 +76,48 @@ class InspectionResult(BaseModel):
     fetch_method: Optional[str] = None
     cache_hit: bool = False
     metadata: dict = Field(default_factory=dict)
+
+
+# ───────────────────────────────
+# Batch result record (M10, CODE_REVIEW_2026-08-27)
+# ───────────────────────────────
+
+@dataclass(frozen=True)
+class BatchEntry:
+    """Tagged result of one URL in a batch fetch.
+
+    The raw batch engine reports ``(url, md_or_error, links_or_None)``
+    triples in which the failure marker is the links slot being None.
+    This record makes that explicit: on success ``markdown``/``links``
+    are set and ``error`` is None; on failure ``error`` is set and
+    ``markdown``/``links`` are None. Callers branch on ``ok`` instead of
+    guessing which slot carries what.
+    """
+
+    url: str
+    markdown: Optional[str] = None
+    links: Optional[List[str]] = None
+    error: Optional[str] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+def _normalize_batch_results(results) -> List[BatchEntry]:
+    """Convert raw engine triples into tagged ``BatchEntry`` records (M10).
+
+    Success: ``(url, markdown, links)`` with both slots non-None.
+    Failure: ``(url, error_message, None)`` (the message may be empty).
+    """
+    entries: List[BatchEntry] = []
+    for url, md_opt, links_opt in results:
+        if md_opt is not None and links_opt is not None:
+            entries.append(BatchEntry(url=url, markdown=md_opt, links=links_opt))
+        else:
+            entries.append(BatchEntry(url=url, error=md_opt or "Unknown error"))
+    return entries
+
 
 # ───────────────────────────────
 # Smart fetch (browser_oxide with fallback)
@@ -1337,21 +1379,22 @@ class WebResearcherToolbox:
                         for claimed in pending:
                             self._release_in_flight(claimed)
                         raise
-                for url, md_opt, links_opt in results:
-                    if md_opt is not None and links_opt is not None:
-                        self._mark_visited(url)  # success only (C3)
+                for entry in _normalize_batch_results(results):
+                    if entry.ok:
+                        self._mark_visited(entry.url)  # success only (C3)
                         # C6: store back into the shared page cache. The
                         # batch engine has no metadata, so meta stays empty.
-                        self._page_cache_put(url, md_opt, links_opt, {}, "static")
-                        self._release_in_flight(url)  # S5
-                        fetched[url] = self._batch_result(
-                            url, md_opt, links_opt, {}, "static", cache_hit=False
+                        self._page_cache_put(
+                            entry.url, entry.markdown, entry.links, {}, "static"
+                        )
+                        self._release_in_flight(entry.url)  # S5
+                        fetched[entry.url] = self._batch_result(
+                            entry.url, entry.markdown, entry.links, {},
+                            "static", cache_hit=False
                         )
                     else:
-                        self._release_in_flight(url)  # S5: stays retryable
-                        fetched[url] = {
-                            "url": url, "error": md_opt or "Unknown error"
-                        }
+                        self._release_in_flight(entry.url)  # S5: stays retryable
+                        fetched[entry.url] = {"url": entry.url, "error": entry.error}
 
             # Merge cached + fetched entries back in input order (C6).
             output = []
