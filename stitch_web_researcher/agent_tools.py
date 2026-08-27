@@ -989,13 +989,43 @@ class WebResearcherToolbox:
         )
 
         candidates = result.follow_up_links
+        n_total = len(candidates)
+        # M11: the old loop re-tokenized the ENTIRE payload on every
+        # halving pass (up to ~9 full tokenizations of a large JSON
+        # string). Instead, tokenize exactly two payloads up front — the
+        # envelope with no links and the full payload — and interpolate
+        # the cost of the shrinking link list per pass. Any pass the
+        # estimate says fits is verified with one exact tokenization
+        # before being accepted, so the final payload always satisfies
+        # the token budget.
+        envelope_tokens = 0
+        if self.max_tokens > 0 and n_total:
+            result.follow_up_links = []
+            envelope_tokens = count_tokens(
+                result.model_dump_json(), self.model_name
+            )
+            result.follow_up_links = candidates
+
+        full_tokens = 0
         while True:
             payload = result.model_dump_json()
             over_chars = len(payload) > self.max_markdown_chars
-            over_tokens = (
-                self.max_tokens > 0
-                and count_tokens(payload, self.model_name) > self.max_tokens
-            )
+            over_tokens = False
+            if self.max_tokens > 0:
+                n_now = len(result.follow_up_links)
+                if n_now == n_total:
+                    full_tokens = count_tokens(payload, self.model_name)
+                    over_tokens = full_tokens > self.max_tokens
+                elif n_now == 0:
+                    over_tokens = envelope_tokens > self.max_tokens
+                else:
+                    est = envelope_tokens + (full_tokens - envelope_tokens) * n_now / n_total
+                    if est > self.max_tokens:
+                        over_tokens = True
+                    else:
+                        # Boundary safety: the linear estimate can be off
+                        # by a token or two; verify exactly before accepting.
+                        over_tokens = count_tokens(payload, self.model_name) > self.max_tokens
             if not (over_chars or over_tokens):
                 break
             if not result.follow_up_links:
