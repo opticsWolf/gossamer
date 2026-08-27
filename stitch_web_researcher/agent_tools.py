@@ -95,6 +95,15 @@ class InspectionResult(BaseModel):
     sections_available: int = 0
     sections_selected: int = 0
     section_anchors: list[str] = Field(default_factory=list)
+    # Tier 1.2: paging metadata, set on every chunked (non-selection)
+    # read. offset echoes the requested start; chars_total is the full
+    # page length; next_offset is the character position to pass as
+    # offset next to continue where this read stopped; has_more tells
+    # whether anything follows this slice.
+    offset: int = 0
+    next_offset: Optional[int] = None
+    has_more: bool = False
+    chars_total: int = 0
 
 
 # ───────────────────────────────
@@ -379,7 +388,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "inspect_html_page",
-        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first. Returns markdown text and follow-up links.",
+        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first; or pass offset / max_chunks to page through the full document in budget-sized chunks. Returns markdown text and follow-up links.",
         "inspect_html_page",
         (
             ToolParam("url", str, description="The URL to inspect"),
@@ -394,6 +403,18 @@ TOOL_REGISTRY = (
                 str,
                 None,
                 "The research query. When the page does not fit the output budget, only the sections most relevant to this query are returned; the payload reports sections_available / sections_selected / section_anchors.",
+            ),
+            ToolParam(
+                "offset",
+                int,
+                0,
+                "Character offset into the full page markdown to start reading from. Pass the previous call's next_offset to resume where it stopped. Explicit paging takes precedence over query.",
+            ),
+            ToolParam(
+                "max_chunks",
+                int,
+                1,
+                "Number of consecutive budget-sized chunks to return (each chunk respects the output budget; the total may exceed it).",
             ),
         ),
     ),
@@ -1279,6 +1300,8 @@ class WebResearcherToolbox:
         url: str,
         use_smart: Optional[bool] = None,
         query: Optional[str] = None,
+        offset: int = 0,
+        max_chunks: int = 1,
     ) -> str:
         """Shared implementation behind ``inspect_html_page`` (sync + async).
 
@@ -1342,13 +1365,34 @@ class WebResearcherToolbox:
             len(links),
         )
         md_chars, md_tokens = self._content_budget()
-        # Tier 1.1: when a research query is supplied and the page does
-        # not fit the budget, keep the query-relevant sections instead of
-        # truncating head-first. Selection happens at read time on the
-        # full cached markdown, so different queries over the same URL
-        # select different sections without re-fetching.
+        # Tier 1.2: paging operates at read time on the full cached
+        # markdown, so resuming never re-fetches. Explicit paging
+        # (offset > 0 or max_chunks != 1) takes precedence over query-
+        # based section selection — the caller asked for exact positions,
+        # so honor them. Even the default read (no paging, no query) is
+        # chunked, so every payload carries resume metadata
+        # (next_offset / has_more / chars_total) and any long page stays
+        # continuable.
+        try:
+            offset = max(0, int(offset))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            max_chunks = max(1, int(max_chunks))
+        except (TypeError, ValueError):
+            max_chunks = 1
+        explicit_paging = offset > 0 or max_chunks != 1
         query = (query or "").strip()
-        selection = select_relevant_sections(markdown, query, md_chars) if query else None
+        selection = None
+        next_offset = None
+        has_more = False
+        if query and not explicit_paging:
+            # Tier 1.1: when a research query is supplied and the page
+            # does not fit the budget, keep the query-relevant sections
+            # instead of truncating head-first. Selection happens at read
+            # time on the full cached markdown, so different queries over
+            # the same URL select different sections without re-fetching.
+            selection = select_relevant_sections(markdown, query, md_chars)
         if selection is not None:
             # The selection already fits the char budget; _truncate here
             # only enforces the token budget as a backstop (and is a no-op
@@ -1356,8 +1400,14 @@ class WebResearcherToolbox:
             truncated_md = self._truncate(selection.markdown, md_chars, md_tokens)
             markdown_truncated = True
         else:
-            truncated_md = self._truncate(markdown, md_chars, md_tokens)
-            markdown_truncated = truncated_md != markdown
+            # Tier 1.2: slice the full markdown at the requested offset
+            # (default: the head-first chunk with resume metadata).
+            truncated_md, next_offset, has_more = self._slice_markdown(
+                markdown, offset, max_chunks, md_chars, md_tokens
+            )
+            markdown_truncated = (
+                offset > 0 or has_more or truncated_md != markdown
+            )
 
         # Build compact metadata summary for LLM output
         meta_summary = self._compact_metadata(html_metadata)
@@ -1373,13 +1423,64 @@ class WebResearcherToolbox:
             result.sections_available = selection.total_sections
             result.sections_selected = selection.selected_count
             result.section_anchors = list(selection.anchors)
+        else:
+            # Tier 1.2: chunked read — report the slice served so the
+            # caller can resume where it stopped.
+            result.offset = offset
+            result.next_offset = next_offset
+            result.has_more = has_more
+            result.chars_total = len(markdown)
         return result.model_dump_json()
+
+    def _slice_markdown(
+        self,
+        markdown: str,
+        offset: int,
+        max_chunks: int,
+        md_chars: int,
+        md_tokens: int,
+    ) -> tuple[str, int, bool]:
+        """Serve consecutive budget-sized chunks of the full markdown.
+
+        Tier 1.2: each chunk is at most ``md_chars`` and breaks at a
+        paragraph boundary (double newline) when one sits in the back
+        half of the window, so resumes land between paragraphs rather
+        than mid-sentence. Each chunk is token-backstopped by ``_truncate``
+        (a no-op when ``max_tokens`` is 0).
+
+        Returns ``(delivered_content, next_offset, has_more)``. ``next_offset``
+        is the end of the raw slice — not the delivered length — so a
+        token-backstop cut can never cause overlap or marker contamination
+        on resume.
+        """
+        md_chars = max(1, md_chars)  # a zero budget must not stall the loop
+        total = len(markdown)
+        pos = max(0, min(offset, total))
+        parts: list[str] = []
+        for _ in range(max(1, max_chunks)):
+            if pos >= total:
+                break
+            window = markdown[pos : pos + md_chars]
+            if len(window) < md_chars:
+                end = total
+            else:
+                cut = window.rfind("\n\n")
+                # Only break at a paragraph boundary found in the back
+                # half of the window; otherwise cut at full width. (The
+                # strict comparison also keeps tiny budgets from producing
+                # zero-length chunks and stalling the loop.)
+                end = pos + (cut if cut > md_chars // 2 else md_chars)
+            parts.append(self._truncate(markdown[pos:end], md_chars, md_tokens))
+            pos = end
+        return "".join(parts), pos, pos < total
 
     def inspect_html_page(
         self,
         url: str,
         use_smart: Optional[bool] = None,
         query: Optional[str] = None,
+        offset: int = 0,
+        max_chunks: int = 1,
     ) -> str:
         """
         Fetch and extract markdown + follow-up links + HTML metadata from a web page.
@@ -1399,8 +1500,18 @@ class WebResearcherToolbox:
             returned; the payload then reports sections_available / 
             sections_selected / section_anchors so the caller knows what
             it is (and is not) seeing.
+        offset : int, optional
+            Character offset into the full page markdown to start reading
+            from (default 0). Pass the previous call's ``next_offset`` to
+            resume where it stopped; paging reads the full cached markdown
+            at read time, so no re-fetch happens.
+        max_chunks : int, optional
+            Number of consecutive budget-sized chunks to return (default 1).
+            Each chunk individually respects the output budget; the total
+            payload may exceed it. Explicit paging takes precedence over
+            query-based section selection.
         """
-        return self._inspect_html_page_impl(url, use_smart, query)
+        return self._inspect_html_page_impl(url, use_smart, query, offset, max_chunks)
 
     def _compact_metadata(self, raw: dict) -> dict:
         """
@@ -1454,13 +1565,16 @@ class WebResearcherToolbox:
         url: str,
         use_smart: Optional[bool] = None,
         query: Optional[str] = None,
+        offset: int = 0,
+        max_chunks: int = 1,
     ) -> str:
         """Async version of inspect_html_page (shared implementation,
         executed in the default executor to stay non-blocking)."""
         # M6: get_running_loop() replaces the deprecated event-loop lookup.
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, self._inspect_html_page_impl, url, use_smart, query
+            None, self._inspect_html_page_impl, url, use_smart, query,
+            offset, max_chunks,
         )
 
     # ───────────────────────────────
