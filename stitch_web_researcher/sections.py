@@ -27,10 +27,33 @@ __all__ = [
     "select_relevant_sections",
 ]
 
-# ATX headings only (``# h1`` .. ``###### h6``). Setext underlines are
-# not section anchors in the markdown this pipeline produces (the Rust
-# html2md converter emits ATX).
-_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
+# ATX *and* Setext headings. The comment this replaces claimed the Rust
+# html2md converter emits ATX; it does not. It emits Setext for h1/h2 and
+# closed ATX for h3+:
+#
+#     Alpha            <- h1
+#     ==========
+#     Bravo            <- h2
+#     ----------
+#     ### Charlie ###  <- h3
+#
+# Matching ATX alone made h1/h2 invisible, so a real page collapsed into a
+# single "(intro)" section and BM25 had nothing to choose between -- query
+# relevant selection silently did nothing on exactly the pages it exists
+# for. The ATX branch also drops the optional closing hashes, which used
+# to leak into the section title ("Charlie ###").
+#
+# The Setext branch is deliberately conservative: the underline must be two
+# or more ``=``/``-`` characters, and the title line may not be blank, a
+# rule of its own, or a list item -- otherwise thematic breaks (``---``),
+# bullet lists and table separators would all read as headings.
+_HEADING_RE = re.compile(
+    r"^\#{1,6}[ \t]+(?P<atx>.+?)(?:[ \t]+\#+)?[ \t]*$"
+    r"|"
+    r"^(?P<setext>(?![ \t]*$)(?![ \t]*[-=]+[ \t]*$)(?![-*+][ \t])[^\n]+?)"
+    r"[ \t]*\n[ \t]*(?:=|-){2,}[ \t]*$",
+    re.MULTILINE,
+)
 _ASCII_TOKEN_RE = re.compile(r"[a-z0-9]+")
 # Japanese kana, CJK ideographs, Hangul — bigram-tokenized below.
 _CJK_RUN_RE = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]+")
@@ -93,7 +116,8 @@ def split_sections(markdown: str) -> list[Section]:
         sections.append(Section("(intro)", markdown[:preamble_end], 0))
     for i, m in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown)
-        sections.append(Section(m.group(1).strip(), markdown[m.start():end], m.start()))
+        title = m.group("atx") or m.group("setext") or ""
+        sections.append(Section(title.strip(), markdown[m.start():end], m.start()))
     return sections
 
 
