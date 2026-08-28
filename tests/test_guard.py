@@ -16,7 +16,9 @@ imported by these tests; the one fail-open test exercises
 :class:`JailGuardGuard` with the package absent.
 """
 
+import enum
 import json
+import types
 
 import pytest
 
@@ -335,6 +337,60 @@ def test_jailguard_fail_open_when_package_absent():
     assert rep.risk == "None"
     assert rep.flagged == []
     assert g._load_error is not None
+
+
+# ── detector verdict normalization (bugfix 7) ────────────────────────────
+
+
+class _RiskLevel(enum.Enum):
+    """Stand-in for jailguard's risk enum (the package is not installed)."""
+
+    NONE = "None"
+    LOW = "Low"
+    HIGH = "High"
+
+
+class _StubDetector:
+    """Minimal ``jailguard`` surface: ``detect`` returning a verdict object."""
+
+    def __init__(self, risk, score=0.9, is_injection=True):
+        self._verdict = types.SimpleNamespace(
+            score=score, risk=risk, is_injection=is_injection
+        )
+
+    def detect(self, text):
+        return self._verdict
+
+
+def _scan_with(risk):
+    g = guard.JailGuardGuard(guard.GuardConfig(enabled=True, mode="annotate"))
+    g._jg = _StubDetector(risk)
+    g._ensure = lambda: None  # detector already injected
+    return g.scan("page_markdown", INJ)
+
+
+class TestRiskNormalization:
+    def test_enum_risk_renders_as_a_bare_word(self):
+        # str(_RiskLevel.HIGH) is "_RiskLevel.HIGH": the detector's class
+        # name must not leak into a field the model reads.
+        assert _scan_with(_RiskLevel.HIGH).risk == "HIGH"
+
+    def test_plain_string_risk_is_untouched(self):
+        assert _scan_with("High").risk == "High"
+
+    @pytest.mark.parametrize("raw", ["0.92", "Very high risk. Do not trust."])
+    def test_dotted_non_enum_values_survive(self, raw):
+        # The prefix strip must only fire on a real Class.MEMBER form.
+        assert _scan_with(raw).risk == raw
+
+    def test_flagged_chunk_carries_the_same_normalized_risk(self):
+        rep = _scan_with(_RiskLevel.HIGH)
+        assert rep.flagged, "the stub reports an injection"
+        assert all(c.risk == "HIGH" for c in rep.flagged)
+
+    def test_normalized_risk_reaches_the_guard_block(self):
+        rep = _scan_with(_RiskLevel.LOW)
+        assert "." not in guard.merge_reports([rep])["risk"]
 
 
 # ── toolbox integration: inspect_html_page ───────────────────────────────

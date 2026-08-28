@@ -324,6 +324,28 @@ class JailGuardGuard:
             val = res.get(name, default)
         return default if val is None else val
 
+    @staticmethod
+    def _risk_name(val) -> str:
+        """Render a detector risk level as a bare word.
+
+        ``jailguard``'s ``.risk`` is an enum, and ``str()`` of a stdlib
+        ``Enum`` renders as ``"RiskLevel.High"`` -- an implementation
+        detail of the detector leaking into a field the consuming model
+        reads. Prefer ``.name``/``.value``, and otherwise strip a
+        ``ClassName.`` prefix from the string form.
+        """
+        for attr in ("name", "value"):
+            inner = getattr(val, attr, None)
+            if isinstance(inner, str) and inner:
+                return inner
+        text = str(val)
+        head, sep, tail = text.rpartition(".")
+        # Only strip a real "Class.MEMBER" form: a dotted numeric score or
+        # a sentence must survive untouched.
+        if sep and head.isidentifier() and tail.isidentifier():
+            return tail
+        return text
+
     def _score_chunk(self, chunk: str):
         """Return (score, risk, injected, cache_hit) for one chunk."""
         key = hashlib.sha256(chunk.encode("utf-8")).hexdigest()
@@ -335,7 +357,7 @@ class JailGuardGuard:
             return 0.0, "None", False, False
         res = self._jg.detect(chunk)
         score = float(self._field(res, "score", 0.0))
-        risk = str(self._field(res, "risk", "None"))
+        risk = self._risk_name(self._field(res, "risk", "None"))
         injected = bool(self._field(res, "is_injection", score >= self._config.threshold))
         if self._config.cache_verdicts:
             self._verdicts[key] = (score, risk, injected)
