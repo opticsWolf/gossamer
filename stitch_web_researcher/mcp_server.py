@@ -191,8 +191,9 @@ def reset_toolbox() -> None:
 INSTRUCTIONS = (
     "Web research toolkit: search the web, fetch pages as LLM-friendly "
     "markdown with follow-up links, and extract text/tables from documents "
-    "(PDF, DOCX, XLSX, PPTX). Results are cached, rate-limited per domain, "
-    "and token-budgeted."
+    "(PDF, DOCX, XLSX, PPTX) and text formats (TXT, MD, CSV, JSON, XML, "
+    "RSS/Atom). Results are cached, rate-limited per domain, and "
+    "token-budgeted."
 )
 
 

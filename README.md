@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-655%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-678%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -57,6 +57,7 @@
 - **Async Rust Core**: Tokio-based concurrent fetching with browser impersonation, brotli decompression, and exponential backoff retries
 - **Smart/Fallback Routing**: `use_smart=True` attempts headless JS rendering (`browser_oxide`) first, falls back to static `reqwest` on failure
 - **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx)
+- **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -372,6 +373,32 @@ offloads the shared blocking implementation to Python's default executor
 the work runs on a worker thread. The underlying network I/O remains
 synchronous (no native async I/O in the fetch/search layer) -- see the
 [Async Usage](#async-usage) section above for a runnable example.
+
+### More Input Formats (Tier 3.10)
+
+`extract_document` previously delivered PDF/DOCX/XLSX/PPTX and plain
+TXT/MD/CSV; anything else errored (M16) or got scraped as HTML. Now:
+
+- **JSON** — pretty-printed when valid, raw text otherwise.
+- **XML / RSS / Atom** (`.xml`, `.rss`, `.atom`) — feeds are surfaced as a
+  readable markdown entry list (title, link, date, summary; capped at 50
+  entries). Non-feed XML (e.g. a sitemap) and malformed XML fall back to
+  the raw text, so these sources always deliver content.
+- **Extension-less text URLs** — when the URL gives no usable extension,
+  the response Content-Type decides: `text/plain`, `text/markdown`,
+  `text/csv`, `application/json`, `text/xml`, `application/xml`,
+  `application/rss+xml`, and `application/atom+xml` bodies are extracted
+  as text (feeds via the feed extractor above). Binary content-types still
+  error as before.
+
+```python
+feed = tools.extract_document("https://example.com/feeds/atom.xml")
+plain = tools.extract_document("https://example.com/raw-data")  # text/plain
+```
+
+`classify_link` now routes `.json` / `.xml` / `.rss` / `.atom` URLs to
+`extract_document` instead of page scraping, so discovered links of these
+types go to the right tool.
 
 ### Prompt-Injection Guard (optional, §7)
 

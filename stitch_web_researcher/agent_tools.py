@@ -631,7 +631,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "extract_document",
-        "Extract text content from PDF, DOCX, or XLSX documents via URL or local path. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
+        "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats TXT, MD, CSV, JSON, XML, and RSS/Atom feeds (returned as readable entry lists). Extension-less URLs with a text Content-Type are also handled. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
         "extract_document",
         (
             ToolParam(
@@ -2531,7 +2531,12 @@ class WebResearcherToolbox:
         return result.model_dump_json()
 
     def extract_document(self, source: str, pages: Optional[str] = None) -> str:
-        """Extract text content from PDF, DOCX, or XLSX documents.
+        """Extract text content from documents.
+
+        Structured: PDF, DOCX, XLSX, PPTX. Text (Tier 3.10): TXT, MD, CSV,
+        JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable
+        entry lists). Extension-less URLs whose Content-Type is text-like
+        (e.g. text/plain) are also delivered as text.
 
         Parameters
         ----------
@@ -2639,9 +2644,26 @@ class WebResearcherToolbox:
         return response.content, prov
 
     def _download_and_extract(self, url: str) -> tuple[str, dict]:
-        """Download a document from URL; returns (content, provenance)."""
+        """Download a document from URL; returns (content, provenance).
+
+        Tier 3.10: when the URL carries no usable extension (or an
+        unrecognized one) but the server says the body is text-like
+        (Content-Type: text/plain, application/json, ...), the bytes are
+        extracted as text instead of raising.
+        """
         data, prov = self._fetch_document_url(url)
-        return self._extract_from_bytes(data, url), prov
+        try:
+            return self._extract_from_bytes(data, url), prov
+        except ValueError:
+            ct = (prov.get("content_type") or "").split(";", 1)[0].strip().lower()
+            kind = self._TEXT_LIKE_CONTENT_TYPES.get(ct)
+            if kind is None:
+                raise
+            if kind == "json":
+                return self._extract_json_text(data), prov
+            if kind == "xml":
+                return self._extract_xml_feed(data), prov
+            return data.decode("utf-8-sig", errors="replace"), prov
 
     # Tier 1.2: page-range reads. The flat extractor joins all pages into
     # one string, so a range can only be served by re-deriving the
@@ -2794,7 +2816,26 @@ class WebResearcherToolbox:
     # exactly what DOCUMENT_EXTENSIONS (structured_parser) may advertise in
     # addition to pdf/OOXML. classify_link and _extract_from_bytes must stay
     # in sync, or the model is promised an extraction that would raise.
-    _TEXT_SUFFIXES = (".csv", ".txt", ".md")
+    # Tier 3.10 (item 10): JSON joins the text family (pretty-printed when
+    # valid); XML/RSS/Atom get feed-aware extraction with a raw-text
+    # fallback, so every advertised text format always delivers content.
+    _TEXT_SUFFIXES = (".csv", ".txt", ".md", ".json")
+    _XML_FEED_SUFFIXES = (".xml", ".rss", ".atom")
+    # Content-types that mark a body as extractable text when the URL gives
+    # no usable extension (extension-less API/feed/plain-text URLs).
+    _TEXT_LIKE_CONTENT_TYPES = {
+        "text/plain": "text",
+        "text/markdown": "text",
+        "text/csv": "text",
+        "application/json": "json",
+        "text/xml": "xml",
+        "application/xml": "xml",
+        "application/rss+xml": "xml",
+        "application/atom+xml": "xml",
+    }
+    # Cap on entries surfaced from a feed; the output budget truncation
+    # still applies on top.
+    _FEED_MAX_ENTRIES = 50
     _UNSUPPORTED_FORMAT_HINTS = {
         ".doc": "convert the file to .docx",
         ".xls": "convert the file to .xlsx",
@@ -2818,8 +2859,14 @@ class WebResearcherToolbox:
             return doc.to_markdown()
         elif suffix in self._TEXT_SUFFIXES:
             # M16: plain text is trivial to support and covers the
-            # CSV/TXT/MD links that classify_link advertises.
+            # CSV/TXT/MD/JSON links that classify_link advertises.
+            if suffix == ".json":
+                return self._extract_json_text(data)
             return data.decode("utf-8-sig", errors="replace")
+        elif suffix in self._XML_FEED_SUFFIXES:
+            # Tier 3.10: RSS/Atom feeds become readable entry lists; any
+            # other (or malformed) XML falls back to the raw text.
+            return self._extract_xml_feed(data)
         elif suffix in self._UNSUPPORTED_FORMAT_HINTS:
             # M16: honest, actionable failure for formats we cannot parse.
             hint = self._UNSUPPORTED_FORMAT_HINTS[suffix]
@@ -2828,6 +2875,98 @@ class WebResearcherToolbox:
             )
         else:
             raise ValueError(f"Unsupported document format: {suffix}")
+
+    @staticmethod
+    def _extract_json_text(data: bytes) -> str:
+        """Tier 3.10: JSON as text — pretty-printed when valid, raw otherwise."""
+        import json as _json
+
+        raw = data.decode("utf-8-sig", errors="replace")
+        try:
+            obj = _json.loads(raw)
+        except ValueError:
+            return raw
+        return _json.dumps(obj, indent=2, ensure_ascii=False)
+
+    @staticmethod
+    def _extract_xml_feed(data: bytes) -> str:
+        """Tier 3.10: RSS/Atom/RDF feeds as readable entries.
+
+        Uses the stdlib ElementTree (no new dependency). Feeds are detected
+        by local tag name so namespaces are irrelevant. Any parse failure —
+        or an XML document with no item/entry elements (e.g. a sitemap) —
+        falls back to the raw text so a .xml/.rss/.atom source always
+        delivers *something* readable.
+        """
+        import xml.etree.ElementTree as ET
+
+        raw = data.decode("utf-8-sig", errors="replace")
+        try:
+            root = ET.fromstring(data)
+        except (ET.ParseError, UnicodeDecodeError, ValueError):
+            return raw
+
+        def _local(tag) -> str:
+            return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+        def _text(el, names) -> str:
+            for child in el.iter():
+                if _local(child.tag) in names and child.text and child.text.strip():
+                    return child.text.strip()
+            return ""
+
+        entries = []
+        for el in root.iter():
+            if _local(el.tag) not in ("item", "entry"):
+                continue
+            title = _text(el, {"title"})
+            link = ""
+            for child in el.iter():
+                if _local(child.tag) == "link":
+                    href = child.get("href")
+                    if href:
+                        link = href
+                    elif child.text and child.text.strip():
+                        link = child.text.strip()
+                    break
+            desc = _text(el, {"description", "summary", "content"})
+            date = _text(el, {"pubDate", "published", "updated", "date"})
+            entries.append((title, link, date, desc))
+
+        if not entries:
+            return raw
+
+        feed_title = ""
+        for child in root:  # direct children: channel / feed
+            feed_title = _text(child, {"title"})
+            if feed_title:
+                break
+
+        lines = []
+        if feed_title:
+            lines.append(f"# {feed_title}")
+            lines.append("")
+        lines.append(f"Feed entries: {min(len(entries), 50)}")
+        lines.append("")
+        shown = 0
+        for title, link, date, desc in entries:
+            if shown >= 50:
+                break
+            shown += 1
+            lines.append(f"- **{title or '(untitled)'}**")
+            if link:
+                lines.append(f"  Link: {link}")
+            if date:
+                lines.append(f"  Date: {date}")
+            if desc:
+                lines.append(f"  {desc}")
+        if len(entries) > 50:
+            lines.append("")
+            lines.append(
+                f"… {len(entries) - 50} more entries not shown "
+                f"(capped at 50)."
+            )
+        return "\n".join(lines)
 
     # ───────────────────────────────
     # ───────────────────────────────

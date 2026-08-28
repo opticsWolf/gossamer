@@ -7,7 +7,8 @@ The review found DOCUMENT_EXTENSIONS advertised .doc/.xls/.ppt/.odt/
 for formats that raise ValueError. Fix: narrow the advertised set to
 pdf + OOXML + plain text (CSV/TXT/MD handlers added), and answer
 known-but-unparseable binary formats with an actionable conversion
-hint.
+hint. Tier 3.10 (item 10) extended the deliverable set with JSON,
+XML, and RSS/Atom handlers; the invariant below is unchanged.
 """
 
 import json
@@ -23,8 +24,12 @@ from stitch_web_researcher.structured_parser import (
     classify_link,
 )
 
-# What _extract_from_bytes can genuinely deliver.
-SUPPORTED = {".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt", ".md"}
+# What _extract_from_bytes can genuinely deliver (M16 + Tier 3.10).
+SUPPORTED = {
+    ".pdf", ".docx", ".xlsx", ".pptx",
+    ".csv", ".txt", ".md",
+    ".json", ".xml", ".rss", ".atom",
+}
 LEGACY = [".doc", ".xls", ".ppt", ".odt", ".ods", ".odp", ".rtf", ".epub"]
 
 

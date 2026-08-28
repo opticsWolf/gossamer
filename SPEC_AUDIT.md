@@ -77,6 +77,7 @@
 | `ExtractedPage` | ✅ | page number + content |
 | `ParsedDocumentPayload` | ✅ | full document with metadata, pages, tables |
 | `StructuredOxideParser` | ✅ | PDF, DOCX, XLSX, PPTX support |
+| Document format coverage (M16 + Tier 3.10) | ✅ | `classify_link` advertises pdf/OOXML + txt/md/csv/json/xml/rss/atom; text-like Content-Types cover extension-less URLs (feeds become entry lists) |
 | XMP datetime parsing | ✅ | ISO 8601 variants |
 | `extract_document_structured` in toolbox | ✅ | URL → temp file → parse → cleanup |
 

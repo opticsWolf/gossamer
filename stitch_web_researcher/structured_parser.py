@@ -82,6 +82,9 @@ class FollowUpCandidate(BaseModel):
 DOCUMENT_EXTENSIONS = frozenset({
     ".pdf", ".docx", ".xlsx", ".pptx",
     ".csv", ".txt", ".md",
+    # Tier 3.10 (item 10): text-based web formats are extractable as text,
+    # so links to them must route to extract_document, not page scraping.
+    ".json", ".xml", ".rss", ".atom",
 })
 
 
