@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-627%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-636%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -292,6 +292,35 @@ STITCH_RUST_LOG=debug   # error | warn | info | debug
 
 The bridge initialises once (idempotent) and emits a single
 `rust logging bridge initialized` record so operators can confirm it is live.
+
+### HTTP Transport Overrides (Tier 2.7)
+
+For authenticated or proxied sources, the static (Rust) fetch path supports
+process-level transport overrides, baked into the lazily-built shared client
+at first use (last non-empty value wins):
+
+| Knob | Type | Example |
+|------|------|---------|
+| `http_proxy` / `STITCH_HTTP_PROXY` | string | `http://proxy:8080` |
+| `user_agent` / `STITCH_USER_AGENT` | string | `ResearchBot/1.0` |
+| `custom_headers` / `STITCH_CUSTOM_HEADERS` | JSON object | `{"Authorization": "Bearer ..."}` |
+| `cookies` / `STITCH_COOKIES` | JSON object | `{"session": "abc123"}` |
+
+```python
+from stitch_web_researcher import ToolboxConfig, WebResearcherToolbox
+
+tb = WebResearcherToolbox(ToolboxConfig(
+    http_proxy="http://proxy:8080",
+    custom_headers={"Authorization": "Bearer ..."},
+    cookies={"session": "abc123"},
+))
+```
+
+These are process-level (the shared client is a connection-pooled singleton),
+not per-request. An invalid proxy URL or header name is logged and ignored
+rather than fatal. robots.txt compliance (S4), politeness delay
+(`domain_delay`), and per-host concurrency (S5) already cover the rest of
+review item 7.
 
 ### Prompt-Injection Guard (optional, §7)
 

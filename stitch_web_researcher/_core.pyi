@@ -99,3 +99,15 @@ def init_rust_logging(level: str) -> bool:
     level and re-emit the init marker. Returns True on success.
     """
     ...
+
+def configure_http(
+    proxy: Optional[str],
+    user_agent: Optional[str],
+    headers: List[Tuple[str, str]],
+    cookies: List[Tuple[str, str]],
+) -> None:
+    """Set HTTP transport overrides (Tier 2.7): proxy, User-Agent, default
+    headers, and cookies. Process-level settings baked into the lazily-built
+    shared client at first use. No-op when every argument is empty/None.
+    """
+    ...

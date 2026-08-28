@@ -11,7 +11,7 @@ import threading
 import time
 import warnings
 from collections import OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -28,6 +28,7 @@ from stitch_web_researcher._core import (
     process_rendered_html as _process_rendered_html,
     extract_main_content_markdown,
     init_rust_logging as _init_rust_logging,
+    configure_http as _configure_http,
 )
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import (
@@ -808,6 +809,13 @@ class ToolboxConfig:
     # Tier 2.6: size of the fetch-latency sliding window (samples) kept in
     # memory for percentile computation in get_stats()["fetches"].
     fetch_stats_window: int = 1024
+    # Tier 2.7: HTTP transport overrides for the static (Rust) fetch path.
+    # Baked into the lazily-built shared client at first use, so these are
+    # process-level settings (last non-empty value wins). See configure_http.
+    http_proxy: Optional[str] = None
+    user_agent: Optional[str] = None
+    custom_headers: dict = field(default_factory=dict)
+    cookies: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -939,6 +947,17 @@ class WebResearcherToolbox:
         # opt-in Rust tracing -> Python logging bridge.
         self._fetch_stats = FetchStats(latency_window=config.fetch_stats_window)
         _maybe_init_rust_logging()
+        # Tier 2.7: push HTTP transport overrides (proxy / User-Agent /
+        # headers / cookies) into the lazily-built shared Rust client. Only
+        # invoked when at least one override is set, so the default fetch
+        # path stays untouched (zero cost otherwise).
+        if config.http_proxy or config.user_agent or config.custom_headers or config.cookies:
+            _configure_http(
+                config.http_proxy,
+                config.user_agent,
+                list(config.custom_headers.items()),
+                list(config.cookies.items()),
+            )
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).

@@ -27,6 +27,10 @@ Configuration via environment variables (all optional):
     STITCH_RESPECT_ROBOTS       (default 1)
     STITCH_CONDITIONAL_REVALIDATE (default 1)
     STITCH_RUST_LOG             (default unset = off; error|warn|info|debug -- bridge Rust log events into Python logging)
+    STITCH_HTTP_PROXY           (default unset -- e.g. http://proxy:8080; baked into the shared HTTP client)
+    STITCH_USER_AGENT           (default unset -- override the desktop-Chrome User-Agent)
+    STITCH_CUSTOM_HEADERS       (default {} -- JSON object, e.g. {"Authorization": "Bearer ..."})
+    STITCH_COOKIES              (default {} -- JSON object, e.g. {"session": "abc123"})
     STITCH_GUARD_ENABLED          (default 0 -- §7 prompt-injection guard off)
     STITCH_GUARD_SCOPES           (default "page_markdown,document_text")
     STITCH_GUARD_MODE             (default "annotate"; annotate|redact|block)
@@ -37,6 +41,7 @@ Configuration via environment variables (all optional):
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 import os
 import threading
@@ -72,6 +77,31 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None or raw == "":
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_json_dict(name: str) -> dict:
+    """Read a JSON object from *name*; return {} when unset or invalid.
+
+    Used for Tier 2.7 transport overrides (custom headers / cookies), which
+    are naturally expressed as JSON objects:
+    ``STITCH_CUSTOM_HEADERS='{"Authorization": "Bearer ..."}'``.
+    """
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return {}
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        logging.getLogger(__name__).warning(
+            "STITCH env %s is not valid JSON; ignoring", name
+        )
+        return {}
+    if not isinstance(value, dict):
+        logging.getLogger(__name__).warning(
+            "STITCH env %s must be a JSON object; ignoring", name
+        )
+        return {}
+    return {str(k): str(v) for k, v in value.items()}
 
 
 def _guard_config_from_env():
@@ -117,6 +147,13 @@ def _config_from_env() -> ToolboxConfig:
         ),
         # §7: optional prompt-injection guard, off by default.
         guard=_guard_config_from_env(),
+        # Tier 2.7: HTTP transport overrides (proxy / User-Agent / headers /
+        # cookies) for authenticated sources. Headers and cookies are JSON
+        # objects; proxy and User-Agent are plain strings.
+        http_proxy=_env("STITCH_HTTP_PROXY", None),
+        user_agent=_env("STITCH_USER_AGENT", None),
+        custom_headers=_env_json_dict("STITCH_CUSTOM_HEADERS"),
+        cookies=_env_json_dict("STITCH_COOKIES"),
     )
 
 

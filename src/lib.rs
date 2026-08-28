@@ -34,16 +34,138 @@ fn shared_runtime() -> &'static tokio::runtime::Runtime {
 fn shared_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        let ov = http_overrides()
+            .lock()
+            .expect("http overrides lock poisoned")
+            .clone();
+        let mut builder = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(10))
             // Redirects are followed manually in fetch_attempt so that
             // every hop passes the SSRF guard (S1).
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("Failed to create shared HTTP client")
+            .redirect(reqwest::redirect::Policy::none());
+        // Tier 2.7: operator User-Agent override, else the default desktop UA.
+        let ua = ov
+            .user_agent
+            .clone()
+            .unwrap_or_else(|| DEFAULT_USER_AGENT.to_string());
+        builder = builder.user_agent(ua);
+        // Tier 2.7: proxy is applied at client build time (reqwest has no
+        // per-request proxy). An invalid proxy URL is logged and ignored.
+        if let Some(ref p) = ov.proxy {
+            match reqwest::Proxy::all(p) {
+                Ok(pr) => {
+                    builder = builder.proxy(pr);
+                }
+                Err(e) => {
+                    log::warn!("invalid proxy {p:?}: {e}; continuing without proxy");
+                }
+            }
+        }
+        // Tier 2.7: default headers (e.g. Authorization) + cookies for
+        // authenticated sources, sent with every request.
+        let mut hdrs = reqwest::header::HeaderMap::new();
+        for (k, v) in &ov.headers {
+            match (
+                k.parse::<reqwest::header::HeaderName>(),
+                v.parse::<reqwest::header::HeaderValue>(),
+            ) {
+                (Ok(name), Ok(val)) => {
+                    hdrs.append(name, val);
+                }
+                _ => {
+                    log::warn!("skipping invalid header name {k:?}");
+                }
+            }
+        }
+        if !ov.cookies.is_empty() {
+            let cookie_val = ov
+                .cookies
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            match cookie_val.parse::<reqwest::header::HeaderValue>() {
+                Ok(val) => {
+                    hdrs.append(reqwest::header::COOKIE, val);
+                }
+                Err(e) => {
+                    log::warn!("invalid cookie value: {e}");
+                }
+            }
+        }
+        if !hdrs.is_empty() {
+            builder = builder.default_headers(hdrs);
+        }
+        builder.build().expect("Failed to create shared HTTP client")
     })
+}
+
+// ────────────────────────────────────────────────────────────────
+// 2e. HTTP transport overrides (Tier 2.7, CODE_REVIEW_2026-08-27)
+// ────────────────────────────────────────────────────────────────
+
+/// Default desktop-Chrome User-Agent sent when no override is configured.
+const DEFAULT_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+/// Process-wide HTTP transport overrides: proxy, User-Agent, default
+/// headers, and cookies. Set once via [`configure_http`] before the first
+/// fetch; the lazily-built shared client bakes them in at first use.
+///
+/// The shared client is a process-wide singleton (connection pooling), so
+/// these are process-level settings, not per-request ones. If
+/// [`configure_http`] is called more than once, the last non-empty value wins.
+#[derive(Clone, Default)]
+struct HttpOverrides {
+    proxy: Option<String>,
+    user_agent: Option<String>,
+    headers: Vec<(String, String)>,
+    cookies: Vec<(String, String)>,
+}
+
+static HTTP_OVERRIDES: OnceLock<Mutex<HttpOverrides>> = OnceLock::new();
+
+fn http_overrides() -> &'static Mutex<HttpOverrides> {
+    HTTP_OVERRIDES.get_or_init(|| Mutex::new(HttpOverrides::default()))
+}
+
+/// Set HTTP transport overrides (proxy / User-Agent / headers / cookies).
+///
+/// A no-op when every argument is empty/None. Called from the Python toolbox
+/// constructor only when at least one override is configured, so the default
+/// fetch path stays untouched.
+#[pyfunction]
+fn configure_http(
+    proxy: Option<String>,
+    user_agent: Option<String>,
+    headers: Vec<(String, String)>,
+    cookies: Vec<(String, String)>,
+) {
+    let mut ov = http_overrides().lock().expect("http overrides lock poisoned");
+    if let Some(p) = proxy {
+        if !p.trim().is_empty() {
+            ov.proxy = Some(p);
+        }
+    }
+    if let Some(u) = user_agent {
+        if !u.trim().is_empty() {
+            ov.user_agent = Some(u);
+        }
+    }
+    if !headers.is_empty() {
+        ov.headers = headers;
+    }
+    if !cookies.is_empty() {
+        ov.cookies = cookies;
+    }
+    log::info!(
+        "stitch-web-researcher: http overrides set proxy={} user_agent={} default_headers={} cookies={}",
+        ov.proxy.as_deref().unwrap_or("-"),
+        ov.user_agent.as_deref().unwrap_or("-"),
+        ov.headers.len(),
+        ov.cookies.len(),
+    );
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1163,5 +1285,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(extract_links_from_html, m)?)?;
     m.add_function(wrap_pyfunction!(extract_main_content_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(init_rust_logging, m)?)?;
+    m.add_function(wrap_pyfunction!(configure_http, m)?)?;
     Ok(())
 }
