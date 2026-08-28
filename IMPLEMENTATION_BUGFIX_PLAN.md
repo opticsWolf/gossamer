@@ -254,7 +254,7 @@ All nine items are implemented, tested and committed on `dev`.
 | 6 | Bare filenames are not bare domains | `772a407` | `tests/test_fix_bare_filename.py` |
 | 9 | Provider substitution is visible | `772a407` | `tests/test_fix_provider_fallback.py` |
 | 7 | Detector risk level stringifies cleanly | `d3157ec` | `tests/test_guard.py::TestRiskNormalization` |
-| 8 | Guard cost and accuracy are measurable | pending | `tests/test_fix_guard_bench.py` |
+| 8 | Guard cost and accuracy are measurable | `417052e` | `tests/test_fix_guard_bench.py` |
 
 Items 4, 5, 6 and 9 share one commit: three of them touch `agent_tools.py`
 and item 4 is a direct consequence of item 5's Rust change, so splitting
