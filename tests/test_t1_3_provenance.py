@@ -305,7 +305,7 @@ class TestDocumentProvenance:
 class TestBatchProvenance:
     def test_engine_entries_carry_content_hash(self, tmp_path, monkeypatch):
         def fake_batch(urls, **kwargs):
-            return [(u, f"md-of-{u}", []) for u in urls]
+            return [(u, None, f"md-of-{u}", []) for u in urls]
 
         monkeypatch.setattr(agent_tools, "batch_research", fake_batch)
         tb = _toolbox(tmp_path)
@@ -313,8 +313,8 @@ class TestBatchProvenance:
             tb.batch_inspect_pages(["https://example.net/batch-1", "https://example.net/batch-2"])
         )
         assert len(out) == 2
-        # The engine ABI (M9) carries no metadata: the hash is the one
-        # field that is always derivable.
+        # With no HTML in the engine tuple there is no metadata to
+        # extract: the hash is the one field that is always derivable.
         assert out[0]["content_hash"] == _sha256("md-of-https://example.net/batch-1")
         assert out[0]["fetched_at"] is None
         assert out[0]["http_status"] is None

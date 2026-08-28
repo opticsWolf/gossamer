@@ -136,7 +136,7 @@ def test_missing_content_type_allowed(server):
 def test_batch_respects_cap(server):
     results = _core.batch_research([server + "/big"], max_bytes=1000)
     assert len(results) == 1
-    url, md, links = results[0]
+    url, _html, md, links = results[0]
     assert url.startswith(server)
     assert md is not None and "too large" in md
     assert links is None

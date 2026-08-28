@@ -69,9 +69,10 @@ class TestRetryAfterFailure:
         def fake_batch(
             urls, max_links=500, max_concurrency=8, domain_gap_ms=0, max_bytes=None
         ):
+            html = "<html><head><title>t</title></head><body>c</body></html>"
             return [
-                (u, "content", [("https://example.com/x", "x")]) if u == ok
-                else (u, "boom", None)
+                (u, html, "content", [("https://example.com/x", "x")]) if u == ok
+                else (u, None, "boom", None)
                 for u in urls
             ]
 

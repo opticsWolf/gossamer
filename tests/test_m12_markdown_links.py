@@ -112,7 +112,7 @@ class TestAbsolutizationInTools:
     def test_batch_inspect_pages_delivers_absolute_links(self, tmp_path):
         tb = _toolbox(tmp_path)
         url = "https://example.com/dir/page"
-        fake = [(url, "# T\n[A](/a)\n", [])]
+        fake = [(url, "<html><body><p>T</p></body></html>", "# T\n[A](/a)\n", [])]
         with mock.patch(
             "stitch_web_researcher.agent_tools.batch_research", return_value=fake
         ):

@@ -14,6 +14,13 @@ from unittest.mock import patch
 from stitch_web_researcher.agent_tools import WebResearcherToolbox
 
 FAKE_MD = "# Batch content"
+# Bugfix 5: the engine now returns the raw HTML so batch entries can run
+# the same meta-oxide extraction single-page reads do.
+FAKE_HTML = (
+    "<html><head><title>Fake</title>"
+    '<meta name="description" content="Fake description">'
+    "</head><body><main><p>fake</p></main></body></html>"
+)
 FAKE_LINKS = [("https://example.com/child", "Child")]
 
 
@@ -35,7 +42,7 @@ class TestBatchSharesPageCache:
         tb = _toolbox(tmp_path)
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
-            return_value=[("https://example.com/a", FAKE_MD, FAKE_LINKS)],
+            return_value=[("https://example.com/a", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ):
             first = json.loads(tb.batch_inspect_pages(["https://example.com/a"]))
         assert first[0]["markdown"] == FAKE_MD
@@ -71,8 +78,8 @@ class TestBatchSharesPageCache:
         tb = _toolbox(tmp_path)
         urls = ["https://example.com/1", "https://example.com/2"]
         fake = [
-            ("https://example.com/1", FAKE_MD, FAKE_LINKS),
-            ("https://example.com/2", FAKE_MD, FAKE_LINKS),
+            ("https://example.com/1", FAKE_HTML, FAKE_MD, FAKE_LINKS),
+            ("https://example.com/2", FAKE_HTML, FAKE_MD, FAKE_LINKS),
         ]
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
@@ -90,7 +97,7 @@ class TestBatchSharesPageCache:
         tb = _toolbox(tmp_path)
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
-            return_value=[("https://example.com/c", FAKE_MD, FAKE_LINKS)],
+            return_value=[("https://example.com/c", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ) as mock_batch:
             tb.batch_inspect_pages(["example.com/c"])
         # The engine must have received the normalized form.
@@ -111,7 +118,7 @@ class TestBatchShape:
         tb = _toolbox(tmp_path)
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
-            return_value=[("https://example.com/s", FAKE_MD, FAKE_LINKS)],
+            return_value=[("https://example.com/s", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ):
             out = json.loads(tb.batch_inspect_pages(["https://example.com/s"]))
         entry = out[0]
@@ -128,7 +135,7 @@ class TestBatchShape:
             "https://example.com/a",
             "https://example.com/m",
         ]
-        fake = [(u, FAKE_MD, FAKE_LINKS) for u in urls]
+        fake = [(u, FAKE_HTML, FAKE_MD, FAKE_LINKS) for u in urls]
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
             return_value=fake,
@@ -139,7 +146,7 @@ class TestBatchShape:
     def test_failed_entry_kept_and_rest_cached(self, tmp_path):
         tb = _toolbox(tmp_path)
         ok, bad = "https://example.com/ok", "https://example.com/bad"
-        fake = [(ok, FAKE_MD, FAKE_LINKS), (bad, "boom", None)]
+        fake = [(ok, FAKE_HTML, FAKE_MD, FAKE_LINKS), (bad, None, "boom", None)]
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
             return_value=fake,
@@ -152,7 +159,7 @@ class TestBatchShape:
         # Retry: only the failed URL is fetched again; the ok one is cached.
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
-            return_value=[(bad, FAKE_MD, FAKE_LINKS)],
+            return_value=[(bad, FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ) as mock_batch:
             retry = json.loads(tb.batch_inspect_pages([ok, bad]))
         assert mock_batch.call_args[0][0] == [bad]

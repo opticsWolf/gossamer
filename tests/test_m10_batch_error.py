@@ -19,6 +19,13 @@ from stitch_web_researcher.agent_tools import (
 )
 
 FAKE_MD = "# Batch content"
+# Bugfix 5: the engine now returns the raw HTML so batch entries can run
+# the same meta-oxide extraction single-page reads do.
+FAKE_HTML = (
+    "<html><head><title>Fake</title>"
+    '<meta name="description" content="Fake description">'
+    "</head><body><main><p>fake</p></main></body></html>"
+)
 FAKE_LINKS = [("https://example.com/child", "Child")]
 
 
@@ -36,24 +43,29 @@ def _toolbox(tmp_path):
 class TestNormalizeBatchResults:
     def test_success_entry(self):
         entries = _normalize_batch_results(
-            [("https://example.com/a", FAKE_MD, FAKE_LINKS)]
+            [("https://example.com/a", FAKE_HTML, FAKE_MD, FAKE_LINKS)]
         )
         assert entries == [
-            BatchEntry(url="https://example.com/a", markdown=FAKE_MD, links=FAKE_LINKS)
+            BatchEntry(
+                url="https://example.com/a",
+                markdown=FAKE_MD,
+                links=FAKE_LINKS,
+                html=FAKE_HTML,
+            )
         ]
         assert entries[0].ok is True
         assert entries[0].error is None
 
     def test_empty_markdown_and_links_still_success(self):
         """Empty content is a successful fetch, not a failure."""
-        entries = _normalize_batch_results([("https://example.com/a", "", [])])
+        entries = _normalize_batch_results([("https://example.com/a", FAKE_HTML, "", [])])
         assert entries[0].ok is True
         assert entries[0].markdown == ""
         assert entries[0].links == []
 
     def test_error_entry_with_message(self):
         entries = _normalize_batch_results(
-            [("https://example.com/b", "DNS failure", None)]
+            [("https://example.com/b", None, "DNS failure", None)]
         )
         assert entries[0].ok is False
         assert entries[0].error == "DNS failure"
@@ -61,16 +73,16 @@ class TestNormalizeBatchResults:
         assert entries[0].links is None
 
     def test_error_entry_with_empty_message(self):
-        entries = _normalize_batch_results([("https://example.com/b", "", None)])
+        entries = _normalize_batch_results([("https://example.com/b", None, "", None)])
         assert entries[0].ok is False
         assert entries[0].error == "Unknown error"
 
     def test_order_preserved(self):
         entries = _normalize_batch_results(
             [
-                ("https://example.com/1", FAKE_MD, FAKE_LINKS),
-                ("https://example.com/2", "boom", None),
-                ("https://example.com/3", FAKE_MD, FAKE_LINKS),
+                ("https://example.com/1", FAKE_HTML, FAKE_MD, FAKE_LINKS),
+                ("https://example.com/2", None, "boom", None),
+                ("https://example.com/3", FAKE_HTML, FAKE_MD, FAKE_LINKS),
             ]
         )
         assert [e.url for e in entries] == [
@@ -88,8 +100,8 @@ class TestBatchInspectErrorChannel:
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
             return_value=[
-                ("https://example.com/ok", FAKE_MD, FAKE_LINKS),
-                ("https://example.com/bad", "connection refused", None),
+                ("https://example.com/ok", FAKE_HTML, FAKE_MD, FAKE_LINKS),
+                ("https://example.com/bad", None, "connection refused", None),
             ],
         ):
             out = json.loads(
@@ -109,14 +121,14 @@ class TestBatchInspectErrorChannel:
         urls = ["https://example.com/flaky"]
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
-            return_value=[("https://example.com/flaky", "boom", None)],
+            return_value=[("https://example.com/flaky", None, "boom", None)],
         ):
             first = json.loads(tb.batch_inspect_pages(urls))
         assert first[0]["error"] == "boom"
 
         with patch(
             "stitch_web_researcher.agent_tools.batch_research",
-            return_value=[("https://example.com/flaky", FAKE_MD, FAKE_LINKS)],
+            return_value=[("https://example.com/flaky", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ):
             second = json.loads(tb.batch_inspect_pages(urls))
         assert second[0]["markdown"] == FAKE_MD

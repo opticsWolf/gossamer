@@ -149,7 +149,7 @@ class TestBatchConcurrencyParam:
             max_concurrency=2,
         )
         assert len(out) == 1
-        url, md_opt, links_opt = out[0]
+        url, _html_opt, md_opt, links_opt = out[0]
         # Either success (md+links) or a clean error string — never a crash.
         assert md_opt is not None
 

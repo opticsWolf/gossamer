@@ -90,7 +90,7 @@ class TestSharedClientFetches:
         urls = [f"{local_server}/batch-1", f"{local_server}/batch-2"]
         results = batch_research(urls)
         assert len(results) == 2
-        for url, md, links in results:
+        for _url, _html, md, links in results:
             assert "Pooled" in md
             assert isinstance(links, list)
 

@@ -34,6 +34,7 @@ from stitch_web_researcher._core import (
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import (
     StructuredOxideParser,
+    DOCUMENT_EXTENSIONS,
     FollowUpCandidate,
     ParsedDocumentPayload,
     build_follow_up_candidates,
@@ -327,6 +328,9 @@ class BatchEntry:
     markdown: Optional[str] = None
     links: Optional[List[str]] = None
     error: Optional[str] = None
+    # Raw HTML of a successful fetch, so batch entries can run the same
+    # meta-oxide extraction single-page reads do (bugfix 5).
+    html: Optional[str] = None
 
     @property
     def ok(self) -> bool:
@@ -334,15 +338,19 @@ class BatchEntry:
 
 
 def _normalize_batch_results(results) -> List[BatchEntry]:
-    """Convert raw engine triples into tagged ``BatchEntry`` records (M10).
+    """Convert raw engine tuples into tagged ``BatchEntry`` records (M10).
 
-    Success: ``(url, markdown, links)`` with both slots non-None.
-    Failure: ``(url, error_message, None)`` (the message may be empty).
+    Success: ``(url, html, markdown, links)`` with all three slots non-None.
+    Failure: ``(url, None, error_message, None)`` (the message may be empty).
     """
     entries: List[BatchEntry] = []
-    for url, md_opt, links_opt in results:
+    for url, html_opt, md_opt, links_opt in results:
         if md_opt is not None and links_opt is not None:
-            entries.append(BatchEntry(url=url, markdown=md_opt, links=links_opt))
+            entries.append(
+                BatchEntry(
+                    url=url, markdown=md_opt, links=links_opt, html=html_opt
+                )
+            )
         else:
             entries.append(BatchEntry(url=url, error=md_opt or "Unknown error"))
     return entries
@@ -786,6 +794,16 @@ def normalize_url(raw: str, base: Optional[str] = None) -> str:
         candidate_host = parsed.path.split("/")[0]
         if "." not in candidate_host and candidate_host != "localhost":
             raise ValueError(f"{raw!r} does not look like a URL")
+        # A single segment ending in a document extension is a filename,
+        # not a host: "report.pdf" is a path on disk even when the file is
+        # not in the current directory, so the Path.exists() check above
+        # cannot catch it. ".pdf" is not a TLD.
+        if "/" not in s and any(
+            candidate_host.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS
+        ):
+            raise ValueError(
+                f"{raw!r} looks like a local file path, not a URL"
+            )
         s = "https://" + s
         parsed = urlparse(s)
 
@@ -1187,6 +1205,21 @@ class WebResearcherToolbox:
             raise
 
     @staticmethod
+    def _extract_html_metadata(html: Optional[str], url: str) -> dict:
+        """Run meta-oxide over *html*, failing soft to an empty dict.
+
+        Metadata is a bonus on top of the content, never a reason to lose a
+        page, so an extractor error degrades to ``{}`` with a log line.
+        """
+        if not html:
+            return {}
+        try:
+            return meta_extractor.extract_all(html, url)
+        except Exception:
+            logger.debug("metadata extraction failed for %s", url, exc_info=True)
+            return {}
+
+    @staticmethod
     def _url_error(raw: str, exc: Exception) -> dict:
         """Standard error record for a URL rejected before any network I/O.
 
@@ -1380,8 +1413,12 @@ class WebResearcherToolbox:
     # Search
     # ───────────────────────────────
 
-    def _finish_search(self, results: list) -> str:
+    def _finish_search(self, results: list, fallback: Optional[dict] = None) -> str:
         """§7: optionally guard search results (search_results scope).
+
+        *fallback* carries a ``provider_fallback`` note when the requested
+        provider was recognized but not registered, so the model can see
+        that the engine it asked for is not the one that answered.
 
         When the guard is active and the ``search_results`` scope is enabled,
         a guard block is attached by wrapping the list in
@@ -1398,6 +1435,12 @@ class WebResearcherToolbox:
             self._guard, [("search_results", text)], main_scope="search_results"
         )
         if block is None:
+            if fallback is not None:
+                return json.dumps(
+                    {"results": results, "provider_fallback": fallback},
+                    indent=2,
+                    ensure_ascii=False,
+                )
             return json.dumps(results, indent=2, ensure_ascii=False)
         if withheld:
             return json.dumps(
@@ -1407,9 +1450,10 @@ class WebResearcherToolbox:
                 },
                 indent=2,
             )
-        return json.dumps(
-            {"results": results, "guard": block}, indent=2, ensure_ascii=False
-        )
+        envelope = {"results": results, "guard": block}
+        if fallback is not None:
+            envelope["provider_fallback"] = fallback
+        return json.dumps(envelope, indent=2, ensure_ascii=False)
 
     def search_web(
         self,
@@ -1449,7 +1493,23 @@ class WebResearcherToolbox:
             logger.debug("search cache hit for %r", query)
             # The guard is a live policy, so it is re-evaluated on every
             # call even when the underlying results came from the cache.
-            return self._finish_search(cached)
+            return self._finish_search(
+                cached, self._provider_fallback_note(provider)
+            )
+
+        if provider and resolve_provider_name(provider) is None:
+            # Silently substituting another engine would let the model draw
+            # conclusions about coverage it never actually got.
+            known = sorted(
+                {getattr(p, "name", "?") for p in self.providers if hasattr(p, "name")}
+            )
+            return json.dumps(
+                {
+                    "error": f"Unknown search provider: {provider!r}",
+                    "available_providers": known,
+                },
+                indent=2,
+            )
 
         providers_to_try = self._resolve_providers(provider)
 
@@ -1466,7 +1526,9 @@ class WebResearcherToolbox:
             return json.dumps({"error": f"All search providers failed for: {query}"}, indent=2)
 
         self._search_cache_put(cache_key, results)
-        return self._finish_search(results)
+        return self._finish_search(
+            results, self._provider_fallback_note(provider)
+        )
 
     def _search_failover(self, providers_to_try, query, max_results):
         """Tier 2.8: default strict-failover search (first success wins).
@@ -1606,6 +1668,28 @@ class WebResearcherToolbox:
         with self._search_mem_lock:
             self._search_mem.clear()
 
+    def _provider_fallback_note(self, provider_name: Optional[str]) -> Optional[dict]:
+        """Describe a recognized-but-unregistered provider substitution.
+
+        Returns ``None`` when the requested provider actually answers (or
+        none was requested). Otherwise the note names what was asked for
+        and what is available, so the model does not read another engine's
+        coverage as the one it selected.
+        """
+        if not provider_name:
+            return None
+        canonical = resolve_provider_name(provider_name)
+        if canonical is None:
+            return None  # rejected up front by search_web
+        registered = [getattr(p, "name", "?") for p in self.providers]
+        if canonical in registered:
+            return None
+        return {
+            "requested": canonical,
+            "reason": "provider not registered",
+            "used": registered,
+        }
+
     def _resolve_providers(self, provider_name: Optional[str]) -> list:
         """
         Build an ordered list of providers to try.
@@ -1630,7 +1714,15 @@ class WebResearcherToolbox:
                 others = [p for p in self.providers if p not in matched]
                 return matched + others
 
-        # Unknown name — just use all providers
+        # A recognized name whose provider is not registered is ordinary
+        # failover: log it so an operator can see the substitution, and
+        # search on. An *unrecognized* name never reaches here -- search_web
+        # rejects it up front so the model can correct its own call.
+        logger.warning(
+            "Search provider %r is not registered; falling back to %s",
+            provider_name,
+            ", ".join(getattr(p, "name", "?") for p in self.providers) or "none",
+        )
         return list(self.providers)
 
     async def search_web_async(
@@ -2651,14 +2743,18 @@ class WebResearcherToolbox:
                             entry.markdown or "", entry.url
                         )
                         self._mark_visited(entry.url)  # success only (C3)
-                        # C6: store back into the shared page cache. The
-                        # batch engine has no metadata, so meta stays empty.
+                        # Bugfix 5: run the same meta-oxide extraction the
+                        # static single-page path runs, so a batch entry and
+                        # a single read of the same URL carry identical
+                        # metadata instead of the batch shipping {}.
+                        meta = self._extract_html_metadata(entry.html, entry.url)
+                        # C6: store back into the shared page cache.
                         self._page_cache_put(
-                            entry.url, md, entry.links, {}, "static"
+                            entry.url, md, entry.links, meta, "static"
                         )
                         self._release_in_flight(entry.url)  # S5
                         fetched[entry.url] = self._batch_result(
-                            entry.url, md, entry.links, {},
+                            entry.url, md, entry.links, meta,
                             "static", cache_hit=False
                         )
                     else:

@@ -861,15 +861,20 @@ fn fetch_html_full_single(
 // ────────────────────────────────────────────────────────────────
 
 // Type aliases keep the batch return types within clippy's complexity budget.
-type AnchoredPage = (String, Vec<(String, String)>);
 /// Processed page: (markdown, [(url, anchor_text)], hidden_nodes_removed).
 type ProcessedPage = (String, Vec<(String, String)>, usize);
 /// Full fetch payload: (raw_html, markdown, [(url, anchor_text)],
 /// hidden_nodes_removed, provenance). The provenance tuple is
 /// FetchMeta: (http_status, final_url, content_type).
 type FullPage = (String, String, Vec<(String, String)>, usize, FetchMeta);
-type BatchOutcome = Vec<(String, Result<AnchoredPage, String>)>;
-type PyBatchResult = Vec<(String, Option<String>, Option<Vec<(String, String)>>)>;
+/// One batch page: (raw_html, markdown, [(url, anchor_text)]). The HTML is
+/// carried out so the Python layer can run meta-oxide extraction on batch
+/// entries too -- without it the batch path returned empty metadata while
+/// single-page reads returned the real thing (bugfix 5).
+type BatchPage = (String, String, Vec<(String, String)>);
+type BatchOutcome = Vec<(String, Result<BatchPage, String>)>;
+type PyBatchResult =
+    Vec<(String, Option<String>, Option<String>, Option<Vec<(String, String)>>)>;
 
 
 /// Cheap pseudo-random milliseconds in `0..bound`, used for politeness
@@ -939,7 +944,7 @@ async fn fetch_many_inner(
                 let (html, _meta) =
                     http_fetch_html(shared_client(), &url, max_bytes).await?;
                 let (md, pairs, _removed) = process_html_anchored(&html, &url, cap)?;
-                Ok((md, pairs))
+                Ok((html, md, pairs))
             }
             .await;
             (url, res)
@@ -1171,8 +1176,12 @@ fn batch_research(
         let mut out = Vec::new();
         for (url, res) in results {
             match res {
-                Ok((md, links)) => out.push((url, Some(md), Some(links))),
-                Err(e) => out.push((url, Some(e), None)),
+                Ok((html, md, links)) => {
+                    out.push((url, Some(html), Some(md), Some(links)))
+                }
+                // Failure keeps the error in the markdown slot (M10 tags it
+                // Python-side); html stays None.
+                Err(e) => out.push((url, None, Some(e), None)),
             }
         }
         Ok(out)
@@ -1300,6 +1309,11 @@ fn cap_text(mut text: String, limit: usize) -> String {
     text
 }
 
+/// One extracted table: (caption or `table-N`, headers, rows).
+/// Rows are rectangular -- colspan/rowspan cells are expanded and covered
+/// cells filled with the empty string.
+type ExtractedTableGrid = (String, Vec<String>, Vec<Vec<String>>);
+
 /// Extract tables from an HTML document as (name, headers, rows) grids.
 ///
 /// Only top-level tables (tables nested inside other tables are skipped)
@@ -1315,13 +1329,13 @@ fn extract_tables_from_html(
     html: &str,
     max_tables: usize,
     max_rows: usize,
-) -> PyResult<Vec<(String, Vec<String>, Vec<Vec<String>>)>> {
+) -> PyResult<Vec<ExtractedTableGrid>> {
     const MAX_CELL_CHARS: usize = 1000;
     let document = Html::parse_document(html);
     let table_sel = Selector::parse("table").unwrap();
     let caption_sel = Selector::parse("caption").unwrap();
 
-    let mut out: Vec<(String, Vec<String>, Vec<Vec<String>>)> = Vec::new();
+    let mut out: Vec<ExtractedTableGrid> = Vec::new();
 
     for table in document.select(&table_sel) {
         if out.len() >= max_tables {

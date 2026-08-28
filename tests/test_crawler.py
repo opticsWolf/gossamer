@@ -128,12 +128,15 @@ class TestRustCore:
         results = batch_research(urls)
         assert len(results) == 2
 
-        for url, md_opt, links_opt in results:
+        for url, html_opt, md_opt, links_opt in results:
             assert isinstance(url, str)
             if md_opt is not None and links_opt is not None:
                 assert isinstance(md_opt, str)
                 assert isinstance(links_opt, list)
                 assert md_opt  # local server always yields markdown
+                # Bugfix 5: the raw HTML rides along so batch entries can
+                # carry the same metadata single-page reads do.
+                assert isinstance(html_opt, str) and html_opt
 
     @pytest.mark.slow
     def test_fetch_smart_page(self, local_server):
