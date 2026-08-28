@@ -50,6 +50,33 @@ def fetch_html_full(
     provenance is ``(http_status, final_url, content_type)`` (Tier 1.3)."""
     ...
 
+def fetch_html_conditional(
+    url: str,
+    max_links: int = 100,
+    max_bytes: Optional[int] = None,
+    etag: Optional[str] = None,
+    last_modified: Optional[str] = None,
+) -> Tuple[
+    bool,
+    str,
+    str,
+    List[Tuple[str, str]],
+    int,
+    Tuple[int, str, Optional[str]],
+    Optional[str],
+    Optional[str],
+]:
+    """Conditional fetch of *url* (Tier 1.4).
+
+    *etag* / *last_modified* are sent as If-None-Match / If-Modified-Since.
+    Returns ``(not_modified, html, markdown, links, hidden_removed,
+    provenance, etag, last_modified)`` where provenance is
+    ``(http_status, final_url, content_type)``. On a 304 answer
+    *not_modified* is True, html/markdown/links are empty, and the trailing
+    etag/last_modified carry the (possibly rotated) response validators.
+    """
+    ...
+
 def extract_links_from_html(
     html: str, url: str, max_links: int = 100
 ) -> List[Tuple[str, str]]:

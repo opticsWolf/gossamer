@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from stitch_web_researcher._core import (
     batch_research,
     fetch_html_full,
+    fetch_html_conditional,
     extract_links_from_html as _extract_links_from_html,
     process_rendered_html as _process_rendered_html,
     extract_main_content_markdown,
@@ -99,6 +100,11 @@ class InspectionResult(BaseModel):
     truncated: bool = False
     fetch_method: Optional[str] = None
     cache_hit: bool = False
+    # Tier 1.4: True when this read's cached entry had expired and a
+    # conditional request (If-None-Match / If-Modified-Since) answered
+    # 304 Not Modified, so the stored copy was re-freshened and re-served
+    # without a body download. Content and fetched_at are the originals.
+    revalidated: bool = False
     metadata: dict = Field(default_factory=dict)
     # Tier 1.1: set only when the caller passed a research query and the
     # page did not fit the output budget — the delivered markdown is then
@@ -143,16 +149,33 @@ def _sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _provenance_from_fetch_meta(meta: tuple, requested_url: str) -> dict:
+def _provenance_from_fetch_meta(
+    meta: tuple,
+    requested_url: str,
+    etag: Optional[str] = None,
+    last_modified: Optional[str] = None,
+) -> dict:
     """Normalize the Rust fetch's provenance tuple (http_status,
-    final_url, content_type) into the payload dict form."""
+    final_url, content_type) into the payload dict form.
+
+    Tier 1.4: when the server advertised validators, ``etag`` and
+    ``last_modified`` are stored inside the provenance dict (the compact
+    metadata whitelist keeps them out of the LLM payload) so an expired
+    page can later be revalidated with If-None-Match / If-Modified-Since
+    instead of re-downloaded.
+    """
     status, final_url, content_type = meta
-    return {
+    prov = {
         "fetched_at": _utc_now_iso(),
         "http_status": status,
         "final_url": final_url or requested_url,
         "content_type": content_type,
     }
+    if etag:
+        prov["etag"] = etag
+    if last_modified:
+        prov["last_modified"] = last_modified
+    return prov
 
 
 def _browser_provenance(requested_url: str) -> dict:
@@ -652,6 +675,11 @@ class ToolboxConfig:
     # S4: honor robots.txt (Disallow/Allow/Crawl-delay) for fetched URLs.
     # Set False for an explicit opt-out (e.g. private test targets).
     respect_robots: bool = True
+    # Tier 1.4: when a cached page has expired, revalidate it with a cheap
+    # ETag / Last-Modified conditional request before re-downloading. A 304
+    # re-freshens the entry for free; a 200 stores the new content. Default
+    # True; opt out with STITCH_CONDITIONAL_REVALIDATE=0.
+    conditional_revalidation: bool = True
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -769,6 +797,8 @@ class WebResearcherToolbox:
             enabled=config.respect_robots,
             user_agent=self.USER_AGENTS[0],
         )
+        # Tier 1.4: conditional revalidation of expired static page entries.
+        self.conditional_revalidation = config.conditional_revalidation
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
@@ -1220,15 +1250,24 @@ class WebResearcherToolbox:
         links, so the static path runs the same meta-oxide metadata
         extraction as the browser path — no second network round-trip.
         """
-        html, md, links, removed, prov = fetch_html_full(
-            url, self.link_cap, self.max_response_bytes
-        )
+        (
+            _not_modified,
+            html,
+            md,
+            links,
+            removed,
+            prov,
+            etag,
+            last_modified,
+        ) = fetch_html_conditional(url, self.link_cap, self.max_response_bytes)
         metadata = meta_extractor.extract_all(html, url)
         if removed:
             metadata["hidden_blocks_removed"] = removed
         # Tier 1.3: provenance — status, final URL after redirects,
         # content type, and the fetch time.
-        metadata["provenance"] = _provenance_from_fetch_meta(prov, url)
+        metadata["provenance"] = _provenance_from_fetch_meta(
+            prov, url, etag=etag, last_modified=last_modified
+        )
         return md, links, metadata, "static"
 
     def _browser_fetch(self, url: str):
@@ -1375,6 +1414,97 @@ class WebResearcherToolbox:
             ),
         )
 
+    def _stale_page_entry(self, url: str) -> Optional[dict]:
+        """Tier 1.4: read the raw page-cache entry ignoring TTL, without
+        purging it, so an expired entry's ETag / Last-Modified can drive a
+        cheap conditional revalidation. Returns the parsed entry dict or
+        None when the key was never stored.
+
+        Called *before* ``_page_cache_get`` (whose ``Cache.get`` purges
+        expired entries), so the validators are still on disk.
+        """
+        raw = self.cache.get_stale("page:" + self._cache_key(url))
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    def _revalidate_stale_entry(self, url: str, entry: dict):
+        """Tier 1.4: conditionally revalidate a stale (expired) static page.
+
+        ``entry`` is the parsed raw page-cache entry captured before the
+        normal lookup purged it. Returns ``(was_304, (markdown, links,
+        meta, method))`` on success, or None when there is nothing to
+        revalidate (non-static entry, no validators, or the conditional
+        request failed) - the caller then falls back to a full fetch.
+
+        A 304 keeps the stored content and the original fetched_at /
+        http_status / content_type / hash, and only adopts any rotated
+        validators (and, if changed, the final URL). A 200 returns the
+        freshly fetched content as a normal new entry.
+        """
+        if not self.conditional_revalidation:
+            return None
+        method = entry.get("method")
+        if method != "static":
+            return None
+        meta = entry.get("meta") or {}
+        prov = meta.get("provenance") or {}
+        etag = prov.get("etag")
+        last_modified = prov.get("last_modified")
+        if not etag and not last_modified:
+            return None
+        try:
+            (
+                not_modified,
+                html,
+                md,
+                links,
+                removed,
+                prov_meta,
+                new_etag,
+                new_lm,
+            ) = fetch_html_conditional(
+                url,
+                self.link_cap,
+                self.max_response_bytes,
+                etag=etag,
+                last_modified=last_modified,
+            )
+        except Exception as e:
+            logger.debug("Conditional revalidation error for %s: %s", url, e)
+            return None
+        if not_modified:
+            # 304 Not Modified: content unchanged - keep the stored copy and
+            # its original provenance; adopt any rotated validators and, if
+            # the hop reported a different URL, the refined final_url.
+            fresh_prov = dict(prov)
+            if new_etag:
+                fresh_prov["etag"] = new_etag
+            if new_lm:
+                fresh_prov["last_modified"] = new_lm
+            final_url = prov_meta[1]
+            if final_url and final_url != fresh_prov.get("final_url"):
+                fresh_prov["final_url"] = final_url
+            fresh_meta = dict(meta)
+            fresh_meta["provenance"] = fresh_prov
+            return True, (
+                entry.get("markdown", ""),
+                [tuple(p) for p in entry.get("links", [])],
+                fresh_meta,
+                method,
+            )
+        # 200: the server has new content - store it as a fresh fetch.
+        metadata = meta_extractor.extract_all(html, url)
+        if removed:
+            metadata["hidden_blocks_removed"] = removed
+        metadata["provenance"] = _provenance_from_fetch_meta(
+            prov_meta, url, etag=new_etag, last_modified=new_lm
+        )
+        return False, (md, links, metadata, "static")
+
     def _apply_provenance(
         self, result: InspectionResult, metadata: dict, markdown: str
     ) -> None:
@@ -1417,8 +1547,17 @@ class WebResearcherToolbox:
         url = normalize_url(url)
         self._validate_url(url)
 
+        # Tier 1.4: capture the raw (possibly expired) page entry before
+        # the normal cache lookup purges it - an expired entry's ETag /
+        # Last-Modified let us revalidate cheaply (304) instead of
+        # re-downloading the whole page.
+        stale_entry = None
+        if self.conditional_revalidation:
+            stale_entry = self._stale_page_entry(url)
+
         cached = self._page_cache_get(url)
         from_cache = cached is not None
+        revalidated = False
         if cached is None:
             # S4: robots.txt compliance -- only on the fetch path; a cache
             # hit performs no network fetch, so it is unaffected.
@@ -1439,9 +1578,15 @@ class WebResearcherToolbox:
                     {"warning": "URL already visited", "url": url}, indent=2
                 )
             try:
-                # Politeness delay applies only when we will actually fetch.
+                # Politeness delay applies only when we will actually fetch
+                # (a conditional revalidation counts as a fetch too).
                 self._rate_limit_domain(url)
-                cached = self._fetch_html(url, use_smart)
+                if stale_entry is not None:
+                    outcome = self._revalidate_stale_entry(url, stale_entry)
+                    if outcome is not None:
+                        revalidated, cached = outcome
+                if cached is None:
+                    cached = self._fetch_html(url, use_smart)
             except Exception as e:
                 self._release_in_flight(url)
                 logger.error("HTML inspection failed for %s: %s", url, e)
@@ -1449,6 +1594,8 @@ class WebResearcherToolbox:
                     {"error": f"HTML inspection failed: {str(e)}"}, indent=2
                 )
             # Mark visited and cache only after a successful fetch (C3).
+            # On a 304 the re-put re-freshens the entry (new TTL timestamp)
+            # while the stored content is unchanged.
             self._mark_visited(url)
             self._page_cache_put(url, *cached)
             self._release_in_flight(url)
@@ -1519,8 +1666,10 @@ class WebResearcherToolbox:
             html_metadata=html_metadata,
             page_markdown=markdown,
         )
-        if from_cache:
+        if from_cache or revalidated:
             result.cache_hit = True
+        if revalidated:
+            result.revalidated = True
         if selection is not None:
             result.query = query
             result.sections_available = selection.total_sections

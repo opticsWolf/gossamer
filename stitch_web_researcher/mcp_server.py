@@ -23,6 +23,8 @@ Configuration via environment variables (all optional):
     STITCH_FETCH_MODE           (default "auto"; auto|browser|static)
     STITCH_CANDIDATE_CAP        (default 500)
     STITCH_MAX_CONCURRENCY      (default 8)
+    STITCH_RESPECT_ROBOTS       (default 1)
+    STITCH_CONDITIONAL_REVALIDATE (default 1)
 """
 
 from __future__ import annotations
@@ -81,6 +83,11 @@ def _config_from_env() -> ToolboxConfig:
         max_concurrency=_env("STITCH_MAX_CONCURRENCY", 8, int),
         # S4: robots.txt compliance; operators can opt out explicitly.
         respect_robots=_env_bool("STITCH_RESPECT_ROBOTS", True),
+        # Tier 1.4: revalidate expired cached pages with ETag / Last-Modified
+        # before re-downloading; operators can opt out explicitly.
+        conditional_revalidation=_env_bool(
+            "STITCH_CONDITIONAL_REVALIDATE", True
+        ),
     )
 
 

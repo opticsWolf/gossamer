@@ -59,18 +59,27 @@ def _toolbox(tmp_path, **config_kwargs) -> WebResearcherToolbox:
     )
 
 
-def _fake_fetch(page: str = PAGE, prov=PROV):
-    """Module-level fetch_html_full stand-in (5-tuple, Tier 1.3)."""
+def _fake_fetch(page: str = PAGE, prov=PROV, etag=None, lm=None):
+    """Module-level fetch_html_conditional stand-in (8-tuple, Tier 1.4)."""
 
     def fake(url, *args, **kwargs):
-        return ("<html></html>", page, [("https://prov.example/link", "L")], 0, prov)
+        return (
+            False,
+            "<html></html>",
+            page,
+            [("https://prov.example/link", "L")],
+            0,
+            prov,
+            etag,
+            lm,
+        )
 
     return fake
 
 
 class TestStaticProvenance:
     def test_fresh_read_carries_full_provenance(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(agent_tools, "fetch_html_full", _fake_fetch())
+        monkeypatch.setattr(agent_tools, "fetch_html_conditional", _fake_fetch())
         tb = _toolbox(tmp_path)
         data = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
         assert data["fetch_method"] == "static"
@@ -87,16 +96,16 @@ class TestStaticProvenance:
 
         def fake(url, *a, **k):
             calls.append(url)
-            return ("<h>", PAGE, [], 0, PROV)
+            return (False, "<h>", PAGE, [], 0, PROV, None, None)
 
-        monkeypatch.setattr(agent_tools, "fetch_html_full", fake)
+        monkeypatch.setattr(agent_tools, "fetch_html_conditional", fake)
         tb = _toolbox(tmp_path)
         first = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
 
         def dead(url, *a, **k):
             raise AssertionError("cache hit must not re-fetch")
 
-        monkeypatch.setattr(agent_tools, "fetch_html_full", dead)
+        monkeypatch.setattr(agent_tools, "fetch_html_conditional", dead)
         second = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
         assert calls == ["https://example.com/prov-start"]
         assert second["cache_hit"] is True
@@ -106,7 +115,7 @@ class TestStaticProvenance:
         assert second["content_hash"] == first["content_hash"]
 
     def test_chunked_reads_share_one_hash(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(agent_tools, "fetch_html_full", _fake_fetch())
+        monkeypatch.setattr(agent_tools, "fetch_html_conditional", _fake_fetch())
         tb = _toolbox(tmp_path, max_markdown_chars=1000)
         first = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
         second = json.loads(
@@ -123,7 +132,7 @@ class TestStaticProvenance:
 
     def test_query_selection_shares_hash(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            agent_tools, "fetch_html_full", _fake_fetch(page=HEADED_PAGE)
+            agent_tools, "fetch_html_conditional", _fake_fetch(page=HEADED_PAGE)
         )
         tb = _toolbox(tmp_path, max_markdown_chars=1000)
         data = json.loads(
@@ -311,7 +320,7 @@ class TestBatchProvenance:
         assert out[0]["http_status"] is None
 
     def test_cached_entries_serve_stored_provenance(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(agent_tools, "fetch_html_full", _fake_fetch())
+        monkeypatch.setattr(agent_tools, "fetch_html_conditional", _fake_fetch())
         tb = _toolbox(tmp_path)
         first = json.loads(tb.inspect_html_page("https://example.net/batch-1"))
         out = json.loads(tb.batch_inspect_pages(["https://example.net/batch-1"]))

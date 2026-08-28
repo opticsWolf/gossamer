@@ -445,11 +445,33 @@ fn retry_after_seconds(headers: &reqwest::header::HeaderMap) -> Option<u64> {
 /// Content-Type header. Tier 1.3: provenance in every payload.
 type FetchMeta = (u16, String, Option<String>);
 
+/// Tier 1.4: extract the conditional-request validators (ETag,
+/// Last-Modified) a server advertised in its response headers, so the
+/// caller can store them for the next revalidation.
+fn validators_from_headers(
+    headers: &reqwest::header::HeaderMap,
+) -> (Option<String>, Option<String>) {
+    let etag = headers
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let last_modified = headers
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    (etag, last_modified)
+}
+
 async fn fetch_attempt(
     client: &reqwest::Client,
     url: &str,
     max_bytes: usize,
-) -> Result<(String, FetchMeta), (String, bool, Option<u64>)> {
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+) -> Result<
+        (String, FetchMeta, Option<String>, Option<String>),
+        (String, bool, Option<u64>),
+    > {
     let mut current = match Url::parse(url) {
         Ok(u) => u,
         Err(e) => return Err((format!("URL parse error: {}", e), false, None)),
@@ -471,17 +493,34 @@ async fn fetch_attempt(
         // NOTE: do NOT set Accept-Encoding manually — reqwest then skips
         // its automatic gzip/brotli/deflate decoding and response.text()
         // yields raw compressed bytes.
-        let mut response = client
+        let mut request = client
             .get(current.as_str())
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.5")
             .header("DNT", "1")
-            .header("Connection", "keep-alive")
+            .header("Connection", "keep-alive");
+        // Tier 1.4: conditional-request validators — a server that still
+        // has the cached copy answers 304 and no body travels.
+        if let Some(tag) = etag {
+            request = request.header(reqwest::header::IF_NONE_MATCH, tag);
+        }
+        if let Some(lm) = last_modified {
+            request = request.header(reqwest::header::IF_MODIFIED_SINCE, lm);
+        }
+        let mut response = request
             .send()
             .await
             .map_err(|e| (format!("Request failed: {}", e), true, None))?;
 
         let status = response.status();
+        // Tier 1.4: 304 Not Modified — the caller's cached copy is still
+        // current. No body follows, but the response may carry rotated
+        // validators, which we hand back for storage.
+        if status.as_u16() == 304 {
+            let (etag2, lm2) = validators_from_headers(response.headers());
+            let meta: FetchMeta = (status.as_u16(), current.as_str().to_string(), None);
+            return Ok((String::new(), meta, etag2, lm2));
+        }
         if status.is_redirection() {
             let location = response
                 .headers()
@@ -570,7 +609,9 @@ async fn fetch_attempt(
             current.as_str().to_string(),
             ctype,
         );
-        return Ok((html, meta));
+        // Tier 1.4: validators for the next revalidation.
+        let (etag2, lm2) = validators_from_headers(response.headers());
+        return Ok((html, meta, etag2, lm2));
     }
 
     Err((
@@ -580,16 +621,18 @@ async fn fetch_attempt(
     ))
 }
 
-async fn http_fetch_html(
+async fn http_fetch_html_ext(
     client: &reqwest::Client,
     url: &str,
     max_bytes: usize,
-) -> Result<(String, FetchMeta), String> {
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+) -> Result<(String, FetchMeta, Option<String>, Option<String>), String> {
     const MAX_ATTEMPTS: u32 = 3;
     let mut last_error = String::new();
 
     for attempt in 0..MAX_ATTEMPTS {
-        match fetch_attempt(client, url, max_bytes).await {
+        match fetch_attempt(client, url, max_bytes, etag, last_modified).await {
             Ok(res) => return Ok(res),
             Err((msg, retryable, retry_after)) => {
                 if !retryable {
@@ -614,6 +657,17 @@ async fn http_fetch_html(
         "All {} attempts failed. Last error: {}",
         MAX_ATTEMPTS, last_error
     ))
+}
+
+/// Fetch one URL with retry, without conditional-request validators.
+async fn http_fetch_html(
+    client: &reqwest::Client,
+    url: &str,
+    max_bytes: usize,
+) -> Result<(String, FetchMeta), String> {
+    let (html, meta, _etag, _last_modified) =
+        http_fetch_html_ext(client, url, max_bytes, None, None).await?;
+    Ok((html, meta))
 }
 
 async fn fetch_pairs_inner(
@@ -846,6 +900,89 @@ fn fetch_html_full(
     })
 }
 
+/// Python binding: conditional fetch of one URL (Tier 1.4).
+///
+/// Returns (not_modified, html, markdown, [(url, anchor_text)],
+/// hidden_blocks_removed, FetchMeta, etag, last_modified). When
+/// `etag`/`last_modified` are provided they are sent as If-None-Match /
+/// If-Modified-Since; a 304 answer yields `not_modified = true` with empty
+/// html/markdown/links and the caller keeps its cached copy. The trailing
+/// etag/last_modified always carry the response headers (200 or 304), so
+/// every fetch refreshes what the next revalidation will send.
+/// Conditional fetch result (Tier 1.4):
+/// (not_modified, raw_html, markdown, [(url, anchor_text)],
+/// hidden_nodes_removed, FetchMeta, etag, last_modified).
+type ConditionalPage = (
+    bool,
+    String,
+    String,
+    Vec<(String, String)>,
+    usize,
+    FetchMeta,
+    Option<String>,
+    Option<String>,
+);
+
+/// Tier 1.4: conditional fetch helper. Sends If-None-Match /
+/// If-Modified-Since when validators are supplied. A 304 yields
+/// `not_modified = true` with empty html/markdown/links; the trailing
+/// etag/last_modified always carry the response headers (200 or 304) so
+/// every fetch refreshes what the next revalidation will send.
+fn fetch_conditional_single(
+    url: &str,
+    cap: usize,
+    max_bytes: usize,
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+) -> Result<ConditionalPage, String> {
+    let rt = shared_runtime();
+    rt.block_on(async {
+        let (html, meta, etag2, lm2) =
+            http_fetch_html_ext(shared_client(), url, max_bytes, etag, last_modified).await?;
+        if meta.0 == 304 {
+            // Not modified: no body to process — the caller serves the
+            // cached copy. Validators still come back (they may rotate).
+            return Ok((
+                true,
+                String::new(),
+                String::new(),
+                Vec::new(),
+                0usize,
+                meta,
+                etag2,
+                lm2,
+            ));
+        }
+        let (md, links, removed) = process_html_anchored(&html, url, cap)?;
+        Ok((false, html, md, links, removed, meta, etag2, lm2))
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (url, max_links = 100, max_bytes = None, etag = None, last_modified = None))]
+fn fetch_html_conditional(
+    py: Python<'_>,
+    url: String,
+    max_links: usize,
+    max_bytes: Option<usize>,
+    etag: Option<String>,
+    last_modified: Option<String>,
+) -> PyResult<ConditionalPage> {
+    let cap = max_bytes.unwrap_or_else(max_response_bytes);
+    py.detach(|| {
+        match fetch_conditional_single(
+            &url,
+            max_links,
+            cap,
+            etag.as_deref(),
+            last_modified.as_deref(),
+        ) {
+            Ok(res) => Ok(res),
+            Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e)),
+        }
+    })
+}
+
 /// Python binding: extract (url, anchor_text) pairs from HTML already
 /// fetched/rendered by the caller (e.g. via browser_oxide).
 #[pyfunction]
@@ -934,6 +1071,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(process_rendered_html, m)?)?;
     m.add_function(wrap_pyfunction!(fetch_and_extract_linked, m)?)?;
     m.add_function(wrap_pyfunction!(fetch_html_full, m)?)?;
+    m.add_function(wrap_pyfunction!(fetch_html_conditional, m)?)?;
     m.add_function(wrap_pyfunction!(extract_links_from_html, m)?)?;
     m.add_function(wrap_pyfunction!(extract_main_content_markdown, m)?)?;
     Ok(())

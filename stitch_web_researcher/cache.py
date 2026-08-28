@@ -112,6 +112,37 @@ class Cache:
             self._misses += 1
         return None
 
+    def get_stale(self, key: str) -> Optional[str]:
+        """Read a cached entry **ignoring TTL**, without purging it.
+
+        Tier 1.4: conditional revalidation needs an expired entry's stored
+        content and validators *after* the normal ``get`` has already
+        treated it as a miss (and purged it from disk). This method:
+
+        * checks the memory tier without enforcing the TTL,
+        * reads the disk file even when it is expired (no deletion),
+        * does not touch hit/miss stats or re-insert into memory.
+
+        Returns the raw cached string, or ``None`` if the key was never
+        stored.
+        """
+        # Memory tier, TTL ignored.
+        with self._lock:
+            item = self._memory.get(key)
+        if item is not None:
+            return item[0]
+
+        # Disk tier, TTL ignored, no purge.
+        safe_key = self._disk_key(key)
+        cache_file = self.cache_path / f"{safe_key}.cache"
+        if not cache_file.exists():
+            return None
+        try:
+            return cache_file.read_text(encoding="utf-8")
+        except OSError as e:
+            logger.warning("Stale disk cache read error for %s: %s", key, e)
+            return None
+
     def put(self, key: str, content: str) -> None:
         """
         Store content in both memory and disk (write-through).
