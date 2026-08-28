@@ -31,6 +31,7 @@ Configuration via environment variables (all optional):
     STITCH_USER_AGENT           (default unset -- override the desktop-Chrome User-Agent)
     STITCH_CUSTOM_HEADERS       (default {} -- JSON object, e.g. {"Authorization": "Bearer ..."})
     STITCH_COOKIES              (default {} -- JSON object, e.g. {"session": "abc123"})
+    STITCH_SEARCH_MERGE           (default 0 -- 1/true: cross-provider merge for search_web)
     STITCH_GUARD_ENABLED          (default 0 -- §7 prompt-injection guard off)
     STITCH_GUARD_SCOPES           (default "page_markdown,document_text")
     STITCH_GUARD_MODE             (default "annotate"; annotate|redact|block)
@@ -154,6 +155,7 @@ def _config_from_env() -> ToolboxConfig:
         user_agent=_env("STITCH_USER_AGENT", None),
         custom_headers=_env_json_dict("STITCH_CUSTOM_HEADERS"),
         cookies=_env_json_dict("STITCH_COOKIES"),
+        search_merge=_env_bool("STITCH_SEARCH_MERGE", False),
     )
 
 

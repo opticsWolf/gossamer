@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, urlunparse
 
 import httpx
 from pydantic import BaseModel, Field
@@ -816,6 +816,11 @@ class ToolboxConfig:
     user_agent: Optional[str] = None
     custom_headers: dict = field(default_factory=dict)
     cookies: dict = field(default_factory=dict)
+    # Tier 2.8: cross-provider merge for search_web (item 8). When False
+    # (the default) providers are strict failover (first success wins); when
+    # True every provider is queried and results are merged + deduped by
+    # URL, preserving provider priority order, up to max_results.
+    search_merge: bool = False
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -958,6 +963,14 @@ class WebResearcherToolbox:
                 list(config.custom_headers.items()),
                 list(config.cookies.items()),
             )
+        # Tier 2.8: cross-provider merge flag for search_web (item 8).
+        self._search_merge = config.search_merge
+        # Tier 2.8: in-memory, per-toolbox search-result cache (bounded +
+        # TTL). Kept separate from the page disk cache so session-scoped
+        # search results never leak across toolbox instances or processes.
+        self._search_mem: "OrderedDict[str, tuple[float, list]]" = OrderedDict()
+        self._search_mem_ttl = config.cache_ttl_seconds
+        self._search_mem_lock = threading.Lock()
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
@@ -1245,6 +1258,13 @@ class WebResearcherToolbox:
         """
         Search the web using a specific provider or the default.
 
+        Results are cached under a result-level key (Tier 2.8, review item 8)
+        so repeat queries within the cache TTL do not re-query the provider.
+        Within a provider's results, duplicates are removed by URL. When
+        ``ToolboxConfig.search_merge`` is enabled, every provider is queried
+        and the results are merged + deduped (provider priority order kept);
+        otherwise providers are strict failover (first success wins).
+
         Parameters
         ----------
         query : str
@@ -1261,21 +1281,168 @@ class WebResearcherToolbox:
         str
             JSON-serialised list of results or error dict.
         """
-        # Resolve provider
+        cache_key = self._search_cache_key(query, max_results, provider)
+        cached = self._search_cache_get(cache_key)
+        if cached is not None:
+            logger.debug("search cache hit for %r", query)
+            # The guard is a live policy, so it is re-evaluated on every
+            # call even when the underlying results came from the cache.
+            return self._finish_search(cached)
+
         providers_to_try = self._resolve_providers(provider)
 
+        if self._search_merge:
+            results, any_ok = self._search_merged(
+                providers_to_try, query, max_results
+            )
+        else:
+            results, any_ok = self._search_failover(
+                providers_to_try, query, max_results
+            )
+
+        if not any_ok:
+            return json.dumps({"error": f"All search providers failed for: {query}"}, indent=2)
+
+        self._search_cache_put(cache_key, results)
+        return self._finish_search(results)
+
+    def _search_failover(self, providers_to_try, query, max_results):
+        """Tier 2.8: default strict-failover search (first success wins).
+
+        Returns ``(results, any_ok)``; results are deduped by URL.
+        """
         for prov in providers_to_try:
             try:
                 results = prov.search(query, max_results=max_results)
-                return self._finish_search(results)
             except Exception as e:
                 logger.warning(
                     "Provider %s failed for '%s': %s — trying next",
                     prov.__class__.__name__, query, e,
                 )
+                continue
+            return self._dedup_results(results), True
+        return [], False
 
-        # All providers failed
-        return json.dumps({"error": f"All search providers failed for: {query}"}, indent=2)
+    def _search_merged(self, providers_to_try, query, max_results):
+        """Tier 2.8: cross-provider merge (every provider is queried).
+
+        Results from each provider are appended in provider priority order
+        and deduped by URL; collection stops once *max_results* distinct
+        results have accumulated. Returns ``(results, any_ok)``.
+        """
+        merged: list = []
+        seen: set = set()
+        any_ok = False
+        for prov in providers_to_try:
+            try:
+                results = prov.search(query, max_results=max_results)
+            except Exception as e:
+                logger.warning(
+                    "Provider %s failed for '%s': %s — skipping",
+                    prov.__class__.__name__, query, e,
+                )
+                continue
+            any_ok = True
+            for r in results:
+                if not isinstance(r, dict):
+                    continue
+                key = self._result_url_key(r)
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                merged.append(r)
+                if len(merged) >= max_results:
+                    break
+            if len(merged) >= max_results:
+                break
+        return merged[:max_results], any_ok
+
+    @staticmethod
+    def _result_url_key(result: dict) -> str:
+        """Normalised URL key used to dedup search results.
+
+        Scheme/host lowercased, default port dropped, trailing slash removed,
+        fragment dropped. Returns '' when the result has no usable URL (such
+        results are never deduped).
+        """
+        url = result.get("url")
+        if not url or not isinstance(url, str):
+            return ""
+        parts = urlparse(url.strip())
+        scheme = (parts.scheme or "").lower()
+        host = (parts.hostname or "").lower()
+        if scheme in ("http", "https") and parts.port in (None, 80, 443):
+            netloc = host
+        elif parts.port:
+            netloc = f"{host}:{parts.port}"
+        else:
+            netloc = host
+        path = parts.path or ""
+        if path.endswith("/"):
+            path = path[:-1]
+        return urlunparse((scheme, netloc, path, "", parts.query, ""))
+
+    def _dedup_results(self, results: list) -> list:
+        """Remove duplicate results by normalised URL, preserving order.
+
+        Results without a usable URL are all kept (they cannot be deduped).
+        """
+        seen: set = set()
+        out: list = []
+        for r in results:
+            if isinstance(r, dict):
+                key = self._result_url_key(r)
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+            out.append(r)
+        return out
+
+    def _search_cache_key(
+        self, query: str, max_results: int, provider: Optional[str]
+    ) -> str:
+        """Result-level cache key (Tier 2.8, review item 8).
+
+        Normalised so equivalent spellings of the same query share one entry:
+        query lowercased + whitespace collapsed, plus the result count, the
+        canonical provider selection, and the merge mode.
+        """
+        normalized_query = " ".join((query or "").lower().split())
+        provider_part = resolve_provider_name(provider) if provider else "default"
+        provider_part = provider_part or "default"
+        material = f"{normalized_query}|{max_results}|{provider_part}|merge={self._search_merge}"
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def _search_cache_get(self, key: str) -> Optional[list]:
+        """Return cached search results for *key*, or None on miss/expired.
+
+        Tier 2.8: in-memory, session-scoped (see ``__init__``).
+        """
+        with self._search_mem_lock:
+            item = self._search_mem.get(key)
+            if item is None:
+                return None
+            timestamp, value = item
+            if time.time() - timestamp > self._search_mem_ttl:
+                del self._search_mem[key]
+                return None
+            self._search_mem.move_to_end(key)
+            return value
+
+    def _search_cache_put(self, key: str, results: list) -> None:
+        """Cache a successful search-result list under its result-level key."""
+        with self._search_mem_lock:
+            self._search_mem[key] = (time.time(), results)
+            self._search_mem.move_to_end(key)
+            while len(self._search_mem) > 256:
+                self._search_mem.popitem(last=False)
+
+    def _search_cache_clear(self) -> None:
+        """Drop all cached search results (invoked by ``clear_cache``)."""
+        with self._search_mem_lock:
+            self._search_mem.clear()
 
     def _resolve_providers(self, provider_name: Optional[str]) -> list:
         """
@@ -2838,6 +3005,7 @@ class WebResearcherToolbox:
         files (``*.cache``/``*.meta``/``*.tmp``) -- the configured cache
         directory and any unrelated files in it are left intact."""
         self.cache.clear()
+        self._search_cache_clear()
         self.reset_visited()
         return json.dumps({"cache_cleared": True, "stats": self.cache.stats()}, indent=2)
 

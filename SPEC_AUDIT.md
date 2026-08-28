@@ -59,6 +59,9 @@
 | `resolve_provider_name()` | ✅ | case-insensitive name → provider |
 | Fallback chaining | ✅ | tries named provider, then remaining |
 | LLM tool `provider` enum | ✅ | `["duckduckgo", "google", "bing", "exa"]` |
+| Result-level search cache (Tier 2.8) | ✅ | Successful results cached in-memory (bounded, TTL) keyed by normalized `(query, max_results, provider, mode)`; errors never cached; cleared by `clear_cache` |
+| Within-provider dedup (Tier 2.8) | ✅ | Duplicate normalized URLs collapsed within the first successful provider's result list |
+| Cross-provider merge (Tier 2.8) | ✅ | Opt-in `search_merge` / `STITCH_SEARCH_MERGE`: queries every provider and merges + dedups up to `max_results` |
 
 **Verdict**: ✅ Complete
 

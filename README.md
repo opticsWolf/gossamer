@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-636%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-652%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -321,6 +321,32 @@ not per-request. An invalid proxy URL or header name is logged and ignored
 rather than fatal. robots.txt compliance (S4), politeness delay
 (`domain_delay`), and per-host concurrency (S5) already cover the rest of
 review item 7.
+
+### Search Result Caching & Cross-Provider Merge (Tier 2.8)
+
+`search_web` now caches successful results at the result level and can
+optionally merge across providers:
+
+- **Result-level cache (default):** every successful search is cached
+  in-memory (bounded, TTL = `cache_ttl_seconds`) keyed by a normalized
+  `(query, max_results, provider, merge-mode)` hash. A repeated call within
+  a toolbox session is served from cache without hitting any provider.
+  Errors are never cached. The cache is per-toolbox-instance and is cleared
+  by `clear_cache`.
+- **Within-provider dedup (default):** duplicate URLs (normalized: scheme
+  case, default ports, fragments, trailing slash) are collapsed in the
+  first successful provider's result list.
+- **Cross-provider merge (opt-in):** set `search_merge=True` (or
+  `STITCH_SEARCH_MERGE=1`) to query *every* provider in priority order and
+  merge + dedup their results up to `max_results`, instead of the default
+  strict failover (first success wins).
+
+```python
+from stitch_web_researcher import ToolboxConfig, WebResearcherToolbox
+
+tb = WebResearcherToolbox(ToolboxConfig(search_merge=True))
+results = tb.search_web("quantum computing", max_results=10)
+```
 
 ### Prompt-Injection Guard (optional, §7)
 
