@@ -2,9 +2,6 @@
 Tests for the two-tier Cache layer.
 """
 
-import json
-import os
-import tempfile
 import time
 from pathlib import Path
 
@@ -212,3 +209,120 @@ class TestHumanSize:
 
     def test_gb(self):
         assert "GB" in Cache._human_size(1_500_000_000)
+
+
+# ────────────────────────────────────────────────────────────────
+# Tier 2.5: disk size cap + LRU eviction + prune()
+# ────────────────────────────────────────────────────────────────
+
+
+class TestDiskEviction:
+    """Tier 2.5: byte cap on the disk tier with LRU eviction and prune().
+
+    The LRU signal is the cache file mtime, so each put is spaced out and
+    disk-level assertions bypass the memory tier (memory and disk evict
+    independently).
+    """
+
+    def test_unlimited_default_keeps_all(self, tmp_cache_dir):
+        c = Cache(cache_dir=tmp_cache_dir, ttl_seconds=3600)
+        assert c.max_disk_bytes == 0
+        for i in range(20):
+            c.put(f"k{i}", "x" * 2000)
+            time.sleep(0.01)
+        # Nothing evicted: all 20 disk entries remain.
+        assert len(c._disk_entries()) == 20
+        assert c.stats()["disk_evictions"] == 0
+
+    def test_size_cap_evicts_lru(self, tmp_cache_dir):
+        c = Cache(cache_dir=tmp_cache_dir, ttl_seconds=3600, max_disk_bytes=3000)
+        c.put("a", "a" * 800)
+        time.sleep(0.02)
+        c.put("b", "b" * 800)
+        time.sleep(0.02)
+        c.put("c", "c" * 800)
+        time.sleep(0.02)
+        c.put("d", "d" * 800)  # ~3.3KB on disk > 3000 -> evict oldest
+        assert c.stats()["disk_evictions"] == 1
+        # Confirm what survived on disk (bypass the memory tier).
+        c._memory.clear()
+        assert c.get("a") is None  # oldest -> evicted
+        assert c.get("b") == "b" * 800
+        assert c.get("c") == "c" * 800
+        assert c.get("d") == "d" * 800
+
+    def test_read_refreshes_lru_order(self, tmp_cache_dir):
+        c = Cache(
+            cache_dir=tmp_cache_dir, ttl_seconds=3600, max_disk_bytes=3000
+        )
+        c.put("a", "a" * 800)
+        time.sleep(0.02)
+        c.put("b", "b" * 800)
+        time.sleep(0.02)
+        c.put("c", "c" * 800)
+        time.sleep(0.02)
+        c.put("d", "d" * 800)  # evicts "a"; disk = b, c, d
+        # Force a disk read of "b" to refresh its mtime.
+        c._memory.clear()
+        time.sleep(0.02)
+        assert c.get("b") == "b" * 800  # disk hit -> mtime refreshed
+        time.sleep(0.02)
+        c.put("e", "e" * 800)  # disk = b, c, d, e > 3000 -> evict oldest
+        # "b" was just refreshed, so "c" is now the LRU victim.
+        c._memory.clear()
+        assert c.get("c") is None
+        assert c.get("b") == "b" * 800  # survived (recently read)
+        assert c.get("e") == "e" * 800
+
+    def test_prune_removes_expired(self, tmp_cache_dir):
+        c = Cache(cache_dir=tmp_cache_dir, ttl_seconds=1)
+        c.put("old", "x" * 100)
+        time.sleep(1.5)
+        summary = c.prune()
+        assert summary["removed_expired"] == 1
+        assert summary["total_entries"] == 0
+        c._memory.clear()
+        assert c.get("old") is None
+
+    def test_prune_enforces_cap(self, tmp_cache_dir):
+        c = Cache(cache_dir=tmp_cache_dir, ttl_seconds=3600, max_disk_bytes=0)
+        c.put("a", "a" * 800)
+        time.sleep(0.02)
+        c.put("b", "b" * 800)
+        time.sleep(0.02)
+        c.put("c", "c" * 800)
+        # Unlimited at first: nothing evicted.
+        assert c.stats()["disk_evictions"] == 0
+        # Set a cap and prune: evict until under it.
+        c.max_disk_bytes = 1700
+        summary = c.prune()
+        assert summary["removed_evicted"] >= 1
+        assert c.stats()["disk_size_bytes"] <= 1700
+
+    def test_prune_returns_summary(self, tmp_cache_dir):
+        c = Cache(cache_dir=tmp_cache_dir, ttl_seconds=3600, max_disk_bytes=5000)
+        c.put("a", "a" * 100)
+        summary = c.prune()
+        assert set(summary.keys()) == {
+            "removed_expired",
+            "removed_evicted",
+            "total_entries",
+            "total_bytes",
+            "max_disk_bytes",
+        }
+        assert summary["removed_expired"] == 0
+        assert summary["removed_evicted"] == 0
+        assert summary["total_entries"] == 1
+        assert summary["total_bytes"] > 0
+        assert summary["max_disk_bytes"] == 5000
+
+    def test_stats_includes_disk_eviction_keys(self, tmp_cache_dir):
+        c = Cache(cache_dir=tmp_cache_dir, ttl_seconds=3600, max_disk_bytes=2000)
+        c.put("a", "a" * 500)
+        stats = c.stats()
+        assert "disk_entries" in stats
+        assert "disk_max_bytes" in stats
+        assert "disk_evictions" in stats
+        assert stats["disk_max_bytes"] == 2000
+        assert stats["disk_entries"] == 1
+        assert stats["disk_evictions"] == 0

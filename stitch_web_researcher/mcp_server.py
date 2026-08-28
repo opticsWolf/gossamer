@@ -13,6 +13,7 @@ Requires the optional ``mcp`` dependency (v2):
 Configuration via environment variables (all optional):
     STITCH_CACHE_DIR            (default ".web_research_cache")
     STITCH_CACHE_TTL_SECONDS    (default 3600)
+    STITCH_CACHE_MAX_BYTES      (default 0 = unlimited; disk LRU eviction cap)
     STITCH_DDGS_DELAY           (default 1.0)
     STITCH_DOMAIN_DELAY         (default 0.5)
     STITCH_FETCH_DELAY          (default: unset — provider default applies)
@@ -95,6 +96,7 @@ def _config_from_env() -> ToolboxConfig:
     return ToolboxConfig(
         cache_dir=_env("STITCH_CACHE_DIR", ".web_research_cache"),
         cache_ttl_seconds=_env("STITCH_CACHE_TTL_SECONDS", 3600, int),
+        cache_max_bytes=_env("STITCH_CACHE_MAX_BYTES", 0, int),
         ddgs_delay=_env("STITCH_DDGS_DELAY", 1.0, float),
         domain_delay=_env("STITCH_DOMAIN_DELAY", 0.5, float),
         fetch_delay=fetch_delay,

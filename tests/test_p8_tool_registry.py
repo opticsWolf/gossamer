@@ -30,7 +30,7 @@ def _toolbox(tmp_path) -> WebResearcherToolbox:
 
 
 class TestRegistryShape:
-    def test_registry_lists_all_nine_tools(self):
+    def test_registry_lists_all_ten_tools(self):
         assert REGISTRY_NAMES == {
             "search_web",
             "inspect_html_page",
@@ -39,6 +39,7 @@ class TestRegistryShape:
             "extract_document_structured",
             "inspect_html_structured",
             "clear_cache",
+            "prune_cache",
             "reset_visited",
             "get_stats",
         }
@@ -89,6 +90,7 @@ class TestExecuteTool:
         assert tb.execute_tool("get_stats") == tb.get_stats()
         assert tb.execute_tool("reset_visited") == tb.reset_visited()
         assert "cache_cleared" in tb.execute_tool("clear_cache")
+        assert "prune" in tb.execute_tool("prune_cache")
 
     def test_defaults_come_from_registry(self, tmp_path):
         """Omitted optional parameters use the registry defaults (the

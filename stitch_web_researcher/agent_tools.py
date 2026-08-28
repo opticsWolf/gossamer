@@ -579,6 +579,12 @@ TOOL_REGISTRY = (
         (),
     ),
     ToolSpec(
+        "prune_cache",
+        "Remove expired cache entries and evict least-recently-used entries to stay under the configured size cap. Unlike clear_cache this keeps valid in-TTL entries and does not reset the visited-URL set. Returns a summary of what was removed.",
+        "prune_cache",
+        (),
+    ),
+    ToolSpec(
         "reset_visited",
         "Forget all previously visited URLs so they can be fetched again (caches are NOT cleared). Use after a fetch failure you want to retry, or when starting a new research session on the same pages.",
         "reset_visited",
@@ -665,6 +671,9 @@ class ToolboxConfig:
 
     cache_dir: str = ".web_research_cache"
     cache_ttl_seconds: int = 3600
+    # Tier 2.5: byte cap for the disk cache (0 = unlimited). Least-recently-
+    # used entries are evicted to stay under it; see Cache.max_disk_bytes.
+    cache_max_bytes: int = 0
     ddgs_delay: float = 1.0
     domain_delay: float = 0.5
     max_markdown_chars: int = 8000
@@ -758,6 +767,7 @@ class WebResearcherToolbox:
         self.cache = Cache(
             cache_dir=config.cache_dir,
             ttl_seconds=config.cache_ttl_seconds,
+            max_disk_bytes=config.cache_max_bytes,
         )
         self.fetch_mode = config.fetch_mode
         self.ddgs_delay = config.ddgs_delay
@@ -2678,3 +2688,12 @@ class WebResearcherToolbox:
         self.cache.clear()
         self.reset_visited()
         return json.dumps({"cache_cleared": True, "stats": self.cache.stats()}, indent=2)
+
+    def prune_cache(self) -> str:
+        """Remove expired cache entries and evict to the size cap (Tier 2.5).
+
+        Unlike ``clear_cache`` this keeps valid, in-TTL entries and does not
+        touch the visited-URL set -- it only sweeps entries that expired while
+        never being requested again and trims the disk cache to
+        ``cache_max_bytes``. Returns a summary of what was removed."""
+        return json.dumps({"prune": self.cache.prune()}, indent=2)

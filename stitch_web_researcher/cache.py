@@ -43,11 +43,16 @@ class Cache:
         cache_dir: str = ".web_research_cache",
         ttl_seconds: int = 3600,
         max_memory_entries: int = 100,
+        max_disk_bytes: int = 0,
     ):
         self.cache_path = Path(cache_dir)
         self.cache_path.mkdir(parents=True, exist_ok=True)
         self.ttl_seconds = ttl_seconds
         self.max_memory_entries = max_memory_entries
+        # Tier 2.5: optional byte cap for the disk tier (0 = unlimited).
+        # When set, least-recently-used entries are evicted to stay under it;
+        # file mtime is the LRU signal and is touched on every disk read.
+        self.max_disk_bytes = max_disk_bytes
 
         # In-memory LRU: OrderedDict keyed by URL
         self._memory: OrderedDict[str, tuple[str, float]] = OrderedDict()
@@ -56,12 +61,16 @@ class Cache:
         # dispatches synchronous tools on worker threads, so several
         # threads can be inside this Cache at once.
         self._lock = threading.Lock()
+        # Tier 2.5: guards all disk mutations (write, eviction, prune,
+        # clear) so size-cap enforcement never races with a writer.
+        self._disk_lock = threading.Lock()
 
         # Stats
         self._hits = 0
         self._misses = 0
         self._memory_hits = 0
         self._disk_hits = 0
+        self._evictions = 0
 
         # Drop *.tmp leftovers from a crash mid-write (S5).
         self._cleanup_stale_tmp()
@@ -155,7 +164,9 @@ class Cache:
             Content to cache.
         """
         self._memory_put(key, content)
-        self._disk_put(key, content)
+        with self._disk_lock:
+            self._disk_put(key, content)
+            self._enforce_disk_cap()
 
     def clear(self) -> None:
         """Clear both memory and disk caches.
@@ -167,20 +178,47 @@ class Cache:
         """
         with self._lock:
             self._memory.clear()
-        self._clear_disk()
+        with self._disk_lock:
+            self._clear_disk()
+
+    def prune(self) -> Dict[str, Any]:
+        """Remove expired entries, enforce the size cap, drop stale tmp.
+
+        Tier 2.5: disk entries are TTL-expired lazily on read, so entries
+        for URLs never requested again linger forever. ``prune`` sweeps them
+        proactively and keeps the cache under ``max_disk_bytes``. Safe to call
+        on a schedule; returns a summary of what it did.
+        """
+        with self._disk_lock:
+            removed_expired = self._prune_expired()
+            removed_evicted = self._enforce_disk_cap()
+            self._cleanup_stale_tmp()
+            entries = self._disk_entries()
+        return {
+            "removed_expired": removed_expired,
+            "removed_evicted": removed_evicted,
+            "total_entries": len(entries),
+            "total_bytes": sum(size for _m, size, _p in entries),
+            "max_disk_bytes": self.max_disk_bytes,
+        }
 
     def stats(self) -> Dict[str, Any]:
         """Return cache statistics."""
-        disk_size = self._disk_size_bytes()
+        entries = self._disk_entries()
+        disk_size = sum(size for _m, size, _p in entries)
         with self._lock:
-            entries = len(self._memory)
+            mem_entries = len(self._memory)
             hits, misses = self._hits, self._misses
             mem_hits, disk_hits = self._memory_hits, self._disk_hits
+            evictions = self._evictions
         return {
-            "memory_entries": entries,
+            "memory_entries": mem_entries,
             "memory_max": self.max_memory_entries,
+            "disk_entries": len(entries),
             "disk_size_bytes": disk_size,
             "disk_size_human": self._human_size(disk_size),
+            "disk_max_bytes": self.max_disk_bytes,
+            "disk_evictions": evictions,
             "cache_dir": str(self.cache_path),
             "ttl_seconds": self.ttl_seconds,
             "total_hits": hits,
@@ -234,7 +272,14 @@ class Cache:
                 # Expired — clean up
                 self._remove_disk_files(safe_key)
                 return None
-            return cache_file.read_text(encoding="utf-8")
+            content = cache_file.read_text(encoding="utf-8")
+            # Tier 2.5: refresh the mtime so size-cap LRU eviction keeps
+            # actively-read entries (cheap metadata-only update).
+            try:
+                os.utime(cache_file, None)
+            except OSError:
+                pass
+            return content
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("Disk cache read error for %s: %s", key, e)
             return None
@@ -256,6 +301,87 @@ class Cache:
             self._atomic_write(meta_file, json.dumps({"timestamp": time.time()}))
         except OSError as e:
             logger.warning("Disk cache write error for %s: %s", key, e)
+
+    def _disk_entries(self):
+        """Snapshot of disk entries as (mtime, size, prefix), oldest first.
+
+        ``size`` counts both the ``.cache`` and ``.meta`` files. Only file
+        metadata is read (no content, no meta parse), so this is cheap enough
+        to run after every write. Callers that mutate based on the snapshot
+        must hold ``_disk_lock``.
+        """
+        entries = []
+        try:
+            files = list(self.cache_path.iterdir())
+        except OSError:
+            return entries
+        for f in files:
+            if not f.is_file() or f.suffix != ".cache":
+                continue
+            prefix = f.name[: -len(".cache")]
+            meta = self.cache_path / f"{prefix}.meta"
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            size = st.st_size
+            if meta.exists():
+                try:
+                    size += meta.stat().st_size
+                except OSError:
+                    pass
+            entries.append((st.st_mtime, size, prefix))
+        entries.sort()
+        return entries
+
+    def _enforce_disk_cap(self) -> int:
+        """Evict least-recently-used entries until under ``max_disk_bytes``.
+
+        No-op when the cap is 0 (unlimited) or the cache already fits. Returns
+        the number of entries evicted. Caller must hold ``_disk_lock``.
+        """
+        if self.max_disk_bytes <= 0:
+            return 0
+        entries = self._disk_entries()
+        total = sum(size for _m, size, _p in entries)
+        if total <= self.max_disk_bytes:
+            return 0
+        before = total
+        evicted = 0
+        for _mtime, size, prefix in entries:  # oldest first
+            if total <= self.max_disk_bytes:
+                break
+            self._remove_disk_files(prefix)
+            total -= size
+            evicted += 1
+        if evicted:
+            self._evictions += evicted
+            logger.info(
+                "Disk cache over cap (%.1f > %.1f KiB): evicted %d oldest entries"
+                " (now %.1f KiB)",
+                before / 1024,
+                self.max_disk_bytes / 1024,
+                evicted,
+                total / 1024,
+            )
+        return evicted
+
+    def _prune_expired(self) -> int:
+        """Remove TTL-expired entries. Caller must hold ``_disk_lock``."""
+        now = time.time()
+        removed = 0
+        for _mtime, _size, prefix in self._disk_entries():
+            meta_file = self.cache_path / f"{prefix}.meta"
+            if not meta_file.exists():
+                continue
+            try:
+                meta_ts = json.loads(meta_file.read_text()).get("timestamp")
+            except (OSError, json.JSONDecodeError):
+                continue
+            if meta_ts is not None and now - meta_ts > self.ttl_seconds:
+                self._remove_disk_files(prefix)
+                removed += 1
+        return removed
 
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:
@@ -321,21 +447,6 @@ class Cache:
             removed,
             self.cache_path,
         )
-
-    def _disk_size_bytes(self) -> int:
-        """Calculate total size of disk cache in bytes.
-
-        Only cache-owned files count (S5: temp files mid-replace are
-        transient and may be in flight from another thread).
-        """
-        total = 0
-        try:
-            for f in self.cache_path.iterdir():
-                if f.is_file() and f.suffix in (".cache", ".meta"):
-                    total += f.stat().st_size
-        except OSError:
-            pass
-        return total
 
     @staticmethod
     def _human_size(nbytes: int) -> str:

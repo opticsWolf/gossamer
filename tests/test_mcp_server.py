@@ -19,6 +19,7 @@ EXPECTED_TOOLS = {
     "extract_document_structured",
     "inspect_html_structured",
     "clear_cache",
+    "prune_cache",
     "reset_visited",
     "get_stats",
 }
@@ -98,6 +99,16 @@ class TestEnvConfig:
         assert config.max_tokens == 1234
         assert config.model_name == "claude-3-sonnet"
         assert config.max_concurrency == 3
+
+    def test_cache_max_bytes_env_knob(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "c"))
+        monkeypatch.setenv("STITCH_CACHE_MAX_BYTES", "5242880")
+        assert mcp_server._config_from_env().cache_max_bytes == 5242880
+
+    def test_cache_max_bytes_defaults_unlimited(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "c"))
+        monkeypatch.delenv("STITCH_CACHE_MAX_BYTES", raising=False)
+        assert mcp_server._config_from_env().cache_max_bytes == 0
 
     def test_guard_env_knobs_flow_into_config(self, monkeypatch, tmp_path):
         monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "c"))

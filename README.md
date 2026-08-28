@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-600%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-609%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -61,7 +61,7 @@
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
 - **Production-Ready**:
-  - TTL file caching
+  - TTL + size-cap LRU disk caching (eviction of least-recently-used entries)
   - Per-domain rate limiting
   - User-Agent rotation
   - Visited URL deduplication
@@ -100,6 +100,7 @@ from stitch_web_researcher import WebResearcherToolbox
 tools = WebResearcherToolbox(
     cache_dir="./cache",
     cache_ttl_seconds=3600,
+    cache_max_bytes=0,       # disk cache byte cap (0 = unlimited; LRU eviction)
     ddgs_delay=1.0,
     domain_delay=0.5,
     max_tokens=4000,          # token-aware truncation
@@ -156,10 +157,10 @@ asyncio.run(research())
 tools = WebResearcherToolbox()
 llm_tools = tools.get_llm_definitions()
 
-# Returns OpenAI-compatible function definitions for all nine tools:
+# Returns OpenAI-compatible function definitions for all ten tools:
 # search_web, inspect_html_page, batch_inspect_pages, extract_document,
 # extract_document_structured, inspect_html_structured, clear_cache,
-# reset_visited, get_stats.
+# prune_cache, reset_visited, get_stats.
 
 for tool in llm_tools:
     print(tool["function"]["name"], "—", tool["function"]["description"])
@@ -218,7 +219,7 @@ python -m stitch_web_researcher.mcp_server
 
 Exposed tools: `search_web`, `inspect_html_page`, `batch_inspect_pages`,
 `extract_document`, `extract_document_structured`, `inspect_html_structured`,
-`clear_cache`, `get_stats`.
+`clear_cache`, `prune_cache`, `reset_visited`, `get_stats`.
 
 Example client config (Claude Desktop / generic MCP JSON):
 
@@ -316,7 +317,7 @@ stitch-web-researcher/
 ├── stitch_web_researcher/
 │   ├── __init__.py                   # Package exports
 │   ├── agent_tools.py                # WebResearcherToolbox, smart fetch, robots, rate limiting
-│   ├── cache.py                      # Disk cache with scoped clears + budgeting
+│   ├── cache.py                      # Two-tier cache: TTL + size-cap LRU eviction, scoped clears
 │   ├── guard.py                      # Optional prompt-injection guard (§7, JailGuard)
 │   ├── mcp_server.py                 # MCP server (stdio) exposing the toolbox
 │   ├── robots.py                     # robots.txt compliance (per-host cache, UA groups)
