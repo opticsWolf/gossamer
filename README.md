@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-652%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-655%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -145,11 +145,25 @@ async def research():
 
     results = await tools.search_web_async("rust programming")
     content = await tools.inspect_html_page_async("https://example.com")
+    batch = await tools.batch_inspect_pages_async(
+        ["https://example.com", "https://docs.python.org"]
+    )
 
-    return results, content
+    return results, content, batch
 
 asyncio.run(research())
 ```
+
+> **What "async" means here (thread pool).** The `*_async` wrappers
+> (`search_web_async`, `inspect_html_page_async`, and
+> `batch_inspect_pages_async`) offload the shared **blocking**
+> implementation to Python's default thread-pool executor via
+> `loop.run_in_executor(None, ...)`. This keeps the event loop
+> responsive (other coroutines can run while a fetch or search is in
+> flight), but the underlying network I/O is still **synchronous** --
+> there is no native async I/O in the fetch/search layer. Use the async
+> wrappers when you are already inside an `asyncio` application and want
+> to avoid blocking the loop; call the sync methods directly otherwise.
 
 ### LLM Tool Definitions
 
@@ -347,6 +361,17 @@ from stitch_web_researcher import ToolboxConfig, WebResearcherToolbox
 tb = WebResearcherToolbox(ToolboxConfig(search_merge=True))
 results = tb.search_web("quantum computing", max_results=10)
 ```
+
+### Real Async Path (Tier 2.9)
+
+Every blocking toolbox method has an async counterpart:
+`search_web_async`, `inspect_html_page_async`, and (new)
+`batch_inspect_pages_async`. "Async" means **thread pool**: each wrapper
+offloads the shared blocking implementation to Python's default executor
+(`loop.run_in_executor(None, ...)`) so the event loop stays responsive while
+the work runs on a worker thread. The underlying network I/O remains
+synchronous (no native async I/O in the fetch/search layer) -- see the
+[Async Usage](#async-usage) section above for a runnable example.
 
 ### Prompt-Injection Guard (optional, §7)
 

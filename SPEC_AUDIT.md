@@ -37,7 +37,7 @@
 | URL validation | ✅ | scheme + host check |
 | Retry decorator | ✅ | exponential backoff, configurable |
 | Smart/fallback routing | ✅ | `use_smart` flag, browser_oxide → reqwest fallback |
-| Async variants | ✅ | `search_web_async`, `inspect_html_page_async` |
+| Async variants | ✅ | `search_web_async`, `inspect_html_page_async`, `batch_inspect_pages_async` (thread-pool wrappers) |
 | Tool surface (P8) | ✅ | One `TOOL_REGISTRY` drives every surface — `get_llm_definitions()`, the MCP tools, and the `execute_tool(name, arguments)` dispatcher — 10 tools: search_web, inspect_html_page, batch_inspect_pages, extract_document, extract_document_structured, inspect_html_structured, clear_cache, prune_cache, reset_visited, get_stats |
 | Token-aware truncation | ✅ | two-pass: tokens first, then char cap |
 | meta-oxide integration | ✅ | `_compact_metadata()` in inspect output |

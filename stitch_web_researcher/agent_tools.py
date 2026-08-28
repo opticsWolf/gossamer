@@ -1477,7 +1477,14 @@ class WebResearcherToolbox:
         max_results: int = 5,
         provider: Optional[str] = None,
     ) -> str:
-        """Async version of search_web."""
+        """Async version of search_web.
+
+        "Async" here means *thread pool*: the blocking provider call is
+        offloaded to the default executor via run_in_executor so the event
+        loop stays responsive. The underlying search SDK call remains
+        synchronous (there is no native async I/O) -- see the README
+        "Async" note.
+        """
         # Search is I/O-bound but ddgs/google/bing SDKs are sync;
         # run in executor for non-blocking behaviour.
         # M6/F6: get_running_loop() replaces the deprecated event-loop
@@ -2303,8 +2310,13 @@ class WebResearcherToolbox:
         offset: int = 0,
         max_chunks: int = 1,
     ) -> str:
-        """Async version of inspect_html_page (shared implementation,
-        executed in the default executor to stay non-blocking)."""
+        """Async version of inspect_html_page.
+
+        "Async" here means *thread pool*: the shared blocking implementation
+        is offloaded to the default executor via run_in_executor so the event
+        loop stays responsive. The underlying fetch remains synchronous --
+        see the README "Async" note.
+        """
         # M6: get_running_loop() replaces the deprecated event-loop lookup.
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
@@ -2443,6 +2455,19 @@ class WebResearcherToolbox:
         except Exception as e:
             logger.error("Batch inspection failed: %s", e)
             return json.dumps({"error": f"Batch inspection failed: {str(e)}"}, indent=2)
+
+    async def batch_inspect_pages_async(self, urls: list) -> str:
+        """Async version of batch_inspect_pages.
+
+        "Async" here means *thread pool*: the shared blocking batch
+        implementation is offloaded to the default executor via
+        run_in_executor so the event loop stays responsive. The underlying
+        batch fetch remains synchronous -- see the README "Async" note.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self.batch_inspect_pages, urls
+        )
 
     def _batch_result(
         self,
