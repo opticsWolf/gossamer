@@ -9,10 +9,17 @@ Benchmarks:
   2. meta-oxide extraction speed
   3. Token counting & truncation throughput
   4. Batch fetch concurrency
+  5. Structured parser
+  6. Prompt-injection guard: enabled=False vs True, plus a labelled-corpus
+     mode (``--corpus``) reporting the false-positive rate on our own
+     traffic mix rather than the detector vendor's.
 """
 
-import time
+import argparse
 import statistics
+import time
+from pathlib import Path
+from types import SimpleNamespace
 from typing import List
 
 # ────────────────────────────────────────────────────────────────
@@ -164,7 +171,7 @@ def bench_batch_fetch():
     print(f"  Sequential (5 × example.com): {seq_ms:.1f}ms")
     print(f"  Batch concurrent (5 × example.com): {batch_ms:.1f}ms")
     print(f"  Speedup: {seq_ms / batch_ms:.1f}x")
-    arrow("result", f"{len(results)} results, {sum(1 for r in results if r[1] is not None)} successful")
+    arrow("result", f"{len(results)} results, {sum(1 for r in results if r[2] is not None)} successful")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -183,19 +190,198 @@ def bench_structured_parser():
 
 
 # ────────────────────────────────────────────────────────────────
+# 6. Prompt-injection guard (§7)
+# ────────────────────────────────────────────────────────────────
+
+GUARD_CORPUS_DIR = Path(__file__).parent / "tests" / "fixtures" / "guard_corpus"
+
+# Substrings a stub detector treats as an injection when the optional
+# ``jailguard`` package is absent. This is NOT a proposed detector — it
+# exists so the harness, the chunking, the verdict cache and the stats
+# path are all exercised in CI, and so the wall-clock delta reported below
+# is the guard *machinery's* overhead rather than nothing at all. Real
+# accuracy numbers require the optional extra.
+_STUB_MARKERS = (
+    "ignore all previous instructions",
+    "ignore your earlier instructions",
+    "disregard your earlier instructions",
+    "overriding everything above",
+    "supersede the system prompt",
+    "system notice",
+    "jailbreak",
+    "base64-encode",
+    "do not mention this",
+    "does not need to be mentioned",
+)
+
+
+class _StubDetector:
+    """Keyword stand-in for the jailguard detector (see _STUB_MARKERS)."""
+
+    def detect(self, text: str):
+        low = text.lower()
+        hits = sum(1 for m in _STUB_MARKERS if m in low)
+        score = min(0.99, 0.6 + 0.1 * hits) if hits else 0.02
+        return SimpleNamespace(score=score, risk="High" if hits else "None",
+                               is_injection=bool(hits))
+
+
+def _guard_backend():
+    """Return (make_guard, backend_name).
+
+    Uses the real detector when ``jailguard`` is installed; otherwise the
+    same ``JailGuardGuard`` with a stub model injected, so every code path
+    except the model itself is the production one.
+    """
+    from stitch_web_researcher import guard as guard_mod
+
+    try:
+        import jailguard  # noqa: F401
+        real = True
+    except ImportError:
+        real = False
+
+    def make(enabled: bool):
+        cfg = guard_mod.GuardConfig(enabled=enabled, mode="annotate")
+        g = guard_mod.build_guard(cfg)
+        if enabled and not real:
+            g._jg = _StubDetector()
+            g._ensure = lambda: None
+        return g
+
+    return make, ("jailguard" if real else "stub detector (jailguard absent)")
+
+
+def load_guard_corpus():
+    """Load the labelled corpus as ``[(name, is_injected, text), ...]``."""
+    items = []
+    for label, injected in (("benign", False), ("injected", True)):
+        folder = GUARD_CORPUS_DIR / label
+        for path in sorted(folder.glob("*.md")):
+            items.append(
+                (f"{label}/{path.name}", injected,
+                 path.read_text(encoding="utf-8"))
+            )
+    return items
+
+
+def _scan_corpus(make_guard, corpus, enabled: bool):
+    """Scan every document once; return (elapsed_s, guard, verdicts)."""
+    g = make_guard(enabled)
+    verdicts = {}
+    start = time.perf_counter()
+    for name, _injected, text in corpus:
+        rep = g.scan("page_markdown", text)
+        verdicts[name] = rep
+    return time.perf_counter() - start, g, verdicts
+
+
+def bench_guard():
+    """Wall-clock cost of enabling the guard over the fixture corpus."""
+    print("\n=== Prompt-injection guard (enabled=False vs True) ===")
+    corpus = load_guard_corpus()
+    if not corpus:
+        print(f"    (Skipped -- no corpus at {GUARD_CORPUS_DIR})")
+        return None
+    make_guard, backend = _guard_backend()
+    arrow("backend", backend)
+    arrow("corpus", f"{len(corpus)} documents, "
+                    f"{sum(len(t) for _, _, t in corpus)} chars")
+
+    off_s, _off_guard, _ = _scan_corpus(make_guard, corpus, enabled=False)
+    on_s, on_guard, _ = _scan_corpus(make_guard, corpus, enabled=True)
+
+    print(f"  Guard off: {off_s * 1000:.1f}ms")
+    print(f"  Guard on:  {on_s * 1000:.1f}ms")
+    print(f"  Overhead:  +{(on_s - off_s) * 1000:.1f}ms "
+          f"({(on_s - off_s) / len(corpus) * 1000:.1f}ms per document)")
+
+    # Same block get_stats()["guard"] reports to a caller.
+    stats = on_guard.stats.to_dict()
+    arrow("calls", str(stats["calls"]))
+    arrow("chunks scanned", str(stats["chunks_scanned"]))
+    arrow("p50 / p95 ms", f"{stats['p50_ms']:.1f} / {stats['p95_ms']:.1f}")
+    arrow("flag rate", f"{stats['flag_rate']:.2f}")
+    arrow("cache hits", str(stats["cache_hits"]))
+    return on_guard
+
+
+def bench_guard_corpus():
+    """False-positive / detection rate on our own traffic mix."""
+    print("\n=== Prompt-injection guard -- labelled corpus ===")
+    corpus = load_guard_corpus()
+    if not corpus:
+        print(f"    (Skipped -- no corpus at {GUARD_CORPUS_DIR})")
+        return None
+    make_guard, backend = _guard_backend()
+    arrow("backend", backend)
+
+    _elapsed, _g, verdicts = _scan_corpus(make_guard, corpus, enabled=True)
+
+    tp = fp = tn = fn = 0
+    for name, injected, _text in corpus:
+        flagged = bool(verdicts[name].flagged)
+        if injected and flagged:
+            tp += 1
+        elif injected:
+            fn += 1
+            print(f"  MISS  {name}")
+        elif flagged:
+            fp += 1
+            print(f"  FALSE {name}  (score={verdicts[name].max_score:.2f})")
+        else:
+            tn += 1
+
+    benign = tn + fp
+    inject = tp + fn
+    print(f"  benign   : {tn}/{benign} clean, {fp} false positive(s)")
+    print(f"  injected : {tp}/{inject} detected, {fn} missed")
+    if benign:
+        arrow("false-positive rate", f"{fp / benign:.2f}")
+    if inject:
+        arrow("detection rate", f"{tp / inject:.2f}")
+    # redact mode rewrites delivered content, so a non-zero FP rate on our
+    # own mix is the number that decides whether it is safe to default to.
+    arrow("verdict", "redact is safe to consider" if fp == 0
+          else "redact would damage benign pages -- keep annotate")
+    return {"tp": tp, "fp": fp, "tn": tn, "fn": fn}
+
+
+# ────────────────────────────────────────────────────────────────
 # Main
 # ────────────────────────────────────────────────────────────────
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="stitch_web_researcher benchmarks")
+    parser.add_argument(
+        "--corpus",
+        action="store_true",
+        help="only run the guard's labelled-corpus accuracy report",
+    )
+    parser.add_argument(
+        "--guard",
+        action="store_true",
+        help="only run the guard scenarios (no network)",
+    )
+    args = parser.parse_args(argv)
+
     print("=" * 60)
     print("  stitch_web_researcher — Performance Benchmarks")
     print("=" * 60)
 
-    bench_rust_fetch()
-    bench_meta_oxide()
-    bench_token_budget()
-    bench_batch_fetch()
-    bench_structured_parser()
+    if args.corpus:
+        bench_guard_corpus()
+    elif args.guard:
+        bench_guard()
+        bench_guard_corpus()
+    else:
+        bench_rust_fetch()
+        bench_meta_oxide()
+        bench_token_budget()
+        bench_batch_fetch()
+        bench_structured_parser()
+        bench_guard()
+        bench_guard_corpus()
 
     print("\n" + "=" * 60)
     print("  Done.")

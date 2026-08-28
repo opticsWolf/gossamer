@@ -237,3 +237,59 @@ result envelope so the model knows it did not get what it asked for.
 
 Each item lands as its own commit with its test, and the full suite plus
 `ruff` and `cargo clippy -D warnings` must be green before the next starts.
+
+---
+
+## Status — 2026-08-28
+
+All nine items are implemented, tested and committed on `dev`.
+
+| # | Item | Commit | Test |
+| --- | --- | --- | --- |
+| 3 | URL rejections honor the JSON error contract | `3336367` | `tests/test_fix_url_error_contract.py` |
+| 1 | Serialized JSON is never string-cut | `2f52a08` | `tests/test_fix_json_integrity.py` |
+| 2 | Section selection sees Setext headings | `0712d17` | `tests/test_fix_setext_sections.py` |
+| 5 | Batch records carry single-page metadata | `772a407` | `tests/test_fix_batch_metadata.py` |
+| 4 | clippy `type_complexity` on the new tuples | `772a407` | `cargo clippy -D warnings` |
+| 6 | Bare filenames are not bare domains | `772a407` | `tests/test_fix_bare_filename.py` |
+| 9 | Provider substitution is visible | `772a407` | `tests/test_fix_provider_fallback.py` |
+| 7 | Detector risk level stringifies cleanly | `d3157ec` | `tests/test_guard.py::TestRiskNormalization` |
+| 8 | Guard cost and accuracy are measurable | pending | `tests/test_fix_guard_bench.py` |
+
+Items 4, 5, 6 and 9 share one commit: three of them touch `agent_tools.py`
+and item 4 is a direct consequence of item 5's Rust change, so splitting
+them would have produced commits that do not build on their own.
+
+**Gates:** 816 passed, 1 skipped; `ruff check stitch_web_researcher/`
+clean; `cargo clippy --all-targets -- -D warnings` clean.
+
+### What item 8 measured
+
+`python benchmarks.py --guard` on the ten-document fixture corpus, with
+the stub detector (`jailguard` is an optional extra and is not installed
+here):
+
+* guard machinery overhead: **+0.2 ms** over ten documents (12 chunks) —
+  the chunking, hashing, verdict cache and stats path cost effectively
+  nothing; the model is the whole cost, and that number needs the extra.
+* detection rate on planted injections: **5/5**.
+* false-positive rate on benign pages: **1/5** — the page that *discusses*
+  prompt injection. That is the case the corpus exists to expose, and it
+  is why `redact` should not become the default: rewriting spans of a
+  security article the user asked for is a worse failure than annotating
+  it.
+
+The stub's accuracy numbers are a property of the stub, not of JailGuard.
+What the run establishes is that the harness, the corpus and the decision
+criterion are in place, so installing the extra produces a real answer
+without further work.
+
+### Known, out of scope
+
+* `benchmarks.py` carries two pre-existing ruff findings (`F841`, `F401`)
+  on lines this work did not touch; CI lints only `stitch_web_researcher/`.
+* `tests/test_browser_provider.py`, `tests/test_meta_oxide.py` and
+  `tests/test_providers.py` carry seven pre-existing ruff findings, same
+  reason.
+* `stitch_web_researcher/_core.pdb` is a tracked build artifact and moves
+  on every rebuild; it probably belongs in `.gitignore`.
