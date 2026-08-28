@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-722%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-734%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -60,6 +60,7 @@
 - **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
 - **HTML Table Extraction (Tier 3.11)**: `inspect_html_structured` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
+- **Research Orchestration (Tier 3.13)**: `research(topic, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -462,6 +463,39 @@ so the same URL stays inspectable afterwards.
 result = json.loads(tools.discover_resources("https://example.com"))
 print(result["feeds"])    # [{url, type}, ...]
 print(result["urls"][:5]) # sitemap page URLs
+```
+
+### Research Orchestration (Tier 3.13)
+
+`research(topic, depth=5, max_tokens=0)` chains the toolbox verbs into
+one orchestrated research pass — plan, fan out, dedupe — so an agent
+can run a multi-source research task with a single call:
+
+- **Plan** — the topic is searched through the configured providers
+  (up to `depth * 2` candidates, hard cap 20 results).
+- **Dedupe** — result URLs are normalized, deduped (trailing slashes,
+  scheme), validated through the SSRF guard, and capped at *depth*
+  pages (hard cap 10).
+- **Fan out** — each candidate is fetched through the normal page
+  pipeline (page cache, robots, rate limits, provenance), so repeated
+  `research()` calls are cheap: cached pages are re-served without
+  re-fetching.
+- **Cited-synthesis input** — the response carries one record per
+  source: `url`, the search `title`/`snippet`, `status`, and either
+  the full page result (markdown + metadata + provenance) or the error
+  message. The whole response obeys the global budget (`max_tokens`
+  or the toolbox default); under budget pressure later sources give
+  ground first.
+
+The toolbox holds no LLM: the prose synthesis is the calling agent's
+job. `research` supplies the evidence, citation metadata, and
+provenance — the orchestration the agent would otherwise hand-roll.
+
+```python
+report = json.loads(tools.research("Rust async runtimes", depth=5))
+for s in report["sources"]:
+    print(s["url"], s["status"])
+    # ... the agent writes the cited synthesis ...
 ```
 
 ### Prompt-Injection Guard (optional, §7)

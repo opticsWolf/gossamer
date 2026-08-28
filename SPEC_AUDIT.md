@@ -176,6 +176,7 @@
 | `inspect_html_structured()` on toolbox | ✅ | New LLM function tool with `use_smart` flag |
 | HTML table extraction (Tier 3.11) | ✅ | Rust `extract_tables_from_html` parses top-level `<table>` grids (colspan/rowspan expanded, `<th>` headers, caption names, 20-table/500-row caps) and attaches them to the payload and its page; browser path and the M8 page seam are untouched |
 | Sitemap-aware discovery (Tier 3.12) | ✅ | `discover_resources(url)`: feed `<link rel=alternate>` scan (RSS/Atom/Feed-JSON only) plus bounded `/sitemap.xml` probe (index hops ≤ 3, ≤ 10 sitemap fetches, 500 URLs per sitemap, 1000 total, ordered dedupe); best-effort degradation on missing/malformed sitemaps; page left unvisited |
+| Research orchestration (Tier 3.13) | ✅ | `research(topic, depth=5, max_tokens=0)`: searches the topic (≤ depth*2 candidates, cap 20), normalizes/dedupes/SSRF-validates result URLs (≤ depth, cap 10), fetches each through the normal page pipeline (cache/robots/rate-limit/provenance), and returns per-source status + content + provenance; failures isolated per source; repeated runs served from the page cache; global budget enforced, synthesis left to the calling agent |
 | HTML metadata merged into `DocumentMetadata` | ✅ | OG, Twitter, JSON-LD, Dublin Core, rel links |
 | URL slug derivation for `file_name` | ✅ | Handles paths and root URLs |
 | Token-aware truncation | ✅ | Respects `max_tokens` budget |

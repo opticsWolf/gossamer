@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "stitch-web-researcher"
-version = "0.4.2"
+version = "0.4.3"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"

@@ -687,6 +687,23 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
+        "research",
+        "Run a small orchestrated research pass (Tier 3.13): search the topic, dedupe the top results, and fetch up to depth pages through the normal cache/robots/rate-limit/provenance pipeline. Returns one record per source with status, markdown content, and provenance - everything the caller needs to write a cited synthesis (the synthesis itself is the caller's job).",
+        "research",
+        (
+            ToolParam("topic", str, description="Research topic / search query"),
+            ToolParam(
+                "depth", int, 5, description="How many pages to fetch (1-10)"
+            ),
+            ToolParam(
+                "max_tokens",
+                int,
+                0,
+                description="Token budget for the whole response (0 = toolbox default)",
+            ),
+        ),
+    ),
+    ToolSpec(
         "clear_cache",
         "Clear both the in-memory and disk research caches and the visited-URL set. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
         "clear_cache",
@@ -3453,6 +3470,135 @@ class WebResearcherToolbox:
                             break
                         found[page_url] = None
         return sitemaps, found, truncated
+
+    # ------------------------------------------------------------------
+    # Research orchestration (Tier 3.13)
+    # ------------------------------------------------------------------
+
+    #: Hard cap on pages fetched per research run.
+    _RESEARCH_MAX_PAGES = 10
+
+    def research(
+        self, topic: str, depth: int = 5, max_tokens: int = 0
+    ) -> str:
+        """Run a small orchestrated research pass (Tier 3.13).
+
+        Plan -> fan out -> dedupe, on top of the existing pipeline:
+
+        1. Search *topic* through the configured providers.
+        2. Dedupe and validate the result URLs, keeping the top
+           *depth* (hard cap ``_RESEARCH_MAX_PAGES``).
+        3. Fetch each through the normal page pipeline
+           (``_inspect_html_page_impl``) with cache, robots, rate
+           limits, and provenance.
+
+        The toolbox has no LLM: the returned JSON carries per-source
+        status, markdown content, and provenance (plus the search
+        title/snippet) - exactly what the calling agent needs to write
+        a cited synthesis itself.
+
+        Returns
+        -------
+        str
+            JSON: ``topic``, ``depth``, ``sources`` (list of
+            ``{url, title, snippet, status, result?|error?}``), and
+            ``count`` (successful fetches).
+        """
+        topic = (topic or "").strip()
+        if not topic:
+            return json.dumps(
+                {"error": "research: topic is required"}, indent=2
+            )
+        try:
+            depth = int(depth)
+        except (TypeError, ValueError):
+            depth = 5
+        depth = max(1, min(depth, self._RESEARCH_MAX_PAGES))
+
+        # 1) Plan: search the topic (search_web degrades to an error
+        # dict instead of raising when every provider fails).
+        try:
+            results = json.loads(
+                self.search_web(topic, max_results=min(depth * 2, 20))
+            )
+        except (json.JSONDecodeError, TypeError):
+            results = []
+        if not isinstance(results, list):
+            results = []
+
+        # 2) Dedupe + validate candidate URLs (first comes, first served).
+        candidates = []
+        seen = set()
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            try:
+                url = normalize_url(str(item.get("url") or ""))
+            except ValueError:
+                continue  # non-http scheme or malformed: skip
+            if not url or url in seen:
+                continue
+            try:
+                self._validate_url(url)
+            except Exception:
+                continue  # SSRF guard: skip quietly
+            seen.add(url)
+            candidates.append(
+                (
+                    url,
+                    str(item.get("title") or ""),
+                    str(item.get("snippet") or ""),
+                )
+            )
+            if len(candidates) >= depth:
+                break
+
+        # 3) Fan out through the normal page pipeline. Each source gets
+        # the toolbox default budget; the final global budget is applied
+        # to the whole response below, so later sources are the first to
+        # give ground under budget pressure.
+        sources = []
+        for url, title, snippet in candidates:
+            record = {"url": url, "title": title, "snippet": snippet}
+            try:
+                raw_page = self._inspect_html_page_impl(
+                    url, None, "", 0, 1
+                )
+                try:
+                    page = json.loads(raw_page)
+                except json.JSONDecodeError:
+                    page = raw_page
+            except Exception as e:
+                logger.warning("research fetch failed for %s: %s", url, e)
+                record["status"] = "error"
+                record["error"] = str(e)
+                sources.append(record)
+                continue
+            # _inspect_html_page_impl reports failures (fetch errors,
+            # robots disallow, already visited) as {"error"|"warning": ...}
+            # dicts rather than raising.
+            if isinstance(page, dict) and (
+                "error" in page or "warning" in page
+            ):
+                record["status"] = "error"
+                record["error"] = str(
+                    page.get("error") or page.get("warning")
+                )
+            else:
+                record["status"] = "ok"
+                record["result"] = page
+            sources.append(record)
+
+        budget = max_tokens if max_tokens and max_tokens > 0 else self.max_tokens
+        result = {
+            "topic": topic,
+            "depth": depth,
+            "sources": sources,
+            "count": sum(1 for s in sources if s["status"] == "ok"),
+        }
+        return self._truncate(
+            json.dumps(result, indent=2), self.max_markdown_chars, budget
+        )
 
     # Stats & Management
     # ───────────────────────────────
