@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-704%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-722%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -59,6 +59,7 @@
 - **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx)
 - **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
 - **HTML Table Extraction (Tier 3.11)**: `inspect_html_structured` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
+- **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -434,6 +435,34 @@ for table in payload["tables"]:
 
 Extraction is best-effort: a failure logs a warning and the page is
 delivered with `tables: []` rather than failing the whole call.
+
+### Sitemap-Aware Discovery (Tier 3.12)
+
+`discover_resources(url)` is a cheaper alternative to link-graph
+crawling when a research task needs "what does this site contain?":
+
+- **Feed discovery** — the page is fetched once (static path) and its
+  `<link rel="alternate">` declarations are scanned; only feed
+  content-types (RSS/Atom/Feed-JSON) count, language alternates
+  (`hreflang`) are ignored, and relative hrefs are absolutized.
+- **Sitemap probe** — the site root is probed for `/sitemap.xml`.
+  Sitemap *indexes* are followed with bounded depth (3 hops, at most
+  10 sitemap fetches total) so an index fan-out cannot turn into an
+  unbounded crawl; every `<loc>` in a `urlset` becomes a discovered
+  page URL.
+- **Budgeted output** — discovered URLs are deduplicated (ordered) and
+  capped (500 per sitemap, 1000 total; `truncated` flags a cap hit).
+
+The probe is best-effort: a missing sitemap, malformed XML, or a
+non-sitemap document degrades the result instead of failing the call.
+Discovery is metadata-level — it does **not** mark the page visited,
+so the same URL stays inspectable afterwards.
+
+```python
+result = json.loads(tools.discover_resources("https://example.com"))
+print(result["feeds"])    # [{url, type}, ...]
+print(result["urls"][:5]) # sitemap page URLs
+```
 
 ### Prompt-Injection Guard (optional, §7)
 

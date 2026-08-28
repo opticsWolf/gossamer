@@ -175,6 +175,7 @@
 | `parse_html()` on `StructuredOxideParser` | ✅ | Standardizes web-fetching output with document parsing |
 | `inspect_html_structured()` on toolbox | ✅ | New LLM function tool with `use_smart` flag |
 | HTML table extraction (Tier 3.11) | ✅ | Rust `extract_tables_from_html` parses top-level `<table>` grids (colspan/rowspan expanded, `<th>` headers, caption names, 20-table/500-row caps) and attaches them to the payload and its page; browser path and the M8 page seam are untouched |
+| Sitemap-aware discovery (Tier 3.12) | ✅ | `discover_resources(url)`: feed `<link rel=alternate>` scan (RSS/Atom/Feed-JSON only) plus bounded `/sitemap.xml` probe (index hops ≤ 3, ≤ 10 sitemap fetches, 500 URLs per sitemap, 1000 total, ordered dedupe); best-effort degradation on missing/malformed sitemaps; page left unvisited |
 | HTML metadata merged into `DocumentMetadata` | ✅ | OG, Twitter, JSON-LD, Dublin Core, rel links |
 | URL slug derivation for `file_name` | ✅ | Handles paths and root URLs |
 | Token-aware truncation | ✅ | Respects `max_tokens` budget |

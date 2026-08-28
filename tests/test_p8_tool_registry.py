@@ -30,7 +30,7 @@ def _toolbox(tmp_path) -> WebResearcherToolbox:
 
 
 class TestRegistryShape:
-    def test_registry_lists_all_ten_tools(self):
+    def test_registry_lists_all_eleven_tools(self):
         assert REGISTRY_NAMES == {
             "search_web",
             "inspect_html_page",
@@ -38,6 +38,7 @@ class TestRegistryShape:
             "extract_document",
             "extract_document_structured",
             "inspect_html_structured",
+            "discover_resources",
             "clear_cache",
             "prune_cache",
             "reset_visited",

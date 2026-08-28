@@ -18,6 +18,7 @@ EXPECTED_TOOLS = {
     "extract_document",
     "extract_document_structured",
     "inspect_html_structured",
+    "discover_resources",
     "clear_cache",
     "prune_cache",
     "reset_visited",
