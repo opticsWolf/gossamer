@@ -99,6 +99,33 @@ class TestEnvConfig:
         assert config.model_name == "claude-3-sonnet"
         assert config.max_concurrency == 3
 
+    def test_guard_env_knobs_flow_into_config(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "c"))
+        monkeypatch.setenv("STITCH_GUARD_ENABLED", "1")
+        monkeypatch.setenv("STITCH_GUARD_MODE", "block")
+        monkeypatch.setenv("STITCH_GUARD_SCOPES", "all")
+        monkeypatch.setenv("STITCH_GUARD_THRESHOLD", "0.55")
+        monkeypatch.setenv("STITCH_GUARD_MAX_CHUNKS", "12")
+
+        g = mcp_server._config_from_env().guard
+        assert g is not None
+        assert g.enabled and g.mode == "block"
+        assert g.threshold == 0.55
+        assert g.max_chunks == 12
+        assert "search_results" in g.scopes  # "all" shorthand
+
+    def test_guard_env_off_by_default(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "c"))
+        for var in (
+            "STITCH_GUARD_ENABLED",
+            "STITCH_GUARD_MODE",
+            "STITCH_GUARD_SCOPES",
+            "STITCH_GUARD_THRESHOLD",
+            "STITCH_GUARD_MAX_CHUNKS",
+        ):
+            monkeypatch.delenv(var, raising=False)
+        assert mcp_server._config_from_env().guard is None
+
     def test_singleton_is_reused(self, tmp_path, monkeypatch):
         monkeypatch.setenv("STITCH_CACHE_DIR", str(tmp_path / "c"))
         mcp_server.reset_toolbox()

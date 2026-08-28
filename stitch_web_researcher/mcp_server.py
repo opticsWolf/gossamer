@@ -25,6 +25,11 @@ Configuration via environment variables (all optional):
     STITCH_MAX_CONCURRENCY      (default 8)
     STITCH_RESPECT_ROBOTS       (default 1)
     STITCH_CONDITIONAL_REVALIDATE (default 1)
+    STITCH_GUARD_ENABLED          (default 0 -- §7 prompt-injection guard off)
+    STITCH_GUARD_SCOPES           (default "page_markdown,document_text")
+    STITCH_GUARD_MODE             (default "annotate"; annotate|redact|block)
+    STITCH_GUARD_THRESHOLD        (default 0.7)
+    STITCH_GUARD_MAX_CHUNKS       (default 40)
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from stitch_web_researcher.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
 )
+from stitch_web_researcher.guard import GuardConfig
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +72,24 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _guard_config_from_env():
+    """Build a :class:`GuardConfig` from STITCH_GUARD_* env vars.
+
+    The §7 prompt-injection guard is off by default: it only activates when
+    ``STITCH_GUARD_ENABLED`` is truthy (which implies the optional
+    ``jailguard`` dependency is installed via ``pip install ...[guard]``).
+    """
+    if not _env_bool("STITCH_GUARD_ENABLED", False):
+        return None
+    return GuardConfig(
+        enabled=True,
+        mode=_env("STITCH_GUARD_MODE", "annotate"),
+        scopes=_env("STITCH_GUARD_SCOPES", "page_markdown,document_text"),
+        threshold=_env("STITCH_GUARD_THRESHOLD", 0.7, float),
+        max_chunks=_env("STITCH_GUARD_MAX_CHUNKS", 40, int),
+    )
+
+
 def _config_from_env() -> ToolboxConfig:
     fetch_delay = _env("STITCH_FETCH_DELAY", None, float)
     return ToolboxConfig(
@@ -88,6 +112,8 @@ def _config_from_env() -> ToolboxConfig:
         conditional_revalidation=_env_bool(
             "STITCH_CONDITIONAL_REVALIDATE", True
         ),
+        # §7: optional prompt-injection guard, off by default.
+        guard=_guard_config_from_env(),
     )
 
 

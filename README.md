@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-561%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-600%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -259,6 +259,47 @@ base = {"title": "Base Title", "format": "html"}
 merged = merge_into_document_metadata(metadata, base)
 ```
 
+### Prompt-Injection Guard (optional, §7)
+
+Fetched web content is *untrusted*. The optional guard runs a
+[JailGuard](https://github.com/yfedoseev/jailguard) ONNX detector over the
+untrusted scopes of each payload and attaches an additive `guard` block. It is
+**off by default** (no import, no latency) and only activates when enabled.
+
+```bash
+pip install "stitch-web-researcher[guard]"   # pulls the jailguard model
+```
+
+Enable via environment (MCP server):
+
+```
+STITCH_GUARD_ENABLED=1
+STITCH_GUARD_MODE=annotate    # annotate (default) | redact | block
+STITCH_GUARD_SCOPES=page_markdown,document_text   # or: all / none
+STITCH_GUARD_THRESHOLD=0.7
+STITCH_GUARD_MAX_CHUNKS=40
+```
+
+…or programmatically:
+
+```python
+from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from stitch_web_researcher.guard import GuardConfig
+
+tb = WebResearcherToolbox(ToolboxConfig(guard=GuardConfig(enabled=True, mode="annotate")))
+```
+
+* **annotate** (default) — attach the `guard` block and wrap the main content in
+  an explicit `<untrusted-web-content source="…">` marker.
+* **redact** — attach the block and replace flagged spans with placeholders.
+* **block** — attach the block and withhold the content entirely (never cached).
+
+Detection is chunked (the model caps input at ~256 tokens) with overlapping
+windows so a payload cannot hide on a seam, and verdicts are cached by
+`sha256(chunk)`. If `jailguard` or its model is unavailable, the guard fails
+open (content passes through; `guard.risk` is `None`). `get_stats()` exposes a
+`guard` section for A/B measurement.
+
 ---
 
 ## Project Structure
@@ -276,6 +317,7 @@ stitch-web-researcher/
 │   ├── __init__.py                   # Package exports
 │   ├── agent_tools.py                # WebResearcherToolbox, smart fetch, robots, rate limiting
 │   ├── cache.py                      # Disk cache with scoped clears + budgeting
+│   ├── guard.py                      # Optional prompt-injection guard (§7, JailGuard)
 │   ├── mcp_server.py                 # MCP server (stdio) exposing the toolbox
 │   ├── robots.py                     # robots.txt compliance (per-host cache, UA groups)
 │   ├── search_providers.py           # SearchProvider ABC + DuckDuckGo/Google/Bing/Exa
@@ -304,6 +346,7 @@ stitch-web-researcher/
 | **Optional — `[documents]`** | `pdf_oxide >=0.1` | High-speed PDF extraction |
 | | `office_oxide >=0.1` | DOCX/XLSX/PPTX extraction (PyPI) |
 | **Optional — `[mcp]`** | `mcp >=2.0` | MCP server runtime (Python 3.10+) |
+| **Optional — `[guard]`** | `jailguard >=0.1.2` | Prompt-injection detection (ONNX, §7) |
 
 ## License
 

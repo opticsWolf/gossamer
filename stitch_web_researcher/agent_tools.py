@@ -44,6 +44,13 @@ from stitch_web_researcher.cache import Cache
 from stitch_web_researcher.robots import RobotsChecker
 from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
 from stitch_web_researcher.sections import select_relevant_sections
+from stitch_web_researcher.guard import (
+    GuardConfig,
+    JailGuardGuard,
+    build_guard,
+    evaluate,
+    wrap_untrusted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +89,9 @@ class ExtractionResult(BaseModel):
     final_url: Optional[str] = None
     content_type: Optional[str] = None
     content_hash: Optional[str] = None
+    # §7: optional prompt-injection guard block (present only when the
+    # guard is enabled and a scanned scope was checked).
+    guard: Optional[dict] = None
 
 
 class InspectionResult(BaseModel):
@@ -133,6 +143,9 @@ class InspectionResult(BaseModel):
     final_url: Optional[str] = None
     content_type: Optional[str] = None
     content_hash: Optional[str] = None
+    # §7: optional prompt-injection guard block (present only when the
+    # guard is enabled and a scanned scope was checked).
+    guard: Optional[dict] = None
 
 
 # ───────────────────────────────
@@ -680,6 +693,9 @@ class ToolboxConfig:
     # re-freshens the entry for free; a 200 stores the new content. Default
     # True; opt out with STITCH_CONDITIONAL_REVALIDATE=0.
     conditional_revalidation: bool = True
+    # §7: optional prompt-injection guard (off by default). Pass a
+    # GuardConfig to enable; see stitch_web_researcher.guard.
+    guard: Optional[GuardConfig] = None
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -799,6 +815,13 @@ class WebResearcherToolbox:
         )
         # Tier 1.4: conditional revalidation of expired static page entries.
         self.conditional_revalidation = config.conditional_revalidation
+        # §7: prompt-injection annotation layer (off by default; the guard
+        # is a NoopGuard with zero cost unless config.guard is enabled).
+        self._guard = build_guard(config.guard)
+        if isinstance(self._guard, JailGuardGuard):
+            # Download the model at construction time so the 90 MB fetch
+            # and cold start do not land inside the first tool call.
+            self._guard.preload()
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
@@ -1046,6 +1069,37 @@ class WebResearcherToolbox:
     # Search
     # ───────────────────────────────
 
+    def _finish_search(self, results: list) -> str:
+        """§7: optionally guard search results (search_results scope).
+
+        When the guard is active and the ``search_results`` scope is enabled,
+        a guard block is attached by wrapping the list in
+        ``{"results": [...], "guard": {...}}``; in block mode the results are
+        withheld. When the guard is off (the default), the bare list is
+        returned unchanged, so the common output shape never changes.
+        """
+        text = " ".join(
+            f"{r.get('title', '')} {r.get('snippet', '')}"
+            for r in results
+            if isinstance(r, dict)
+        )
+        block, _redacted, withheld = evaluate(
+            self._guard, [("search_results", text)], main_scope="search_results"
+        )
+        if block is None:
+            return json.dumps(results, indent=2, ensure_ascii=False)
+        if withheld:
+            return json.dumps(
+                {
+                    "error": "results withheld by prompt-injection guard",
+                    "guard": block,
+                },
+                indent=2,
+            )
+        return json.dumps(
+            {"results": results, "guard": block}, indent=2, ensure_ascii=False
+        )
+
     def search_web(
         self,
         query: str,
@@ -1077,7 +1131,7 @@ class WebResearcherToolbox:
         for prov in providers_to_try:
             try:
                 results = prov.search(query, max_results=max_results)
-                return json.dumps(results, indent=2, ensure_ascii=False)
+                return self._finish_search(results)
             except Exception as e:
                 logger.warning(
                     "Provider %s failed for '%s': %s — trying next",
@@ -1189,6 +1243,10 @@ class WebResearcherToolbox:
             self._apply_provenance(
                 result, html_metadata, page_markdown if page_markdown is not None else markdown
             )
+        # §7: the prompt-injection guard runs after truncation, before the
+        # budget loop, so the guard block counts against the M11 invariant.
+        if self._scan_inspection_guard(result):
+            return result
 
         candidates = result.follow_up_links
         n_total = len(candidates)
@@ -1239,6 +1297,90 @@ class WebResearcherToolbox:
         result.delivered_links = len(result.follow_up_links)
         result.total_links = max(result.total_links, len(candidates))
         return result
+
+    def _scan_inspection_guard(self, result: InspectionResult) -> bool:
+        """§7: scan the inspection output for prompt injection.
+
+        Runs the guard over the configured scopes (page_markdown /
+        page_metadata / follow_up_titles) after truncation. Attaches
+        ``result.guard`` and applies the mode: ``annotate`` wraps the
+        delivered markdown in an untrusted-content marker, ``redact``
+        replaces flagged chunks, ``block`` empties the content (the caller
+        withholds the result). Returns True when the content was withheld.
+        """
+        meta_text = " ".join(
+            str(v) for v in (result.metadata or {}).values() if v
+        )
+        title_text = " ".join(c.title for c in result.follow_up_links)
+        block, redacted, withheld = evaluate(
+            self._guard,
+            [
+                ("page_markdown", result.markdown),
+                ("page_metadata", meta_text),
+                ("follow_up_titles", title_text),
+            ],
+            main_scope="page_markdown",
+        )
+        if block is None:
+            return False
+        result.guard = block
+        if withheld:
+            result.markdown = ""
+            result.markdown_tokens = 0
+            result.follow_up_links = []
+            result.delivered_links = 0
+            return True
+        if redacted is not None:
+            result.markdown = redacted
+        elif (
+            block.get("action") == "annotate"
+            and "page_markdown" in block.get("scopes", [])
+            and result.markdown
+        ):
+            result.markdown = wrap_untrusted(result.markdown, result.url)
+        if result.markdown:
+            result.markdown_tokens = count_tokens(result.markdown, self.model_name)
+        return False
+
+    def _scan_structured_guard(self, payload, url: str) -> bool:
+        """§7: scan a structured payload for prompt injection.
+
+        Scans the page_markdown (pages[0].markdown), page_metadata, and
+        follow_up_titles scopes. Attaches ``payload.guard`` and applies the
+        mode to the main markdown. Returns True when the content was withheld.
+        """
+        main_md = payload.pages[0].markdown if payload.pages else ""
+        meta = payload.metadata.model_dump() if payload.metadata else {}
+        meta_text = " ".join(str(v) for v in meta.values() if v)
+        title_text = " ".join(
+            (getattr(cand, "title", None) or "") for cand in payload.links
+        )
+        block, redacted, withheld = evaluate(
+            self._guard,
+            [
+                ("page_markdown", main_md),
+                ("page_metadata", meta_text),
+                ("follow_up_titles", title_text),
+            ],
+            main_scope="page_markdown",
+        )
+        if block is None:
+            return False
+        payload.guard = block
+        if withheld:
+            for page in payload.pages:
+                page.markdown = ""
+            return True
+        if payload.pages:
+            if redacted is not None:
+                payload.pages[0].markdown = redacted
+            elif (
+                block.get("action") == "annotate"
+                and "page_markdown" in block.get("scopes", [])
+                and main_md
+            ):
+                payload.pages[0].markdown = wrap_untrusted(main_md, url)
+        return False
 
     # ── Fetch strategies ─────────────────────────────
     # Each returns the full (markdown, anchored_links, metadata, method) tuple.
@@ -1593,11 +1735,10 @@ class WebResearcherToolbox:
                 return json.dumps(
                     {"error": f"HTML inspection failed: {str(e)}"}, indent=2
                 )
-            # Mark visited and cache only after a successful fetch (C3).
-            # On a 304 the re-put re-freshens the entry (new TTL timestamp)
-            # while the stored content is unchanged.
-            self._mark_visited(url)
-            self._page_cache_put(url, *cached)
+            # Release the in-flight claim now that the fetch is done. Visited
+            # marking and the page-cache write are deferred to after the §7
+            # guard decision so withheld content is neither stored nor marked
+            # visited (a 304 re-put still re-freshens the entry there).
             self._release_in_flight(url)
 
         markdown, links, html_metadata, fetch_method = cached
@@ -1682,6 +1823,22 @@ class WebResearcherToolbox:
             result.next_offset = next_offset
             result.has_more = has_more
             result.chars_total = len(markdown)
+        if result.guard and result.guard.get("withheld"):
+            # Withheld content is neither cached nor marked visited: the
+            # request did not complete, so a retry can re-evaluate it.
+            return json.dumps(
+                {
+                    "error": "content withheld by prompt-injection guard",
+                    "url": url,
+                    "guard": result.guard,
+                },
+                indent=2,
+            )
+        if not from_cache:
+            # Only now that the guard has decided to deliver the content do
+            # we mark it visited (C3) and store it (a 304 re-put re-freshens).
+            self._mark_visited(url)
+            self._page_cache_put(url, *cached)
         return result.model_dump_json()
 
     def _slice_markdown(
@@ -1991,6 +2148,37 @@ class WebResearcherToolbox:
     # Document Extraction
     # ───────────────────────────────
 
+    def _finish_document(self, result: ExtractionResult) -> str:
+        """§7: run the guard over document content and serialize the result.
+
+        Applies the guard mode (annotate wrap / redact / block withhold) to
+        the delivered content, attaches ``result.guard``, and returns the
+        JSON string.
+        """
+        block, redacted, withheld = evaluate(
+            self._guard,
+            [("document_text", result.content)],
+            main_scope="document_text",
+        )
+        if block is None:
+            return result.model_dump_json()
+        result.guard = block
+        if withheld:
+            return json.dumps(
+                {
+                    "error": "content withheld by prompt-injection guard",
+                    "source": result.source,
+                    "guard": block,
+                },
+                indent=2,
+            )
+        if redacted is not None:
+            result.content = redacted
+        elif block.get("action") == "annotate" and result.content:
+            result.content = wrap_untrusted(result.content, result.source)
+        result.content_tokens = count_tokens(result.content, self.model_name)
+        return result.model_dump_json()
+
     def extract_document(self, source: str, pages: Optional[str] = None) -> str:
         """Extract text content from PDF, DOCX, or XLSX documents.
 
@@ -2041,16 +2229,18 @@ class WebResearcherToolbox:
             # untruncated content and the budget may have changed since the
             # entry was stored — same read-time truncation as the page cache.
             truncated = self._truncate(cached, self.max_markdown_chars, self.max_tokens)
-            return ExtractionResult(
-                source=source,
-                content=truncated,
-                content_tokens=count_tokens(truncated, self.model_name),
-                cache_hit=True,
-                # Tier 1.3: the stored content carries no fetch timestamp,
-                # so fetched_at stays None; the hash still ties the read
-                # back to the stored bytes.
-                content_hash=_sha256_hex(cached),
-            ).model_dump_json()
+            return self._finish_document(
+                ExtractionResult(
+                    source=source,
+                    content=truncated,
+                    content_tokens=count_tokens(truncated, self.model_name),
+                    cache_hit=True,
+                    # Tier 1.3: the stored content carries no fetch timestamp,
+                    # so fetched_at stays None; the hash still ties the read
+                    # back to the stored bytes.
+                    content_hash=_sha256_hex(cached),
+                )
+            )
 
         try:
             if is_url:
@@ -2061,16 +2251,18 @@ class WebResearcherToolbox:
 
             self.cache.put(cache_key, content)
             truncated = self._truncate(content, self.max_markdown_chars, self.max_tokens)
-            return ExtractionResult(
-                source=source,
-                content=truncated,
-                content_tokens=count_tokens(truncated, self.model_name),
-                cache_hit=False,
-                # Tier 1.3: provenance of the download (or parse time for
-                # local files) plus a hash of the full extracted content.
-                content_hash=_sha256_hex(content),
-                **prov,
-            ).model_dump_json()
+            return self._finish_document(
+                ExtractionResult(
+                    source=source,
+                    content=truncated,
+                    content_tokens=count_tokens(truncated, self.model_name),
+                    cache_hit=False,
+                    # Tier 1.3: provenance of the download (or parse time for
+                    # local files) plus a hash of the full extracted content.
+                    content_hash=_sha256_hex(content),
+                    **prov,
+                )
+            )
         except Exception as e:
             logger.error("Document extraction failed for %s: %s", source, e)
             return json.dumps(
@@ -2141,16 +2333,18 @@ class WebResearcherToolbox:
             truncated = self._truncate(
                 cached, self.max_markdown_chars, self.max_tokens
             )
-            return ExtractionResult(
-                source=source,
-                content=truncated,
-                content_tokens=count_tokens(truncated, self.model_name),
-                cache_hit=True,
-                page_range=pages_spec,
-                # Tier 1.3: hash of the stored range content (the store
-                # keeps no fetch timestamp, so fetched_at stays None).
-                content_hash=_sha256_hex(cached),
-            ).model_dump_json()
+            return self._finish_document(
+                ExtractionResult(
+                    source=source,
+                    content=truncated,
+                    content_tokens=count_tokens(truncated, self.model_name),
+                    cache_hit=True,
+                    page_range=pages_spec,
+                    # Tier 1.3: hash of the stored range content (the store
+                    # keeps no fetch timestamp, so fetched_at stays None).
+                    content_hash=_sha256_hex(cached),
+                )
+            )
 
         try:
             payload, prov = self._parse_document_pages(source, is_url)
@@ -2188,20 +2382,22 @@ class WebResearcherToolbox:
             truncated = self._truncate(
                 content, self.max_markdown_chars, self.max_tokens
             )
-            return ExtractionResult(
-                source=source,
-                content=truncated,
-                content_tokens=count_tokens(truncated, self.model_name),
-                cache_hit=False,
-                page_range=pages_spec,
-                page_start=start,
-                page_end=end,
-                total_pages=total,
-                # Tier 1.3: hash of the delivered range plus download
-                # provenance (URL reads) or parse time (local reads).
-                content_hash=_sha256_hex(content),
-                **prov,
-            ).model_dump_json()
+            return self._finish_document(
+                ExtractionResult(
+                    source=source,
+                    content=truncated,
+                    content_tokens=count_tokens(truncated, self.model_name),
+                    cache_hit=False,
+                    page_range=pages_spec,
+                    page_start=start,
+                    page_end=end,
+                    total_pages=total,
+                    # Tier 1.3: hash of the delivered range plus download
+                    # provenance (URL reads) or parse time (local reads).
+                    content_hash=_sha256_hex(content),
+                    **prov,
+                )
+            )
         except Exception as e:
             logger.error("Page-range extraction failed for %s: %s", source, e)
             return json.dumps(
@@ -2414,6 +2610,18 @@ class WebResearcherToolbox:
                 url=url,
                 max_links=self.max_links,
             )
+            # §7: guard the payload before caching so repeat reads carry
+            # the already-scanned result.
+            if self._scan_structured_guard(payload, url):
+                self._release_in_flight(url)  # S5: stays retryable
+                return json.dumps(
+                    {
+                        "error": "content withheld by prompt-injection guard",
+                        "url": url,
+                        "guard": payload.guard,
+                    },
+                    indent=2,
+                )
 
             payload_json = payload.to_json()
             self.cache.put("structured:" + self._cache_key(url), payload_json)
@@ -2441,6 +2649,9 @@ class WebResearcherToolbox:
                 "cache": self.cache.stats(),
                 "max_tokens": self.max_tokens,
                 "model_name": self.model_name,
+                # §7: guard measurement section (always present; zeroed when
+                # the guard is disabled) for the cost/flag-rate A/B.
+                "guard": self._guard.stats.to_dict(),
             },
             indent=2,
         )

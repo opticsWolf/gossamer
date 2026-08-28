@@ -312,6 +312,12 @@ class ParsedDocumentPayload(BaseModel):
             "(populated for HTML pages; empty for files)."
         ),
     )
+    # §7: optional prompt-injection guard block (present only when the
+    # guard is enabled and a scanned scope was checked).
+    guard: Optional[dict] = Field(
+        default=None,
+        description="Prompt-injection guard report (absent when guard disabled).",
+    )
 
     def to_json(self, indent: int = 2) -> str:
         """Serialize the full payload to a pretty-printed JSON string."""
