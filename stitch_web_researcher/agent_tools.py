@@ -35,6 +35,7 @@ from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import (
     StructuredOxideParser,
     FollowUpCandidate,
+    ParsedDocumentPayload,
     build_follow_up_candidates,
     require_office_oxide,
     require_pdf_oxide,
@@ -350,6 +351,11 @@ def _normalize_batch_results(results) -> List[BatchEntry]:
 # ───────────────────────────────
 # Markdown link absolutization (M12, CODE_REVIEW_2026-08-27)
 # ───────────────────────────────
+
+# Smallest per-field character budget ``_fit_json`` will try before giving
+# up and returning an overflow envelope. Below this a payload carries no
+# usable content anyway, and halving further just burns tokenizer passes.
+_JSON_FIT_FLOOR = 240
 
 # Inline markdown link: [text](target) or [text](target "title"). The
 # negative lookbehind skips image markers so ![alt](...) is untouched.
@@ -1048,6 +1054,101 @@ class WebResearcherToolbox:
         chars = int(self.max_markdown_chars * keep)
         tokens = int(self.max_tokens * keep) if self.max_tokens > 0 else 0
         return chars, tokens
+
+    @staticmethod
+    def _shrink_parsed_payload(payload_json: str, budget: Optional[int]) -> str:
+        """Re-serialize a ParsedDocumentPayload with page text capped.
+
+        ``budget`` of ``None`` returns the payload unchanged. The bulk of a
+        parsed document is ``pages[].raw_text`` / ``pages[].markdown``, so
+        those are what shrink; metadata, links and tables are small and stay
+        intact because they are what the model navigates by.
+        """
+        if budget is None:
+            return payload_json
+        payload = ParsedDocumentPayload.model_validate_json(payload_json)
+        for page in payload.pages:
+            if len(page.raw_text) > budget:
+                page.raw_text = page.raw_text[:budget] + "\n\n... [truncated]"
+            if len(page.markdown) > budget:
+                page.markdown = page.markdown[:budget] + "\n\n... [truncated]"
+        return payload.to_json()
+
+    @staticmethod
+    def _shrink_research(result: dict, budget: Optional[int]) -> str:
+        """Serialize a research result with per-source content capped.
+
+        Shrinks each source's markdown first; if the budget is tight enough
+        that even trimmed sources do not fit, whole sources are dropped from
+        the tail and ``sources_omitted`` records how many, so the model can
+        tell a short answer from a truncated one.
+        """
+        out = copy.deepcopy(result)
+        if budget is None:
+            return json.dumps(out, indent=2)
+        for source in out.get("sources", []):
+            page = source.get("result")
+            if isinstance(page, dict):
+                md = page.get("markdown")
+                if isinstance(md, str) and len(md) > budget:
+                    page["markdown"] = md[:budget] + "\n\n... [truncated]"
+                if isinstance(page.get("follow_up_links"), list):
+                    page["follow_up_links"] = page["follow_up_links"][:5]
+            snippet = source.get("snippet")
+            if isinstance(snippet, str) and len(snippet) > budget:
+                source["snippet"] = snippet[:budget] + "..."
+        # A very small budget means even trimmed sources will not all fit;
+        # drop from the tail rather than emit a cut document.
+        keep = max(1, budget // 120)
+        if len(out.get("sources", [])) > keep:
+            out["sources_omitted"] = len(out["sources"]) - keep
+            out["sources"] = out["sources"][:keep]
+        return json.dumps(out, indent=2)
+
+    def _json_fits(self, text: str, char_limit: int, token_limit: int) -> bool:
+        """True when *text* is inside both budgets."""
+        if char_limit and len(text) > char_limit:
+            return False
+        if token_limit and count_tokens(text, self.model_name) > token_limit:
+            return False
+        return True
+
+    def _fit_json(
+        self,
+        build,
+        char_limit: int,
+        token_limit: int,
+        overflow: dict,
+    ) -> str:
+        """Shrink a payload's text fields until its *serialized* form fits.
+
+        ``build(budget)`` must return the payload serialized with every large
+        text field truncated to ``budget`` characters (``None`` meaning no
+        per-field cap).
+
+        Cutting the serialized JSON instead — which is what ``_truncate`` does,
+        and what these paths used to do — yields an unparseable payload, which
+        is the LLM's entire reason for calling the tool. So the budget is
+        applied to the *content* before serialization, and a payload that still
+        will not fit is replaced by the small, valid ``overflow`` envelope
+        rather than a cut. The invariant is absolute: this returns JSON.
+        """
+        out = build(None)
+        if self._json_fits(out, char_limit, token_limit):
+            return out
+
+        budget = char_limit if char_limit > 0 else len(out)
+        while budget > _JSON_FIT_FLOOR:
+            budget //= 2
+            out = build(budget)
+            if self._json_fits(out, char_limit, token_limit):
+                return out
+
+        logger.warning(
+            "Payload could not be shrunk into the output budget; "
+            "returning an overflow envelope instead of invalid JSON"
+        )
+        return json.dumps(overflow, indent=2)
 
     def _next_headers(self) -> dict:
         """Rotate User-Agent and return full browser headers.
@@ -3162,10 +3263,19 @@ class WebResearcherToolbox:
                 except OSError:
                     pass
 
-            truncated_json = self._truncate(
-                payload.to_json(), self.max_markdown_chars, self.max_tokens
+            # Budget the page text, never the serialized JSON: a string
+            # cut here would hand the model unparseable output.
+            payload_json = payload.to_json()
+            return self._fit_json(
+                lambda b: self._shrink_parsed_payload(payload_json, b),
+                self.max_markdown_chars,
+                self.max_tokens,
+                {
+                    "source": source,
+                    "error": "document too large for the output budget",
+                    "hint": "narrow the read with the pages parameter",
+                },
             )
-            return truncated_json
 
         except Exception as e:
             logger.error("Structured extraction failed for %s: %s", source, e)
@@ -3242,8 +3352,15 @@ class WebResearcherToolbox:
         try:
             if cached_json is not None:
                 logger.info("Cache hit (structured) for %s", url)
-                return self._truncate(
-                    cached_json, self.max_markdown_chars, self.max_tokens
+                return self._fit_json(
+                    lambda b: self._shrink_parsed_payload(cached_json, b),
+                    self.max_markdown_chars,
+                    self.max_tokens,
+                    {
+                        "url": url,
+                        "error": "page too large for the output budget",
+                        "cache_hit": True,
+                    },
                 )
             # S4: robots.txt compliance -- only on the fetch path.
             if self._robots_disallows(url):
@@ -3293,10 +3410,12 @@ class WebResearcherToolbox:
             self.cache.put("structured:" + self._cache_key(url), payload_json)
             self._mark_visited(url)  # success only (C3)
             self._release_in_flight(url)  # S5
-            truncated_json = self._truncate(
-                payload_json, self.max_markdown_chars, self.max_tokens
+            return self._fit_json(
+                lambda b: self._shrink_parsed_payload(payload_json, b),
+                self.max_markdown_chars,
+                self.max_tokens,
+                {"url": url, "error": "page too large for the output budget"},
             )
-            return truncated_json
         except Exception as e:
             self._release_in_flight(url)  # S5: stays retryable
             logger.error("Structured HTML inspection failed for %s: %s", url, e)
@@ -3648,8 +3767,16 @@ class WebResearcherToolbox:
             "sources": sources,
             "count": sum(1 for s in sources if s["status"] == "ok"),
         }
-        return self._truncate(
-            json.dumps(result, indent=2), self.max_markdown_chars, budget
+        return self._fit_json(
+            lambda b: self._shrink_research(result, b),
+            self.max_markdown_chars,
+            budget,
+            {
+                "topic": topic,
+                "depth": depth,
+                "error": "research result too large for the output budget",
+                "hint": "lower depth or raise max_tokens",
+            },
         )
 
     # Stats & Management

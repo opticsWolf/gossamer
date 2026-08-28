@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from stitch_web_researcher.token_budget import count_tokens
 from stitch_web_researcher import (
     fetch_and_extract,
     batch_research,
@@ -807,18 +808,17 @@ class TestHTMLStructuredParsing:
         assert "pages" in data
 
     def test_inspect_html_structured_token_truncation(self, tmp_path, local_server):
-        """inspect_html_structured respects token budget (may truncate JSON)."""
+        """inspect_html_structured respects the token budget and stays valid JSON.
+
+        This test used to accept unparseable output under a tight budget
+        ("truncated output is expected"), which is how bugfix 1 shipped: the
+        serialized payload was string-cut. The budget is now applied to the
+        page text before serialization, so the reply is always parseable."""
         tb = WebResearcherToolbox(max_tokens=100, domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
         result = tb.inspect_html_structured(f"{local_server}/alpha")
-        # With aggressive token budget, output may be truncated (not valid JSON)
-        # The key is that it's short
-        assert len(result) < 500
-        # If not truncated, should be valid JSON with metadata
-        try:
-            data = json.loads(result)
-            assert "metadata" in data or "error" not in data
-        except json.JSONDecodeError:
-            pass  # Truncated output is expected with very low budgets
+        data = json.loads(result)  # must never raise, however tight the budget
+        assert isinstance(data, dict)
+        assert count_tokens(result, tb.model_name) <= 100
 
     def test_inspect_html_structured_already_visited(self, tmp_path):
         """inspect_html_structured warns on already-visited URL."""
