@@ -159,27 +159,48 @@ class TestToolboxIntegration:
             ToolboxConfig(cache_dir=str(tmp_path / "c"), respect_robots=False)
         )
 
+    # The URL is still validated before any I/O; the *refusal* now travels
+    # through the tool's JSON error contract instead of escaping as an
+    # exception, so an LLM caller can recover by picking another link
+    # (bugfix 3). The security property under test is unchanged: no fetch.
+
+    @staticmethod
+    def _sole_error(raw):
+        data = json.loads(raw)
+        if isinstance(data, list):
+            errors = [e["error"] for e in data if e.get("error")]
+            assert errors, f"expected a rejected entry, got {data!r}"
+            return errors[0]
+        return data["error"]
+
     def test_inspect_html_page_blocks_metadata(self, toolbox):
-        with pytest.raises(SsrfBlockedError):
+        err = self._sole_error(
             toolbox.inspect_html_page("http://169.254.169.254/latest/meta-data/")
+        )
+        assert "not a public address" in err
 
     def test_inspect_html_page_blocks_localhost(self, toolbox):
-        with pytest.raises(SsrfBlockedError):
-            toolbox.inspect_html_page("http://localhost:5000/x")
+        err = self._sole_error(toolbox.inspect_html_page("http://localhost:5000/x"))
+        assert "internal name" in err
 
     def test_batch_inspect_pages_blocks_private(self, toolbox):
-        with pytest.raises(SsrfBlockedError):
+        # One refused URL must not discard the batch: it becomes one error
+        # record and the other entries are still processed.
+        out = json.loads(
             toolbox.batch_inspect_pages(
                 ["https://example.com/ok", "http://10.0.0.5/secret"]
             )
+        )
+        blocked = [e for e in out if "10.0.0.5" in str(e.get("url", ""))]
+        assert blocked and "not a public address" in blocked[0]["error"]
 
     def test_extract_document_blocks_metadata(self, toolbox):
-        # The URL is validated before any I/O; the error propagates (same
-        # contract as the pre-existing scheme validation in _validate_url).
-        with pytest.raises(SsrfBlockedError):
+        err = self._sole_error(
             toolbox.extract_document(
                 "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
             )
+        )
+        assert "not a public address" in err
 
     def test_local_server_works_with_bypass(self, tmp_path, monkeypatch):
         # The operator bypass restores local dev/test servers.

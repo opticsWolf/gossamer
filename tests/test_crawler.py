@@ -271,11 +271,13 @@ class TestToolbox:
             assert "error" not in item
 
     def test_url_validation(self, toolbox):
-        """Test URL validation catches malformed URLs."""
-        with pytest.raises(ValueError):
-            toolbox.inspect_html_page("not-a-valid-url")
-        with pytest.raises(ValueError):
-            toolbox.inspect_html_page("ftp://example.com/file.txt")
+        """Malformed URLs are refused — as JSON, not as an exception.
+
+        The refusal reaches the model through the tool's normal error
+        channel so it can pick another link (bugfix 3)."""
+        for bad in ("not-a-valid-url", "ftp://example.com/file.txt"):
+            data = json.loads(toolbox.inspect_html_page(bad))
+            assert "URL rejected" in data["error"], bad
 
     def test_caching(self, toolbox, tmp_path, local_server):
         """inspect_html_page caches fetches; repeats are served from cache

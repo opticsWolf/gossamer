@@ -1085,6 +1085,37 @@ class WebResearcherToolbox:
             logger.warning("Blocked non-public URL %s: %s", url, e)
             raise
 
+    @staticmethod
+    def _url_error(raw: str, exc: Exception) -> dict:
+        """Standard error record for a URL rejected before any network I/O.
+
+        URL rejection is a *recoverable* outcome for an LLM caller — the model
+        picked a bad link and should pick another — so it travels through the
+        same ``{"error": ...}`` contract as a fetch failure instead of escaping
+        as an exception. The reason is kept verbatim so the model can
+        self-correct rather than retry the same URL.
+        """
+        return {
+            "url": raw,
+            "error": f"URL rejected: {exc}",
+            "error_type": type(exc).__name__,
+        }
+
+    def _prepare_url(self, raw: str) -> tuple[Optional[str], Optional[dict]]:
+        """Normalize and validate *raw*, turning rejection into a record.
+
+        Returns ``(url, None)`` when the URL is usable, or ``(None, error)``
+        when it is not. Single-URL tools return that error as their payload;
+        ``batch_inspect_pages`` attaches it to the one offending entry so a
+        single bad URL cannot abort the whole batch.
+        """
+        try:
+            url = normalize_url(raw)
+            self._validate_url(url)
+        except (ValueError, SsrfBlockedError) as e:
+            return None, self._url_error(raw, e)
+        return url, None
+
     def _robots_disallows(self, url: str) -> bool:
         """S4: True if the host's robots.txt forbids fetching ``url``.
 
@@ -2110,8 +2141,9 @@ class WebResearcherToolbox:
         the cache (``cache_hit: true``) instead of a content-free warning
         — data beats a warning.
         """
-        url = normalize_url(url)
-        self._validate_url(url)
+        url, url_error = self._prepare_url(url)
+        if url_error is not None:
+            return json.dumps(url_error, indent=2)
 
         # Tier 1.4: capture the raw (possibly expired) page entry before
         # the normal cache lookup purges it - an expired entry's ETag /
@@ -2439,13 +2471,20 @@ class WebResearcherToolbox:
         # success (C3), so failed batch entries remain retryable.
         pending: list[str] = []
         cached_entries: dict[str, tuple] = {}
+        rejected: dict[str, dict] = {}
         seen = set()
         for raw in urls:
-            url = normalize_url(raw)
+            # A URL the policy refuses (SSRF, bad scheme, local path) is one
+            # bad *entry*, not a failed batch: record it and keep going, so a
+            # single poisoned link in a scraped list cannot discard every
+            # good result alongside it.
+            url, url_error = self._prepare_url(raw)
+            if url_error is not None:
+                rejected[raw] = url_error
+                continue
             if url in seen:
                 continue
             seen.add(url)
-            self._validate_url(url)
             cached = self._page_cache_get(url)
             if cached is not None:
                 cached_entries[url] = cached
@@ -2529,6 +2568,11 @@ class WebResearcherToolbox:
             output = []
             emitted = set()
             for raw in urls:
+                if raw in rejected:
+                    if raw not in emitted:
+                        emitted.add(raw)
+                        output.append(rejected[raw])
+                    continue
                 url = normalize_url(raw)
                 if url in emitted:
                     continue
@@ -2649,7 +2693,10 @@ class WebResearcherToolbox:
             is_url = urlparse(source).scheme in ("http", "https")
 
         if is_url:
-            self._validate_url(source)
+            try:
+                self._validate_url(source)
+            except (ValueError, SsrfBlockedError) as e:
+                return json.dumps(self._url_error(source, e), indent=2)
             # S4: robots gate before rate-limiting, so a disallowed fetch
             # does not burn a politeness delay.
             if self._robots_disallows(source):
@@ -3076,7 +3123,10 @@ class WebResearcherToolbox:
         is_url = parsed.scheme in ("http", "https")
 
         if is_url:
-            self._validate_url(source)
+            try:
+                self._validate_url(source)
+            except (ValueError, SsrfBlockedError) as e:
+                return json.dumps(self._url_error(source, e), indent=2)
             # S4: robots gate before rate-limiting.
             if self._robots_disallows(source):
                 return json.dumps(
@@ -3180,8 +3230,9 @@ class WebResearcherToolbox:
         str
             JSON-serialised ParsedDocumentPayload (token-truncated).
         """
-        url = normalize_url(url)
-        self._validate_url(url)
+        url, url_error = self._prepare_url(url)
+        if url_error is not None:
+            return json.dumps(url_error, indent=2)
 
         # Cache stores the untruncated payload JSON; budgets are re-applied
         # on every read so changed limits are honored. A cached result is
@@ -3303,8 +3354,9 @@ class WebResearcherToolbox:
             ``urls`` list, ``count``, and ``truncated`` (true when a
             budget cap cut the list short).
         """
-        url = normalize_url(url)
-        self._validate_url(url)
+        url, url_error = self._prepare_url(url)
+        if url_error is not None:
+            return json.dumps(url_error, indent=2)
 
         if self._robots_disallows(url):
             logger.warning("URL disallowed by robots.txt: %s", url)
