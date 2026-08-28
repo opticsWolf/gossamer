@@ -3,12 +3,14 @@ import copy
 import hashlib
 import json
 import logging
+import math
+import os
 import random
 import re
 import threading
 import time
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +27,7 @@ from stitch_web_researcher._core import (
     extract_links_from_html as _extract_links_from_html,
     process_rendered_html as _process_rendered_html,
     extract_main_content_markdown,
+    init_rust_logging as _init_rust_logging,
 )
 from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
 from stitch_web_researcher.structured_parser import (
@@ -53,6 +56,103 @@ from stitch_web_researcher.guard import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ───────────────────────────────
+# Tier 2.6: fetch observability
+# ───────────────────────────────
+class FetchStats:
+    """Lightweight, thread-safe fetch observability (Tier 2.6).
+
+    Tracks per-fetch latency (bounded sliding window), total bytes
+    downloaded, per-domain request counts, and error counts by exception
+    class. Exposed via ``get_stats()["fetches"]``.
+    """
+
+    def __init__(self, latency_window: int = 1024) -> None:
+        self._lock = threading.Lock()
+        self._latencies: deque = deque(maxlen=max(1, int(latency_window)))
+        self._bytes = 0
+        self._fetches = 0
+        self._errors = 0
+        self._by_domain: dict = {}
+        self._by_error: dict = {}
+
+    def record_success(self, domain: str, latency_s: float, nbytes: int) -> None:
+        with self._lock:
+            self._latencies.append(latency_s)
+            self._bytes += max(0, int(nbytes))
+            self._fetches += 1
+            self._by_domain[domain] = self._by_domain.get(domain, 0) + 1
+
+    def record_error(self, domain: str, latency_s: float, exc: BaseException) -> None:
+        with self._lock:
+            self._latencies.append(latency_s)
+            self._fetches += 1
+            self._errors += 1
+            self._by_domain[domain] = self._by_domain.get(domain, 0) + 1
+            cls = type(exc).__name__
+            self._by_error[cls] = self._by_error.get(cls, 0) + 1
+
+    @staticmethod
+    def _percentile(sorted_vals, p: float) -> float:
+        if not sorted_vals:
+            return 0.0
+        if len(sorted_vals) == 1:
+            return float(sorted_vals[0])
+        k = (len(sorted_vals) - 1) * p
+        f = math.floor(k)
+        c = math.ceil(k)
+        if f == c:
+            return float(sorted_vals[int(k)])
+        return float(sorted_vals[f] * (c - k) + sorted_vals[c] * (k - f))
+
+    def to_dict(self) -> dict:
+        with self._lock:
+            lats = sorted(self._latencies)
+            return {
+                "fetches": self._fetches,
+                "errors": self._errors,
+                "bytes_downloaded": self._bytes,
+                "latency_ms": {
+                    "p50": round(self._percentile(lats, 0.50) * 1000, 1),
+                    "p95": round(self._percentile(lats, 0.95) * 1000, 1),
+                    "p99": round(self._percentile(lats, 0.99) * 1000, 1),
+                    "max": round(lats[-1] * 1000, 1) if lats else 0.0,
+                },
+                "requests_by_domain": dict(
+                    sorted(self._by_domain.items(), key=lambda kv: (-kv[1], kv[0]))
+                ),
+                "errors_by_class": dict(self._by_error),
+            }
+
+
+def _domain_of(url: str) -> str:
+    """Best-effort host (netloc) for per-domain stats; falls back to url."""
+    try:
+        return urlparse(url).netloc or url
+    except Exception:
+        return url
+
+
+# Tier 2.6: Rust `tracing` -> Python `logging` bridge (opt-in via
+# STITCH_RUST_LOG). Initialised once per process; no-op when unset.
+_rust_log_initialized = False
+
+
+def _maybe_init_rust_logging() -> None:
+    global _rust_log_initialized
+    if _rust_log_initialized:
+        return
+    level = os.environ.get("STITCH_RUST_LOG", "").strip()
+    if not level:
+        _rust_log_initialized = True
+        return
+    try:
+        _init_rust_logging(level)
+    except Exception:
+        logger.debug("Rust logging bridge init failed", exc_info=True)
+    _rust_log_initialized = True
 
 
 # ───────────────────────────────
@@ -705,6 +805,9 @@ class ToolboxConfig:
     # §7: optional prompt-injection guard (off by default). Pass a
     # GuardConfig to enable; see stitch_web_researcher.guard.
     guard: Optional[GuardConfig] = None
+    # Tier 2.6: size of the fetch-latency sliding window (samples) kept in
+    # memory for percentile computation in get_stats()["fetches"].
+    fetch_stats_window: int = 1024
 
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
@@ -832,6 +935,10 @@ class WebResearcherToolbox:
             # Download the model at construction time so the 90 MB fetch
             # and cold start do not land inside the first tool call.
             self._guard.preload()
+        # Tier 2.6: fetch observability (latency/bytes/domain/errors) and the
+        # opt-in Rust tracing -> Python logging bridge.
+        self._fetch_stats = FetchStats(latency_window=config.fetch_stats_window)
+        _maybe_init_rust_logging()
 
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
@@ -1448,6 +1555,29 @@ class WebResearcherToolbox:
         return _absolutize_markdown_links(md, url), links, meta, method
 
     def _fetch_html_dispatch(self, url: str, use_smart: Optional[bool] = None):
+        """Instrumented dispatch wrapper (Tier 2.6).
+
+        Records per-fetch latency, bytes, domain, and error class into
+        ``self._fetch_stats`` before delegating to :meth:`_dispatch_fetch`.
+        """
+        domain = _domain_of(url)
+        started = time.perf_counter()
+        try:
+            result = self._dispatch_fetch(url, use_smart)
+        except Exception as e:
+            self._fetch_stats.record_error(domain, time.perf_counter() - started, e)
+            raise
+        nbytes = (
+            len(result[0].encode("utf-8"))
+            if result and isinstance(result[0], str)
+            else 0
+        )
+        self._fetch_stats.record_success(
+            domain, time.perf_counter() - started, nbytes
+        )
+        return result
+
+    def _dispatch_fetch(self, url: str, use_smart: Optional[bool] = None):
         """Dispatch a fetch per ``self.fetch_mode`` / ``use_smart`` (raw,
         with relative markdown hrefs). See ``_fetch_html``."""
         if self.fetch_mode == "browser":
@@ -2657,6 +2787,9 @@ class WebResearcherToolbox:
             {
                 "visited_urls_count": len(self.visited_urls),
                 "cache": self.cache.stats(),
+                # Tier 2.6: fetch observability (latency percentiles, bytes,
+                # per-domain request counts, error counts by class).
+                "fetches": self._fetch_stats.to_dict(),
                 "max_tokens": self.max_tokens,
                 "model_name": self.model_name,
                 # §7: guard measurement section (always present; zeroed when

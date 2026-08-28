@@ -4,8 +4,9 @@ use url::{Host, Url};
 use html2md::parse_html;
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, ToSocketAddrs};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, Once, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use log::{Level, Log, Metadata, Record};
 
 // ────────────────────────────────────────────────────────────────
 // 1. Shared Tokio runtime (singleton, avoids cold-start per call)
@@ -513,12 +514,16 @@ async fn fetch_attempt(
             .map_err(|e| (format!("Request failed: {}", e), true, None))?;
 
         let status = response.status();
+        // Tier 2.6: observability -- per-hop status for the Python logging
+        // bridge (only emitted when STITCH_RUST_LOG is enabled).
+        log::debug!("HTTP response status={} url={}", status.as_u16(), current.as_str());
         // Tier 1.4: 304 Not Modified — the caller's cached copy is still
         // current. No body follows, but the response may carry rotated
         // validators, which we hand back for storage.
         if status.as_u16() == 304 {
             let (etag2, lm2) = validators_from_headers(response.headers());
             let meta: FetchMeta = (status.as_u16(), current.as_str().to_string(), None);
+            log::debug!("304 Not Modified (revalidated) url={}", current.as_str());
             return Ok((String::new(), meta, etag2, lm2));
         }
         if status.is_redirection() {
@@ -543,6 +548,13 @@ async fn fetch_attempt(
             let code = status.as_u16();
             let retryable = code == 429 || code == 503 || code >= 500;
             let retry_after = retry_after_seconds(response.headers());
+            log::warn!(
+                "HTTP error status={} url={} retryable={} retry_after_secs={:?}",
+                status.as_u16(),
+                current.as_str(),
+                retryable,
+                retry_after
+            );
             return Err((format!("HTTP error: {}", status), retryable, retry_after));
         }
 
@@ -611,6 +623,7 @@ async fn fetch_attempt(
         );
         // Tier 1.4: validators for the next revalidation.
         let (etag2, lm2) = validators_from_headers(response.headers());
+        log::debug!("fetched HTML url={} bytes={}", current.as_str(), html.len());
         return Ok((html, meta, etag2, lm2));
     }
 
@@ -1064,6 +1077,81 @@ fn extract_main_content_markdown(
 // 9. Module definition
 // ────────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────
+// Rust `tracing` -> Python `logging` bridge (Tier 2.6)
+// ────────────────────────────────────────────────────────────────
+
+/// A `log` logger that forwards records to Python's `logging` module.
+/// Installed once via `init_rust_logging`; `tracing-log` forwards
+/// `tracing` events into this logger.
+struct PyLogLogger;
+
+impl Log for PyLogLogger {
+    fn enabled(&self, _metadata: &Metadata) -> bool {
+        true
+    }
+
+    // `with_gil` (not `attach`) because this callback may run on a tokio
+    // worker thread that does not hold the GIL (the pyfunction detaches
+    // before `block_on`). pyo3 0.27 deprecates `with_gil` in favour of
+    // `attach`, but `attach` panics when the GIL is not held, so we keep
+    // the acquiring form here.
+    #[allow(deprecated)]
+    fn log(&self, record: &Record) {
+        let level = match record.level() {
+            Level::Error => 40,
+            Level::Warn => 30,
+            Level::Info => 20,
+            Level::Debug => 10,
+            Level::Trace => 10,
+        };
+        let message = format!("{}", record.args());
+        let target = record.target().to_string();
+        let _ = pyo3::Python::with_gil(|py| {
+            let logging = py.import("logging").ok()?;
+            let logger = logging
+                .call_method1("getLogger", (target.as_str(),))
+                .ok()?;
+            logger.call_method1("log", (level, message.as_str())).ok();
+            Some(())
+        });
+    }
+
+    fn flush(&self) {}
+}
+
+/// Map a textual level name to a `log::LevelFilter`.
+fn parse_level_filter(level: &str) -> log::LevelFilter {
+    match level.to_ascii_lowercase().as_str() {
+        "trace" => log::LevelFilter::Trace,
+        "debug" => log::LevelFilter::Debug,
+        "info" => log::LevelFilter::Info,
+        "warn" | "warning" => log::LevelFilter::Warn,
+        "error" => log::LevelFilter::Error,
+        "off" => log::LevelFilter::Off,
+        _ => log::LevelFilter::Info,
+    }
+}
+
+/// Initialize the Rust `tracing` -> Python `logging` bridge (Tier 2.6).
+///
+/// Idempotent: the global logger/tracer is installed once; later calls only
+/// adjust the max level and re-emit the init marker. Returns True on success.
+#[pyfunction]
+fn init_rust_logging(level: &str) -> bool {
+    static INIT: Once = Once::new();
+    static LOGGER: PyLogLogger = PyLogLogger;
+    INIT.call_once(|| {
+        let _ = log::set_logger(&LOGGER);
+    });
+    log::set_max_level(parse_level_filter(level));
+    log::info!(
+        "stitch-web-researcher: rust logging bridge initialized level={}",
+        level
+    );
+    true
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fetch_and_extract, m)?)?;
@@ -1074,5 +1162,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fetch_html_conditional, m)?)?;
     m.add_function(wrap_pyfunction!(extract_links_from_html, m)?)?;
     m.add_function(wrap_pyfunction!(extract_main_content_markdown, m)?)?;
+    m.add_function(wrap_pyfunction!(init_rust_logging, m)?)?;
     Ok(())
 }

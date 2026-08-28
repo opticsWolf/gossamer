@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-609%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-627%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -259,6 +259,39 @@ print(metadata["jsonld"])     # Schema.org structured data
 base = {"title": "Base Title", "format": "html"}
 merged = merge_into_document_metadata(metadata, base)
 ```
+
+### Observability (Tier 2.6)
+
+`get_stats()` now includes a `fetches` section with thread-safe telemetry
+collected at the single fetch-dispatch choke point (every `inspect_html_page`
+and batch fetch):
+
+```json
+{
+  "fetches": 128,
+  "errors": 3,
+  "bytes_downloaded": 2457600,
+  "latency_ms": {"p50": 210.4, "p95": 890.1, "p99": 1450.7, "max": 2100.9},
+  "requests_by_domain": {"example.com": 40, "docs.python.org": 12},
+  "errors_by_class": {"TimeoutError": 2, "SSLError": 1}
+}
+```
+
+Latency percentiles are computed over a bounded sliding window
+(`ToolboxConfig.fetch_stats_window`, default 1024 samples), so memory is
+constant regardless of session length.
+
+Rust-side HTTP logging is **off by default** and carries zero cost until
+enabled. Set `STITCH_RUST_LOG` to bridge Rust `log` events (per-hop HTTP
+status, 304 revalidations, errors, fetched byte counts) into Python
+`logging`:
+
+```
+STITCH_RUST_LOG=debug   # error | warn | info | debug
+```
+
+The bridge initialises once (idempotent) and emits a single
+`rust logging bridge initialized` record so operators can confirm it is live.
 
 ### Prompt-Injection Guard (optional, §7)
 

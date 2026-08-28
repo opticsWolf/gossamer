@@ -90,3 +90,12 @@ def extract_main_content_markdown(html: str) -> Tuple[str, str]:
     Returns ``(matched_selector_label, markdown_of_that_region)``.
     """
     ...
+
+def init_rust_logging(level: str) -> bool:
+    """Initialize the Rust ``log`` -> Python ``logging`` bridge (Tier 2.6).
+
+    *level* is one of ``trace``/``debug``/``info``/``warn``/``error``/``off``.
+    Idempotent: the global logger is installed once; later calls adjust the
+    level and re-emit the init marker. Returns True on success.
+    """
+    ...

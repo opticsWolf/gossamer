@@ -26,6 +26,7 @@ Configuration via environment variables (all optional):
     STITCH_MAX_CONCURRENCY      (default 8)
     STITCH_RESPECT_ROBOTS       (default 1)
     STITCH_CONDITIONAL_REVALIDATE (default 1)
+    STITCH_RUST_LOG             (default unset = off; error|warn|info|debug -- bridge Rust log events into Python logging)
     STITCH_GUARD_ENABLED          (default 0 -- §7 prompt-injection guard off)
     STITCH_GUARD_SCOPES           (default "page_markdown,document_text")
     STITCH_GUARD_MODE             (default "annotate"; annotate|redact|block)
