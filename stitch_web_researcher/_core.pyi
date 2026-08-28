@@ -91,6 +91,18 @@ def extract_main_content_markdown(html: str) -> Tuple[str, str]:
     """
     ...
 
+def extract_tables_from_html(
+    html: str, max_tables: int = 20, max_rows: int = 500
+) -> List[Tuple[str, List[str], List[List[str]]]]:
+    """Extract HTML ``<table>`` grids as ``(name, headers, rows)`` (Tier 3.11).
+
+    ``colspan``/``rowspan`` are expanded so every row has equal width; spanned
+    cells are filled with the empty string. The first row becomes ``headers``
+    when it contains at least one ``<th>``. Table names come from
+    ``<caption>`` when present, otherwise ``table-N`` (1-based).
+    """
+    ...
+
 def init_rust_logging(level: str) -> bool:
     """Initialize the Rust ``log`` -> Python ``logging`` bridge (Tier 2.6).
 

@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-678%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-704%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -58,6 +58,7 @@
 - **Smart/Fallback Routing**: `use_smart=True` attempts headless JS rendering (`browser_oxide`) first, falls back to static `reqwest` on failure
 - **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx)
 - **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
+- **HTML Table Extraction (Tier 3.11)**: `inspect_html_structured` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -399,6 +400,40 @@ plain = tools.extract_document("https://example.com/raw-data")  # text/plain
 `classify_link` now routes `.json` / `.xml` / `.rss` / `.atom` URLs to
 `extract_document` instead of page scraping, so discovered links of these
 types go to the right tool.
+
+### HTML Table Extraction (Tier 3.11)
+
+`inspect_html_structured` previously delivered HTML pages as markdown only:
+`ExtractedTable` existed for PDF/Office documents, but web-page tables
+came through as ragged markdown lines. Now the raw HTML (static fetches
+only) goes through the Rust extractor `extract_tables_from_html`, which
+produces rectangular grids:
+
+- **Top-level tables only** — tables nested inside another table are
+  skipped.
+- **Header detection** — a first row containing `<th>` cells becomes the
+  header row; otherwise the table is headerless.
+- **colspan / rowspan expansion** — spanned cells are expanded into
+  rectangular grids with empty fill cells.
+- **Cell hygiene** — markup-free text, whitespace collapsed, each cell
+  capped at 1000 characters.
+- **Naming** — a collapsed `<caption>` becomes the table name, falling
+  back to `table-N` in document order.
+- **Budgeted** — at most 20 tables and 500 rows per page so a giant
+  table cannot drown the token budget.
+
+Tables attach to both the payload and its single page (same shape as the
+PDF/XLSX paths). The browser path exposes no raw DOM, so its `tables`
+are empty, and the page path (`inspect_html_page`) is untouched (M8).
+
+```python
+payload = json.loads(tools.inspect_html_structured("https://example.com/report"))
+for table in payload["tables"]:
+    print(table["name"], table["headers"], table["rows"][:3])
+```
+
+Extraction is best-effort: a failure logs a warning and the page is
+delivered with `tables: []` rather than failing the whole call.
 
 ### Prompt-Injection Guard (optional, §7)
 

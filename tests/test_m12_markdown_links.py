@@ -124,8 +124,12 @@ class TestAbsolutizationInTools:
     def test_inspect_html_structured_delivers_absolute_links(self, tmp_path):
         tb = _toolbox(tmp_path)
         md = "# T\n[A](/a)\n"
+        # Tier 3.11: the structured path fetches with keep_html=True, so
+        # the _static_fetch fake returns the 5-tuple (raw HTML None).
         with mock.patch.object(
-            tb, "_static_fetch", return_value=(md, ["/a"], {}, "static")
+            tb,
+            "_static_fetch",
+            return_value=(md, ["/a"], {}, "static", None),
         ):
             raw = tb.inspect_html_structured("https://example.com/dir/page")
 

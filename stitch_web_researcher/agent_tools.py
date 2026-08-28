@@ -27,6 +27,7 @@ from stitch_web_researcher._core import (
     extract_links_from_html as _extract_links_from_html,
     process_rendered_html as _process_rendered_html,
     extract_main_content_markdown,
+    extract_tables_from_html,
     init_rust_logging as _init_rust_logging,
     configure_http as _configure_http,
 )
@@ -661,7 +662,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "inspect_html_structured",
-        "Fetch a web page and return it as a structured ParsedDocumentPayload with metadata (OG, Twitter, JSON-LD), markdown content, and links. Set use_smart=True for JS-rendered pages.",
+        "Fetch a web page and return it as a structured ParsedDocumentPayload with metadata (OG, Twitter, JSON-LD), markdown content, tables (structured grids extracted from HTML <table> elements, static fetches only), and links. Set use_smart=True for JS-rendered pages.",
         "inspect_html_structured",
         (
             ToolParam("url", str, description="The URL to inspect"),
@@ -1695,12 +1696,16 @@ class WebResearcherToolbox:
     # ── Fetch strategies ─────────────────────────────
     # Each returns the full (markdown, anchored_links, metadata, method) tuple.
 
-    def _static_fetch(self, url: str):
+    def _static_fetch(self, url: str, keep_html: bool = False):
         """Plain HTTP fetch via the Rust core.
 
         C2: the Rust core returns the raw HTML alongside the markdown and
         links, so the static path runs the same meta-oxide metadata
         extraction as the browser path — no second network round-trip.
+
+        Tier 3.11: ``keep_html=True`` also returns the raw HTML (5-tuple)
+        so table extraction can run on it; the default keeps the M8-pinned
+        4-tuple contract.
         """
         (
             _not_modified,
@@ -1720,6 +1725,8 @@ class WebResearcherToolbox:
         metadata["provenance"] = _provenance_from_fetch_meta(
             prov, url, etag=etag, last_modified=last_modified
         )
+        if keep_html:
+            return md, links, metadata, "static", html
         return md, links, metadata, "static"
 
     def _browser_fetch(self, url: str):
@@ -1747,6 +1754,35 @@ class WebResearcherToolbox:
         md, links, meta, method = self._fetch_html_dispatch(url, use_smart)
         return _absolutize_markdown_links(md, url), links, meta, method
 
+    def _fetch_html_with_html(
+        self, url: str, use_smart: Optional[bool] = None
+    ) -> tuple:
+        """Fetch for ``inspect_html_structured`` (Tier 3.11).
+
+        Same dispatch and fetch instrumentation as ``_fetch_html``, but
+        the static path also returns the raw HTML so tables can be
+        extracted from it. Returns ``(markdown, links, meta, method,
+        html)`` with markdown absolutized (M12); ``html`` is None when the
+        browser path served the page (the renderer exposes no raw DOM).
+        """
+        domain = _domain_of(url)
+        started = time.perf_counter()
+        try:
+            result = self._dispatch_fetch(url, use_smart, keep_html=True)
+        except Exception as e:
+            self._fetch_stats.record_error(domain, time.perf_counter() - started, e)
+            raise
+        nbytes = (
+            len(result[0].encode("utf-8"))
+            if result and isinstance(result[0], str)
+            else 0
+        )
+        self._fetch_stats.record_success(
+            domain, time.perf_counter() - started, nbytes
+        )
+        md, links, meta, method, html = result
+        return _absolutize_markdown_links(md, url), links, meta, method, html
+
     def _fetch_html_dispatch(self, url: str, use_smart: Optional[bool] = None):
         """Instrumented dispatch wrapper (Tier 2.6).
 
@@ -1770,28 +1806,53 @@ class WebResearcherToolbox:
         )
         return result
 
-    def _dispatch_fetch(self, url: str, use_smart: Optional[bool] = None):
+    def _dispatch_fetch(
+        self, url: str, use_smart: Optional[bool] = None, keep_html: bool = False
+    ):
         """Dispatch a fetch per ``self.fetch_mode`` / ``use_smart`` (raw,
-        with relative markdown hrefs). See ``_fetch_html``."""
+        with relative markdown hrefs). See ``_fetch_html``.
+
+        Tier 3.11: ``keep_html=True`` extends the result with the raw HTML
+        (5-tuple). Only the static path has it — browser renders do not
+        expose the raw DOM, so that slot is None there.
+        """
+
+        def _static():
+            # Keep the default-path call shape (single positional arg, M8)
+            # so existing _static_fetch test spies keep working; only the
+            # keep_html=True path passes the extra argument.
+            return (
+                self._static_fetch(url, keep_html=True)
+                if keep_html
+                else self._static_fetch(url)
+            )
+
         if self.fetch_mode == "browser":
             if use_smart is False:
-                return self._static_fetch(url)
-            return self._browser_fetch(url)
+                return _static()
+                return self._static_fetch(url, keep_html=keep_html)
+            md, links, meta, method = self._browser_fetch(url)
+            return (md, links, meta, method, None) if keep_html else (md, links, meta, method)
 
         if use_smart is True:
             try:
-                return self._browser_fetch(url)
+                md, links, meta, method = self._browser_fetch(url)
+                return (
+                    (md, links, meta, method, None)
+                    if keep_html
+                    else (md, links, meta, method)
+                )
             except Exception as e:
                 logger.warning(
                     "Stealth fetch failed for %s: %s -- falling back to static", url, e
                 )
 
         if self.fetch_mode == "static" or use_smart is False:
-            return self._static_fetch(url)
+            return _static()
 
         # auto: static first, stealth fallback on failure or non-text content
         try:
-            result = self._static_fetch(url)
+            result = _static()
             if self._looks_like_text(result[0]):
                 return result
             logger.info("Static fetch returned non-text content for %s", url)
@@ -1804,7 +1865,8 @@ class WebResearcherToolbox:
             )
         md, links, meta = _fetch_with_browser_oxide(url)
         meta.setdefault("provenance", _browser_provenance(url))
-        return md, links, meta, "stealth-fallback"
+        result = (md, links, meta, "stealth-fallback")
+        return result + (None,) if keep_html else result
 
     @staticmethod
     def _looks_like_text(md: str) -> bool:
@@ -3041,10 +3103,37 @@ class WebResearcherToolbox:
     # HTML Structured Inspection
     # ───────────────────────────────
 
+    # Tier 3.11: caps for HTML table extraction (a page with a 10,000-row
+    # table must not drown the token budget in table JSON).
+    _HTML_MAX_TABLES = 20
+    _HTML_MAX_TABLE_ROWS = 500
+
+    def _extract_html_tables(self, html: str):
+        """Tier 3.11: extract HTML tables into ExtractedTable objects.
+
+        Best effort: extraction errors are logged and yield no tables; the
+        page content itself is never affected. Returns a list of
+        ExtractedTable (name, headers, rows) in document order.
+        """
+        from stitch_web_researcher.structured_parser import ExtractedTable
+
+        try:
+            raw = extract_tables_from_html(
+                html, self._HTML_MAX_TABLES, self._HTML_MAX_TABLE_ROWS
+            )
+        except Exception as e:
+            logger.warning("HTML table extraction failed: %s", e)
+            return []
+        return [
+            ExtractedTable(name=name, headers=headers, rows=rows)
+            for name, headers, rows in raw
+        ]
+
     def inspect_html_structured(self, url: str, use_smart: Optional[bool] = None) -> str:
         """
         Fetch a web page and return it as a structured ParsedDocumentPayload
-        with metadata (OG, Twitter, JSON-LD), markdown content, and links.
+        with metadata (OG, Twitter, JSON-LD), markdown content, tables,
+        and links.
 
         Unifies the HTML fetching pipeline with the structured document
         pipeline so that web pages and file documents produce the same
@@ -3089,7 +3178,13 @@ class WebResearcherToolbox:
                 )
             self._rate_limit_domain(url)
 
-            markdown, links, html_metadata, fetch_method = self._fetch_html(url, use_smart)
+            markdown, links, html_metadata, fetch_method, html = (
+                self._fetch_html_with_html(url, use_smart)
+            )
+
+            # Tier 3.11: extract tables from the raw HTML (static path
+            # only; browser renders expose no raw DOM).
+            tables = self._extract_html_tables(html) if html else []
 
             # Build structured payload via unified parser
             parser = StructuredOxideParser()
@@ -3099,6 +3194,7 @@ class WebResearcherToolbox:
                 html_metadata=html_metadata,
                 url=url,
                 max_links=self.max_links,
+                tables=tables,
             )
             # §7: guard the payload before caching so repeat reads carry
             # the already-scanned result.

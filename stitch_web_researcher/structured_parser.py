@@ -724,6 +724,7 @@ class StructuredOxideParser:
         html_metadata: Dict[str, Any],
         url: str,
         max_links: int = 20,
+        tables: Optional[List[ExtractedTable]] = None,
     ) -> ParsedDocumentPayload:
         """
         Convert a fetched HTML page (markdown + links + metadata) into
@@ -746,6 +747,10 @@ class StructuredOxideParser:
             The source URL.
         max_links : int
             Maximum links to include in the payload.
+        tables : list[ExtractedTable], optional
+            Tables pre-extracted from the raw HTML (Tier 3.11); attached
+            to both the payload and the single page, like the
+            PDF/Office paths do.
 
         Returns
         -------
@@ -785,11 +790,15 @@ class StructuredOxideParser:
             logger.warning("Failed to build DocumentMetadata: %s — using fallback", e)
             metadata = DocumentMetadata(file_name=slug, format="html")
 
+        # Tier 3.11: attach extracted tables (PDF/Office parity).
+        tables = list(tables) if tables else []
+
         # Wrap markdown as a single page
         page = ExtractedPage(
             page_number=1,
             raw_text=markdown,  # markdown IS the text content for HTML
             markdown=markdown,
+            tables=tables,
         )
 
         # C5: the tool description promises links in this payload —
@@ -799,7 +808,7 @@ class StructuredOxideParser:
         return ParsedDocumentPayload(
             metadata=metadata,
             pages=[page],
-            tables=[],
+            tables=tables,
             links=candidates,
         )
 

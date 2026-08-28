@@ -97,10 +97,12 @@ class TestStructuredToolEndToEnd:
             ("https://example.com/doc.pdf", "The doc"),
             ("https://example.com/next", "Next page"),
         ]
+        # Tier 3.11: the structured path uses the 5-tuple seam (raw HTML
+        # None here, so no tables are extracted).
         with patch.object(
             tb,
-            "_fetch_html",
-            return_value=("# Content", fake_links, {}, "static"),
+            "_fetch_html_with_html",
+            return_value=("# Content", fake_links, {}, "static", None),
         ):
             result = json.loads(tb.inspect_html_structured("https://example.com/"))
 

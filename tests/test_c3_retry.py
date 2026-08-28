@@ -106,8 +106,12 @@ class TestRepeatVisitServesCache:
     def test_structured_second_visit_serves_cache_not_warning(self, tmp_path):
         tb = _toolbox(tmp_path)
         url = "https://example.com/repeat-structured"
+        # Tier 3.11: the structured path fetches via _fetch_html_with_html
+        # (5-tuple with raw HTML; None here, so no tables are extracted).
         with patch.object(
-            tb, "_fetch_html", return_value=("hello", [], {}, "static")
+            tb,
+            "_fetch_html_with_html",
+            return_value=("hello", [], {}, "static", None),
         ) as mock_fetch:
             first = json.loads(tb.inspect_html_structured(url))
             second = json.loads(tb.inspect_html_structured(url))

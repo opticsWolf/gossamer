@@ -139,6 +139,24 @@ class TestUseSmartPlumbing:
         tb._fetch_html = fake_fetch
         return calls
 
+    @staticmethod
+    def _spy_structured(tb) -> list:
+        """Tier 3.11: the structured path uses the 5-tuple seam."""
+        calls = []
+
+        def fake_fetch(url, use_smart=None):
+            calls.append(use_smart)
+            return (
+                "Some markdown content.",
+                [("https://example.com/x", "x")],
+                {},
+                "static",
+                None,
+            )
+
+        tb._fetch_html_with_html = fake_fetch
+        return calls
+
     def test_inspect_html_page_passes_use_smart(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = self._spy(tb)
@@ -148,7 +166,7 @@ class TestUseSmartPlumbing:
 
     def test_inspect_html_structured_passes_use_smart(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
-        calls = self._spy(tb)
+        calls = self._spy_structured(tb)
         out = tb.inspect_html_structured(URL, use_smart=True)
         assert calls == [True]
         assert "Some markdown content." in out
