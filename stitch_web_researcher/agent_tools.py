@@ -46,6 +46,7 @@ from stitch_web_researcher.search_providers import (
     RateLimit,
     resolve_provider_name,
 )
+from stitch_web_researcher.text_links import extract_links
 from stitch_web_researcher import meta_extractor
 from stitch_web_researcher.cache import Cache
 from stitch_web_researcher.robots import RobotsChecker
@@ -193,6 +194,10 @@ class ExtractionResult(BaseModel):
     final_url: Optional[str] = None
     content_type: Optional[str] = None
     content_hash: Optional[str] = None
+    # Deep-research support: URLs written into the document text (detected
+    # from the full, untruncated content). Documents lose the <a href>
+    # structure of HTML pages, so this is the only link signal they have.
+    links: list[str] = Field(default_factory=list)
     # §7: optional prompt-injection guard block (present only when the
     # guard is enabled and a scanned scope was checked).
     guard: Optional[dict] = None
@@ -2930,6 +2935,7 @@ class WebResearcherToolbox:
                     # so fetched_at stays None; the hash still ties the read
                     # back to the stored bytes.
                     content_hash=_sha256_hex(cached),
+                    links=extract_links(cached),
                 )
             )
 
@@ -2951,6 +2957,9 @@ class WebResearcherToolbox:
                     # Tier 1.3: provenance of the download (or parse time for
                     # local files) plus a hash of the full extracted content.
                     content_hash=_sha256_hex(content),
+                    # Link detection runs on the full content, not the
+                    # truncated delivery — a budget cut must never lose links.
+                    links=extract_links(content),
                     **prov,
                 )
             )
@@ -3352,6 +3361,18 @@ class WebResearcherToolbox:
 
             parser = StructuredOxideParser()
             payload = parser.parse_file(tmp_path)
+
+            # Files lose <a href> structure: detect URLs written into the
+            # extracted text so documents get the same follow-up signal
+            # HTML pages get. (Anchored links, when the parser provides
+            # them, take precedence.)
+            if not payload.links:
+                full_text = "\n".join(p.raw_text for p in payload.pages)
+                text_urls = extract_links(full_text)
+                if text_urls:
+                    payload.links = build_follow_up_candidates(
+                        [(u, "(text)") for u in text_urls]
+                    )
 
             if is_url and tmp_path:
                 try:

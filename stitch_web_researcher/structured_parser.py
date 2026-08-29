@@ -311,8 +311,9 @@ class ParsedDocumentPayload(BaseModel):
     links: List[FollowUpCandidate] = Field(
         default_factory=list,
         description=(
-            "Follow-up link candidates found on the page "
-            "(populated for HTML pages; empty for files)."
+            "Follow-up link candidates: anchored links for HTML pages; "
+            "for files, URLs detected in the extracted text (title "
+            "'(text)')."
         ),
     )
     # §7: optional prompt-injection guard block (present only when the
