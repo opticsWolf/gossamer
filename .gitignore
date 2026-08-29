@@ -16,10 +16,8 @@ __pycache__/
 # Compiled extension (built via maturin; rebuild with `maturin develop`)
 *.so
 *.pyd
-# Windows debug symbols from the built extension. _core.pdb is the one
-# intentional exception — it stays tracked (see below).
+# Windows debug symbols from the built extension (churns on every rebuild).
 *.pdb
-!stitch_web_researcher/_core.pdb
 
 # Packaging
 build/
