@@ -26,6 +26,7 @@ by the meta-oxide clean-install fix.
 | Δ6 | E2 `seed_urls: list[str]` | Confirmed supported: `ToolParam(..., list[str], ...)` already ships in `batch_inspect_pages` (agent_tools.py:649) and `json_schema` emits `array of string` for it. No coercion work needed. | Verified against the registry, not assumed. |
 | Δ7 | E1 "one `search_web` call" | Exact seam: `self.search_web(f"site:{host_key} {focus}", max_results=5)`; parse the JSON, take `results` (list of `{title, url, snippet}`); `error` key or JSON failure → fail-open. Tier 2.8 in-memory search cache makes repeat crawls free. | E1's parser must match the real payload shape (`{"results": [...], "guard": {...}, ...}`). |
 | Δ8 | Open decisions §11 of the original plan | All five resolved (defaults adopted, logged in §6). | The plan was approved as written ("start with semantic crawl plan"). |
+| Δ9 | (added during step 1) "every existing v0.4.6 crawl test passes unchanged" | `test_relevance_focuses_the_crawl` score pins rescale because the expanded query's half-weighted terms join the flat-regime denominator: A `0.63 → 0.467`, A1 `0.417 → 0.302`. Pins widened (`0.4 ≤ A < 0.6`, `0.25 ≤ A1 < 0.5`) and an `+2` echo assertion added; all other assertions unchanged. | Discovered while computing the audit against the on-disk fixtures; see §2.9. |
 
 ## 1. Current state (verified seams, v0.4.7)
 
@@ -255,7 +256,7 @@ Thesaurus assumed curated per §2.6.3. `k` = terms expanded per crawl
 |------|---------|-------|
 | `test_root_fetch_failure_kills_crawl`, `…error_dict`, `…invalid_root_urls` | **unchanged** | Fail before scoring. |
 | `test_root_only_when_max_depth_zero` | **unchanged** | `expand` returns at `depth ≥ max_depth`; query `"deep learning"`-style text is only in a max_depth=0 fixture — no scoring runs. |
-| `test_relevance_focuses_the_crawl` (`query="deep learning"`) | **AMENDED (Δ7)** | Pins updated for the expanded denominator (see below). |
+| `test_relevance_focuses_the_crawl` (`query="deep learning"`) | **AMENDED (Δ9)** | Pins updated for the expanded denominator (see below). |
 | `test_flat_scores_degrade_to_plain_bfs` (`query="notes"`) | **unchanged** | `notes` excluded from clusters (§2.6.3) → no expansion; all scores `1.0` (context adds only `{notes}`) → BFS order. |
 | `test_depth_decay_allows_deep_overtake` | **AMENDED (Δ5)** | WEAK anchor `platform` → `company`; stop `frontier exhausted` (see below). |
 | `test_explicit_query_beats_derived` (`query="needle deep"`) | **unchanged** (verified) | `k=2` via the ML cluster (`deep`). N: `0.7·2/3 = 0.467`, ctx 0 → `0.467`. X: anchor `platform` context = whole short root md `{platform, stuff, here}` → query_cov 0, ctx `1.0` → `0.3`. `0.467 > 0.3` → `[ROOT, N]`, X not fetched ✓. |
@@ -265,7 +266,7 @@ Thesaurus assumed curated per §2.6.3. `k` = terms expanded per crawl
 | Host/filter tests (`same_host`, boilerplate, assets, documents, dedupe) | **unchanged** | Filters run before scoring or on the floor; scores only matter where asserted (none do, except ordering in `same_host` tests where all candidates tie). |
 | Cache tests, `execute_tool_dispatch`, `registry_shape` | **unchanged** | No payload shape change in step 1; registry unchanged. |
 
-#### The fixture amendments (Δ5 + Δ7, exact)
+#### The fixture amendments (Δ5 + Δ9, exact)
 
 `test_depth_decay_allows_deep_overtake` breaks as written: on the short
 root page, the weak candidate's anchor `"platform"` has a ±50 window that
