@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "stitch-web-researcher"
-version = "0.4.6"
+version = "0.4.7"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -36,7 +36,13 @@ dependencies = [
     "tiktoken>=0.5",
     "ddgs>=2.0",
     # Rust-backed extractors (same ecosystem as the _core module).
-    "meta-oxide>=0.1",
+    # meta-oxide: the PyPI releases (0.1.0/0.1.1) ship a broken sdist
+    # (missing python source -> maturin build fails on clean machines) and
+    # the only wheel is cp314-manylinux. The fork below contains the
+    # packaging fix (commit 81bdb53, v0.1.2). When 0.1.2 is published to
+    # PyPI, switch this back to "meta-oxide>=0.1.2" (direct references also
+    # make THIS project un-publishable to PyPI until then).
+    "meta-oxide @ git+https://github.com/opticsWolf/meta_oxide.git@81bdb53",
     "browser-oxide>=0.1",
 ]
 

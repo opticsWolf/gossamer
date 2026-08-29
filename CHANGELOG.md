@@ -4,6 +4,17 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.4.7] — clean-install fix for the meta-oxide dependency
+
+- `meta-oxide` now resolves to the packaging-fixed fork
+  (`git+https://github.com/opticsWolf/meta_oxide.git@81bdb53`, v0.1.2).
+  The PyPI releases ship a broken sdist (missing python source), so a
+  clean `pip install` of this package failed before this fix. Verified in
+  a fresh venv: install + full suite green (860 passed, 1 skipped, 7
+  deselected). Note: the PEP 508 direct reference means this project
+  cannot be uploaded to PyPI until meta-oxide 0.1.2 is published and the
+  dependency is switched back to `meta-oxide>=0.1.2`.
+
 ## [0.4.6] — focused crawl
 
 - New tool: `crawl(root_url, query=None, max_depth=3, max_pages=15,

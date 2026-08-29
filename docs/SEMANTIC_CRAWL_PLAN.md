@@ -2,7 +2,9 @@
 
 Status: **Draft for approval** (2026-08-28)
 Applies to: `stitch-web-researcher` at v0.4.6 (`dev` @ `57e2939`)
-Target releases: **v0.4.7** (features A–E) and **v0.4.8** (feature F, optional extra)
+Target releases: **v0.4.8** (features A–E) and **v0.4.9** (feature F, optional
+extra). *Shifted up one from the original v0.4.7/v0.4.8 — v0.4.7 was taken by
+the meta-oxide clean-install fix.*
 
 ---
 
@@ -45,7 +47,7 @@ feature is additive, fails open to the v0.4.6 behaviour, keeps the toolbox
 5. **Registry pin** — 13 tools; MCP/LLM pins in `tests/test_mcp_server.py`
    and `tests/test_p8_tool_registry.py` only change if a tool is added
    (this plan adds none).
-6. **Version convention** — A–E = v0.4.7 (feature), F = v0.4.8 (new
+6. **Version convention** — A–E = v0.4.8 (feature), F = v0.4.9 (new
    extra). Pure-Python: no Rust changes, no maturin rebuild in dev
    (release packaging rebuilds at ship time).
 
@@ -319,7 +321,7 @@ doesn't install the extra.
 
 ## 6. What we gain (before → after)
 
-| Gap | v0.4.6 | v0.4.7 (A–E) | v0.4.8 (+F) |
+| Gap | v0.4.6 | v0.4.8 (A–E) | v0.4.9 (+F) |
 |---|---|---|---|
 | Paraphrase links (G1) | missed | found when a thesaurus cluster shares a term | found on dense-vector similarity, no shared term required |
 | Common-word noise (G2) | uniform weights | IDF over the live site corpus | unchanged (A is final) |
@@ -347,14 +349,14 @@ pipeline, budget, and determinism invariants are untouched.
 
 | Step | Version | Content | Commits (one concern each) |
 |---|---|---|---|
-| 1 | 0.4.7 | A (BM25/IDF + anchor context + path priors) + B (thesaurus.json + expansion) | `Feature: BM25/IDF frontier scoring with offline thesaurus expansion (v0.4.7)` |
-| 2 | 0.4.7 | C (richness payload) + D (ranked documents) | `Feature: crawl richness stats and ranked document list` |
-| 3 | 0.4.7 | E1 + E2 + E3 docs (`search_prior`, `seed_urls`) | `Feature: discovery seeds for the crawl frontier (search prior, seed_urls)` |
-| 4 | 0.4.8 | F (`[embed]` extra, backend, blend, stats, stub, docs) | `Feature: optional local embeddings for crawl relevance (v0.4.8)` |
+| 1 | 0.4.8 | A (BM25/IDF + anchor context + path priors) + B (thesaurus.json + expansion) | `Feature: BM25/IDF frontier scoring with offline thesaurus expansion (v0.4.8)` |
+| 2 | 0.4.8 | C (richness payload) + D (ranked documents) | `Feature: crawl richness stats and ranked document list` |
+| 3 | 0.4.8 | E1 + E2 + E3 docs (`search_prior`, `seed_urls`) | `Feature: discovery seeds for the crawl frontier (search prior, seed_urls)` |
+| 4 | 0.4.9 | F (`[embed]` extra, backend, blend, stats, stub, docs) | `Feature: optional local embeddings for crawl relevance (v0.4.9)` |
 | — | — | README (new "Semantic Crawl" section + crawl param table), SPEC_AUDIT rows, badge (final test count), version bumps, push | folded into each step |
 
 Gates per step: full pytest (expect growth 859 → ~920+ by the end of
-0.4.7), ruff package clean, no Rust changes (no clippy/maturin needed in
+0.4.8), ruff package clean, no Rust changes (no clippy/maturin needed in
 dev; release packaging rebuilds at ship time).
 
 ## 9. Test plan (all offline, example.com, fake `_fetch_html`)
