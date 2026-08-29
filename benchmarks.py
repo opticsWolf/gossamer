@@ -249,7 +249,7 @@ def _guard_backend():
             g._ensure = lambda: None
         return g
 
-    return make, ("jailguard" if real else "stub detector (jailguard absent)")
+    return make, ("jailguard" if real else "stub detector (jailguard absent)"), real
 
 
 def load_guard_corpus():
@@ -283,7 +283,7 @@ def bench_guard():
     if not corpus:
         print(f"    (Skipped -- no corpus at {GUARD_CORPUS_DIR})")
         return None
-    make_guard, backend = _guard_backend()
+    make_guard, backend, _real = _guard_backend()
     arrow("backend", backend)
     arrow("corpus", f"{len(corpus)} documents, "
                     f"{sum(len(t) for _, _, t in corpus)} chars")
@@ -313,7 +313,7 @@ def bench_guard_corpus():
     if not corpus:
         print(f"    (Skipped -- no corpus at {GUARD_CORPUS_DIR})")
         return None
-    make_guard, backend = _guard_backend()
+    make_guard, backend, real = _guard_backend()
     arrow("backend", backend)
 
     _elapsed, _g, verdicts = _scan_corpus(make_guard, corpus, enabled=True)
@@ -342,8 +342,15 @@ def bench_guard_corpus():
         arrow("detection rate", f"{tp / inject:.2f}")
     # redact mode rewrites delivered content, so a non-zero FP rate on our
     # own mix is the number that decides whether it is safe to default to.
-    arrow("verdict", "redact is safe to consider" if fp == 0
-          else "redact would damage benign pages -- keep annotate")
+    # The stub's markers are written against this corpus, so only a real
+    # detector run produces that decision number; a stub run is a plumbing
+    # check and its accuracy numbers must not read as the detector's.
+    if real:
+        arrow("verdict", "redact is safe to consider" if fp == 0
+              else "redact would damage benign pages -- keep annotate")
+    else:
+        arrow("verdict", "suppressed -- stub backend: plumbing check, "
+                         "not detector accuracy")
     return {"tp": tp, "fp": fp, "tn": tn, "fn": fn}
 
 

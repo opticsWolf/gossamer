@@ -47,7 +47,7 @@ class TestCorpus:
 
 class TestBackendFallback:
     def test_falls_back_to_a_stub_when_jailguard_is_absent(self):
-        make, backend = benchmarks._guard_backend()
+        make, backend, _real = benchmarks._guard_backend()
         try:
             import jailguard  # noqa: F401
         except ImportError:
@@ -56,13 +56,13 @@ class TestBackendFallback:
             assert backend == "jailguard"
 
     def test_disabled_backend_is_the_real_noop_guard(self):
-        make, _backend = benchmarks._guard_backend()
+        make, _backend, _real = benchmarks._guard_backend()
         assert isinstance(make(False), guard_mod.NoopGuard)
 
     def test_enabled_backend_is_the_real_guard_class(self):
         # Only the model is stubbed: chunking, caching and stats stay
         # production code, which is the point of measuring at all.
-        make, _backend = benchmarks._guard_backend()
+        make, _backend, _real = benchmarks._guard_backend()
         assert isinstance(make(True), guard_mod.JailGuardGuard)
 
 
