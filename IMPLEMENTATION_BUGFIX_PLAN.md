@@ -284,6 +284,31 @@ What the run establishes is that the harness, the corpus and the decision
 criterion are in place, so installing the extra produces a real answer
 without further work.
 
+### Real detector run — 2026-08-28 (jailguard 0.1.2)
+
+The extra turned out to be installable here, so `benchmarks.py --guard`
+was re-run with the real ONNX model (90.4 MB, downloaded once and cached
+in the model dir):
+
+* machinery overhead: still negligible in steady state — **p50 8.6 ms**
+  per scan. The 4470.6 ms total for ten documents is the one-time model
+  load (p95 4386.2 ms), paid once per process, not per document.
+* detection rate on planted injections: **2/5** — misses:
+  `injected/01_hidden_comment.md`, `03_polite_request.md`,
+  `04_exfiltration.md`. The stub's 5/5 was not representative; the
+  fixtures are short pages whose phrasing sits partly outside the
+  model's training distribution. Do not cite the stub's 5/5.
+* false-positive rate on benign pages: **1/5** — the same canary
+  (`benign/03_prompt_engineering_article.md`, score 0.87). The
+  annotate-over-redact default is now confirmed on the real model, not
+  just on priors: the harness verdict reads "redact would damage benign
+  pages -- keep annotate".
+
+Open calibration item: the 3/5 misses mean the corpus's planted
+injections are a weak test of the real detector; enriching the corpus
+(longer context, model-native phrasings) belongs in the next plan, not
+this one.
+
 ### Known, out of scope
 
 * `benchmarks.py` carries two pre-existing ruff findings (`F841`, `F401`)
@@ -291,5 +316,8 @@ without further work.
 * `tests/test_browser_provider.py`, `tests/test_meta_oxide.py` and
   `tests/test_providers.py` carry seven pre-existing ruff findings, same
   reason.
-* `stitch_web_researcher/_core.pdb` is a tracked build artifact and moves
-  on every rebuild; it probably belongs in `.gitignore`.
+* `stitch_web_researcher/_core.pdb` was a tracked build artifact that
+  moved on every rebuild. **Resolved (bd59b11):** untracked via
+  `git rm --cached` and `*.pdb` is now ignored without the
+  exception — this also closes CODE_REVIEW item P3 (the two scratch
+  JSONs it named were already untracked).
