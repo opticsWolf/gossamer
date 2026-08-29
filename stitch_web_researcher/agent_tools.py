@@ -725,7 +725,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "crawl",
-        "Bounded focused crawl over a site's link graph: BFS from root_url, but the frontier is ranked by relevance (score x 0.7^depth), so the page budget goes to the most relevant links; flat scores degrade to plain BFS. Returns per-page title, relevance score, a content skim, and richness stats (content_chars, term_hits; optional keyword-densest excerpt) (full pages stay in the page cache and can be re-read in full via inspect_html_page), plus a rank-ordered list of documents (PDF/DOCX links, never fetched here), skipped links with reasons, and counters.",
+        "Bounded focused crawl over a site's link graph: BFS from root_url, but the frontier is ranked by relevance (score x 0.7^depth), so the page budget goes to the most relevant links; flat scores degrade to plain BFS. Optionally seeds the frontier with a site-scoped web search (search_prior) and caller-supplied URLs (seed_urls). Returns per-page title, relevance score, a content skim, and richness stats (content_chars, term_hits; optional keyword-densest excerpt) (full pages stay in the page cache and can be re-read in full via inspect_html_page), plus a rank-ordered list of documents (PDF/DOCX links, never fetched here), skipped links with reasons, and counters.",
         "crawl",
         (
             ToolParam(
@@ -768,6 +768,18 @@ TOOL_REGISTRY = (
                 bool,
                 False,
                 "Also return a keyword-densest 300-char excerpt per page (raises the payload size; pair with a lower max_pages)",
+            ),
+            ToolParam(
+                "search_prior",
+                bool,
+                False,
+                "Before crawling, run one site-scoped web search (site:host focus) and feed its top-5 results into the frontier at depth 1. They are exempt from min_score (the engine already ranked them) and a failed search is non-fatal (the crawl continues link-graph only)",
+            ),
+            ToolParam(
+                "seed_urls",
+                list[str],
+                [],
+                "Extra starting URLs, normalized against the root and SSRF-checked, pushed at depth 0 (their children are depth 1); they respect min_score (a below-floor seed is skipped with a reason)",
             ),
         ),
     ),
@@ -3883,6 +3895,7 @@ class WebResearcherToolbox:
     _CRAWL_DEPTH_DECAY = 0.7    # a depth-d link must outscore shallow ones ~1/0.7^d
     _CRAWL_QUERY_WEIGHT = 0.7   # weight of query coverage in the score
     _CRAWL_CONTEXT_WEIGHT = 0.3  # weight of containing-page topic coverage
+    _CRAWL_RANK_BONUS = 0.1     # E1: search-prior rank i gets +0.1/(i+1)
     _CRAWL_TOPIC_WORDS = 40     # size of the per-page topic vocabulary
     _CRAWL_MIN_SCORE = 0.05     # default relevance floor (parameter)
     _CRAWL_LIST_CAP = 30        # cap for auxiliary lists in the payload
@@ -4085,6 +4098,12 @@ class WebResearcherToolbox:
             counts[t] = counts.get(t, 0) + 1
         ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return {t for t, _ in ranked[: cls._CRAWL_TOPIC_WORDS]}
+
+    @classmethod
+    def _crawl_is_document(cls, url: str) -> bool:
+        """True when the URL path carries a document extension (D routing)."""
+        path = (urlparse(url).path or "").lower()
+        return any(path.endswith(ext) for ext in DOCUMENT_EXTENSIONS)
 
     @classmethod
     def _crawl_anchor_context(cls, md: str, anchor: str) -> frozenset:
@@ -4305,6 +4324,8 @@ class WebResearcherToolbox:
         same_host: bool = False,
         min_score: float = 0.05,
         excerpts: bool = False,
+        search_prior: bool = False,
+        seed_urls: Optional[list] = None,
     ) -> str:
         """Bounded focused crawl over a site's link graph.
 
@@ -4337,6 +4358,17 @@ class WebResearcherToolbox:
         the page cache in full, so a later ``inspect_html_page`` of the
         same URL is a cache hit delivering the complete content.
 
+        *search_prior* (E1, opt-in) runs one site-scoped web search
+        before the crawl and feeds its top-5 results into the frontier
+        at depth 1 with a small rank bonus; they are exempt from
+        *min_score* (the engine already ranked them), and any search
+        failure is non-fatal (the crawl degrades to link-graph only).
+        *seed_urls* (E2) are caller/agent-supplied starting URLs,
+        normalised against the root and SSRF-checked in full; they are
+        pushed at depth 0 (their children are depth 1) and respect
+        *min_score* — a below-floor seed is skipped with a reason,
+        never silent.
+
         Each page record also carries richness stats: ``content_chars``
         (full delivered size, pre-skim) and ``term_hits`` (query-term
         occurrences in the full body). With ``excerpts=True`` each page
@@ -4347,11 +4379,12 @@ class WebResearcherToolbox:
         Returns
         -------
         str
-            JSON: root, query echo, parameters, per-page records
-            (url, depth, title, score, markdown skim, links_total,
-            content_chars, term_hits, optional excerpt), errors,
-            ranked documents, skipped (with reasons), counters, and
-            the stop reason.
+            JSON: root, query echo, parameters (echoing search_prior and,
+            when it is on, how many search results were eligible),
+            per-page records (url, depth, title, score, markdown skim,
+            links_total, content_chars, term_hits, optional excerpt),
+            errors, ranked documents, skipped (with reasons), counters,
+            and the stop reason.
         """
         try:
             root = normalize_url(root_url)
@@ -4378,6 +4411,10 @@ class WebResearcherToolbox:
             min_score = self._CRAWL_MIN_SCORE
         min_score = max(0.0, min_score)
         excerpts = bool(excerpts)
+        search_prior = bool(search_prior)
+        if isinstance(seed_urls, str):
+            seed_urls = [seed_urls]
+        seeds = [str(s) for s in (seed_urls or [])]
 
         root_key = self._crawl_host_key(root)
         queue: list = []  # (effective score, seq, url, depth, anchor)
@@ -4497,11 +4534,78 @@ class WebResearcherToolbox:
                     depth + 1,
                     str(cand.get("title") or ""),
                 ))
-            if len(queue) > self._CRAWL_QUEUE_CAP:
-                # Evict the weakest candidates, keeping the frontier bounded.
-                queue.sort(key=lambda e: (e[0], e[1]))
-                queue_dropped += len(queue) - self._CRAWL_QUEUE_CAP
-                queue = queue[-self._CRAWL_QUEUE_CAP:]
+            trim_queue()
+
+        def add_external(
+            url: str,
+            anchor: str,
+            push_depth: int,
+            rank_bonus: float = 0.0,
+            exempt_floor: bool = False,
+            below_reason: str = "below min score",
+        ) -> bool:
+            """Filter, score, and enqueue one external candidate (E1/E2).
+
+            Documents are routed to the ranked list exactly like page
+            links (D). Page candidates are scored with the current corpus
+            (the root page's topic words as containing context) and pushed
+            at *push_depth* (seeds 0, search results 1). Returns True when
+            the candidate entered the page frontier.
+            """
+            nonlocal seq, documents_total, documents_below_score
+            key = url.split("#", 1)[0]
+            if key in visited:
+                return False
+            if self._crawl_is_document(url):
+                if key in doc_seen:
+                    return False
+                doc_seen.add(key)
+                documents_total += 1
+                doc_score = self._crawl_score(
+                    url, anchor, 0,
+                    query_terms, root_terms,
+                    corpus=corpus,
+                    base_terms=base_terms,
+                )
+                if doc_score < min_score:
+                    documents_below_score += 1
+                    note_skipped(url, "below min score")
+                elif len(documents) < self._CRAWL_LIST_CAP:
+                    documents.append({
+                        "url": url,
+                        "anchor": anchor,
+                        "score": round(doc_score, 3),
+                    })
+                return False
+            if same_host and self._crawl_host_key(url) != root_key:
+                note_skipped(url, "external host")
+                return False
+            path = (urlparse(url).path or "").lower()
+            if any(path.startswith(p) for p in self._CRAWL_SKIP_PATH_PREFIXES):
+                note_skipped(url, "boilerplate path")
+                return False
+            if os.path.splitext(path)[1] in self._CRAWL_SKIP_EXTENSIONS:
+                note_skipped(url, "asset")
+                return False
+            score = self._crawl_score(
+                url, anchor, push_depth,
+                query_terms, root_terms,
+                corpus=corpus,
+                base_terms=base_terms,
+            )
+            if score < min_score and not exempt_floor:
+                note_skipped(url, below_reason)
+                return False
+            visited.add(key)
+            seq += 1
+            queue.append((
+                (score + rank_bonus) * (self._CRAWL_DEPTH_DECAY ** push_depth),
+                seq,
+                key,
+                push_depth,
+                anchor,
+            ))
+            return True
 
         def fetch_record(url: str, depth: int, score_eff: float) -> None:
             """Fetch one candidate through the normal page pipeline."""
@@ -4547,6 +4651,14 @@ class WebResearcherToolbox:
             corpus.add_page(self._crawl_tokens(md))
             expand(page, url, depth)
 
+        def trim_queue() -> None:
+            """Evict the weakest candidates, keeping the frontier bounded."""
+            nonlocal queue, queue_dropped
+            if len(queue) > self._CRAWL_QUEUE_CAP:
+                queue.sort(key=lambda e: (e[0], e[1]))
+                queue_dropped += len(queue) - self._CRAWL_QUEUE_CAP
+                queue = queue[-self._CRAWL_QUEUE_CAP:]
+
         # Root: always fetched (depth 0); a root failure kills the crawl.
         try:
             raw_root = self._inspect_html_page_impl(root, None, "", 0, 1)
@@ -4585,6 +4697,10 @@ class WebResearcherToolbox:
         })
         visited.add(root.split("#", 1)[0])
         corpus.add_page(self._crawl_tokens(root_md))
+        # E1/E2 scoring context: the root page's own topic words stand in
+        # for a containing page when the candidate comes from outside the
+        # link graph (seeds, search results).
+        root_terms = self._crawl_topic_words(root_md + " " + root_title)
 
         # Effective query: the caller's focus, or the root page itself,
         # then expanded with the offline thesaurus (semantic B).  The
@@ -4610,6 +4726,80 @@ class WebResearcherToolbox:
                 root_rec["excerpt"] = excerpt
         expand(root_page, root, 0)
 
+        # E2: caller/agent-supplied seed URLs. Seeds are LLM-supplied, so
+        # the SSRF policy applies in full (S1). Each is pushed at depth 0
+        # (its children land at depth 1 within max_depth) and respects the
+        # min_score floor — a below-floor seed is skipped, never silent.
+        for seed in seeds:
+            try:
+                seed_url = normalize_url(seed, base=root)
+            except ValueError:
+                note_skipped(seed, "invalid url")
+                continue
+            try:
+                self._validate_url(seed_url)
+            except SsrfBlockedError:
+                note_skipped(seed, "ssrf blocked")
+                continue
+            except ValueError:
+                note_skipped(seed, "invalid url")
+                continue
+            add_external(seed_url, "", 0, below_reason="seed below min score")
+
+        # E1: search prior. One site-scoped search seeds the frontier with
+        # the engine's own top results (rank bonus 0.1/(i+1), depth 1,
+        # exempt from the floor — the engine already ranked them). Any
+        # failure is non-fatal: the crawl degrades to link-graph only.
+        search_results_count = 0
+        if search_prior and max_depth >= 1:
+            if query:
+                focus = str(query)
+            elif root_title:
+                focus = root_title
+            else:
+                focus = " ".join(sorted(base_terms)[:6]) or "site content"
+            site_query = f"site:{self._crawl_host_key(root)} {focus}"
+            try:
+                raw = self.search_web(site_query, max_results=5)
+            except Exception:
+                raw = json.dumps({"error": "search prior failed"})
+            try:
+                payload = json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, TypeError):
+                payload = None
+            results = None
+            if isinstance(payload, list):
+                results = payload
+            elif isinstance(payload, dict):
+                if "error" in payload:
+                    logger.warning("crawl search prior: %s", payload.get("error"))
+                else:
+                    results = payload.get("results")
+            if not isinstance(results, list):
+                logger.warning(
+                    "crawl search prior failed for %r; continuing link-graph only",
+                    site_query,
+                )
+                results = []
+            for i, res in enumerate(results[:5]):
+                if not isinstance(res, dict):
+                    continue
+                cand_url = str(res.get("url") or "")
+                try:
+                    cand_url = normalize_url(cand_url, base=root)
+                except ValueError:
+                    continue
+                if add_external(
+                    cand_url,
+                    str(res.get("title") or ""),
+                    1,
+                    rank_bonus=self._CRAWL_RANK_BONUS / (i + 1),
+                    exempt_floor=True,
+                ):
+                    search_results_count += 1
+
+        trim_queue()
+
         stop = "frontier exhausted"
         while queue:
             if len(pages) >= max_pages:
@@ -4633,6 +4823,7 @@ class WebResearcherToolbox:
             "same_host": same_host,
             "min_score": min_score,
             "excerpts": excerpts,
+            "search_prior": search_prior,
             "pages": pages,
             "errors": errors[: self._CRAWL_LIST_CAP],
             "errors_total": len(errors),
@@ -4645,6 +4836,8 @@ class WebResearcherToolbox:
             "count": len(pages),
             "stop": stop,
         }
+        if search_prior:
+            result["search_results"] = search_results_count
         return self._fit_json(
             lambda b: self._shrink_crawl(result, b),
             self.max_markdown_chars,

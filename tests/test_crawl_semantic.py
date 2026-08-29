@@ -385,3 +385,227 @@ class TestBudgetWithRichness:
         full = _result(tb2, max_pages=5, excerpts=True)
         assert full["count"] == 5
         assert all("excerpt" in p for p in full["pages"])
+
+
+# ── E1: search prior + E2: seed URLs + E3: cross-modal loop ──
+
+
+class _SearchFake:
+    """Minimal search-provider stand-in (records every search call)."""
+
+    def __init__(self, results=None, exc=None):
+        self.name = "fake"
+        self._results = results or []
+        self._exc = exc
+        self.calls = []
+
+    def search(self, query, max_results=5):
+        self.calls.append(query)
+        if self._exc is not None:
+            raise self._exc
+        return [dict(r) for r in self._results][:max_results]
+
+
+def _search_results(*items):
+    return [{"title": t, "url": u, "snippet": "snippet text"} for t, u in items]
+
+
+class TestSearchPrior:
+    def test_off_by_default(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        parsed = _result(tb, query="deep learning")
+        assert parsed["search_prior"] is False
+        assert "search_results" not in parsed
+
+    def test_prior_feeds_frontier_in_rank_order(self, tmp_path):
+        S1 = "https://example.com/s1"
+        S2 = "https://example.com/s2"
+        tb = _toolbox(tmp_path)
+        prov = _SearchFake(_search_results(("s1", S1), ("s2", S2)))
+        tb.providers = [prov]
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform", links=[]),
+            S1: _page("deep learning overview.\n"),
+            S2: _page("deep learning basics.\n"),
+        })
+        parsed = _result(tb, query="deep learning", search_prior=True)
+        assert parsed["search_prior"] is True
+        assert parsed["search_results"] == 2
+        depths = {p["url"]: p["depth"] for p in parsed["pages"]}
+        assert depths[S1] == 1
+        assert depths[S2] == 1
+        # Flat scores: the rank bonus (+0.1/1 > +0.1/2) decides the order.
+        urls = _fetched_urls(parsed)
+        assert urls.index(S1) < urls.index(S2)
+        assert len(prov.calls) == 1
+        assert prov.calls[0].startswith("site:example.com")
+
+    def test_prior_floor_exempt(self, tmp_path):
+        S1 = "https://example.com/irrelevant"
+        tb = _toolbox(tmp_path)
+        tb.providers = [_SearchFake(_search_results(("x", S1)))]
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform", links=[]),
+            S1: _page("totally unrelated content.\n"),
+        })
+        parsed = _result(tb, query="deep learning", search_prior=True)
+        # Score-0 candidate: the min_score floor does not apply to priors.
+        assert S1 in _fetched_urls(parsed)
+
+    def test_prior_provider_failure_is_fail_open(self, tmp_path):
+        P1 = "https://example.com/p1"
+        tb = _toolbox(tmp_path)
+        tb.providers = [_SearchFake(exc=RuntimeError("boom"))]
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform",
+                        links=[(P1, "deep learning guide")]),
+            P1: _page("deep content.\n"),
+        })
+        parsed = _result(tb, query="deep learning", search_prior=True)
+        # No crawl-level errors; the link-graph crawl completes as usual.
+        assert parsed["errors"] == []
+        assert P1 in _fetched_urls(parsed)
+        assert parsed["search_results"] == 0
+
+    def test_prior_error_payload_is_fail_open(self, tmp_path):
+        tb = _toolbox(tmp_path)
+
+        def fake_search(query, max_results=5, provider=None):
+            return json.dumps({"error": "all providers failed"})
+
+        tb.search_web = fake_search
+        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        parsed = _result(tb, query="deep learning", search_prior=True)
+        assert parsed["search_results"] == 0
+        assert parsed["errors"] == []
+
+    def test_prior_document_result_routed_to_documents(self, tmp_path):
+        PDF = "https://example.com/report.pdf"
+        tb = _toolbox(tmp_path)
+        tb.providers = [
+            _SearchFake(_search_results(("deep learning report", PDF)))
+        ]
+        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        parsed = _result(tb, query="deep learning", search_prior=True)
+        # The document is collected (scored, floored) — never fetched.
+        assert [d["url"] for d in parsed["documents"]] == [PDF]
+        assert PDF not in _fetched_urls(parsed)
+
+    def test_prior_repeat_crawl_reuses_search_cache(self, tmp_path):
+        S1 = "https://example.com/s1"
+        tb = _toolbox(tmp_path)
+        prov = _SearchFake(_search_results(("s1", S1)))
+        tb.providers = [prov]
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform", links=[]),
+            S1: _page("deep learning overview.\n"),
+        })
+        p1 = _result(tb, query="deep learning", search_prior=True)
+        p2 = _result(tb, query="deep learning", search_prior=True)
+        # Tier 2.8 in-memory search cache: provider queried once, ever.
+        assert len(prov.calls) == 1
+        assert p1["search_results"] == 1
+        assert p2["search_results"] == 1
+
+
+class TestSeedUrls:
+    def test_seed_fetched_depth_zero_children_depth_one(self, tmp_path):
+        SEED = "https://example.com/deep/seed"
+        CHILD = "https://example.com/deep/child"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform", links=[]),
+            SEED: _page("deep learning seed page.",
+                        links=[(CHILD, "deep learning child")]),
+            CHILD: _page("deep learning child page.\n"),
+        })
+        parsed = _result(tb, query="deep learning", seed_urls=[SEED])
+        depths = {p["url"]: p["depth"] for p in parsed["pages"]}
+        assert depths[SEED] == 0
+        assert depths[CHILD] == 1
+        assert parsed["errors"] == []
+
+    def test_seed_equal_to_root_is_a_noop(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        fake = _fake_fetch({ROOT: _page("deep learning platform")})
+        tb._fetch_html = fake
+        parsed = _result(tb, query="deep learning", seed_urls=[ROOT])
+        assert fake.state["calls"].count(ROOT) == 1
+        assert parsed["count"] == 1
+
+    def test_seed_below_floor_skipped_with_reason(self, tmp_path):
+        SEED = "https://example.com/irrelevant"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform", links=[]),
+            SEED: _page("irrelevant page.\n"),
+        })
+        parsed = _result(tb, query="deep learning", seed_urls=[SEED])
+        skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
+        assert skipped.get(SEED) == "seed below min score"
+        assert SEED not in _fetched_urls(parsed)
+
+    def test_seed_external_host_skipped(self, tmp_path):
+        EXT = "https://example.org/deep"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        parsed = _result(
+            tb, query="deep learning", same_host=True, seed_urls=[EXT]
+        )
+        skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
+        assert skipped.get(EXT) == "external host"
+
+    def test_seed_fetch_failure_is_non_fatal(self, tmp_path):
+        BAD = "https://example.com/deep/bad"
+        GOOD = "https://example.com/deep/good"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch(
+            {
+                ROOT: _page("deep learning platform", links=[]),
+                GOOD: _page("deep learning good page.\n"),
+            },
+            fail_on={BAD},
+        )
+        parsed = _result(
+            tb, query="deep learning", seed_urls=[BAD, GOOD]
+        )
+        assert any(e["url"] == BAD for e in parsed["errors"])
+        assert GOOD in _fetched_urls(parsed)
+
+    def test_seed_ssrf_blocked(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", raising=False)
+        META = "http://169.254.169.254/latest/meta-data"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        parsed = _result(tb, query="deep learning", seed_urls=[META])
+        skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
+        assert skipped.get(META) == "ssrf blocked"
+        assert parsed["errors"] == []
+
+
+class TestCrossModalLoop:
+    def test_document_links_feed_next_crawl(self, tmp_path):
+        # E3 (pattern, no mechanism): crawl -> documents -> agent reads the
+        # document (extract_document surfaces its internal links) -> next
+        # crawl seeded with those links.
+        PDF = "https://example.com/report.pdf"
+        U1 = "https://example.com/deep/one"
+        U2 = "https://example.com/deep/two"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("deep learning platform",
+                        links=[(PDF, "deep learning annual report")]),
+            U1: _page("deep learning detail one.\n"),
+            U2: _page("deep learning detail two.\n"),
+        })
+        first = _result(tb, query="deep learning")
+        assert [d["url"] for d in first["documents"]] == [PDF]
+        # Simulate the extract_document step surfacing the links the PDF
+        # contains (v0.4.5 text link detection).
+        extracted = [U1, U2]
+        second = _result(tb, query="deep learning", seed_urls=extracted)
+        depths = {p["url"]: p["depth"] for p in second["pages"]}
+        assert depths[U1] == 0
+        assert depths[U2] == 0
+        assert second["errors"] == []

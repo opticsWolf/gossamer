@@ -496,6 +496,16 @@ seed_urls)`.
   `"external host"`; seed fetch failure → `errors`, budget untouched.
 - E3: the round-trip test above.
 
+As implemented: 14 tests (7 E1, 6 E2, 1 E3) — the list above plus
+`search_prior` off-by-default echo, an `errors`-payload (not just
+provider-exception) fail-open case, and an SSRF-blocked seed
+(`"ssrf blocked"`). Two implementation decisions: E1 is gated on
+`max_depth >= 1` (search results are depth 1 by construction, so a
+root-only crawl stays root-only), while seeds are pushed at depth 0
+even for `max_depth=0` (they sit at the root's own level). The
+`search_results` count covers page candidates that entered the
+frontier; document results are counted in `documents_total` instead.
+
 ### 4.5 Docs/commit/badge (step 3 — closes v0.4.8)
 
 - README: `search_prior` + `seed_urls` params, the E3 loop pattern, and

@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-860%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-897%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -503,8 +503,8 @@ for s in report["sources"]:
 ### Focused Crawl (v0.4.6)
 
 `crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
-min_score=0.05)` answers "what does this site contain?" with one bounded
-run. It is BFS over the link graph, but the frontier is a priority
+min_score=0.05, excerpts=False, search_prior=False, seed_urls=[])`
+answers "what does this site contain?" with one bounded run. It is BFS over the link graph, but the frontier is a priority
 queue, so hop 1 cannot exhaust the budget before relevant depth-2/3
 pages are seen:
 
@@ -539,6 +539,20 @@ pages are seen:
   the full body). With `excerpts=True` a keyword-densest 300-char
   `excerpt` is added per page (raises the payload — pair with a lower
   `max_pages`).
+- **Discovery seeds** — `search_prior=True` runs one site-scoped web
+  search before the crawl (`site:<host> <focus>`) and feeds its top-5
+  results into the frontier at depth 1 with a small rank bonus
+  (+0.1/rank); the engine already ranked them, so they are exempt from
+  `min_score`, and a failed search is non-fatal (the crawl degrades to
+  link-graph discovery; repeat crawls hit the in-memory search cache).
+  `seed_urls=[…]` are caller-supplied starting URLs: normalised against
+  the root, SSRF-checked in full, pushed at depth 0 (their children are
+  depth 1), and subject to the floor — a below-floor seed is skipped as
+  `"seed below min score"`, never silent.
+- **Cross-modal loop** — crawl → `documents` → `extract_document` on
+  the top PDF → its `links` (text link detection) → next crawl with
+  `seed_urls` (or a fresh crawl rooted at the document's host). The
+  loop is the agent's; the crawl only exposes the pieces.
 - **Full re-reads** — every fetched page stays in the page cache in
   full; the crawl's 300-char skim is presentation-only, so a later
   `inspect_html_page` of any crawled URL is a cache hit with the
@@ -590,9 +604,9 @@ reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
   a missing or malformed thesaurus simply disables expansion.
 
 No new parameters in this step — the same `crawl(...)` call gets the
-better ranking. (Discovery seeds — search prior, seed URLs, and the
-cross-modal loop — land in the next 0.4.8 step; optional local
-embeddings in v0.4.9.)
+better ranking. Discovery seeds (search prior, seed URLs, and the
+cross-modal loop) shipped in the same version — see Focused Crawl
+above. Optional local embeddings land in v0.4.9.
 
 ### Document Link Detection (v0.4.5)
 

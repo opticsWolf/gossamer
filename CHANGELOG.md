@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [0.4.8] — semantic crawl: BM25/IDF frontier scoring + offline thesaurus
+## [0.4.8] — semantic crawl: BM25/IDF frontier scoring, thesaurus, richness, ranked documents, discovery seeds
 
 - **BM25/IDF scoring (feature A)**: the crawl frontier's relevance score
   now weights terms by inverse document frequency over the pages fetched
@@ -36,9 +36,28 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   with the live corpus (depth 0, no decay), floored by `min_score`
   (below-floor entries counted in `documents_below_score` and
   reported in `skipped`); still never fetched.
-- 16 new tests for A+B, 7 for C+D in `tests/test_crawl_semantic.py`;
-  legacy no-corpus `_crawl_score` calls return bit-for-bit v0.4.6
-  results.
+- **Search prior (feature E1)**: `search_prior=True` (opt-in) runs one
+  site-scoped web search (`site:<host> <focus>`, top 5) before the crawl
+  and feeds the results into the frontier at depth 1 with a rank bonus
+  (+0.1/(rank+1), ties by rank). Results are exempt from `min_score`
+  (the engine already ranked them), document results route to
+  `documents` like page links, and a failed search is fail-open
+  (warning logged, the crawl continues link-graph only). The payload
+  echoes `search_prior` and, when on, `search_results` (eligible
+  count).
+- **Seed URLs (feature E2)**: `seed_urls` (list, default empty) are
+  caller/agent-supplied starting URLs — normalised against the root,
+  SSRF-checked in full (S1), pushed at depth 0 (their children are
+  depth 1), and subject to `min_score`; a below-floor seed is skipped
+  with reason `"seed below min score"`, a blocked one as
+  `"ssrf blocked"`. Seed fetch failures are normal non-fatal `errors`
+  entries that do not consume budget.
+- **Cross-modal loop (feature E3)**: the intended agent pattern (no
+  mechanism added): crawl → top `documents` → `extract_document` → its
+  `links` (v0.4.5 text link detection) → next crawl with `seed_urls`.
+- New tests: 16 for A+B, 7 for C+D, 14 for E1–E3 in
+  `tests/test_crawl_semantic.py`; legacy no-corpus `_crawl_score` calls
+  return bit-for-bit v0.4.6 results.
 
 ## [0.4.7] — clean-install fix for the meta-oxide dependency
 
