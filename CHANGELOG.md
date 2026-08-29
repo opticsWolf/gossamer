@@ -14,6 +14,9 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   deselected). Note: the PEP 508 direct reference means this project
   cannot be uploaded to PyPI until meta-oxide 0.1.2 is published and the
   dependency is switched back to `meta-oxide>=0.1.2`.
+- `browser-oxide` moved to the optional `[browser]` extra: PyPI ships
+  macOS/Windows wheels only, so it could never install on Linux; the code
+  degrades to the static fetch path when it is absent.
 
 ## [0.4.6] — focused crawl
 

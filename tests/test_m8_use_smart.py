@@ -113,6 +113,10 @@ class TestUseSmartDispatch:
             return ("stealth-md", [], {})
 
         monkeypatch.setattr(agent_tools, "_fetch_with_browser_oxide", fake_stealth)
+        # The dispatch consults the availability flag, not just the function
+        # being patched — set it so the test is hermetic (browser-oxide is an
+        # optional [browser] extra and may be absent).
+        monkeypatch.setattr(agent_tools, "_browser_oxide_available", True)
         result = tb._fetch_html(URL)
         assert stealth_calls == [URL]
         assert result[0] == "stealth-md"

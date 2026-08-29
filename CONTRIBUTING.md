@@ -12,7 +12,8 @@ python -m venv .venv
 pip install -e ".[mcp,documents]"   # builds the Rust extension via maturin
 ```
 
-Optional extras: `guard` (prompt-injection detector), `embed` (planned:
+Optional extras: `browser` (stealth headless rendering; macOS/Windows
+only on PyPI), `guard` (prompt-injection detector), `embed` (planned:
 local embeddings). Dev-only deps in `requirements.txt`.
 
 After touching `Cargo.toml` or `src/*.rs`:

@@ -652,8 +652,8 @@ stitch-web-researcher/
 | | `httpx >=0.27` | Async HTTP for providers |
 | | `pydantic >=2.7` | Data validation schemas |
 | | `tiktoken >=0.5.0` | Token counting & truncation |
-| **Oxide SDK** | `meta_oxide >=0.1` | HTML metadata extraction |
-| | `browser_oxide >=0.1` | Headless JS rendering |
+| **Oxide SDK** | `meta_oxide 0.1.2` (git fork — PyPI sdist broken, see CHANGELOG 0.4.7) | HTML metadata extraction |
+| **Optional — `[browser]`** | `browser_oxide >=0.1` | Headless JS rendering (macOS/Windows only on PyPI; static fallback without it) |
 | **Optional — `[documents]`** | `pdf_oxide >=0.1` | High-speed PDF extraction |
 | | `office_oxide >=0.1` | DOCX/XLSX/PPTX extraction (PyPI) |
 | **Optional — `[mcp]`** | `mcp >=2.0` | MCP server runtime (Python 3.10+) |

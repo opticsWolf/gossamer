@@ -184,6 +184,9 @@ class TestBrowserProvenance:
         monkeypatch.setattr(
             agent_tools, "_fetch_with_browser_oxide", lambda u: ("fb-md", [], {})
         )
+        # browser-oxide is an optional [browser] extra — pin the flag so the
+        # dispatch is exercised even where the package is not installed.
+        monkeypatch.setattr(agent_tools, "_browser_oxide_available", True)
 
         def dead_static(url):
             raise RuntimeError("static down")

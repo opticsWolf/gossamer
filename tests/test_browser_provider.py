@@ -103,6 +103,9 @@ def test_close_shuts_down_engine():
     fake_module = types.ModuleType("browser_oxide")
     fake_browser = MagicMock()
     fake_module.Browser = MagicMock(return_value=fake_browser)
+    # _get_browser also touches Profile.chrome() — the fake must have it when
+    # the real package is absent (browser-oxide is an optional [browser] extra).
+    fake_module.Profile = MagicMock()
     sys.modules.setdefault("browser_oxide", fake_module)
     try:
         p = BrowserOxideSearchProvider(delay=0.0)

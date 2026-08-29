@@ -43,7 +43,6 @@ dependencies = [
     # PyPI, switch this back to "meta-oxide>=0.1.2" (direct references also
     # make THIS project un-publishable to PyPI until then).
     "meta-oxide @ git+https://github.com/opticsWolf/meta_oxide.git@81bdb53",
-    "browser-oxide>=0.1",
 ]
 
 [project.urls]
@@ -53,6 +52,10 @@ Changelog = "https://github.com/opticsWolf/stitch-web-researcher/releases"
 
 [project.optional-dependencies]
 mcp = ["mcp>=2.0"]
+# Stealth headless rendering fallback (fetch_smart_page / use_smart=True).
+# Not a hard dependency: PyPI has no Linux wheels for browser-oxide, and the
+# code degrades gracefully to the static fetch path when it is absent.
+browser = ["browser-oxide>=0.1"]
 # PDF/Office extraction; the package imports fine without them, but
 # extract_document / extract_document_structured require this extra.
 documents = [

@@ -137,6 +137,11 @@ class TestFetchSmartPageFallback:
         with patch(
             "stitch_web_researcher.agent_tools._fetch_with_browser_oxide",
             return_value=("md", [], {"meta": {"title": "browser title"}}),
+        ), patch(
+            # Dispatch consults the availability flag; browser-oxide is an
+            # optional [browser] extra and may be absent in this environment.
+            "stitch_web_researcher.agent_tools._browser_oxide_available",
+            True,
         ):
             md, links, meta = agent_tools.fetch_smart_page("https://example.com")
         assert md == "md"
