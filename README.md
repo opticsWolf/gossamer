@@ -528,8 +528,17 @@ pages are seen:
   costing budget; candidates below `min_score` are skipped and
   reported with their reason.
 - **Documents** — links to PDF/DOCX/… are never fetched by the crawl;
-  they are collected in `documents` for the agent to read via
-  `extract_document` (which surfaces the URLs written inside them).
+  they are collected in `documents` as rank-ordered records
+  (`{url, anchor, score}` — scored at first sighting with the live
+  corpus, no depth decay) for the agent to read via `extract_document`
+  (which surfaces the URLs written inside them). Documents below
+  `min_score` are counted in `documents_below_score` and reported in
+  `skipped`.
+- **Richness** — every page record carries `content_chars` (full
+  delivered size, pre-skim) and `term_hits` (query-term occurrences in
+  the full body). With `excerpts=True` a keyword-densest 300-char
+  `excerpt` is added per page (raises the payload — pair with a lower
+  `max_pages`).
 - **Full re-reads** — every fetched page stays in the page cache in
   full; the crawl's 300-char skim is presentation-only, so a later
   `inspect_html_page` of any crawled URL is a cache hit with the
@@ -581,8 +590,9 @@ reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
   a missing or malformed thesaurus simply disables expansion.
 
 No new parameters in this step — the same `crawl(...)` call gets the
-better ranking. (Richness stats, ranked documents, and discovery seeds
-land in later 0.4.8 steps; optional local embeddings in v0.4.9.)
+better ranking. (Discovery seeds — search prior, seed URLs, and the
+cross-modal loop — land in the next 0.4.8 step; optional local
+embeddings in v0.4.9.)
 
 ### Document Link Detection (v0.4.5)
 

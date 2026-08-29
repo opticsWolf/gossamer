@@ -725,7 +725,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "crawl",
-        "Bounded focused crawl over a site's link graph: BFS from root_url, but the frontier is ranked by relevance (score x 0.7^depth), so the page budget goes to the most relevant links; flat scores degrade to plain BFS. Returns per-page title, relevance score, and a content skim (full pages stay in the page cache and can be re-read in full via inspect_html_page), plus documents (PDF/DOCX links, never fetched here), skipped links with reasons, and counters.",
+        "Bounded focused crawl over a site's link graph: BFS from root_url, but the frontier is ranked by relevance (score x 0.7^depth), so the page budget goes to the most relevant links; flat scores degrade to plain BFS. Returns per-page title, relevance score, a content skim, and richness stats (content_chars, term_hits; optional keyword-densest excerpt) (full pages stay in the page cache and can be re-read in full via inspect_html_page), plus a rank-ordered list of documents (PDF/DOCX links, never fetched here), skipped links with reasons, and counters.",
         "crawl",
         (
             ToolParam(
@@ -762,6 +762,12 @@ TOOL_REGISTRY = (
                 float,
                 0.05,
                 "Minimum relevance score for a candidate to enter the frontier (0 = follow everything that passes the boilerplate filters)",
+            ),
+            ToolParam(
+                "excerpts",
+                bool,
+                False,
+                "Also return a keyword-densest 300-char excerpt per page (raises the payload size; pair with a lower max_pages)",
             ),
         ),
     ),
@@ -3912,6 +3918,8 @@ class WebResearcherToolbox:
           "/changelog/", "/reference/"), 1.15),
         (("/pricing", "/careers", "/contact", "/about"), 0.85),
     )
+    _CRAWL_EXCERPT_WINDOW = 300  # keyword-densest excerpt window (chars)
+    _CRAWL_EXCERPT_STEP = 100    # excerpt window slide (chars)
 
     def research(
         self, topic: str, depth: int = 5, max_tokens: int = 0
@@ -4123,6 +4131,55 @@ class WebResearcherToolbox:
         return 1.0
 
     @classmethod
+    def _crawl_term_hits(cls, text: str, terms: set) -> int:
+        """Query-term occurrences in *text*'s token stream (semantic C).
+
+        Counts occurrences, not unique terms: a page that repeats the
+        topic 40 times signals substance.
+        """
+        if not terms or not text:
+            return 0
+        return sum(
+            1 for t in re.findall(r"[a-z0-9]+", text.lower()) if t in terms
+        )
+
+    @classmethod
+    def _crawl_excerpt(
+        cls,
+        text: str,
+        terms: set,
+        window: Optional[int] = None,
+        step: Optional[int] = None,
+    ) -> Optional[str]:
+        """Keyword-densest window of *text* (semantic C, opt-in).
+
+        Slides a *window*-char window over the full markdown in
+        *step*-char strides and counts query-term occurrences per
+        window; the densest window wins, ties go to the earliest, and
+        zero density yields None (an empty excerpt is noise). Ellipses
+        mark a window that does not touch the head or the tail.
+        """
+        text = text or ""
+        if not terms or not text:
+            return None
+        if window is None:
+            window = cls._CRAWL_EXCERPT_WINDOW
+        if step is None:
+            step = cls._CRAWL_EXCERPT_STEP
+        best = None  # (density, start)
+        for start in range(0, len(text), step):
+            density = cls._crawl_term_hits(text[start:start + window], terms)
+            if best is None or density > best[0]:
+                best = (density, start)
+        density, start = best
+        if density == 0:
+            return None
+        excerpt = text[start:start + window]
+        prefix = "\u2026" if start > 0 else ""
+        suffix = "\u2026" if start + len(excerpt) < len(text) else ""
+        return prefix + excerpt + suffix
+
+    @classmethod
     def _crawl_expand_query(
         cls, base_terms: set, clusters: tuple = None
     ) -> tuple:
@@ -4247,6 +4304,7 @@ class WebResearcherToolbox:
         max_pages: int = 15,
         same_host: bool = False,
         min_score: float = 0.05,
+        excerpts: bool = False,
     ) -> str:
         """Bounded focused crawl over a site's link graph.
 
@@ -4270,19 +4328,29 @@ class WebResearcherToolbox:
 
         *query* focuses the ranking; when omitted the root page's own
         title and content words stand in for it. Links to documents
-        (PDF/DOCX/...) are never fetched here — they are collected in
-        ``documents`` so the agent can read them via extract_document
+        (PDF/DOCX/...) are never fetched here — they are collected, scored
+        at first sighting, and returned as a rank-ordered ``documents``
+        list (entries below *min_score* are counted and reported in
+        ``skipped``) so the agent can read them via extract_document
         (which surfaces the URLs written inside them). Failed fetches
         do not count against *max_pages*. Every fetched page stays in
         the page cache in full, so a later ``inspect_html_page`` of the
         same URL is a cache hit delivering the complete content.
 
+        Each page record also carries richness stats: ``content_chars``
+        (full delivered size, pre-skim) and ``term_hits`` (query-term
+        occurrences in the full body). With ``excerpts=True`` each page
+        additionally gets an ``excerpt`` — the keyword-densest 300-char
+        window of its full body (raises the payload; pair with a lower
+        *max_pages*).
+
         Returns
         -------
         str
             JSON: root, query echo, parameters, per-page records
-            (url, depth, title, score, markdown skim, links_total),
-            errors, documents, skipped (with reasons), counters, and
+            (url, depth, title, score, markdown skim, links_total,
+            content_chars, term_hits, optional excerpt), errors,
+            ranked documents, skipped (with reasons), counters, and
             the stop reason.
         """
         try:
@@ -4309,12 +4377,14 @@ class WebResearcherToolbox:
         except (TypeError, ValueError):
             min_score = self._CRAWL_MIN_SCORE
         min_score = max(0.0, min_score)
+        excerpts = bool(excerpts)
 
         root_key = self._crawl_host_key(root)
         queue: list = []  # (effective score, seq, url, depth, anchor)
         seq = 0
         queue_dropped = 0
         documents_total = 0
+        documents_below_score = 0
         skipped_total = 0
         visited: set = set()
         doc_seen: set = set()
@@ -4341,6 +4411,8 @@ class WebResearcherToolbox:
         def expand(page: dict, page_url: str, depth: int) -> None:
             """Score a fetched page's links and push the survivors on."""
             nonlocal seq, queue, queue_dropped, documents_total
+            nonlocal documents_below_score
+
             if depth >= max_depth:
                 return
             title = str((page.get("metadata") or {}).get("title") or "")
@@ -4364,8 +4436,25 @@ class WebResearcherToolbox:
                     if key not in doc_seen:
                         doc_seen.add(key)
                         documents_total += 1
-                        if len(documents) < self._CRAWL_LIST_CAP:
-                            documents.append(url)
+                        # Semantic D: documents are reference material,
+                        # not crawl targets. Scored at first sighting
+                        # (depth 0, no decay) with the corpus as it is
+                        # now, ranked in the payload, floored like pages.
+                        doc_score = self._crawl_score(
+                            url, str(cand.get("title") or ""), 0,
+                            query_terms, page_terms,
+                            corpus=corpus,
+                            base_terms=base_terms,
+                        )
+                        if doc_score < min_score:
+                            documents_below_score += 1
+                            note_skipped(url, "below min score")
+                        elif len(documents) < self._CRAWL_LIST_CAP:
+                            documents.append({
+                                "url": url,
+                                "anchor": str(cand.get("title") or ""),
+                                "score": round(doc_score, 3),
+                            })
                     continue
                 if same_host and self._crawl_host_key(url) != root_key:
                     note_skipped(url, "external host")
@@ -4447,6 +4536,13 @@ class WebResearcherToolbox:
             )
             record["markdown"] = md[: self._CRAWL_PAGE_CHARS]
             record["links_total"] = int(page.get("total_links") or 0)
+            # Semantic C: richness stats on the full delivered body.
+            record["content_chars"] = len(md)
+            record["term_hits"] = self._crawl_term_hits(md, query_terms)
+            if excerpts:
+                excerpt = self._crawl_excerpt(md, query_terms)
+                if excerpt is not None:
+                    record["excerpt"] = excerpt
             pages.append(record)
             corpus.add_page(self._crawl_tokens(md))
             expand(page, url, depth)
@@ -4503,6 +4599,15 @@ class WebResearcherToolbox:
         query_terms, expanded = self._crawl_expand_query(base_terms)
         if expanded:
             query_echo += f" +{expanded}"
+        # Semantic C: the root record gets the same richness fields
+        # (its score stays 1.0 by construction).
+        root_rec = pages[0]
+        root_rec["content_chars"] = len(root_md)
+        root_rec["term_hits"] = self._crawl_term_hits(root_md, query_terms)
+        if excerpts:
+            excerpt = self._crawl_excerpt(root_md, query_terms)
+            if excerpt is not None:
+                root_rec["excerpt"] = excerpt
         expand(root_page, root, 0)
 
         stop = "frontier exhausted"
@@ -4516,6 +4621,10 @@ class WebResearcherToolbox:
             score_eff, _s, url, depth, _anchor = queue.pop(0)
             fetch_record(url, depth, score_eff)
 
+        # Semantic D: documents ranked by score; the stable sort keeps
+        # first-sighting order for ties.
+        documents.sort(key=lambda d: -d["score"])
+
         result = {
             "root": root,
             "query": query_echo,
@@ -4523,11 +4632,13 @@ class WebResearcherToolbox:
             "max_pages": max_pages,
             "same_host": same_host,
             "min_score": min_score,
+            "excerpts": excerpts,
             "pages": pages,
             "errors": errors[: self._CRAWL_LIST_CAP],
             "errors_total": len(errors),
             "documents": documents,
             "documents_total": documents_total,
+            "documents_below_score": documents_below_score,
             "skipped": skipped,
             "skipped_total": skipped_total,
             "queue_dropped": queue_dropped,

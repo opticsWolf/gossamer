@@ -25,8 +25,20 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   with half-weighted synonyms, capped at 2× the base size, deterministic
   iteration. The query echo reports additions ("deep learning +2").
   Loader fails open to expansion-off on any problem.
-- Legacy `_crawl_score` calls (no corpus) return bit-for-bit v0.4.6
-  results; 16 new tests in `tests/test_crawl_semantic.py`.
+- **Richness payload (feature C)**: every page record now carries
+  `content_chars` (full delivered size, pre-skim) and `term_hits`
+  (query-term occurrences in the full body). Opt-in `excerpts=True`
+  adds a keyword-densest 300-char `excerpt` per page (window 300,
+  step 100; densest window wins, ties earliest, zero density omitted,
+  ellipses mark a window not touching the head or tail).
+- **Ranked documents (feature D)**: `documents` is now a rank-ordered
+  list of `{url, anchor, score}` records — scored at first sighting
+  with the live corpus (depth 0, no decay), floored by `min_score`
+  (below-floor entries counted in `documents_below_score` and
+  reported in `skipped`); still never fetched.
+- 16 new tests for A+B, 7 for C+D in `tests/test_crawl_semantic.py`;
+  legacy no-corpus `_crawl_score` calls return bit-for-bit v0.4.6
+  results.
 
 ## [0.4.7] — clean-install fix for the meta-oxide dependency
 

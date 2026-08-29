@@ -123,7 +123,7 @@ class TestRelevanceFrontier:
                 "Guides about deep learning.\n",
                 links=[(A, "Deep learning guide"),
                        (B, "About the company"),
-                       (PDF, "Annual report")],
+                       (PDF, "Deep learning annual report")],
                 title="Research Hub",
             ),
             A: _page(
@@ -147,8 +147,14 @@ class TestRelevanceFrontier:
         assert 0.25 <= parsed["pages"][2]["score"] < 0.5
         # The echo reports how many thesaurus terms were added.
         assert parsed["query"].endswith(" +2")
-        # /b and /a/2 were ranked out, /report.pdf routed to documents.
-        assert parsed["documents"] == [PDF]
+        # /b and /a/2 were ranked out; /report.pdf routed to the ranked
+        # documents list (record shape since v0.4.8 step 2).
+        docs = parsed["documents"]
+        assert [d["url"] for d in docs] == [PDF]
+        assert docs[0]["anchor"] == "Deep learning annual report"
+        assert docs[0]["score"] > 0
+        assert parsed["documents_total"] == 1
+        assert parsed["documents_below_score"] == 0
         skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
         assert skipped[B] == "below min score"
         assert skipped[A2] == "below min score"
@@ -372,14 +378,15 @@ class TestHostAndFilters:
         DOCX = "https://example.com/spec.docx"
         tb._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n", links=[
-                (PDF, "Report"),
-                (DOCX, "Spec"),
-                (PDF, "Report (duplicate)"),
+                (PDF, "platform report"),
+                (DOCX, "platform spec"),
+                (PDF, "platform report (duplicate)"),
             ]),
         })
         parsed = _result(tb)
-        assert parsed["documents"] == [PDF, DOCX]
+        assert [d["url"] for d in parsed["documents"]] == [PDF, DOCX]
         assert parsed["documents_total"] == 2
+        assert parsed["documents_below_score"] == 0
         assert tb._fetch_html.state["calls"] == [ROOT]
 
     def test_fragment_and_duplicate_links_dedupe(self, tmp_path):

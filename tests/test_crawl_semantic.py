@@ -283,3 +283,105 @@ class TestSemanticCrawlEndToEnd:
         parsed = _result(tb, query="notes")
         # "notes" is curation-excluded from the thesaurus -> no additions.
         assert parsed["query"] == "notes"
+
+
+# ── C: richness payload + opt-in excerpts ─────────────────
+
+
+class TestRichnessPayload:
+    def test_content_chars_and_term_hits(self, tmp_path):
+        child_md = "deep learning platform. deep deep.\n"
+        P1 = "https://example.com/p1"
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({
+            ROOT: _page("# Hub\n\ndeep learning hub.\n",
+                        links=[(P1, "deep learning guide")], title="Hub"),
+            P1: _page(child_md),
+        })
+        parsed = _result(tb, query="deep learning")
+        root_rec = parsed["pages"][0]
+        child_rec = [p for p in parsed["pages"] if p["url"] == P1][0]
+        assert root_rec["content_chars"] == len("# Hub\n\ndeep learning hub.\n")
+        # root body: deep x1 + learning x1 (expansions neural/nets: 0)
+        assert root_rec["term_hits"] == 2
+        assert child_rec["content_chars"] == len(child_md)
+        # child body: deep x3 + learning x1 = 4 occurrences
+        assert child_rec["term_hits"] == 4
+
+    def test_excerpts_default_off_shape(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch(
+            {ROOT: _page("# Hub\n\ndeep learning platform.\n")})
+        parsed = _result(tb, query="deep learning")
+        assert parsed["excerpts"] is False
+        for p in parsed["pages"]:
+            assert "excerpt" not in p
+            assert "content_chars" in p
+            assert "term_hits" in p
+
+
+class TestExcerpts:
+    def test_excerpt_is_densest_window(self, tmp_path):
+        pad = "quiet filler text " * 40
+        block = "deep learning deep learning deep learning " * 10
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({ROOT: _page(pad + block + pad)})
+        parsed = _result(tb, query="deep learning", excerpts=True)
+        ex = parsed["pages"][0]["excerpt"]
+        # the densest window sits inside the mid-page keyword block
+        # (a padding window would carry zero query terms)
+        assert ex.count("deep") >= 15
+        assert ex.startswith("\u2026")
+        assert ex.endswith("\u2026")
+
+    def test_excerpt_full_coverage_has_no_ellipsis(self, tmp_path):
+        md = "deep learning notes " * 5  # shorter than one window
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch({ROOT: _page(md)})
+        parsed = _result(tb, query="deep learning", excerpts=True)
+        assert parsed["pages"][0]["excerpt"] == md
+
+    def test_excerpt_zero_density_absent(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        tb._fetch_html = _fake_fetch(
+            {ROOT: _page("# Hub\n\nnothing relevant here at all.\n")})
+        parsed = _result(tb, query="deep learning", excerpts=True)
+        assert "excerpt" not in parsed["pages"][0]
+
+    def test_excerpt_unit_tie_earliest_and_bounds(self):
+        T = WebResearcherToolbox
+        md = "a " * 50 + "deep " * 5 + "b " * 50 + "deep " * 5 + "c " * 50
+        # Two windows tie at 10 hits -> the earliest window wins.
+        ex = T._crawl_excerpt(md, {"deep"})
+        assert ex == md[:300] + "\u2026"
+        # A single window covering the whole text carries no ellipsis.
+        assert T._crawl_excerpt("deep deep", {"deep"}) == "deep deep"
+        # Zero density -> None.
+        assert T._crawl_excerpt("no terms here", {"deep"}) is None
+
+
+class TestBudgetWithRichness:
+    def test_richness_and_excerpts_still_fit(self, tmp_path):
+        # M11 regression: with stats and excerpts on, the payload either
+        # fits whole or the tail-drop shrink keeps it valid and in budget.
+        pages = {ROOT: _page(
+            "# Hub\n\nplatform platform platform.\n",
+            links=[(f"https://example.com/p{i}", "platform")
+                   for i in range(4)])}
+        for i in range(4):
+            pages[f"https://example.com/p{i}"] = _page("platform " * 100)
+        tb = _toolbox(tmp_path, max_markdown_chars=3000)
+        tb._fetch_html = _fake_fetch(pages)
+        parsed = _result(tb, max_pages=5, excerpts=True)
+        raw = json.dumps(parsed)
+        assert len(raw) <= 3000 + 128  # slack for re-serialization
+        assert "pages" in parsed
+        for p in parsed["pages"]:
+            assert "content_chars" in p
+            assert "term_hits" in p
+        # a generous budget keeps the full payload, excerpts included
+        tb2 = _toolbox(tmp_path, max_markdown_chars=8000)
+        tb2._fetch_html = _fake_fetch(pages)
+        full = _result(tb2, max_pages=5, excerpts=True)
+        assert full["count"] == 5
+        assert all("excerpt" in p for p in full["pages"])
