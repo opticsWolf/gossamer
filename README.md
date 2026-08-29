@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-816%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-860%20passing%2C%207%20slow%20live-brightgreen)](tests/)
 
 ---
 
@@ -61,6 +61,8 @@
 - **HTML Table Extraction (Tier 3.11)**: `inspect_html_structured` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **Research Orchestration (Tier 3.13)**: `research(topic, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent
+- **Document Link Detection (v0.4.5)**: `extract_document` / `extract_document_structured` also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
+- **Focused Crawl (v0.4.6)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -496,6 +498,76 @@ report = json.loads(tools.research("Rust async runtimes", depth=5))
 for s in report["sources"]:
     print(s["url"], s["status"])
     # ... the agent writes the cited synthesis ...
+```
+
+### Focused Crawl (v0.4.6)
+
+`crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
+min_score=0.05)` answers "what does this site contain?" with one bounded
+run. It is BFS over the link graph, but the frontier is a priority
+queue, so hop 1 cannot exhaust the budget before relevant depth-2/3
+pages are seen:
+
+- **Relevance score** — each candidate is scored
+  `0.7 × cover(label, query) + 0.3 × cover(label, page_topic)`, where
+  the label is the anchor text plus the link's path tokens. The
+  containing page's topic vocabulary comes from its *full delivered
+  text* (top content words, TF-ranked), not just the title or first
+  lines. When *query* is omitted, the root page's own title and
+  content stand in for it, so a query-less crawl still knows what its
+  neighbourhood is about.
+- **Depth decay** — the frontier pops the highest
+  `score × 0.7^depth`; ties break by discovery order, so flat scores
+  degrade exactly to plain BFS and depth 1 keeps priority over depth 2+
+  unless the deeper links are genuinely more relevant.
+- **Budget** — `max_pages` (default 15, hard cap 50) counts *total
+  successful* pages across all depths; failed fetches do not consume
+  it. `max_depth` (default 3, hard cap 5) bounds hops from the root.
+- **Filters** — boilerplate paths (`/login`, `/cart`, `/tag/`, …) and
+  static assets (`.css`, `.js`, images, fonts, …) are skipped without
+  costing budget; candidates below `min_score` are skipped and
+  reported with their reason.
+- **Documents** — links to PDF/DOCX/… are never fetched by the crawl;
+  they are collected in `documents` for the agent to read via
+  `extract_document` (which surfaces the URLs written inside them).
+- **Full re-reads** — every fetched page stays in the page cache in
+  full; the crawl's 300-char skim is presentation-only, so a later
+  `inspect_html_page` of any crawled URL is a cache hit with the
+  complete content.
+
+```python
+crawl = json.loads(
+    tools.crawl(
+        "https://example.com/docs",
+        query="offline caching",
+        max_depth=3,
+        max_pages=15,
+    )
+)
+for p in crawl["pages"]:
+    print(p["depth"], p["score"], p["title"], p["url"])
+print(crawl["documents"])  # PDFs to read via extract_document
+print(crawl["stop"])       # max_pages reached | frontier exhausted
+```
+
+### Document Link Detection (v0.4.5)
+
+`extract_document` (and `_structured`) parse documents with the Oxide
+family, which does not expose PDF hyperlink annotations. Many reports
+and PDFs still carry their sources as *text* ("see https://… or www.…"),
+so the extractor also runs a text-level link detector over the page
+content: `http://` and `https://` URLs are matched directly, bare
+`www.` hosts are promoted to `http://`, trailing sentence punctuation
+(Latin and CJK) is stripped, results are deduped and capped at 50. The
+results land in `links` of the readable extract (plain URL strings)
+and in `payload.links` of the structured extract (`{title, url, type}`
+with `type` = `page` or `document`) — so the agent can chase a
+document's cited sources with the normal page pipeline.
+
+```python
+doc = json.loads(tools.extract_document("https://example.com/report.pdf"))
+for u in doc.get("links", []):
+    print(u)  # URLs written inside the document text
 ```
 
 ### Prompt-Injection Guard (optional, §7)

@@ -723,6 +723,48 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
+        "crawl",
+        "Bounded focused crawl over a site's link graph: BFS from root_url, but the frontier is ranked by relevance (score x 0.7^depth), so the page budget goes to the most relevant links; flat scores degrade to plain BFS. Returns per-page title, relevance score, and a content skim (full pages stay in the page cache and can be re-read in full via inspect_html_page), plus documents (PDF/DOCX links, never fetched here), skipped links with reasons, and counters.",
+        "crawl",
+        (
+            ToolParam(
+                "root_url",
+                str,
+                description="Seed URL to start the crawl from",
+            ),
+            ToolParam(
+                "query",
+                str,
+                None,
+                "Relevance focus for the frontier ranking. When omitted, the root page's own title and content words stand in for it.",
+            ),
+            ToolParam(
+                "max_depth",
+                int,
+                3,
+                "Maximum link hops from the root (0 = root only; hard cap 5)",
+            ),
+            ToolParam(
+                "max_pages",
+                int,
+                15,
+                "Total pages fetched across all depths (1-50); failed fetches do not count",
+            ),
+            ToolParam(
+                "same_host",
+                bool,
+                False,
+                "When true, follow only links on the root's host (www. ignored); false follows external links too",
+            ),
+            ToolParam(
+                "min_score",
+                float,
+                0.05,
+                "Minimum relevance score for a candidate to enter the frontier (0 = follow everything that passes the boilerplate filters)",
+            ),
+        ),
+    ),
+    ToolSpec(
         "clear_cache",
         "Clear both the in-memory and disk research caches and the visited-URL set. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
         "clear_cache",
@@ -3766,6 +3808,46 @@ class WebResearcherToolbox:
     #: Hard cap on pages fetched per research run.
     _RESEARCH_MAX_PAGES = 10
 
+    # ── Focused crawl (deep-research support) ─────────────────────
+    # A bounded best-first crawl over the link graph: the frontier is
+    # ranked by relevance (score * decay^depth) instead of blind BFS
+    # order, so the page budget is spent on what looks like the
+    # answer. With flat scores the order degrades to plain BFS (ties
+    # break by discovery order), so hop 1 can never outrank depth 2+
+    # unless the links there are actually more relevant.
+    _CRAWL_MAX_DEPTH = 5        # hard cap for the max_depth parameter
+    _CRAWL_MAX_PAGES = 50       # hard cap for the max_pages parameter
+    _CRAWL_PAGE_CHARS = 300     # per-page skim kept in the crawl payload
+    _CRAWL_QUEUE_CAP = 200      # bounded frontier; lowest scores dropped
+    _CRAWL_DEPTH_DECAY = 0.7    # a depth-d link must outscore shallow ones ~1/0.7^d
+    _CRAWL_QUERY_WEIGHT = 0.7   # weight of query coverage in the score
+    _CRAWL_CONTEXT_WEIGHT = 0.3  # weight of containing-page topic coverage
+    _CRAWL_TOPIC_WORDS = 40     # size of the per-page topic vocabulary
+    _CRAWL_MIN_SCORE = 0.05     # default relevance floor (parameter)
+    _CRAWL_LIST_CAP = 30        # cap for auxiliary lists in the payload
+    _CRAWL_SKIP_EXTENSIONS = frozenset({
+        ".css", ".js", ".mjs", ".png", ".jpg", ".jpeg", ".gif", ".svg",
+        ".webp", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".otf",
+        ".mp3", ".mp4", ".webm", ".avi", ".mov", ".zip", ".gz", ".tar",
+        ".rar", ".exe", ".dmg",
+    })
+    _CRAWL_SKIP_PATH_PREFIXES = (
+        "/login", "/signin", "/sign-in", "/signout", "/logout",
+        "/signup", "/register", "/account", "/profile",
+        "/cart", "/checkout", "/search", "/tag/", "/tags/",
+        "/author/", "/feed", "/track",
+    )
+    _CRAWL_STOPWORDS = frozenset(
+        "a about above after again against all am an and any are as at be "
+        "because been before below being between both but by can did do does "
+        "doing down during each few for from further had has have having he "
+        "her here hers him his how i if in into is it its just me more most "
+        "my no nor not of off on once only or other our out over own same "
+        "she should so some such than that the their them then there these "
+        "they this those through to too under until up very was we were what "
+        "when where which while who why will with you your yours".split()
+    )
+
     def research(
         self, topic: str, depth: int = 5, max_tokens: int = 0
     ) -> str:
@@ -3893,6 +3975,364 @@ class WebResearcherToolbox:
                 "depth": depth,
                 "error": "research result too large for the output budget",
                 "hint": "lower depth or raise max_tokens",
+            },
+        )
+
+    # Focused crawl (deep-research support)
+    # ───────────────────────────────
+
+    @staticmethod
+    def _crawl_host_key(url: str) -> str:
+        """Host with a leading ``www.`` stripped, for same-host checks."""
+        host = (urlparse(url).hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        return host
+
+    @classmethod
+    def _crawl_tokens(cls, text: str) -> set:
+        """Content words of *text* (lowercase alnum, stopwords removed)."""
+        return {
+            t for t in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if t not in cls._CRAWL_STOPWORDS
+        }
+
+    @classmethod
+    def _crawl_topic_words(cls, text: str) -> set:
+        """Top content words of a page (TF-ranked, capped, deterministic).
+
+        Runs over the page's full delivered text (not just the title or
+        first lines) — that is the neighbourhood signal its outgoing
+        links are scored against.
+        """
+        counts: dict = {}
+        for t in re.findall(r"[a-z0-9]+", (text or "").lower()):
+            if t in cls._CRAWL_STOPWORDS:
+                continue
+            counts[t] = counts.get(t, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        return {t for t, _ in ranked[: cls._CRAWL_TOPIC_WORDS]}
+
+    @classmethod
+    def _crawl_score(
+        cls,
+        url: str,
+        anchor: str,
+        depth: int,
+        query_terms: set,
+        page_terms: set,
+    ) -> float:
+        """Relevance score of a frontier candidate (see ``crawl``).
+
+        ``score = QUERY_WEIGHT * cover(label, query)``
+        ``        + CONTEXT_WEIGHT * cover(label, page_topic)``
+        where the label is the candidate's anchor text plus its URL path
+        tokens, and cover(T, S) measures how much of the relevant side
+        the label echoes. The depth decay is applied by the caller so
+        the reported per-page score is depth-independent and comparable.
+        """
+        label = cls._crawl_tokens(anchor)
+        label |= cls._crawl_tokens(urlparse(url).path)
+        score = 0.0
+        if query_terms:
+            score += cls._CRAWL_QUERY_WEIGHT * len(label & query_terms) / len(query_terms)
+        if label and page_terms:
+            score += cls._CRAWL_CONTEXT_WEIGHT * len(label & page_terms) / len(label)
+        return score
+
+    @staticmethod
+    def _shrink_crawl(result: dict, budget: Optional[int]) -> str:
+        """Serialize a crawl result with the page list capped to fit.
+
+        Per-page content is already skims (``_CRAWL_PAGE_CHARS``); the
+        only remaining lever under a tight budget is dropping pages from
+        the tail — which matches their (descending) priority anyway.
+        """
+        out = copy.deepcopy(result)
+        if budget is None:
+            return json.dumps(out, indent=2)
+        # A page record is at most _CRAWL_PAGE_CHARS plus ~200 chars of
+        # envelope, so 500 chars per kept page is a safe unit.
+        keep = max(1, budget // 500)
+        pages = out.get("pages") or []
+        if len(pages) > keep:
+            out["pages_omitted"] = len(pages) - keep
+            out["pages"] = pages[:keep]
+        return json.dumps(out, indent=2)
+
+    def crawl(
+        self,
+        root_url: str,
+        query: Optional[str] = None,
+        max_depth: int = 3,
+        max_pages: int = 15,
+        same_host: bool = False,
+        min_score: float = 0.05,
+    ) -> str:
+        """Bounded focused crawl over a site's link graph.
+
+        BFS from *root_url*, but the frontier is a priority queue ranked
+        by relevance, so the page budget goes to the most relevant links
+        instead of the first ones in the HTML:
+
+        1. Fetch the root through the normal page pipeline (cache,
+           robots, SSRF, rate limits, provenance) — depth 0.
+        2. Score each outgoing link: query coverage (0.7) plus
+           containing-page topic coverage (0.3); the topic vocabulary
+           is the page's full delivered text, not just its title.
+        3. Pop the highest ``score * 0.7**depth`` (ties: discovery
+           order — flat scores therefore degrade to plain BFS) and
+           fetch it, until *max_pages* pages are fetched, the frontier
+           is exhausted, or *max_depth* is reached.
+
+        *query* focuses the ranking; when omitted the root page's own
+        title and content words stand in for it. Links to documents
+        (PDF/DOCX/...) are never fetched here — they are collected in
+        ``documents`` so the agent can read them via extract_document
+        (which surfaces the URLs written inside them). Failed fetches
+        do not count against *max_pages*. Every fetched page stays in
+        the page cache in full, so a later ``inspect_html_page`` of the
+        same URL is a cache hit delivering the complete content.
+
+        Returns
+        -------
+        str
+            JSON: root, query echo, parameters, per-page records
+            (url, depth, title, score, markdown skim, links_total),
+            errors, documents, skipped (with reasons), counters, and
+            the stop reason.
+        """
+        try:
+            root = normalize_url(root_url)
+        except ValueError as e:
+            return json.dumps({"error": f"crawl: {e}"}, indent=2)
+        try:
+            self._validate_url(root)
+        except Exception as e:
+            return json.dumps({"error": f"crawl: {e}"}, indent=2)
+
+        try:
+            max_depth = int(max_depth)
+        except (TypeError, ValueError):
+            max_depth = 3
+        max_depth = max(0, min(max_depth, self._CRAWL_MAX_DEPTH))
+        try:
+            max_pages = int(max_pages)
+        except (TypeError, ValueError):
+            max_pages = 15
+        max_pages = max(1, min(max_pages, self._CRAWL_MAX_PAGES))
+        try:
+            min_score = float(min_score)
+        except (TypeError, ValueError):
+            min_score = self._CRAWL_MIN_SCORE
+        min_score = max(0.0, min_score)
+
+        root_key = self._crawl_host_key(root)
+        queue: list = []  # (effective score, seq, url, depth, anchor)
+        seq = 0
+        queue_dropped = 0
+        documents_total = 0
+        skipped_total = 0
+        visited: set = set()
+        doc_seen: set = set()
+        skip_seen: set = set()
+        pages: list = []
+        errors: list = []
+        skipped: list = []
+        documents: list = []
+
+        def note_skipped(url: str, reason: str) -> None:
+            nonlocal skipped_total
+            mark = (url, reason)
+            if mark in skip_seen:
+                return
+            skip_seen.add(mark)
+            skipped_total += 1
+            if len(skipped) < self._CRAWL_LIST_CAP:
+                skipped.append({"url": url, "reason": reason})
+
+        def expand(page: dict, page_url: str, depth: int) -> None:
+            """Score a fetched page's links and push the survivors on."""
+            nonlocal seq, queue, queue_dropped, documents_total
+            if depth >= max_depth:
+                return
+            title = str((page.get("metadata") or {}).get("title") or "")
+            page_terms = self._crawl_topic_words(
+                (page.get("markdown") or "") + " " + title
+            )
+            for cand in page.get("follow_up_links") or []:
+                if not isinstance(cand, dict):
+                    continue
+                raw_url = str(cand.get("url") or "")
+                if not raw_url:
+                    continue
+                try:
+                    url = normalize_url(raw_url, base=page_url)
+                except ValueError:
+                    continue  # non-http or malformed: never fatal
+                key = url.split("#", 1)[0]
+                if key in visited:
+                    continue
+                if cand.get("type") == "document":
+                    if key not in doc_seen:
+                        doc_seen.add(key)
+                        documents_total += 1
+                        if len(documents) < self._CRAWL_LIST_CAP:
+                            documents.append(url)
+                    continue
+                if same_host and self._crawl_host_key(url) != root_key:
+                    note_skipped(url, "external host")
+                    continue
+                path = (urlparse(url).path or "").lower()
+                if any(path.startswith(p) for p in self._CRAWL_SKIP_PATH_PREFIXES):
+                    note_skipped(url, "boilerplate path")
+                    continue
+                if os.path.splitext(path)[1] in self._CRAWL_SKIP_EXTENSIONS:
+                    note_skipped(url, "asset")
+                    continue
+                score = self._crawl_score(
+                    url, str(cand.get("title") or ""), depth + 1,
+                    query_terms, page_terms,
+                )
+                if score < min_score:
+                    note_skipped(url, "below min score")
+                    continue
+                visited.add(key)
+                seq += 1
+                queue.append((
+                    score * (self._CRAWL_DEPTH_DECAY ** (depth + 1)),
+                    seq,
+                    key,
+                    depth + 1,
+                    str(cand.get("title") or ""),
+                ))
+            if len(queue) > self._CRAWL_QUEUE_CAP:
+                # Evict the weakest candidates, keeping the frontier bounded.
+                queue.sort(key=lambda e: (e[0], e[1]))
+                queue_dropped += len(queue) - self._CRAWL_QUEUE_CAP
+                queue = queue[-self._CRAWL_QUEUE_CAP:]
+
+        def fetch_record(url: str, depth: int, score_eff: float) -> None:
+            """Fetch one candidate through the normal page pipeline."""
+            record = {
+                "url": url,
+                "depth": depth,
+                "score": round(score_eff, 3),
+            }
+            try:
+                raw_page = self._inspect_html_page_impl(url, None, "", 0, 1)
+                try:
+                    page = json.loads(raw_page)
+                except json.JSONDecodeError:
+                    page = raw_page
+            except Exception as e:
+                logger.warning("crawl fetch failed for %s: %s", url, e)
+                errors.append({"url": url, "depth": depth, "error": str(e)})
+                return
+            # The impl reports failures (fetch errors, robots disallow,
+            # already visited) as {"error"|"warning": ...} dicts.
+            if isinstance(page, dict) and ("error" in page or "warning" in page):
+                errors.append({
+                    "url": url,
+                    "depth": depth,
+                    "error": str(page.get("error") or page.get("warning")),
+                })
+                return
+            md = page.get("markdown") or ""
+            record["status"] = "ok"
+            record["title"] = str(
+                (page.get("metadata") or {}).get("title") or ""
+            )
+            record["markdown"] = md[: self._CRAWL_PAGE_CHARS]
+            record["links_total"] = int(page.get("total_links") or 0)
+            pages.append(record)
+            expand(page, url, depth)
+
+        # Root: always fetched (depth 0); a root failure kills the crawl.
+        try:
+            raw_root = self._inspect_html_page_impl(root, None, "", 0, 1)
+            try:
+                root_page = json.loads(raw_root)
+            except json.JSONDecodeError:
+                root_page = raw_root
+        except Exception as e:
+            return json.dumps(
+                {"error": f"crawl: root fetch failed: {e}", "root": root},
+                indent=2,
+            )
+        if isinstance(root_page, dict) and (
+            "error" in root_page or "warning" in root_page
+        ):
+            return json.dumps(
+                {
+                    "error": "crawl: root fetch failed: "
+                    + str(root_page.get("error") or root_page.get("warning")),
+                    "root": root,
+                },
+                indent=2,
+            )
+        root_md = root_page.get("markdown") or ""
+        root_title = str(
+            (root_page.get("metadata") or {}).get("title") or ""
+        )
+        pages.append({
+            "url": root,
+            "depth": 0,
+            "status": "ok",
+            "title": root_title,
+            "score": 1.0,
+            "markdown": root_md[: self._CRAWL_PAGE_CHARS],
+            "links_total": int(root_page.get("total_links") or 0),
+        })
+        visited.add(root.split("#", 1)[0])
+
+        # Effective query: the caller's focus, or the root page itself.
+        query = (query or "").strip()
+        if query:
+            query_terms = self._crawl_tokens(query)
+            query_echo = query
+        else:
+            query_terms = self._crawl_topic_words(root_md + " " + root_title)
+            query_echo = "derived from root page"
+        expand(root_page, root, 0)
+
+        stop = "frontier exhausted"
+        while queue:
+            if len(pages) >= max_pages:
+                stop = "max_pages reached"
+                break
+            # Best-first: highest effective score, ties by discovery
+            # order (so flat scores degrade to plain BFS).
+            queue.sort(key=lambda e: (-e[0], e[1]))
+            score_eff, _s, url, depth, _anchor = queue.pop(0)
+            fetch_record(url, depth, score_eff)
+
+        result = {
+            "root": root,
+            "query": query_echo,
+            "max_depth": max_depth,
+            "max_pages": max_pages,
+            "same_host": same_host,
+            "min_score": min_score,
+            "pages": pages,
+            "errors": errors[: self._CRAWL_LIST_CAP],
+            "errors_total": len(errors),
+            "documents": documents,
+            "documents_total": documents_total,
+            "skipped": skipped,
+            "skipped_total": skipped_total,
+            "queue_dropped": queue_dropped,
+            "count": len(pages),
+            "stop": stop,
+        }
+        return self._fit_json(
+            lambda b: self._shrink_crawl(result, b),
+            self.max_markdown_chars,
+            self.max_tokens,
+            {
+                "root": root,
+                "error": "crawl result too large for the output budget",
+                "hint": "lower max_pages or raise max_tokens",
             },
         )
 

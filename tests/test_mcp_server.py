@@ -20,6 +20,7 @@ EXPECTED_TOOLS = {
     "inspect_html_structured",
     "discover_resources",
     "research",
+    "crawl",
     "clear_cache",
     "prune_cache",
     "reset_visited",
