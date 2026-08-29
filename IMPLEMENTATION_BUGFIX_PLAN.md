@@ -261,7 +261,9 @@ and item 4 is a direct consequence of item 5's Rust change, so splitting
 them would have produced commits that do not build on their own.
 
 **Gates:** 816 passed, 1 skipped; `ruff check stitch_web_researcher/`
-clean; `cargo clippy --all-targets -- -D warnings` clean.
+clean; `cargo clippy --all-targets -- -D warnings` clean. With the
+`[guard]` extra installed in the venv the count is 815 passed, 2
+skipped (the fail-open test skips by design); both states green.
 
 ### What item 8 measured
 
@@ -321,3 +323,9 @@ this one.
   `git rm --cached` and `*.pdb` is now ignored without the
   exception — this also closes CODE_REVIEW item P3 (the two scratch
   JSONs it named were already untracked).
+  Wheel question settled while at it: `maturin build` (1.15.0) packages
+  `python-packages` while respecting `.gitignore`, so the plain `*.pdb`
+  rule keeps the 1.9 MB symbol file out of the wheel. A/B-verified:
+  a `.pdb` probe ships when the rule is removed and is excluded with
+  it, while arbitrary files (`.txt`) always ship; the old `!` exception
+  was never honored by the matcher. No `exclude` entry needed.
