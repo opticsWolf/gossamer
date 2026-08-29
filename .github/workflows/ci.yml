@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, dev]
   pull_request:
     branches: [main, master]
 
@@ -63,6 +63,36 @@ jobs:
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         run: .venv\Scripts\pytest.exe tests/ -v --tb=short
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Audit the installed runtime + extra dependencies against the OSV
+      # vulnerability database. Given PyPI-targeting worm campaigns of the
+      # past year, this is a hard gate, not a warning.
+      - name: pip-audit
+        run: |
+          python -m venv /tmp/auditenv
+          /tmp/auditenv/bin/pip install --quiet pip-audit
+          /tmp/auditenv/bin/pip install --quiet -e ".[mcp,documents]"
+          /tmp/auditenv/bin/pip-audit
+
+      # Audit the Rust dependency tree against the RustSec advisory DB.
+      - name: Install cargo-audit (prebuilt)
+        run: |
+          curl -sSL -o /tmp/cargo-audit.tar.gz https://github.com/RustSec/cargo-audit/releases/latest/download/cargo-audit-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf /tmp/cargo-audit.tar.gz -C /tmp
+          sudo mv /tmp/cargo-audit-x86_64-unknown-linux-gnu/cargo-audit /usr/local/bin/
+
+      - name: cargo audit
+        run: cargo audit
 
   lint:
     runs-on: ubuntu-latest

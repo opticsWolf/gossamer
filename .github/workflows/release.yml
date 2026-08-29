@@ -66,6 +66,8 @@ jobs:
     needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
 
     steps:
       - name: Download artifacts
@@ -81,7 +83,26 @@ jobs:
           name: sdist
           path: dist
 
+      # A GitHub Release with the wheels is created for every tag, with or
+      # without PyPI credentials, so released versions are always
+      # downloadable and pinnable from GitHub.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+      - name: Check PyPI token
+        id: token
+        env:
+          TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then echo "has=true" >> "$GITHUB_OUTPUT"; fi
+
+      # PyPI publish happens only once a PYPI_API_TOKEN secret exists;
+      # until then the release still ships its wheels from GitHub.
       - name: Publish to PyPI
+        if: steps.token.outputs.has == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}

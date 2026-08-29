@@ -6,6 +6,10 @@
 > Baseline: commit `f285430`, 183 tests passing locally (1 slow test deselected).
 > Every finding marked **[verified]** was reproduced on this machine; the repro
 > output is quoted with the finding.
+>
+> **Status (updated 2026-08-28): every finding is fixed and pinned by tests
+> except M8 (browser-instance pooling — performance only). Full mapping in
+> §0b; shipped history in `CHANGELOG.md`.**
 
 ---
 
@@ -20,16 +24,16 @@ because the tests exercise the units and not the delivered payload.
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
-| C1 | Critical | Every page big enough to be truncated delivers **zero** follow-up links | verified |
-| C2 | Critical | HTML metadata is **always empty** on the default (static) fetch path | verified |
-| C3 | High | A failed fetch **permanently blacklists** the URL; no recovery over MCP | verified |
-| C4 | High | `extract_document` cache hits **bypass all truncation** | verified |
-| C5 | High | `inspect_html_structured` **drops every link** it promises to return | verified |
-| C6 | High | `batch_inspect_pages` **never touches the cache** and returns a different shape | verified |
-| C7 | High | **CI lint job is red** (ruff 7×F401, clippy 2×type_complexity); test job likely broken too | verified |
-| S1 | Critical | **No SSRF protection** on LLM/page-supplied URLs (cloud metadata, localhost, RFC1918) | verified |
-| S2 | High | **Hidden HTML text reaches the model verbatim** — the classic indirect-injection carrier | verified |
-| P1 | High | `pyproject.toml` declares **zero runtime dependencies** — a published wheel is unimportable | verified |
+| C1 | Critical | Every page big enough to be truncated delivers **zero** follow-up links | ✅ fixed 0.1.1 |
+| C2 | Critical | HTML metadata is **always empty** on the default (static) fetch path | ✅ fixed 0.1.7 |
+| C3 | High | A failed fetch **permanently blacklists** the URL; no recovery over MCP | ✅ fixed 0.1.2 |
+| C4 | High | `extract_document` cache hits **bypass all truncation** | ✅ fixed 0.1.3 |
+| C5 | High | `inspect_html_structured` **drops every link** it promises to return | ✅ fixed 0.1.4 |
+| C6 | High | `batch_inspect_pages` **never touches the cache** and returns a different shape | ✅ fixed 0.1.5 |
+| C7 | High | **CI lint job is red** (ruff 7×F401, clippy 2×type_complexity); test job likely broken too | ✅ fixed 0.1.6 |
+| S1 | Critical | **No SSRF protection** on LLM/page-supplied URLs (cloud metadata, localhost, RFC1918) | ✅ fixed 0.1.8 |
+| S2 | High | **Hidden HTML text reaches the model verbatim** — the classic indirect-injection carrier | ✅ fixed 0.1.9 |
+| P1 | High | `pyproject.toml` declares **zero runtime dependencies** — a published wheel is unimportable | ✅ fixed 0.1.15 |
 
 Full catalog in §2–§6. Prompt-injection / JailGuard assessment in §7.
 
@@ -60,6 +64,77 @@ Credit where due — and these are the reason the above are cheap to fix:
 | High | Breaks a documented feature, or fails in a common configuration |
 | Medium | Correct but wasteful, or fails on a plausible edge case |
 | Low | Hygiene, drift, papercut |
+
+---
+
+## 0b. Resolution status (added 2026-08-28)
+
+Every finding below shipped on the `dev` branch with a named test file (or
+CI gate, where noted). Versions per `CHANGELOG.md`.
+
+| # | Finding | Status | Shipped | Tests / gate |
+|---|---|---|---|---|
+| C1 | links quota in output budget | ✅ | 0.1.1 | `test_c1_follow_links.py` |
+| C2 | static path extracts real metadata | ✅ | 0.1.7 | `test_c2_metadata.py` |
+| C3 | visited only after success; `reset_visited` | ✅ | 0.1.2 | `test_c3_retry.py` |
+| C4 | doc cache hits re-apply budget on read | ✅ | 0.1.3 | `test_c4_doc_cache_truncation.py` |
+| C5 | `parse_html` populates `payload.links` | ✅ | 0.1.4 | `test_c5_structured_links.py` |
+| C6 | batch shares the page cache | ✅ | 0.1.5 | `test_c6_batch_cache.py` |
+| C7 | CI green and deterministic | ✅ | 0.1.6 | CI (ruff/clippy/pytest all green) |
+| S1 | SSRF guard (Python + Rust re-check) | ✅ | 0.1.8 | `test_s1_ssrf.py` |
+| S2 | hidden HTML stripped pre-markdown | ✅ | 0.1.9 | `test_s2_hidden.py` |
+| S3 | response size cap + content-type gate | ✅ | 0.1.10 | `test_s3_size_cap.py` |
+| S4 | robots.txt compliance + opt-out | ✅ | 0.1.14 | `test_s4_robots.py` |
+| S5 | thread-safe cache and toolbox | ✅ | 0.1.11 | `test_s5_concurrency.py` |
+| S6 | `clear_cache` scoped to cache-owned files | ✅ | 0.1.12 | `test_s6_scoped_clear.py` |
+| S7 | blake2b cache keys | ✅ | 0.1.13 | `test_s7_disk_key.py` |
+| M1 | local paths never promoted to URLs | ✅ | 0.1.19 | `test_m1_local_paths.py` |
+| M2 | provider aliases select providers | ✅ | 0.1.20 | `test_m2_provider_aliases.py` |
+| M3 | retry moved into provider search | ✅ | 0.1.21 | `test_m3_retry.py` |
+| M4 | `truncate_to_tokens` fallback clamped | ✅ | 0.1.22 | `test_m4_truncate_fallback.py` |
+| M5 | gpt-4o tiktoken encoding corrected | ✅ | 0.1.23 | `test_m5_encoding.py` |
+| M6 | `get_running_loop` | ✅ | 0.1.24 | `test_m6_asyncio.py` |
+| M7 | bounded per-process state | ✅ | 0.1.25 | `test_m7_bounded_state.py` |
+| M8 | browser pooling + single parse | ⏳ open | — | perf-only; 4-tuple fetch seam is test-pinned |
+| M9 | shared HTTP client across fetches | ✅ | 0.1.26 | `test_m9_http_pool.py` |
+| M10 | tagged `BatchEntry` failures | ✅ | 0.1.27 | `test_m10_batch_error.py` |
+| M11 | no re-tokenize per budget pass; shrink-then-serialize | ✅ | 0.1.28 | `test_m11_budget_loop.py` |
+| M12 | relative hrefs absolutized in markdown | ✅ | 0.1.29 | `test_m12_markdown_links.py` |
+| M13 | caller `RateLimit` copied, not mutated | ✅ | 0.1.30 | `test_m13_rate_limit_copy.py` |
+| M14 | head+middle+tail text sampling | ✅ | 0.1.31 | `test_m14_looks_like_text.py` |
+| M15 | retry 429/503, honor `Retry-After` | ✅ | 0.1.32 | `test_m15_retry_after.py` |
+| M16 | advertised formats = deliverable formats | ✅ | 0.1.33 | `test_m16_document_formats.py` |
+| P1 | real runtime deps + extras split | ✅ | 0.1.15 | packaging; `pip install -e .` gate in CI |
+| P2 | lazy `pdf_oxide`/`office_oxide` | ✅ | 0.1.16 | `test_p2_doc_extra.py` |
+| P3 | untracked build artifacts | ✅ | 0.4.4 | `*.pdb` in `.gitignore`; `git rm --cached` |
+| P4 | docs drift (badge, structure, urls) | ✅ | incremental | README badge tracks count; SPEC_AUDIT current |
+| P5 | `[tool.maturin] include` dropped | ✅ | with P1 era | pyproject `[tool.maturin]` comment |
+| P6 | `requires-python` raised to ≥3.10 | ✅ | with P1 era | pyproject |
+| P7 | `py.typed` + `_core.pyi` | ✅ | 0.1.17 | typing surface present |
+| P8 | unified registry + `execute_tool` | ✅ | 0.1.18 | `test_p8_tool_registry.py` |
+| P9 | network tests marked slow, local-server fixture | ✅ | 0.1.22 era | 7 slow tests deselected by default |
+| T1.1 | query-relevant section selection | ✅ | 0.1.34 | `test_t1_sections.py` |
+| T1.2a | page-range reads (`extract_document`) | ✅ | 0.1.35 | `test_t1_2_pages.py` |
+| T1.2b | chunked/resumable reads (`inspect_html_page`) | ✅ | 0.2.0 | `test_t1_2_chunks.py` |
+| T1.3 | provenance fields in payloads | ✅ | 0.2.1 | `test_t1_3_provenance.py` |
+| T1.4 | conditional revalidation (ETag/304) | ✅ | 0.2.2 | `test_t1_4_conditional.py` |
+| T2.5 | disk cache cap + LRU eviction + `prune_cache` | ✅ | 0.3.0 | `test_cache.py` |
+| T2.6 | fetch telemetry in `get_stats` | ✅ | 0.3.1 | `test_t2_6_observability.py` |
+| T2.7 | proxy/headers/cookies on static path | ✅ | 0.3.2 | `test_t2_7_transport.py` |
+| T2.8 | search-result caching + cross-provider merge | ✅ | 0.3.3 | `test_t2_8_search_cache.py` |
+| T2.9 | `batch_inspect_pages_async` | ✅ | 0.3.4 | `test_t2_9_async.py` |
+| T3.10 | 11 input formats for `extract_document` | ✅ | 0.4.0 | `test_t3_10_formats.py` |
+| T3.11 | HTML table extraction | ✅ | 0.4.1 | `test_t3_11_tables.py` |
+| T3.12 | `discover_resources` (feeds + sitemaps) | ✅ | 0.4.2 | `test_t3_12_discovery.py` |
+| T3.13 | `research` orchestration primitive | ✅ | 0.4.3 | `test_t3_13_research.py` |
+| §7 | optional `[guard]` injection detector | ✅ | 0.2.3 | `test_guard.py`, `benchmarks.py --guard` |
+
+Post-review features (not review findings): focused crawl (0.4.6),
+text-level link detection (0.4.5), plus the nine `IMPLEMENTATION_BUGFIX_PLAN`
+items (0.4.4). M8 remains the single open item: `_fetch_with_browser_oxide`
+still constructs a `browser_oxide.Browser` per call — a performance fix
+(browser pooling + one-parse binding) deferred because browser_oxide is an
+optional, non-default extra.
 
 ---
 
