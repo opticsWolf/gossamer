@@ -62,7 +62,7 @@
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **Research Orchestration (Tier 3.13)**: `research(topic, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent
 - **Document Link Detection (v0.4.5)**: `extract_document` / `extract_document_structured` also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
-- **Focused Crawl (v0.4.6)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
+- **Focused Crawl (v0.4.6, semantic v0.4.8)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the crawl has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -549,6 +549,40 @@ for p in crawl["pages"]:
 print(crawl["documents"])  # PDFs to read via extract_document
 print(crawl["stop"])       # max_pages reached | frontier exhausted
 ```
+
+### Semantic Crawl (v0.4.8)
+
+The v0.4.6 frontier score was purely lexical and treated every term
+and every page the same. v0.4.8 makes it adapt to the site it is
+reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
+
+- **BM25/IDF over the live corpus** — the crawl keeps a running
+  document-frequency table of the pages it has fetched. Term weights
+  are `idf(t) = ln(1 + (N − df + 0.5) / (df + 0.5))`, so a term that
+  appears on every page stops being a relevance signal while a rare
+  term stands out. While fewer than 3 pages have been read the weights
+  are flat, i.e. the scorer behaves exactly like v0.4.6 at crawl start
+  and sharpens as it goes.
+- **Anchor context** — a link's label is no longer just its anchor
+  text plus URL path: the content words within ±50 characters of the
+  anchor in the containing page's rendered markdown join the label
+  (capped at 8 tokens, highest-frequency first). "Deep learning" next
+  to a "Read more" anchor now counts for "Read more".
+- **URL path priors** — from the non-degenerate regime on,
+  documentation-ish paths (`/docs/`, `/guide/`, `/guides/`, `/blog/`,
+  `/api/`, `/changelog/`, `/reference/`) score ×1.15 and transactional
+  ones (`/pricing`, `/careers`, `/contact`, `/about`) ×0.85.
+- **Offline thesaurus** — `thesaurus.json` (31 curated clusters, ~230
+  topic terms, deliberately no ultra-generic tokens) expands the query
+  with synonyms at **half weight**, capped at twice the base size, with
+  deterministic iteration. A crawl for `query="neural nets"` follows a
+  link labelled "deep learning guide". The query echo reports how many
+  terms were added (e.g. `"deep learning +2"`). The loader fails open:
+  a missing or malformed thesaurus simply disables expansion.
+
+No new parameters in this step — the same `crawl(...)` call gets the
+better ranking. (Richness stats, ranked documents, and discovery seeds
+land in later 0.4.8 steps; optional local embeddings in v0.4.9.)
 
 ### Document Link Detection (v0.4.5)
 

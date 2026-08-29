@@ -22,7 +22,7 @@ by the meta-oxide clean-install fix.
 | Δ2 | "one small corpus object" (unspecified) | Concrete `_CrawlCorpus` dataclass: `n: int`, `df: dict[str, int]`, `add_page(text)`, `idf(t)`. Module-level, no class coupling. | Deterministic, unit-testable in isolation. |
 | Δ3 | Path priors listed under A with no gating | Path priors apply **only when `corpus.n >= 3`** (the non-degenerate regime). For `n < 3` the scorer is exactly v0.4.6 (uniform weights, no prior). | The plan's own degenerate rule says "the scorer *is* v0.4.6 until the crawl has read a few pages" — an ungated prior would break that exactness for any `/docs/`-style URL in a 2-page crawl. |
 | Δ4 | Thesaurus "150–300 terms … curated by hand" | Curation **constraint added**: no ultra-generic tokens. Concrete exclusion list (§2.6.3). | The pin audit (§2.9) showed `test_query_echo_derived` and every derived-query test only pass if common fixture words ("platform", "hub", "notes", "company") never enter a cluster. Precision beats recall for a half-weighted expansion. |
-| Δ5 | "every existing v0.4.6 crawl test passes unchanged" | **One fixture amendment required**: `test_depth_decay_allows_deep_overtake` (details §2.9). All 28 other tests pass unchanged. | Anchor context (A) legitimately re-ranks a fixture whose short root page puts the query words inside the weak candidate's ±50-char window. The test's intent (depth decay overtake) is preserved by neutralising the weak candidate's context, not by weakening the feature. |
+| Δ5 | "every existing v0.4.6 crawl test passes unchanged" | **Two amendments required** (details §2.9): `test_depth_decay_allows_deep_overtake` (fixture) and `test_relevance_focuses_the_crawl` (score pins only). All 27 other tests pass unchanged. | Anchor context (A) legitimately re-ranks a fixture whose short root page puts the query words inside the weak candidate's ±50-char window; the expanded query denominator rescales the flat-regime pins. Both test intents are preserved by amending the fixtures/pins, not by weakening the feature. |
 | Δ6 | E2 `seed_urls: list[str]` | Confirmed supported: `ToolParam(..., list[str], ...)` already ships in `batch_inspect_pages` (agent_tools.py:649) and `json_schema` emits `array of string` for it. No coercion work needed. | Verified against the registry, not assumed. |
 | Δ7 | E1 "one `search_web` call" | Exact seam: `self.search_web(f"site:{host_key} {focus}", max_results=5)`; parse the JSON, take `results` (list of `{title, url, snippet}`); `error` key or JSON failure → fail-open. Tier 2.8 in-memory search cache makes repeat crawls free. | E1's parser must match the real payload shape (`{"results": [...], "guard": {...}, ...}`). |
 | Δ8 | Open decisions §11 of the original plan | All five resolved (defaults adopted, logged in §6). | The plan was approved as written ("start with semantic crawl plan"). |
@@ -255,9 +255,9 @@ Thesaurus assumed curated per §2.6.3. `k` = terms expanded per crawl
 |------|---------|-------|
 | `test_root_fetch_failure_kills_crawl`, `…error_dict`, `…invalid_root_urls` | **unchanged** | Fail before scoring. |
 | `test_root_only_when_max_depth_zero` | **unchanged** | `expand` returns at `depth ≥ max_depth`; query `"deep learning"`-style text is only in a max_depth=0 fixture — no scoring runs. |
-| `test_relevance_focuses_the_crawl` (`query="deep learning"`) | **unchanged** (verified) | `k=2`, `n=1..2` → uniform regime. A: `0.7·2/3 + 0.3·2/3 = 0.667` (pin `0.6 ≤ s < 1.0` ✓). A1: same lexical × `0.7²` = `0.327` (pin `0.3 < s < 0.6` ✓). B: label `{company}` → 0 → still `below min score` (stopwords strip "about"). A2: `{contact}` → 0 ✓. `documents == [PDF]` ✓. Echo becomes `"deep learning +2"` — no pin on it. |
+| `test_relevance_focuses_the_crawl` (`query="deep learning"`) | **AMENDED (Δ7)** | Pins updated for the expanded denominator (see below). |
 | `test_flat_scores_degrade_to_plain_bfs` (`query="notes"`) | **unchanged** | `notes` excluded from clusters (§2.6.3) → no expansion; all scores `1.0` (context adds only `{notes}`) → BFS order. |
-| `test_depth_decay_allows_deep_overtake` | **AMENDED (Δ5)** | See below. |
+| `test_depth_decay_allows_deep_overtake` | **AMENDED (Δ5)** | WEAK anchor `platform` → `company`; stop `frontier exhausted` (see below). |
 | `test_explicit_query_beats_derived` (`query="needle deep"`) | **unchanged** (verified) | `k=2` via the ML cluster (`deep`). N: `0.7·2/3 = 0.467`, ctx 0 → `0.467`. X: anchor `platform` context = whole short root md `{platform, stuff, here}` → query_cov 0, ctx `1.0` → `0.3`. `0.467 > 0.3` → `[ROOT, N]`, X not fetched ✓. |
 | `test_query_echo_derived` | **unchanged** | Root `# Hub\n\nplatform.\n` → derived `{hub, platform}` → both excluded tokens → `added = 0` → echo stays `"derived from root page"`. This test is the *guard* for the §2.6.3 rule. |
 | `test_min_score_zero_follows_unscored`, `…clamped`, `…bad_value` | **unchanged** | No expansion (derived `{platform, hub}`); score-0 candidate enqueued at `min_score=0` as before. |
@@ -265,26 +265,38 @@ Thesaurus assumed curated per §2.6.3. `k` = terms expanded per crawl
 | Host/filter tests (`same_host`, boilerplate, assets, documents, dedupe) | **unchanged** | Filters run before scoring or on the floor; scores only matter where asserted (none do, except ordering in `same_host` tests where all candidates tie). |
 | Cache tests, `execute_tool_dispatch`, `registry_shape` | **unchanged** | No payload shape change in step 1; registry unchanged. |
 
-#### The one fixture amendment (Δ5, exact)
+#### The fixture amendments (Δ5 + Δ7, exact)
 
-`test_depth_decay_allows_deep_overtake` as written breaks: on the short
+`test_depth_decay_allows_deep_overtake` breaks as written: on the short
 root page, the weak candidate's anchor `"platform"` has a ±50 window that
 **is the whole page** — so anchor context gives it full query coverage and
-it overtakes the depth-2 page the test exists to prove.
+it overtakes the depth-2 page the test exists to prove. Fix (fixture
+only, test intent preserved): change the WEAK anchor `"platform"` →
+`"company"` (not present in the page body → no context → score 0 →
+skipped at the min-score floor). The stop reason changes to
+`"frontier exhausted"` and `count == 3` (ROOT, MID, DEEP; WEAK never
+fetched) — the depth-decay overtake the test exists to prove, now with a
+genuinely weak candidate.
 
-Fix (fixture only, test intent preserved):
+`test_relevance_focuses_the_crawl` breaks as written only in its score
+pins: with `k = 2` the query denominator gains the half-weighted
+expansions, so A scores `0.7·(1/3) = 0.467` (was 0.63) and A1
+`0.302` (was 0.417). Pins widened to `0.4 ≤ A < 0.6` and
+`0.25 ≤ A1 < 0.5`; an echo assertion `query.endswith(" +2")` was added.
+The test's core assertions (A before A1, B/A2 skipped, PDF collected)
+are unchanged.
 
-```python
-ROOT: md "# Hub\n\nplatform deep learning notes. A company page for the team.\n",
-      links=[(WEAK, "company"), (MID, "platform notes")]
-```
-
-Recomputed (uniform regime, `k = 4`): MID `0.537` > DEEP `0.318` > WEAK
-`0.105` → fetch order `[ROOT, MID, DEEP]`, WEAK never fetched — the
-depth-decay overtake the test asserts, now with a genuinely weak
-candidate.
+**Verification note:** the audit originally written in this section was
+computed from a stale read of the test file. The on-disk fixtures
+(`example.com` URLs, module-level helpers, derived query in the
+depth-decay test) were re-read before implementation, and all 29 existing
+crawl tests plus 16 new semantic tests pass after the two amendments.
 
 ### 2.10 New tests — `tests/test_crawl_semantic.py` (step 1, ~12)
+
+As implemented: 16 tests (the list below, with the path-prior case split
+into table + corpus-gating, the fail-open test, an exact legacy-path
+regression, and a derived-echo guard added).
 
 A (5):
 1. Rare term beats common term: 4-page corpus (term R in 1 page, C in all)

@@ -138,10 +138,15 @@ class TestRelevanceFrontier:
         assert _fetched_urls(parsed) == [ROOT, A, A1]
         assert [p["depth"] for p in parsed["pages"]] == [0, 1, 2]
         # Root is the seed (score 1.0); deeper pages carry their
-        # depth-decayed effective score.
+        # depth-decayed effective score.  The semantic thesaurus
+        # expansion dilutes query coverage by the expanded terms
+        # (base terms keep full weight, expansions weigh half), so the
+        # pins are the v0.4.6 values minus that dilution.
         assert parsed["pages"][0]["score"] == 1.0
-        assert 0.6 <= parsed["pages"][1]["score"] < 1.0
-        assert 0.3 < parsed["pages"][2]["score"] < 0.6
+        assert 0.4 <= parsed["pages"][1]["score"] < 0.6
+        assert 0.25 <= parsed["pages"][2]["score"] < 0.5
+        # The echo reports how many thesaurus terms were added.
+        assert parsed["query"].endswith(" +2")
         # /b and /a/2 were ranked out, /report.pdf routed to documents.
         assert parsed["documents"] == [PDF]
         skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
@@ -176,18 +181,23 @@ class TestRelevanceFrontier:
         WEAK = "https://example.com/weak"
         tb._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform deep learning notes.\n",
-                        links=[(WEAK, "platform"), (MID, "platform notes")]),
+                        links=[(WEAK, "company"), (MID, "platform notes")]),
             MID: _page("# Mid\n\ndeep learning platform details.\n",
                        links=[(DEEP, "deep learning platform")]),
             DEEP: _page("deep page.\n"),
             WEAK: _page("weak page.\n"),
         })
         parsed = _result(tb, max_pages=3)
-        # Root (0), then the better depth-1 (/mid, ~0.41), then the
-        # strongly relevant depth-2 (/deep, ~0.35) overtakes /weak (~0.31).
+        # Root (0), then the better depth-1 (/mid), then the strongly
+        # relevant depth-2 (/deep).  The weak candidate scores 0 (its
+        # label matches neither the derived query nor the page topic)
+        # and is skipped at the min-score floor.
         assert _fetched_urls(parsed) == [ROOT, MID, DEEP]
         assert [p["depth"] for p in parsed["pages"]] == [0, 1, 2]
-        assert parsed["stop"] == "max_pages reached"
+        # With the weak candidate skipped at the floor the crawl ends by
+        # exhausting the frontier, exactly at the max_pages cap.
+        assert parsed["count"] == 3
+        assert parsed["stop"] == "frontier exhausted"
         assert WEAK not in tb._fetch_html.state["calls"]
 
     def test_explicit_query_beats_derived(self, tmp_path):

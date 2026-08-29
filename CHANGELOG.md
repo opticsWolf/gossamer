@@ -4,6 +4,30 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.4.8] — semantic crawl: BM25/IDF frontier scoring + offline thesaurus
+
+- **BM25/IDF scoring (feature A)**: the crawl frontier's relevance score
+  now weights terms by inverse document frequency over the pages fetched
+  so far (`_CrawlCorpus`, fed after every successful fetch and before that
+  page's links are scored). While fewer than 3 pages have been read all
+  weights are flat, so the scorer starts exactly like v0.4.6 and sharpens
+  as the crawl reads the site.
+- **Anchor context (feature A)**: words within ±50 chars of a link's
+  anchor text in the containing page's rendered markdown join the
+  candidate's label (capped at 8 tokens, highest-frequency first, cached
+  per page per anchor; fail-open when the anchor is not in the body).
+- **URL path priors (feature A)**: documentation-ish paths
+  (`/docs/`, `/blog/`, `/api/`, …) score ×1.15 and transactional ones
+  (`/pricing`, `/careers`, …) ×0.85, applied only in the non-degenerate
+  (≥ 3 pages) regime. Table-driven in `_CRAWL_PATH_PRIOR_GROUPS`.
+- **Offline thesaurus (feature B)**: `thesaurus.json` (31 clusters,
+  ~230 curated topic terms, no ultra-generic tokens) expands the query
+  with half-weighted synonyms, capped at 2× the base size, deterministic
+  iteration. The query echo reports additions ("deep learning +2").
+  Loader fails open to expansion-off on any problem.
+- Legacy `_crawl_score` calls (no corpus) return bit-for-bit v0.4.6
+  results; 16 new tests in `tests/test_crawl_semantic.py`.
+
 ## [0.4.7] — clean-install fix for the meta-oxide dependency
 
 - `meta-oxide` now resolves to the packaging-fixed fork

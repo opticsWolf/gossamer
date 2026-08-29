@@ -13,6 +13,7 @@ import warnings
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse, urljoin, urlunparse
@@ -936,6 +937,60 @@ class ToolboxConfig:
             raise ValueError("max_response_bytes must be >= 1")
         if not 0.0 <= self.link_budget_ratio < 0.9:
             raise ValueError("link_budget_ratio must be in [0.0, 0.9)")
+
+
+class _CrawlCorpus:
+    """Live site vocabulary for BM25-style crawl scoring (semantic A).
+
+    Tracks how many fetched pages contain each term (document
+    frequency).  While fewer than *min_corpus* pages have been read,
+    every idf is 1.0, which keeps the scorer on flat v0.4.6-style
+    weights; afterwards rare terms outweigh common ones and the frontier
+    ranking sharpens as the crawl reads the site.
+    """
+
+    __slots__ = ("n", "df", "min_corpus")
+
+    def __init__(self, min_corpus: int = 3) -> None:
+        self.n = 0
+        self.df: dict = {}
+        self.min_corpus = min_corpus
+
+    def add_page(self, tokens: set) -> None:
+        """Register one fetched page (term presence, not occurrences)."""
+        self.n += 1
+        for t in tokens:
+            self.df[t] = self.df.get(t, 0) + 1
+
+    def idf(self, t: str) -> float:
+        """BM25 inverse document frequency (flat 1.0 while degenerate)."""
+        if self.n < self.min_corpus:
+            return 1.0
+        d = self.df.get(t, 0)
+        return max(0.0, math.log(1.0 + (self.n - d + 0.5) / (d + 0.5)))
+
+
+@lru_cache(maxsize=1)
+def _load_thesaurus() -> tuple:
+    """Load the offline thesaurus (semantic B); fail-open.
+
+    Returns ``(version, clusters)`` with clusters as a tuple of tuples in
+    file order (order matters: query expansion iterates deterministically
+    over it).  Any problem -- missing file, bad JSON, wrong shape --
+    degrades to ``(0, ())``: expansion is disabled, the crawl is
+    otherwise unaffected.
+    """
+    try:
+        path = Path(__file__).resolve().parent / "thesaurus.json"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        version = int(raw["version"])
+        clusters = tuple(
+            tuple(str(t).lower() for t in cluster) for cluster in raw["clusters"]
+        )
+        return version, clusters
+    except Exception:
+        logger.warning("crawl thesaurus unavailable; expansion disabled")
+        return 0, ()
 
 
 class WebResearcherToolbox:
@@ -3847,6 +3902,16 @@ class WebResearcherToolbox:
         "they this those through to too under until up very was we were what "
         "when where which while who why will with you your yours".split()
     )
+    # Semantic crawl (A): BM25/IDF regime + anchor context + path priors.
+    _CRAWL_IDF_MIN_CORPUS = 3   # flat v0.4.6-style weights until this many pages
+    _CRAWL_CONTEXT_CHARS = 50   # anchor context window, each side of the anchor
+    _CRAWL_CONTEXT_TOKEN_CAP = 8  # max tokens contributed by anchor context
+    _CRAWL_EXPANSION_WEIGHT = 0.5  # thesaurus-expanded query terms weigh half
+    _CRAWL_PATH_PRIOR_GROUPS = (
+        (("/docs/", "/guide/", "/guides/", "/blog/", "/api/",
+          "/changelog/", "/reference/"), 1.15),
+        (("/pricing", "/careers", "/contact", "/about"), 0.85),
+    )
 
     def research(
         self, topic: str, depth: int = 5, max_tokens: int = 0
@@ -4014,6 +4079,83 @@ class WebResearcherToolbox:
         return {t for t, _ in ranked[: cls._CRAWL_TOPIC_WORDS]}
 
     @classmethod
+    def _crawl_anchor_context(cls, md: str, anchor: str) -> frozenset:
+        """Topic words near an anchor in the page body (semantic A).
+
+        Finds the anchor text (case-insensitive) in the page's full
+        delivered markdown and harvests content words from a
+        ±_CRAWL_CONTEXT_CHARS window around it.  When the window holds
+        more than _CRAWL_CONTEXT_TOKEN_CAP distinct words, only the
+        highest-frequency survive (ties alphabetical) -- deterministic.
+        Empty when the anchor does not appear verbatim in the rendered
+        markdown (link labels often do not; fail-open).
+        """
+        text = (md or "").lower()
+        needle = (anchor or "").lower().strip()
+        if not needle:
+            return frozenset()
+        pos = text.find(needle)
+        if pos < 0:
+            return frozenset()
+        window = text[
+            max(0, pos - cls._CRAWL_CONTEXT_CHARS):
+            pos + len(needle) + cls._CRAWL_CONTEXT_CHARS
+        ]
+        counts: dict = {}
+        for t in re.findall(r"[a-z0-9]+", window):
+            if t not in cls._CRAWL_STOPWORDS:
+                counts[t] = counts.get(t, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        return frozenset(t for t, _ in ranked[: cls._CRAWL_CONTEXT_TOKEN_CAP])
+
+    @classmethod
+    def _crawl_path_prior(cls, url: str) -> float:
+        """Mild topic prior from the URL path (semantic A).
+
+        Documentation-ish paths are weighted up, transactional ones down;
+        the first group with any matching prefix wins.  Table-driven so
+        the mapping is unit-testable.
+        """
+        path = (urlparse(url).path or "").lower()
+        for prefixes, weight in cls._CRAWL_PATH_PRIOR_GROUPS:
+            if any(path.startswith(p) for p in prefixes):
+                return weight
+        return 1.0
+
+    @classmethod
+    def _crawl_expand_query(
+        cls, base_terms: set, clusters: tuple = None
+    ) -> tuple:
+        """Expand *base_terms* with thesaurus synonyms (semantic B).
+
+        Deterministic iteration: base terms sorted, clusters in file
+        order, members in cluster order, each term at most once.
+        Expansion is capped at ``len(base_terms)`` additions so the query
+        never grows past twice its size.  Returns
+        ``(expanded_set, added_count)``.
+        """
+        base = set(base_terms)
+        if not base:
+            return base, 0
+        if clusters is None:
+            _version, clusters = _load_thesaurus()
+        seen = set(base)
+        added = 0
+        cap = len(base)
+        for term in sorted(base):
+            for cluster in clusters:
+                if term not in cluster:
+                    continue
+                for member in cluster:
+                    if member in seen:
+                        continue
+                    seen.add(member)
+                    added += 1
+                    if added >= cap:
+                        return seen, added
+        return seen, added
+
+    @classmethod
     def _crawl_score(
         cls,
         url: str,
@@ -4021,23 +4163,60 @@ class WebResearcherToolbox:
         depth: int,
         query_terms: set,
         page_terms: set,
+        corpus: _CrawlCorpus = None,
+        label_extra: frozenset = frozenset(),
+        base_terms: set = None,
     ) -> float:
         """Relevance score of a frontier candidate (see ``crawl``).
 
-        ``score = QUERY_WEIGHT * cover(label, query)``
-        ``        + CONTEXT_WEIGHT * cover(label, page_topic)``
-        where the label is the candidate's anchor text plus its URL path
-        tokens, and cover(T, S) measures how much of the relevant side
-        the label echoes. The depth decay is applied by the caller so
-        the reported per-page score is depth-independent and comparable.
+        Legacy form (``corpus is None``) is exactly the v0.4.6 formula:
+        ``score = QUERY_WEIGHT * cover(label, query)
+                + CONTEXT_WEIGHT * cover(label, page_topic)``
+        with the label = anchor text + URL path tokens and uniform
+        weights.
+
+        Semantic crawl (A/B): with a live *corpus*, term weights become
+        BM25-style idfs (flat 1.0 until the corpus has read
+        ``_CRAWL_IDF_MIN_CORPUS`` pages, i.e. flat weights early on),
+        *label_extra* contributes anchor-context words, *base_terms*
+        marks the caller's original query terms so thesaurus expansions
+        weigh half, and URL path priors apply from the non-degenerate
+        regime on.  The depth decay is applied by the caller so the
+        reported per-page score is depth-independent and comparable.
         """
         label = cls._crawl_tokens(anchor)
         label |= cls._crawl_tokens(urlparse(url).path)
+        label |= set(label_extra)
+        if corpus is None:
+            score = 0.0
+            if query_terms:
+                score += cls._CRAWL_QUERY_WEIGHT * len(label & query_terms) / len(query_terms)
+            if label and page_terms:
+                score += cls._CRAWL_CONTEXT_WEIGHT * len(label & page_terms) / len(label)
+            return score
+        base = base_terms if base_terms is not None else query_terms
+
+        def w_q(t: str) -> float:
+            idf = corpus.idf(t)
+            return idf if t in base else cls._CRAWL_EXPANSION_WEIGHT * idf
+
+        q_weight = sum(w_q(t) for t in query_terms)
         score = 0.0
-        if query_terms:
-            score += cls._CRAWL_QUERY_WEIGHT * len(label & query_terms) / len(query_terms)
-        if label and page_terms:
-            score += cls._CRAWL_CONTEXT_WEIGHT * len(label & page_terms) / len(label)
+        if query_terms and q_weight > 0:
+            score += (
+                cls._CRAWL_QUERY_WEIGHT
+                * sum(w_q(t) for t in label & query_terms)
+                / q_weight
+            )
+        l_weight = sum(corpus.idf(t) for t in label)
+        if label and page_terms and l_weight > 0:
+            score += (
+                cls._CRAWL_CONTEXT_WEIGHT
+                * sum(corpus.idf(t) for t in label & page_terms)
+                / l_weight
+            )
+        if corpus.n >= cls._CRAWL_IDF_MIN_CORPUS:
+            score *= cls._crawl_path_prior(url)
         return score
 
     @staticmethod
@@ -4078,8 +4257,12 @@ class WebResearcherToolbox:
         1. Fetch the root through the normal page pipeline (cache,
            robots, SSRF, rate limits, provenance) — depth 0.
         2. Score each outgoing link: query coverage (0.7) plus
-           containing-page topic coverage (0.3); the topic vocabulary
-           is the page's full delivered text, not just its title.
+           containing-page topic coverage (0.3), both BM25-style: term
+           weights are idfs over the pages fetched so far (flat until
+           the crawl has read a few pages), the query is expanded with
+           the offline thesaurus (expansions weigh half), the link's
+           surrounding page text joins its label, and documentation-ish
+           URL paths get a mild prior.
         3. Pop the highest ``score * 0.7**depth`` (ties: discovery
            order — flat scores therefore degrade to plain BFS) and
            fetch it, until *max_pages* pages are fetched, the frontier
@@ -4140,6 +4323,10 @@ class WebResearcherToolbox:
         errors: list = []
         skipped: list = []
         documents: list = []
+        # Semantic A: live site vocabulary.  Fed after every successful
+        # fetch and *before* that page's links are scored, so each page's
+        # candidates are ranked against everything read up to that page.
+        corpus = _CrawlCorpus(min_corpus=self._CRAWL_IDF_MIN_CORPUS)
 
         def note_skipped(url: str, reason: str) -> None:
             nonlocal skipped_total
@@ -4157,9 +4344,9 @@ class WebResearcherToolbox:
             if depth >= max_depth:
                 return
             title = str((page.get("metadata") or {}).get("title") or "")
-            page_terms = self._crawl_topic_words(
-                (page.get("markdown") or "") + " " + title
-            )
+            page_md = page.get("markdown") or ""
+            page_terms = self._crawl_topic_words(page_md + " " + title)
+            context_cache: dict = {}
             for cand in page.get("follow_up_links") or []:
                 if not isinstance(cand, dict):
                     continue
@@ -4190,9 +4377,24 @@ class WebResearcherToolbox:
                 if os.path.splitext(path)[1] in self._CRAWL_SKIP_EXTENSIONS:
                     note_skipped(url, "asset")
                     continue
+                anchor = str(cand.get("title") or "")
+                # Semantic A: words around the anchor in the page body
+                # join the label (cached per page per anchor; repeated
+                # labels are common in nav footers).  A label that does
+                # not appear in the rendered markdown contributes none.
+                if anchor and anchor != "(untitled)":
+                    context = context_cache.get(anchor)
+                    if context is None:
+                        context = self._crawl_anchor_context(page_md, anchor)
+                        context_cache[anchor] = context
+                else:
+                    context = frozenset()
                 score = self._crawl_score(
-                    url, str(cand.get("title") or ""), depth + 1,
+                    url, anchor, depth + 1,
                     query_terms, page_terms,
+                    corpus=corpus,
+                    label_extra=context,
+                    base_terms=base_terms,
                 )
                 if score < min_score:
                     note_skipped(url, "below min score")
@@ -4246,6 +4448,7 @@ class WebResearcherToolbox:
             record["markdown"] = md[: self._CRAWL_PAGE_CHARS]
             record["links_total"] = int(page.get("total_links") or 0)
             pages.append(record)
+            corpus.add_page(self._crawl_tokens(md))
             expand(page, url, depth)
 
         # Root: always fetched (depth 0); a root failure kills the crawl.
@@ -4285,15 +4488,21 @@ class WebResearcherToolbox:
             "links_total": int(root_page.get("total_links") or 0),
         })
         visited.add(root.split("#", 1)[0])
+        corpus.add_page(self._crawl_tokens(root_md))
 
-        # Effective query: the caller's focus, or the root page itself.
+        # Effective query: the caller's focus, or the root page itself,
+        # then expanded with the offline thesaurus (semantic B).  The
+        # base terms keep full weight; expansions weigh half.
         query = (query or "").strip()
         if query:
-            query_terms = self._crawl_tokens(query)
+            base_terms = self._crawl_tokens(query)
             query_echo = query
         else:
-            query_terms = self._crawl_topic_words(root_md + " " + root_title)
+            base_terms = self._crawl_topic_words(root_md + " " + root_title)
             query_echo = "derived from root page"
+        query_terms, expanded = self._crawl_expand_query(base_terms)
+        if expanded:
+            query_echo += f" +{expanded}"
         expand(root_page, root, 0)
 
         stop = "frontier exhausted"
