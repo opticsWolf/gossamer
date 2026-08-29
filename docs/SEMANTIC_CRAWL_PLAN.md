@@ -1,7 +1,10 @@
 # Semantic Crawl — Implementation Plan
 
-Status: **Draft for approval** (2026-08-28)
-Applies to: `stitch-web-researcher` at v0.4.6 (`dev` @ `57e2939`)
+Status: **Approved** (2026-08-29). Implementation details (exact seams,
+signatures, formulas, test pin audit, curation rules) are superseded by
+`docs/semantic_crawl_implementation_plan.md`; this document's features,
+invariants, non-goals, and gain table remain the contract.
+Applies to: `stitch-web-researcher` v0.4.7 (`dev` @ `e795aa5`)
 Target releases: **v0.4.8** (features A–E) and **v0.4.9** (feature F, optional
 extra). *Shifted up one from the original v0.4.7/v0.4.8 — v0.4.7 was taken by
 the meta-oxide clean-install fix.*
@@ -402,19 +405,11 @@ dev; release packaging rebuilds at ship time).
 | Non-determinism creeping in | stub + fixed weights; stats report model hash; no randomness in A–E by construction |
 | Scope creep into `research()` | non-goal §7; research keeps its search-then-fetch shape |
 
-## 11. Open decisions (need sign-off before implementation)
-
-1. **`search_prior` default:** `False` (planned) — keeps crawl pure/cheap
-   by default; README recommends it for topical crawls. OK, or should it
-   default `True` when a query is supplied?
-2. **Excerpt coexistence:** keep head skim + opt-in excerpt (planned) vs.
-   replace head skim entirely when `excerpts=True`?
-3. **Thesaurus size target:** 150–300 seed terms now (planned) — bigger
-   from day one, or grow per-release?
-4. **Embedding model:** MiniLM (English, ~80 MB) first (planned) — do we
-   want multilingual (L3) from the start at ~5× size?
-5. **Blend weights** (0.5/0.5, planned) fixed constants vs.
-   `ToolboxConfig` knob?
+## 11. Open decisions — **resolved 2026-08-29** (see the decision log in
+`docs/semantic_crawl_implementation_plan.md` §6; all defaults adopted):
+1. `search_prior` default **False**; 2. head skim + opt-in excerpt **coexist**;
+3. **~200 terms** now, grown per-release; 4. **MiniLM-class English** first,
+multilingual later via model swap; 5. blend weights **fixed constants**.
 
 ---
 
