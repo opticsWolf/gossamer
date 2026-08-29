@@ -2,7 +2,7 @@
 
 Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
-labels (C/S/M/P/T) reference `CODE_REVIEW_2026-08-27.md`.
+labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
 ## [0.4.6] — focused crawl
 
@@ -23,7 +23,7 @@ labels (C/S/M/P/T) reference `CODE_REVIEW_2026-08-27.md`.
 
 ## [0.4.4] — bugfix plan release
 
-- All nine `IMPLEMENTATION_BUGFIX_PLAN` items: URL rejections honor the JSON
+- All nine `docs/IMPLEMENTATION_BUGFIX_PLAN.md` items: URL rejections honor the JSON
   error contract; serialized JSON is never string-cut (M11 shrinkers);
   section selection sees Setext headings; batch 4-tuple ABI parity with
   single-page reads; named Rust type aliases; `normalize_url("report.pdf")`

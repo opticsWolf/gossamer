@@ -49,7 +49,7 @@ CI (`.github/workflows/ci.yml`) runs all three plus `pip-audit` +
   bump for docs/tests/git-hygiene only. Bump `pyproject.toml`,
   `Cargo.toml`, and `Cargo.lock` together. The README test-count badge must
   track the final count.
-- **Plans:** working documents live at the repo root as
+- **Plans:** working documents live in `docs/` as
   `*_PLAN.md` / `CODE_REVIEW_*.md` (tracked history, not user docs).
 
 ## What we deliberately won't accept

@@ -621,7 +621,7 @@ stitch-web-researcher/
 ├── pyproject.toml                    # Build config (maturin) + dependency metadata
 ├── requirements.txt                  # Dev/test dependencies (runtime deps live in pyproject)
 ├── README.md                         # This file
-├── SPEC_AUDIT.md                     # Feature audit vs. the original spec
+├── docs/                             # Planning & audit docs (CODE_REVIEW, *_PLAN.md, SPEC_AUDIT.md)
 ├── src/
 │   └── lib.rs                        # Rust async fetcher (shared Tokio runtime)
 ├── stitch_web_researcher/
