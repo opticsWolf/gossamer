@@ -124,7 +124,7 @@ class TestFetchSmartPageFallback:
     def test_fallback_extracts_metadata(self, tmp_path, http_server, monkeypatch):
         """With browser_oxide 'unavailable', fetch_smart_page falls back to
         the static path and must still return metadata (C2)."""
-        monkeypatch.setattr(agent_tools, "_browser_oxide_available", False)
+        monkeypatch.setattr("stitch_web_researcher.fetch._browser_oxide_available", False)
         md, links, meta = agent_tools.fetch_smart_page(http_server + "/page")
 
         assert "Hello C2" in md
@@ -134,13 +134,17 @@ class TestFetchSmartPageFallback:
 
     def test_browser_path_still_works_with_metadata(self, tmp_path, http_server):
         """The browser path's metadata behavior is unchanged."""
+        # fetch_smart_page lives in fetch.py, so the availability flag and
+        # the browser backend it dispatches to are patched there. (They were
+        # historically agent_tools module globals, moved to fetch.py during
+        # the agent_tools composition split.)
         with patch(
-            "stitch_web_researcher.agent_tools._fetch_with_browser_oxide",
+            "stitch_web_researcher.fetch._fetch_with_browser_oxide",
             return_value=("md", [], {"meta": {"title": "browser title"}}),
         ), patch(
             # Dispatch consults the availability flag; browser-oxide is an
             # optional [browser] extra and may be absent in this environment.
-            "stitch_web_researcher.agent_tools._browser_oxide_available",
+            "stitch_web_researcher.fetch._browser_oxide_available",
             True,
         ):
             md, links, meta = agent_tools.fetch_smart_page("https://example.com")
