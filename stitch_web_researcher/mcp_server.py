@@ -17,6 +17,7 @@ Configuration via environment variables (all optional):
     STITCH_DDGS_DELAY           (default 1.0)
     STITCH_DOMAIN_DELAY         (default 0.5)
     STITCH_FETCH_DELAY          (default: unset — provider default applies)
+    STITCH_FETCH_JITTER         (default 1.0; max random s added to the per-domain fetch gap)
     STITCH_MAX_MARKDOWN_CHARS   (default 8000)
     STITCH_MAX_TOKENS           (default 0 = unlimited)
     STITCH_MODEL_NAME           (default "gpt-4o")
@@ -132,6 +133,7 @@ def _config_from_env() -> ToolboxConfig:
         ddgs_delay=_env("STITCH_DDGS_DELAY", 1.0, float),
         domain_delay=_env("STITCH_DOMAIN_DELAY", 0.5, float),
         fetch_delay=fetch_delay,
+        fetch_jitter=_env("STITCH_FETCH_JITTER", 1.0, float),
         max_markdown_chars=_env("STITCH_MAX_MARKDOWN_CHARS", 8000, int),
         max_tokens=_env("STITCH_MAX_TOKENS", 0, int),
         model_name=_env("STITCH_MODEL_NAME", "gpt-4o"),

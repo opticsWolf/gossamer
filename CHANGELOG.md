@@ -56,6 +56,19 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   structured `content`) when the API returns them. The base interface
   (`_search_impl`, `search(query, max_results)`) is unchanged. Tests:
   `tests/test_exa_provider_features.py` (+18).
+- **Fetch-path politeness: configurable jitter + crawl-aware throttling.**
+  The per-domain fetch gap is now `fetch_interval + uniform(0, fetch_jitter)`
+  where `fetch_jitter` is a new `ToolboxConfig.fetch_jitter` (default `1.0`,
+  preserving the historical 0.5-1.5 s gap; set `0` to disable). The old
+  hardcoded `random.uniform(0.0, 1.0)` is gone. Throttling is now
+  crawl-aware: `crawl()` forwards its root host key as `politeness_root` to
+  the fetch path, so only same-domain (intra-site) pages are spaced out --
+  cross-domain links (each visited at most once) skip politeness entirely,
+  keeping the crawl fast without hammering external hosts. Single/batch
+  fetches pass `politeness_root=None` and keep the historical per-domain
+  behaviour (a first visit to any unseen domain takes no gap). Wired through
+  the MCP server as `STITCH_FETCH_JITTER` (default `1.0`). Tests:
+  `tests/test_s7_fetch_politeness.py` (+8).
 
 ## [0.4.9]
 

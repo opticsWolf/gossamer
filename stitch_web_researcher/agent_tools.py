@@ -941,6 +941,11 @@ class ToolboxConfig:
     search_providers: Optional[list] = None
     default_provider_index: int = 0
     fetch_delay: Optional[float] = None
+    # Max random seconds added to the per-domain fetch gap to
+    # desynchronize concurrent tool calls (0 disables jitter).
+    # Defaults to 1.0 s so the historical 0.5-1.5 s fetch gap is preserved
+    # unless the caller opts out.
+    fetch_jitter: float = 1.0
     fetch_mode: str = "auto"
     candidate_cap: int = 500
     max_concurrency: int = 8
@@ -1120,6 +1125,7 @@ class WebResearcherToolbox:
             ) from e
 
         self._fetch_interval = self._resolve_fetch_interval(config)
+        self._fetch_jitter = float(config.fetch_jitter)
 
         # M7: bounded OrderedDicts (FIFO) instead of an unbounded set
         # and a defaultdict (whose reads insert unseen keys).
@@ -1420,17 +1426,33 @@ class WebResearcherToolbox:
             logger.debug("robots.txt check failed for %s", url, exc_info=True)
             return False
 
-    def _rate_limit_domain(self, url: str) -> None:
+    def _rate_limit_domain(
+        self, url: str, politeness_root: Optional[str] = None
+    ) -> None:
         """Enforce per-domain rate limiting for content fetching.
 
         The minimum gap between same-domain fetches is the resolved
-        ``_fetch_interval`` plus a random 0–1 s jitter (only when the
-        interval is non-zero), which desynchronizes access patterns. A
-        Crawl-delay requested in the site's robots.txt (S4) raises the
-        gap floor.
+        ``_fetch_interval`` plus a random ``0.._fetch_jitter`` s jitter
+        (only when the interval is non-zero), which desynchronizes access
+        patterns. A Crawl-delay requested in the site's robots.txt (S4)
+        raises the gap floor.
+
+        *politeness_root* makes the throttle crawl-aware: when set, only
+        fetches on that host key are throttled -- cross-domain links (each
+        visited once) skip politeness entirely, so a crawl never slows
+        down on external hosts. When ``None`` (single/batch fetch), every
+        domain is throttled per-domain; a first visit to an unseen domain
+        still takes no gap because ``elapsed`` is large.
         """
         parsed = urlparse(url)
         domain = parsed.netloc
+        # Crawl politeness: only throttle the crawl's own host. External
+        # hosts are visited once, so skipping keeps the crawl fast without
+        # hammering them. (Static method, so call it unbound-style.)
+        if politeness_root is not None and self._crawl_host_key(
+            url
+        ) != politeness_root:
+            return
         # S4: resolve the Crawl-delay *before* taking the throttle lock --
         # the first probe of a host performs a robots.txt network fetch,
         # which must not hold the lock.
@@ -1449,7 +1471,7 @@ class WebResearcherToolbox:
             elapsed = time.time() - last_seen
             gap = self._fetch_interval
             if gap > 0:
-                gap += random.uniform(0.0, 1.0)
+                gap += random.uniform(0.0, self._fetch_jitter)
             if crawl_delay is not None and crawl_delay > gap:
                 gap = crawl_delay
             if elapsed < gap:
@@ -2529,6 +2551,7 @@ class WebResearcherToolbox:
         query: Optional[str] = None,
         offset: int = 0,
         max_chunks: int = 1,
+        politeness_root: Optional[str] = None,
     ) -> str:
         """Shared implementation behind ``inspect_html_page`` (sync + async).
 
@@ -2580,7 +2603,7 @@ class WebResearcherToolbox:
             try:
                 # Politeness delay applies only when we will actually fetch
                 # (a conditional revalidation counts as a fetch too).
-                self._rate_limit_domain(url)
+                self._rate_limit_domain(url, politeness_root)
                 if stale_entry is not None:
                     outcome = self._revalidate_stale_entry(url, stale_entry)
                     if outcome is not None:
@@ -4570,6 +4593,10 @@ class WebResearcherToolbox:
         seeds = [str(s) for s in (seed_urls or [])]
 
         root_key = self._crawl_host_key(root)
+        # Politeness is scoped to the crawl's own host: same-domain pages
+        # are spaced out with delay+jitter, external hosts are fetched
+        # without throttling (each is visited at most once).
+        politeness_root = root_key
         queue: list = []  # (effective score, seq, url, depth, anchor)
         seq = 0
         queue_dropped = 0
@@ -4768,7 +4795,9 @@ class WebResearcherToolbox:
                 "score": round(score_eff, 3),
             }
             try:
-                raw_page = self._inspect_html_page_impl(url, None, "", 0, 1)
+                raw_page = self._inspect_html_page_impl(
+                    url, None, "", 0, 1, politeness_root
+                )
                 try:
                     page = json.loads(raw_page)
                 except json.JSONDecodeError:
@@ -4819,7 +4848,9 @@ class WebResearcherToolbox:
 
         # Root: always fetched (depth 0); a root failure kills the crawl.
         try:
-            raw_root = self._inspect_html_page_impl(root, None, "", 0, 1)
+            raw_root = self._inspect_html_page_impl(
+                root, None, "", 0, 1, politeness_root
+            )
             try:
                 root_page = json.loads(raw_root)
             except json.JSONDecodeError:

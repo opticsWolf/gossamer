@@ -85,7 +85,7 @@ class TestRootHandling:
         tb = _toolbox(tmp_path)
         tb._fetch_html = _fake_fetch({})
 
-        def impl(url, use_smart, query, offset, max_chunks):
+        def impl(url, use_smart, query, offset, max_chunks, politeness_root=None):
             return json.dumps(
                 {"warning": "URL disallowed by robots.txt", "url": url}
             )
