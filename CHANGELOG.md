@@ -6,6 +6,21 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
 ## [Unreleased]
 
+- **`agent_tools.py` composition split (god-class reduction), incremental.**
+  The 5100-line `WebResearcherToolbox` facade is split into focused
+  collaborators; each phase keeps the class body's behaviour identical and
+  the full suite green.
+  - **Phase 1** (`config.py`, `models.py`, `fetch.py`, `crawl.py`): moved
+    module-level helpers out of `agent_tools.py` and re-exported them so the
+    public import surface (`mcp_server.py`, `__init__.py`, tests) is
+    unchanged.
+  - **Phase 2** (`search.py`): moved the search concern (search/failover,
+    merge + dedup, result-level cache, provider resolution, `_finish_search`)
+    into `SearchService`. The three public search entry points stay on the
+    facade as thin delegations; `SearchService` reads shared state through
+    `self._tb` (the toolbox), so a caller that reassigns `tb.providers` is
+    seen live instead of via a stale captured copy.
+
 - **Unified API-access interface: `ResourceAdapter`** (new ABC in
   `search_providers.py`). Every data source the harness can ask for -- a web
   search engine, a scholarly index, a legal/financial/geo feed -- now shares

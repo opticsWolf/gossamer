@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 
 from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from stitch_web_researcher.search import SearchService
 from stitch_web_researcher.mcp_server import _config_from_env
 
 
@@ -44,7 +45,7 @@ def _toolbox(tmp_path, **config_kwargs):
 
 class TestResultUrlKey:
     def test_normalization(self):
-        f = WebResearcherToolbox._result_url_key
+        f = SearchService._result_url_key
         assert f({"url": "https://Example.com/a#frag"}) == "https://example.com/a"
         assert f({"url": "http://example.com:80/a/"}) == "http://example.com/a"
         assert f({"url": "https://example.com:443/a/"}) == "https://example.com/a"
@@ -55,7 +56,7 @@ class TestResultUrlKey:
         assert f({"url": 123}) == ""
 
     def test_trailing_slash_equivalence(self):
-        f = WebResearcherToolbox._result_url_key
+        f = SearchService._result_url_key
         assert (
             f({"url": "https://example.com/path/"})
             == f({"url": "https://example.com/path"})
@@ -71,12 +72,12 @@ class TestDedup:
             {"title": "3", "url": "https://x.com/b"},
             {"title": "4"},  # no url, always kept
         ]
-        out = tb._dedup_results(results)
+        out = tb._search._dedup_results(results)
         assert [r["title"] for r in out] == ["1", "3", "4"]
 
     def test_no_url_results_all_kept(self, tmp_path):
         tb = _toolbox(tmp_path)
-        assert len(tb._dedup_results([{"title": "x"}, {"title": "y"}])) == 2
+        assert len(tb._search._dedup_results([{"title": "x"}, {"title": "y"}])) == 2
 
 
 class TestSearchCache:

@@ -205,7 +205,7 @@ class TestToolboxProviders:
         prov1 = DuckDuckGoProvider()
         prov2 = DuckDuckGoProvider()
         toolbox = WebResearcherToolbox(search_providers=[prov1, prov2])
-        resolved = toolbox._resolve_providers(None)
+        resolved = toolbox._search._resolve_providers(None)
         assert resolved == [prov1, prov2]
 
     def test_resolve_providers_named(self):
@@ -213,7 +213,7 @@ class TestToolboxProviders:
         prov1 = DuckDuckGoProvider()
         prov2 = DuckDuckGoProvider()
         toolbox = WebResearcherToolbox(search_providers=[prov1, prov2])
-        resolved = toolbox._resolve_providers("duckduckgo")
+        resolved = toolbox._search._resolve_providers("duckduckgo")
         # All are DDG, so all matched, no others
         assert len(resolved) == 2
 

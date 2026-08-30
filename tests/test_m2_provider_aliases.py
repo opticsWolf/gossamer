@@ -86,34 +86,34 @@ class TestResolveProviderName:
 class TestResolveProvidersOrdering:
     def test_ddg_alias_selects_duckduckgo(self):
         tb = _make_toolbox()
-        order = [p.name for p in tb._resolve_providers("ddg")]
+        order = [p.name for p in tb._search._resolve_providers("ddg")]
         assert order[0] == "duckduckgo"
         # The matched provider is first, the rest preserve registration order.
         assert order[1:] == ["google", "bing", "browser"]
 
     def test_canonical_duckduckgo(self):
         tb = _make_toolbox()
-        assert tb._resolve_providers("duckduckgo")[0].name == "duckduckgo"
+        assert tb._search._resolve_providers("duckduckgo")[0].name == "duckduckgo"
 
     def test_browser_selects_browser_oxide(self):
         tb = _make_toolbox()
-        order = [p.name for p in tb._resolve_providers("browser")]
+        order = [p.name for p in tb._search._resolve_providers("browser")]
         assert order[0] == "browser"
-        assert isinstance(tb._resolve_providers("browser")[0], BrowserOxideSearchProvider)
+        assert isinstance(tb._search._resolve_providers("browser")[0], BrowserOxideSearchProvider)
 
     def test_browser_oxide_alias_selects_browser_oxide(self):
         tb = _make_toolbox()
-        assert tb._resolve_providers("browser_oxide")[0].name == "browser"
+        assert tb._search._resolve_providers("browser_oxide")[0].name == "browser"
 
     def test_each_canonical_selects_its_provider(self):
         tb = _make_toolbox()
         for canonical in ("duckduckgo", "google", "bing", "browser"):
-            first = tb._resolve_providers(canonical)[0]
+            first = tb._search._resolve_providers(canonical)[0]
             assert first.name == canonical, canonical
 
     def test_all_providers_present_after_selection(self):
         tb = _make_toolbox()
-        selected = tb._resolve_providers("bing")
+        selected = tb._search._resolve_providers("bing")
         assert len(selected) == 4
         assert {p.name for p in selected} == {
             "duckduckgo", "google", "bing", "browser"
@@ -121,12 +121,12 @@ class TestResolveProvidersOrdering:
 
     def test_none_uses_registration_order(self):
         tb = _make_toolbox()
-        order = [p.name for p in tb._resolve_providers(None)]
+        order = [p.name for p in tb._search._resolve_providers(None)]
         assert order == ["duckduckgo", "google", "bing", "browser"]
 
     def test_unknown_name_falls_back_to_all(self):
         tb = _make_toolbox()
-        order = [p.name for p in tb._resolve_providers("does-not-exist")]
+        order = [p.name for p in tb._search._resolve_providers("does-not-exist")]
         assert order == ["duckduckgo", "google", "bing", "browser"]
 
     def test_exa_selectable_when_configured(self):
@@ -138,4 +138,4 @@ class TestResolveProvidersOrdering:
                 search_providers=[DuckDuckGoProvider(), exa]
             )
         )
-        assert tb._resolve_providers("exa")[0] is exa
+        assert tb._search._resolve_providers("exa")[0] is exa
