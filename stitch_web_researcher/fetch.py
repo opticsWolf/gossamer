@@ -838,7 +838,7 @@ class FetchService:
             len(markdown),
             len(links),
         )
-        md_chars, md_tokens = self._tb._content_budget()
+        md_chars, md_tokens = self._tb._budget._content_budget()
         # Tier 1.2: paging operates at read time on the full cached
         # markdown, so resuming never re-fetches. Explicit paging
         # (offset > 0 or max_chunks != 1) takes precedence over query-
@@ -871,7 +871,7 @@ class FetchService:
             # The selection already fits the char budget; _truncate here
             # only enforces the token budget as a backstop (and is a no-op
             # when max_tokens is 0).
-            truncated_md = self._tb._truncate(selection.markdown, md_chars, md_tokens)
+            truncated_md = self._tb._budget._truncate(selection.markdown, md_chars, md_tokens)
             markdown_truncated = True
         else:
             # Tier 1.2: slice the full markdown at the requested offset
@@ -968,7 +968,7 @@ class FetchService:
                 # strict comparison also keeps tiny budgets from producing
                 # zero-length chunks and stalling the loop.)
                 end = pos + (cut if cut > md_chars // 2 else md_chars)
-            parts.append(self._tb._truncate(markdown[pos:end], md_chars, md_tokens))
+            parts.append(self._tb._budget._truncate(markdown[pos:end], md_chars, md_tokens))
             pos = end
         return "".join(parts), pos, pos < total
 
@@ -1204,8 +1204,8 @@ class FetchService:
     ) -> dict:
         """Build one batch output entry with the same shape as a
         single-page ``inspect_html_page`` result (C6)."""
-        md_chars, md_tokens = self._tb._content_budget()
-        truncated_md = self._tb._truncate(md, md_chars, md_tokens)
+        md_chars, md_tokens = self._tb._budget._content_budget()
+        truncated_md = self._tb._budget._truncate(md, md_chars, md_tokens)
         # Tier 1.3: batch entries carry the same provenance as single
         # page reads (meta comes from the fresh fetch or the page cache),
         # attached before the budget loop.

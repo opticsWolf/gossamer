@@ -96,6 +96,41 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   the MCP server as `STITCH_FETCH_JITTER` (default `1.0`). Tests:
   `tests/test_s7_fetch_politeness.py` (+8).
 
+## [0.4.13]
+
+- **Phase 6 (`discovery.py`, `budget.py`): extract the final two cohesive
+  clusters of the `agent_tools.py` composition split.** This is the last
+  composition phase -- the four extracted modules from Phase 1 plus these
+  two leave the `WebResearcherToolbox` facade as a thin composition root
+  (public entry points, tool dispatch, and `research()` orchestration stay
+  on the facade). Each collaborator reads shared state through
+  `self._tb` (the toolbox), mirroring `SearchService` / `FetchService` /
+  `DocumentExtractor` / `Crawler`.
+  - **`discovery.py` -> `ResourceDiscovery`**: moves the site-resource
+    discovery cluster (`discover_resources` full implementation,
+    `_find_feed_links`, `_probe_sitemaps`, and the `_DISCOVER_*` /
+    `_FEED_*` / `_LINK_*` constants) out of the facade. The facade keeps one
+    thin `discover_resources` delegation, so the tool registry and public
+    surface are unchanged. URL-prep / robots / rate-limit / visited-state
+    reads go to `self._tb._prepare_url`, `self._tb._robots_disallows`,
+    `self._tb._claim_in_flight`, `self._tb._release_in_flight`,
+    `self._tb._rate_limit_domain`, `self._tb._validate_url`, and the fetch
+    reads to `self._tb._fetch._fetch_html_with_html` /
+    `self._tb._fetch._static_fetch`.
+  - **`budget.py` -> `ContentBudget`**: moves the output-content budget
+    enforcement (`_truncate`, `_content_budget`, `_shrink_parsed_payload`,
+    `_shrink_research`, `_json_fits`, `_fit_json`) out of the facade; it
+    reads configuration through `self._tb` (`model_name`, `link_budget_ratio`,
+    `max_markdown_chars`, `max_tokens`). Every external caller is
+    retargeted: `fetch.py` / `document.py` / `crawl.py` call
+    `self._tb._budget.*`, and the facade's own `research()` calls
+    `self._budget._fit_json` / `self._budget._shrink_research`. The moved
+    clusters gain the imports they lost with the move
+    (`json`, `copy`, `re`, `count_tokens`, `truncate_to_tokens`,
+    `ParsedDocumentPayload`, `_JSON_FIT_FLOOR`, `urljoin`, `urlparse`).
+    Tests that patched moved seams (`tb._FEED_TYPE_PREFIXES`) now read
+    `tb._discovery._FEED_TYPE_PREFIXES`.
+
 ## [0.4.12]
 
 - **Phase 5 (`crawl.py`): extract the focused-crawl orchestration into a

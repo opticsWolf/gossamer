@@ -110,7 +110,7 @@ class TestFeedDiscovery:
         types = [f["type"] for f in result["feeds"]]
         assert "application/rss+xml" in types
         # The hreflang alternate has no feed type -> not a feed.
-        assert all(t.startswith(tuple(tb._FEED_TYPE_PREFIXES)) for t in types)
+        assert all(t.startswith(tuple(tb._discovery._FEED_TYPE_PREFIXES)) for t in types)
 
     def test_charset_in_type_is_normalized(self, tmp_path):
         html = (

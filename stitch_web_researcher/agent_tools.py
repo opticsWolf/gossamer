@@ -115,6 +115,8 @@ from stitch_web_researcher.crawl import (  # noqa: F401
 from stitch_web_researcher.search import SearchService  # noqa: F401
 from stitch_web_researcher.fetch import FetchService  # noqa: F401
 from stitch_web_researcher.document import DocumentExtractor  # noqa: F401
+from stitch_web_researcher.budget import ContentBudget  # noqa: F401
+from stitch_web_researcher.discovery import ResourceDiscovery  # noqa: F401
 
 
 class WebResearcherToolbox:
@@ -264,6 +266,10 @@ class WebResearcherToolbox:
 
         self._crawler = Crawler(self)
 
+        self._budget = ContentBudget(self)
+
+        self._discovery = ResourceDiscovery(self)
+
     def _resolve_fetch_interval(self, config: ToolboxConfig) -> float:
         """Effective content-fetch interval (per-domain politeness delay).
 
@@ -276,135 +282,6 @@ class WebResearcherToolbox:
         if isinstance(rl, RateLimit):
             return rl.fetch_interval
         return config.domain_delay
-
-    def _truncate(
-        self, text: str, char_limit: int, token_limit: int = 0
-    ) -> str:
-        """
-        Apply token-aware truncation.
-
-        1. If *token_limit* > 0, truncate to that many tokens first.
-        2. Then apply the character limit as a safety cap.
-
-        This two-pass approach ensures we never exceed the token
-        budget (primary constraint) while also staying below the
-        character ceiling (fallback safety net).
-        """
-        if token_limit > 0:
-            text = truncate_to_tokens(text, token_limit, self.model_name)
-        if len(text) > char_limit:
-            text = text[:char_limit] + "\n\n... [truncated]"
-        return text
-
-    def _content_budget(self) -> tuple[int, int]:
-        """(markdown_chars, markdown_tokens) budget with a links reserve.
-
-        A fraction of the output budget (``link_budget_ratio``) is held back
-        for the follow-up link list and the JSON envelope so that budget
-        enforcement in ``_build_inspection_result`` always has room to keep
-        at least some links on content-rich pages (C1: previously the
-        markdown was truncated to exactly the envelope budget, leaving zero
-        room for links, which were then all dropped).
-        """
-        keep = 1.0 - self.link_budget_ratio
-        chars = int(self.max_markdown_chars * keep)
-        tokens = int(self.max_tokens * keep) if self.max_tokens > 0 else 0
-        return chars, tokens
-
-    @staticmethod
-    def _shrink_parsed_payload(payload_json: str, budget: Optional[int]) -> str:
-        """Re-serialize a ParsedDocumentPayload with page text capped.
-
-        ``budget`` of ``None`` returns the payload unchanged. The bulk of a
-        parsed document is ``pages[].raw_text`` / ``pages[].markdown``, so
-        those are what shrink; metadata, links and tables are small and stay
-        intact because they are what the model navigates by.
-        """
-        if budget is None:
-            return payload_json
-        payload = ParsedDocumentPayload.model_validate_json(payload_json)
-        for page in payload.pages:
-            if len(page.raw_text) > budget:
-                page.raw_text = page.raw_text[:budget] + "\n\n... [truncated]"
-            if len(page.markdown) > budget:
-                page.markdown = page.markdown[:budget] + "\n\n... [truncated]"
-        return payload.to_json()
-
-    @staticmethod
-    def _shrink_research(result: dict, budget: Optional[int]) -> str:
-        """Serialize a research result with per-source content capped.
-
-        Shrinks each source's markdown first; if the budget is tight enough
-        that even trimmed sources do not fit, whole sources are dropped from
-        the tail and ``sources_omitted`` records how many, so the model can
-        tell a short answer from a truncated one.
-        """
-        out = copy.deepcopy(result)
-        if budget is None:
-            return json.dumps(out, indent=2)
-        for source in out.get("sources", []):
-            page = source.get("result")
-            if isinstance(page, dict):
-                md = page.get("markdown")
-                if isinstance(md, str) and len(md) > budget:
-                    page["markdown"] = md[:budget] + "\n\n... [truncated]"
-                if isinstance(page.get("follow_up_links"), list):
-                    page["follow_up_links"] = page["follow_up_links"][:5]
-            snippet = source.get("snippet")
-            if isinstance(snippet, str) and len(snippet) > budget:
-                source["snippet"] = snippet[:budget] + "..."
-        # A very small budget means even trimmed sources will not all fit;
-        # drop from the tail rather than emit a cut document.
-        keep = max(1, budget // 120)
-        if len(out.get("sources", [])) > keep:
-            out["sources_omitted"] = len(out["sources"]) - keep
-            out["sources"] = out["sources"][:keep]
-        return json.dumps(out, indent=2)
-
-    def _json_fits(self, text: str, char_limit: int, token_limit: int) -> bool:
-        """True when *text* is inside both budgets."""
-        if char_limit and len(text) > char_limit:
-            return False
-        if token_limit and count_tokens(text, self.model_name) > token_limit:
-            return False
-        return True
-
-    def _fit_json(
-        self,
-        build,
-        char_limit: int,
-        token_limit: int,
-        overflow: dict,
-    ) -> str:
-        """Shrink a payload's text fields until its *serialized* form fits.
-
-        ``build(budget)`` must return the payload serialized with every large
-        text field truncated to ``budget`` characters (``None`` meaning no
-        per-field cap).
-
-        Cutting the serialized JSON instead — which is what ``_truncate`` does,
-        and what these paths used to do — yields an unparseable payload, which
-        is the LLM's entire reason for calling the tool. So the budget is
-        applied to the *content* before serialization, and a payload that still
-        will not fit is replaced by the small, valid ``overflow`` envelope
-        rather than a cut. The invariant is absolute: this returns JSON.
-        """
-        out = build(None)
-        if self._json_fits(out, char_limit, token_limit):
-            return out
-
-        budget = char_limit if char_limit > 0 else len(out)
-        while budget > _JSON_FIT_FLOOR:
-            budget //= 2
-            out = build(budget)
-            if self._json_fits(out, char_limit, token_limit):
-                return out
-
-        logger.warning(
-            "Payload could not be shrunk into the output budget; "
-            "returning an overflow envelope instead of invalid JSON"
-        )
-        return json.dumps(overflow, indent=2)
 
     def _next_headers(self) -> dict:
         """Rotate User-Agent and return full browser headers.
@@ -862,6 +739,7 @@ class WebResearcherToolbox:
         delegation to ``DocumentExtractor``.
         """
         return self._doc.inspect_html_structured(url, use_smart)
+
     def crawl(
         self,
         root_url: str,
@@ -889,224 +767,13 @@ class WebResearcherToolbox:
             search_prior=search_prior,
             seed_urls=seed_urls,
         )
-    # ───────────────────────────────
-    # Sitemap-aware discovery (Tier 3.12)
-    # ───────────────────────────────
-
-    # Tier 3.12: discovery caps -- a sitemap index fan-out must not turn
-    # "find the site's pages" into an unbounded crawl.
-    _DISCOVER_MAX_SITEMAP_FETCHES = 10
-    _DISCOVER_MAX_INDEX_HOPS = 3
-    _DISCOVER_MAX_URLS_PER_SITEMAP = 500
-    _DISCOVER_MAX_URLS = 1000
-    _FEED_TYPE_PREFIXES = (
-        "application/rss+xml",
-        "application/atom+xml",
-        "application/feed+json",
-    )
-    _FEED_LINK_RE = re.compile(
-        r"<link\b[^>]*rel\s*=\s*[\"']?alternate[\"']?[^>]*>",
-        re.IGNORECASE | re.DOTALL,
-    )
-    _LINK_ATTR_RE = re.compile(
-        r"(?P<attr>type|href)\s*=\s*[\"'](?P<value>[^\"']*)[\"']",
-        re.IGNORECASE,
-    )
 
     def discover_resources(self, url: str) -> str:
-        """Discover a site's structured resources (Tier 3.12).
-
-        A cheaper alternative to link-graph crawling: fetch the page once
-        and look for ``<link rel="alternate">`` feed declarations, then
-        probe the site root for ``/sitemap.xml`` (following sitemap
-        indexes with bounded hops and fetch counts). Returns deduplicated,
-        budgeted lists of feed URLs and sitemap page URLs.
-
-        All probes are best-effort: a missing sitemap, a malformed feed,
-        or a failed page fetch degrades the result instead of raising.
-
-        Parameters
-        ----------
-        url : str
-            A page or site URL to discover resources for.
-
-        Returns
-        -------
-        str
-            JSON with ``url``, ``site_root``, ``feeds`` (list of
-            ``{url, type}``), ``sitemaps`` (list of ``{url, kind, count}``
-            with kind ``urlset``/``index``), the merged deduplicated
-            ``urls`` list, ``count``, and ``truncated`` (true when a
-            budget cap cut the list short).
+        """Discover a site's structured resources (Tier 3.12). Thin
+        delegation to ``ResourceDiscovery`` (discovery.py); see that
+        method for the full algorithm.
         """
-        url, url_error = self._prepare_url(url)
-        if url_error is not None:
-            return json.dumps(url_error, indent=2)
-
-        if self._robots_disallows(url):
-            logger.warning("URL disallowed by robots.txt: %s", url)
-            return json.dumps(
-                {"warning": "URL disallowed by robots.txt", "url": url}, indent=2
-            )
-        if not self._claim_in_flight(url):
-            logger.warning("URL already visited or in flight: %s", url)
-            return json.dumps(
-                {"warning": "URL already visited", "url": url}, indent=2
-            )
-        self._rate_limit_domain(url)
-
-        try:
-            feeds: list = []
-            sitemaps: list = []
-            found: dict = {}  # ordered dedupe of discovered page URLs
-            truncated = False
-
-            # 1) Page fetch: feed alternates from the raw HTML (static
-            #    path only; browser renders expose no raw DOM).
-            _md, _links, _meta, _method, page_html = (
-                self._fetch._fetch_html_with_html(url)
-            )
-            if page_html:
-                feeds = self._find_feed_links(page_html, url)
-
-            # 2) Sitemap probe at the site root (same origin as the
-            #    already-validated input URL).
-            parsed = urlparse(url)
-            if parsed.scheme and parsed.netloc:
-                site_root = f"{parsed.scheme}://{parsed.netloc}"
-            else:
-                site_root = None
-            sitemaps, found, truncated = self._probe_sitemaps(site_root)
-
-            return json.dumps(
-                {
-                    "url": url,
-                    "site_root": site_root,
-                    "feeds": feeds,
-                    "sitemaps": sitemaps,
-                    "urls": list(found.keys()),
-                    "count": len(found),
-                    "truncated": truncated,
-                },
-                indent=2,
-            )
-        except Exception as e:
-            logger.error("Discovery failed for %s: %s", url, e)
-            return json.dumps(
-                {"error": f"Discovery failed: {str(e)}", "url": url}, indent=2
-            )
-        finally:
-            # S5: release exactly once on every exit path. Discovery does
-            # not mark the page visited -- it is metadata-level, so the
-            # page stays inspectable afterwards.
-            self._release_in_flight(url)
-
-    def _find_feed_links(self, html: str, base_url: str) -> list:
-        """Tier 3.12: find ``<link rel="alternate">`` feed declarations.
-
-        Only feed content-types (RSS/Atom/Feed-JSON) count; language
-        alternates (``hreflang``) are ignored. Relative hrefs are
-        absolutized against *base_url*. Regex-based on purpose: the page
-        is arbitrary HTML, not well-formed XML.
-        """
-        feeds = []
-        for tag in self._FEED_LINK_RE.findall(html):
-            attrs = {
-                m.group("attr").lower(): m.group("value")
-                for m in self._LINK_ATTR_RE.finditer(tag)
-            }
-            link_type = attrs.get("type", "").lower().split(";")[0].strip()
-            if not any(
-                link_type.startswith(prefix)
-                for prefix in self._FEED_TYPE_PREFIXES
-            ):
-                continue
-            href = (attrs.get("href") or "").strip()
-            if not href:
-                continue
-            feeds.append({"url": urljoin(base_url, href), "type": link_type})
-        return feeds
-
-    def _probe_sitemaps(self, site_root: Optional[str]):
-        """Tier 3.12: probe ``/sitemap.xml`` and follow indexes (bounded).
-
-        Returns ``(sitemaps, found, truncated)`` where *sitemaps* is a
-        list of ``{url, kind, count}`` records in fetch order, *found* is
-        an ordered dict of discovered page URLs, and *truncated* is true
-        when the total-URL cap cut the list short. Fetch/parse failures
-        are logged and skipped (best effort).
-        """
-        sitemaps: list = []
-        found: dict = {}
-        truncated = False
-        if not site_root:
-            return sitemaps, found, truncated
-
-        first = site_root.rstrip("/") + "/sitemap.xml"
-        try:
-            self._validate_url(first)
-        except Exception:
-            return sitemaps, found, truncated
-
-        import xml.etree.ElementTree as ET
-
-        queue = [first]
-        hops = {first: 0}
-        seen = set()
-        fetched = 0
-        while queue and fetched < self._DISCOVER_MAX_SITEMAP_FETCHES:
-            sm_url = queue.pop(0)
-            if sm_url in seen:
-                continue
-            seen.add(sm_url)
-            fetched += 1
-
-            try:
-                _md, _links, _meta, _method, xml_text = self._fetch._static_fetch(
-                    sm_url, keep_html=True
-                )
-            except Exception as e:
-                logger.info("Sitemap probe failed for %s: %s", sm_url, e)
-                continue
-            if not xml_text:
-                continue
-            try:
-                # lstrip: whitespace before the <?xml?> declaration is
-                # legal XML but expat rejects it; some hosts emit it.
-                root = ET.fromstring(xml_text.lstrip())
-            except ET.ParseError as e:
-                logger.info("Sitemap parse failed for %s: %s", sm_url, e)
-                continue
-
-            kind_tag = root.tag.rsplit("}", 1)[-1]  # namespace-safe
-            locs = [
-                (el.text or "").strip()
-                for el in root.iter()
-                if el.tag.rsplit("}", 1)[-1] == "loc" and (el.text or "").strip()
-            ]
-            if kind_tag not in ("urlset", "sitemapindex") or not locs:
-                continue
-            if len(locs) > self._DISCOVER_MAX_URLS_PER_SITEMAP:
-                locs = locs[: self._DISCOVER_MAX_URLS_PER_SITEMAP]
-                truncated = True
-            kind = "index" if kind_tag == "sitemapindex" else "urlset"
-            locs = [urljoin(sm_url, loc) for loc in locs]
-            sitemaps.append({"url": sm_url, "kind": kind, "count": len(locs)})
-
-            hop = hops.get(sm_url, 0)
-            if kind == "index" and hop + 1 <= self._DISCOVER_MAX_INDEX_HOPS:
-                for child in locs:
-                    if child not in seen and child not in queue:
-                        hops[child] = hop + 1
-                        queue.append(child)
-            else:
-                for page_url in locs:
-                    if page_url not in found:
-                        if len(found) >= self._DISCOVER_MAX_URLS:
-                            truncated = True
-                            break
-                        found[page_url] = None
-        return sitemaps, found, truncated
+        return self._discovery.discover_resources(url)
 
     # ------------------------------------------------------------------
     # Research orchestration (Tier 3.13)
@@ -1233,8 +900,8 @@ class WebResearcherToolbox:
             "sources": sources,
             "count": sum(1 for s in sources if s["status"] == "ok"),
         }
-        return self._fit_json(
-            lambda b: self._shrink_research(result, b),
+        return self._budget._fit_json(
+            lambda b: self._budget._shrink_research(result, b),
             self.max_markdown_chars,
             budget,
             {

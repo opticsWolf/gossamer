@@ -142,7 +142,7 @@ class DocumentExtractor:
             # Re-apply the budget on every read (C4): the cache holds
             # untruncated content and the budget may have changed since the
             # entry was stored — same read-time truncation as the page cache.
-            truncated = self._tb._truncate(cached, self._tb.max_markdown_chars, self._tb.max_tokens)
+            truncated = self._tb._budget._truncate(cached, self._tb.max_markdown_chars, self._tb.max_tokens)
             return self._finish_document(
                 ExtractionResult(
                     source=source,
@@ -165,7 +165,7 @@ class DocumentExtractor:
                 prov = {"fetched_at": _utc_now_iso()}
 
             self._tb.cache.put(cache_key, content)
-            truncated = self._tb._truncate(content, self._tb.max_markdown_chars, self._tb.max_tokens)
+            truncated = self._tb._budget._truncate(content, self._tb.max_markdown_chars, self._tb.max_tokens)
             return self._finish_document(
                 ExtractionResult(
                     source=source,
@@ -265,7 +265,7 @@ class DocumentExtractor:
         cache_key = f"{base_key}#pages={pages_spec}"
         cached = self._tb.cache.get(cache_key)
         if cached is not None:
-            truncated = self._tb._truncate(
+            truncated = self._tb._budget._truncate(
                 cached, self._tb.max_markdown_chars, self._tb.max_tokens
             )
             return self._finish_document(
@@ -314,7 +314,7 @@ class DocumentExtractor:
                 )
 
             self._tb.cache.put(cache_key, content)
-            truncated = self._tb._truncate(
+            truncated = self._tb._budget._truncate(
                 content, self._tb.max_markdown_chars, self._tb.max_tokens
             )
             return self._finish_document(
@@ -609,8 +609,8 @@ class DocumentExtractor:
             # Budget the page text, never the serialized JSON: a string
             # cut here would hand the model unparseable output.
             payload_json = payload.to_json()
-            return self._tb._fit_json(
-                lambda b: self._tb._shrink_parsed_payload(payload_json, b),
+            return self._tb._budget._fit_json(
+                lambda b: self._tb._budget._shrink_parsed_payload(payload_json, b),
                 self._tb.max_markdown_chars,
                 self._tb.max_tokens,
                 {
@@ -708,8 +708,8 @@ class DocumentExtractor:
         try:
             if cached_json is not None:
                 logger.info("Cache hit (structured) for %s", url)
-                return self._tb._fit_json(
-                    lambda b: self._tb._shrink_parsed_payload(cached_json, b),
+                return self._tb._budget._fit_json(
+                    lambda b: self._tb._budget._shrink_parsed_payload(cached_json, b),
                     self._tb.max_markdown_chars,
                     self._tb.max_tokens,
                     {
@@ -766,8 +766,8 @@ class DocumentExtractor:
             self._tb.cache.put("structured:" + self._tb._cache_key(url), payload_json)
             self._tb._mark_visited(url)  # success only (C3)
             self._tb._release_in_flight(url)  # S5
-            return self._tb._fit_json(
-                lambda b: self._tb._shrink_parsed_payload(payload_json, b),
+            return self._tb._budget._fit_json(
+                lambda b: self._tb._budget._shrink_parsed_payload(payload_json, b),
                 self._tb.max_markdown_chars,
                 self._tb.max_tokens,
                 {"url": url, "error": "page too large for the output budget"},

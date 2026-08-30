@@ -949,7 +949,7 @@ class Crawler:
         }
         if search_prior:
             result["search_results"] = search_results_count
-        return self._tb._fit_json(
+        return self._tb._budget._fit_json(
             lambda b: self._shrink_crawl(result, b),
             self._tb.max_markdown_chars,
             self._tb.max_tokens,
