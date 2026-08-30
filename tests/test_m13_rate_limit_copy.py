@@ -44,10 +44,10 @@ class TestRateLimitIsolation:
 
     def test_no_args_gives_provider_default(self):
         # DuckDuckGo falls back to its own politeness/quota default
-        # (0.5 s + jitter, no server-side quota) rather than the bare
+        # (1.0 s + 1.0 s jitter, no server-side quota) rather than the bare
         # RateLimit() defaults -- this is the deliberate per-engine limit.
         p = DuckDuckGoProvider()
         assert p.rate_limit == _DUCKDUCKGO_RATE_LIMIT
-        assert p.rate_limit.search_interval == 0.5
-        assert p.rate_limit.jitter == 0.25
+        assert p.rate_limit.search_interval == 1.0
+        assert p.rate_limit.jitter == 1.0
         assert p.rate_limit.quota is None

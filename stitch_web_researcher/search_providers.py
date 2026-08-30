@@ -98,7 +98,7 @@ class RateLimit:
 #     into a clean skip instead of a billing surprise.
 #   - Bing: S0 allows 5 req/s; 0.2 s keeps us compliant with margin.
 #   - Exa: ``/search`` allows 10 QPS and a 1,000 req/month free tier.
-_DUCKDUCKGO_RATE_LIMIT = RateLimit(search_interval=0.5, jitter=0.25)
+_DUCKDUCKGO_RATE_LIMIT = RateLimit(search_interval=1.0, jitter=1.0)
 _GOOGLE_RATE_LIMIT = RateLimit(
     search_interval=0.2, jitter=0.1, quota=100, quota_window="day"
 )
@@ -181,11 +181,12 @@ class ResourceAdapter(ABC):
         self,
         delay: Optional[Union[float, RateLimit]] = None,
         fetch_delay: Optional[float] = None,
+        jitter: Optional[float] = None,
     ) -> None:
         """Normalize constructor arguments into a RateLimit instance.
 
         Accepts the legacy ``delay: float`` (search interval only) or a full
-        ``RateLimit``, plus an optional ``fetch_delay`` override.
+        ``RateLimit``, plus optional ``fetch_delay`` and ``jitter`` overrides.
         """
         if isinstance(delay, RateLimit):
             # M13: keep a private copy — the fetch_delay override below
@@ -193,7 +194,10 @@ class ResourceAdapter(ABC):
             # shared with other providers.
             self.rate_limit = replace(delay)
         elif delay is not None:
-            self.rate_limit = RateLimit(search_interval=float(delay))
+            self.rate_limit = RateLimit(
+                search_interval=float(delay),
+                jitter=float(jitter) if jitter is not None else 0.0,
+            )
         else:
             self.rate_limit = RateLimit()
         if fetch_delay is not None:
@@ -332,10 +336,13 @@ class DuckDuckGoProvider(SearchProvider):
         self,
         delay: Optional[Union[float, RateLimit]] = None,
         fetch_delay: Optional[float] = None,
+        jitter: Optional[float] = None,
     ):
         self._last_search = 0.0
         self._init_rate_limit(
-            delay if delay is not None else _DUCKDUCKGO_RATE_LIMIT, fetch_delay
+            delay if delay is not None else _DUCKDUCKGO_RATE_LIMIT,
+            fetch_delay,
+            jitter,
         )
 
     def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:

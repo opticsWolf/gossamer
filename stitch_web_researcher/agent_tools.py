@@ -933,6 +933,7 @@ class ToolboxConfig:
     # used entries are evicted to stay under it; see Cache.max_disk_bytes.
     cache_max_bytes: int = 0
     ddgs_delay: float = 1.0
+    ddgs_jitter: float = 1.0
     domain_delay: float = 0.5
     max_markdown_chars: int = 8000
     max_tokens: int = 0
@@ -1103,6 +1104,7 @@ class WebResearcherToolbox:
         )
         self.fetch_mode = config.fetch_mode
         self.ddgs_delay = config.ddgs_delay
+        self.ddgs_jitter = config.ddgs_jitter
         self.domain_delay = config.domain_delay
         self.max_markdown_chars = config.max_markdown_chars
         self.max_tokens = config.max_tokens
@@ -1114,7 +1116,9 @@ class WebResearcherToolbox:
         if config.search_providers:
             self.providers = config.search_providers
         else:
-            self.providers = [DuckDuckGoProvider(delay=config.ddgs_delay)]
+            self.providers = [
+                DuckDuckGoProvider(delay=config.ddgs_delay, jitter=config.ddgs_jitter)
+            ]
         idx = config.default_provider_index
         try:
             self.default_provider = self.providers[idx]

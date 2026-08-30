@@ -26,8 +26,8 @@ class TestPerProviderDefaults:
     def test_duckduckgo_default(self):
         p = DuckDuckGoProvider()
         assert p.rate_limit == _DUCKDUCKGO_RATE_LIMIT
-        assert p.rate_limit.search_interval == 0.5
-        assert p.rate_limit.jitter == 0.25
+        assert p.rate_limit.search_interval == 1.0
+        assert p.rate_limit.jitter == 1.0
         assert p.rate_limit.quota is None
 
     def test_google_default_has_daily_quota(self):
@@ -71,13 +71,13 @@ class TestPerProviderDefaults:
         assert p.rate_limit == custom
         assert p.rate_limit is not custom
         # The no-arg path's module-level constant is untouched.
-        assert _DUCKDUCKGO_RATE_LIMIT.search_interval == 0.5
-        assert _DUCKDUCKGO_RATE_LIMIT.jitter == 0.25
+        assert _DUCKDUCKGO_RATE_LIMIT.search_interval == 1.0
+        assert _DUCKDUCKGO_RATE_LIMIT.jitter == 1.0
 
     def test_fetch_delay_override_applies_on_top_of_default(self):
         p = DuckDuckGoProvider(fetch_delay=3.0)
-        assert p.rate_limit.search_interval == 0.5
-        assert p.rate_limit.jitter == 0.25
+        assert p.rate_limit.search_interval == 1.0
+        assert p.rate_limit.jitter == 1.0
         assert p.rate_limit.fetch_interval == 3.0
 
     def test_default_constants_are_not_mutated_across_instances(self):

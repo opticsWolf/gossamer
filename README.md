@@ -107,7 +107,8 @@ tools = WebResearcherToolbox(
     cache_dir="./cache",
     cache_ttl_seconds=3600,
     cache_max_bytes=0,       # disk cache byte cap (0 = unlimited; LRU eviction)
-    ddgs_delay=1.0,
+    ddgs_delay=1.0,      # DuckDuckGo search interval (s)
+    ddgs_jitter=1.0,     # max random s added to the DDG search gap
     domain_delay=0.5,
     max_tokens=4000,          # token-aware truncation
     model_name="gpt-4o",     # tiktoken encoding

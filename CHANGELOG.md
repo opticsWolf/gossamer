@@ -27,11 +27,22 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
     with `jitter=0.0` / `quota=None`, so search had no jitter and no
     quota enforcement). Each engine now falls back to its own constant
     when constructed without an explicit delay, encoding the engine's
-    real limits: DuckDuckGo/Browser-Oxide `0.5 s + 0.25 s` jitter, no
+    real limits: DuckDuckGo/Browser-Oxide `1.0 s + 1.0 s` jitter, no
     quota; Google `0.2 s + 0.1 s` jitter, `100/day`; Bing `0.2 s + 0.1 s`
     jitter, no quota; Exa `0.1 s + 0.05 s` jitter, `1000/month`. An
     explicit `delay`/`RateLimit`/`fetch_delay` still wins; the module
     constants are never mutated by construction.
+  - **DuckDuckGo politeness unified to a single default (`1.0 s + 1.0 s`
+    jitter) across standalone use and the toolbox default.** The toolbox
+    now constructs its auto-default provider as
+    `DuckDuckGoProvider(delay=config.ddgs_delay, jitter=config.ddgs_jitter)`
+    instead of a flat `delay=1.0`; `ToolboxConfig` gains `ddgs_jitter`
+    (default `1.0`) alongside `ddgs_delay`, and `mcp_server.py` exposes it
+    via `STITCH_DDGS_JITTER` (default `1.0`). `DuckDuckGoProvider` and the
+    base `_init_rate_limit` accept an optional `jitter` that only applies
+    when a float `delay` is given; the module-level `_DUCKDUCKGO_RATE_LIMIT`
+    constant is unchanged by construction. Search politeness stays fast in
+    tests: `search_interval=0` skips the gap (and its jitter) entirely.
 - **`ExaProvider` no longer depends on the `exa-py` SDK.** It now calls
   Exa's REST API directly with `httpx` (`POST
   https://api.exa.ai/v1/search`, `Authorization: Bearer`), so Exa works
