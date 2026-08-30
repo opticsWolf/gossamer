@@ -10,6 +10,7 @@ import re
 import threading
 import time
 import warnings
+from enum import Enum
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -62,6 +63,64 @@ from stitch_web_researcher.guard import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class FetchMode(str, Enum):
+    """Per-call render-strategy override for page fetches.
+
+    Mirrors the three ``fetch_mode`` values but applies to a single call.
+    ``AUTO`` (the default) defers to :attr:`ToolboxConfig.fetch_mode`;
+    ``BROWSER`` renders with the headless browser first and falls back to
+    static on failure; ``STATIC`` is static-only. Being a ``str`` subclass
+    means ``FetchMode.AUTO == "auto"`` so callers may pass either form.
+    """
+
+    AUTO = "auto"
+    BROWSER = "browser"
+    STATIC = "static"
+
+
+_FETCH_MODE_VALUES = tuple(m.value for m in FetchMode)  # ("auto", "browser", "static")
+
+
+def _coerce_fetch_mode(value):
+    """Coerce a per-call ``use_smart`` value into a strategy string.
+
+    Accepts the :class:`FetchMode` enum, its string value, or ``None``
+    (→ ``"auto"``). Anything else raises so a typo in a tool call fails
+    loudly instead of silently defaulting.
+    """
+    if value is None:
+        return FetchMode.AUTO.value
+    if isinstance(value, FetchMode):
+        return value.value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _FETCH_MODE_VALUES:
+            return normalized
+    raise ValueError(
+        f"Invalid use_smart {value!r}; expected one of {_FETCH_MODE_VALUES}"
+    )
+
+
+def _resolve_fetch_strategy(fetch_mode, use_smart):
+    """Resolve ``(fetch_mode, use_smart)`` into one of four strategies.
+
+    ``use_smart`` is the per-call override; ``"auto"`` defers to
+    ``fetch_mode``. Returns one of ``"static-only"``, ``"browser-only"``,
+    ``"browser-first"`` (browser with static fallback) or ``"auto"``
+    (static-first with stealth-browser fallback on failure/non-text).
+    """
+    if use_smart == FetchMode.STATIC.value:
+        return "static-only"
+    if use_smart == FetchMode.BROWSER.value:
+        return "browser-first"
+    # use_smart == "auto": defer to fetch_mode
+    if fetch_mode == "static":
+        return "static-only"
+    if fetch_mode == "browser":
+        return "browser-only"
+    return "auto"  # fetch_mode == "auto"
 
 
 # ───────────────────────────────
@@ -590,37 +649,56 @@ class ToolSpec:
 
 TOOL_REGISTRY = (
     ToolSpec(
-        "search_web",
-        "Search the web using one or more search providers. Set provider to choose a specific engine; falls back through others on failure.",
-        "search_web",
+        "web_search",
+        "Unified web search + research. With search_only=true (default false) this is a pure provider search across engines (duckduckgo/google/bing/exa/browser), returning a deduped list of results. With search_only=false it also dedupes the top results and fetches up to depth candidate pages through the normal cache/robots/rate-limit/provenance pipeline, returning one record per source with status, markdown, and provenance so the caller can write a cited synthesis.",
+        "web_search",
         (
-            ToolParam("query", str, description="The search query"),
+            ToolParam("query", str, description="The search query / research topic"),
+            ToolParam(
+                "search_only",
+                bool,
+                False,
+                "true returns only provider search results; false also fetches up to depth pages and returns per-source records.",
+            ),
             ToolParam(
                 "max_results",
                 int,
                 5,
-                "Maximum number of results to return (default: 5)",
+                "Maximum number of search results to consider (default: 5).",
+            ),
+            ToolParam(
+                "depth",
+                int,
+                5,
+                "Number of candidate pages to fetch when search_only=false (default: 5).",
+            ),
+            ToolParam(
+                "max_tokens",
+                int,
+                0,
+                "Global token budget for the whole response (0 = toolbox default).",
             ),
             ToolParam(
                 "provider",
                 str,
                 "duckduckgo",
-                "Search engine to prefer. Falls back through other providers on failure.",
+                "Search engine to prefer when search_only=true. Falls back through other providers on failure.",
                 enum=["duckduckgo", "google", "bing", "exa", "browser"],
             ),
         ),
     ),
     ToolSpec(
         "inspect_html_page",
-        "Fetch and extract markdown content from a web page. Set use_smart=True for JS-rendered pages (SPA, anti-bot). When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first; or pass offset / max_chunks to page through the full document in budget-sized chunks. Returns markdown text, follow-up links, and provenance (fetched_at, http_status, final_url, content_type, content_hash; cache_hit flags from-cache reads).",
+        "Fetch and extract markdown content from a web page. Set use_smart='browser' for JS-rendered pages (SPA, anti-bot); 'auto' (default) follows fetch_mode, 'static' is static-only. When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first; or pass offset / max_chunks to page through the full document in budget-sized chunks. Returns markdown text, follow-up links, and provenance (fetched_at, http_status, final_url, content_type, content_hash; cache_hit flags from-cache reads).",
         "inspect_html_page",
         (
             ToolParam("url", str, description="The URL to inspect"),
             ToolParam(
                 "use_smart",
-                bool,
-                False,
-                "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
+                str,
+                "auto",
+                "Render strategy: 'auto' (default, follows fetch_mode), 'browser' (headless browser first, static on failure), or 'static' (static only).",
+                enum=["auto", "browser", "static"],
             ),
             ToolParam(
                 "query",
@@ -639,6 +717,12 @@ TOOL_REGISTRY = (
                 int,
                 1,
                 "Number of consecutive budget-sized chunks to return (each chunk respects the output budget; the total may exceed it).",
+            ),
+            ToolParam(
+                "structured",
+                bool,
+                False,
+                "true returns a structured ParsedDocumentPayload (metadata, tables, links) instead of raw markdown; default false returns markdown text (query/offset/max_chunks paging apply).",
             ),
         ),
     ),
@@ -666,31 +750,11 @@ TOOL_REGISTRY = (
                 None,
                 "1-based inclusive page range for PDFs ('10', '10-20', '10-', '-20'); for XLSX the range selects sheets. Without it, the whole document is returned (subject to the output budget).",
             ),
-        ),
-    ),
-    ToolSpec(
-        "extract_document_structured",
-        "Extract structured content (metadata, pages, tables) from PDF, DOCX, XLSX, or PPTX documents via URL or local path. Returns a validated ParsedDocumentPayload as JSON.",
-        "extract_document_structured",
-        (
             ToolParam(
-                "source",
-                str,
-                description="URL or local file path to the document",
-            ),
-        ),
-    ),
-    ToolSpec(
-        "inspect_html_structured",
-        "Fetch a web page and return it as a structured ParsedDocumentPayload with metadata (OG, Twitter, JSON-LD), markdown content, tables (structured grids extracted from HTML <table> elements, static fetches only), and links. Set use_smart=True for JS-rendered pages.",
-        "inspect_html_structured",
-        (
-            ToolParam("url", str, description="The URL to inspect"),
-            ToolParam(
-                "use_smart",
+                "structured",
                 bool,
                 False,
-                "If true, use headless browser rendering (browser_oxide) for JS-heavy pages",
+                "true returns a validated ParsedDocumentPayload (metadata, pages, tables) as JSON instead of plain text.",
             ),
         ),
     ),
@@ -703,23 +767,6 @@ TOOL_REGISTRY = (
                 "url",
                 str,
                 description="A page or site URL to discover resources for",
-            ),
-        ),
-    ),
-    ToolSpec(
-        "research",
-        "Run a small orchestrated research pass (Tier 3.13): search the topic, dedupe the top results, and fetch up to depth pages through the normal cache/robots/rate-limit/provenance pipeline. Returns one record per source with status, markdown content, and provenance - everything the caller needs to write a cited synthesis (the synthesis itself is the caller's job).",
-        "research",
-        (
-            ToolParam("topic", str, description="Research topic / search query"),
-            ToolParam(
-                "depth", int, 5, description="How many pages to fetch (1-10)"
-            ),
-            ToolParam(
-                "max_tokens",
-                int,
-                0,
-                description="Token budget for the whole response (0 = toolbox default)",
             ),
         ),
     ),
@@ -784,28 +831,18 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
-        "clear_cache",
-        "Clear both the in-memory and disk research caches and the visited-URL set. Use when you want to force fresh fetches (e.g., starting a new research session or suspecting stale content). Returns confirmation with post-clear statistics.",
-        "clear_cache",
-        (),
-    ),
-    ToolSpec(
-        "prune_cache",
-        "Remove expired cache entries and evict least-recently-used entries to stay under the configured size cap. Unlike clear_cache this keeps valid in-TTL entries and does not reset the visited-URL set. Returns a summary of what was removed.",
-        "prune_cache",
-        (),
-    ),
-    ToolSpec(
-        "reset_visited",
-        "Forget all previously visited URLs so they can be fetched again (caches are NOT cleared). Use after a fetch failure you want to retry, or when starting a new research session on the same pages.",
-        "reset_visited",
-        (),
-    ),
-    ToolSpec(
-        "get_stats",
-        "Return toolbox statistics: visited URLs, cache hit rate and size, token budget settings.",
-        "get_stats",
-        (),
+        "manage_cache",
+        "Unified cache maintenance. action='clear' wipes the memory and disk caches plus the visited-URL set (force fresh fetches); action='prune' (default) removes expired entries and evicts to the size cap while keeping valid ones; action='reset' forgets visited URLs without clearing caches (retry a failed page).",
+        "manage_cache",
+        (
+            ToolParam(
+                "action",
+                str,
+                "prune",
+                "Cache operation: 'clear' (wipe caches + visited), 'prune' (default, evict expired/LRU to size cap), or 'reset' (forget visited URLs only).",
+                enum=["clear", "prune", "reset"],
+            ),
+        ),
     ),
 )
 
@@ -1575,6 +1612,45 @@ class WebResearcherToolbox:
             envelope["provider_fallback"] = fallback
         return json.dumps(envelope, indent=2, ensure_ascii=False)
 
+    def web_search(
+        self,
+        query: str,
+        search_only: bool = False,
+        max_results: int = 5,
+        depth: int = 5,
+        max_tokens: int = 0,
+        provider: Optional[str] = None,
+    ) -> str:
+        """Unified web_search + research entry point (P8 tool ``web_search``).
+
+        ``search_only=True``  -> pure provider search (the old
+            ``search_web``): returns a deduped list of results.
+        ``search_only=False`` -> search, dedupe, then fetch up to
+            ``depth`` candidate pages through the normal pipeline and
+            return one record per source with status/markdown/provenance
+            (the old ``research``).
+
+        Parameters
+        ----------
+        query : str
+            The search query / research topic.
+        search_only : bool
+            Default False. True returns only provider results.
+        max_results : int
+            Maximum search results to consider (default 5).
+        depth : int
+            Candidate pages to fetch when search_only is False (default 5).
+        max_tokens : int
+            Global token budget for the response (0 = toolbox default).
+        provider : str, optional
+            Search engine to prefer (registry default: "duckduckgo").
+        """
+        if search_only:
+            return self.search_web(
+                query, max_results=max_results, provider=provider
+            )
+        return self.research(topic=query, depth=depth, max_tokens=max_tokens)
+
     def search_web(
         self,
         query: str,
@@ -2014,14 +2090,14 @@ class WebResearcherToolbox:
             result.follow_up_links = []
             result.delivered_links = 0
             return True
-        if redacted is not None:
+        if block.get("action") == "redact" and redacted is not None:
             result.markdown = redacted
         elif (
             block.get("action") == "annotate"
             and "page_markdown" in block.get("scopes", [])
-            and result.markdown
+            and redacted
         ):
-            result.markdown = wrap_untrusted(result.markdown, result.url)
+            result.markdown = wrap_untrusted(redacted, result.url)
         if result.markdown:
             result.markdown_tokens = count_tokens(result.markdown, self.model_name)
         return False
@@ -2056,14 +2132,14 @@ class WebResearcherToolbox:
                 page.markdown = ""
             return True
         if payload.pages:
-            if redacted is not None:
+            if block.get("action") == "redact" and redacted is not None:
                 payload.pages[0].markdown = redacted
             elif (
                 block.get("action") == "annotate"
                 and "page_markdown" in block.get("scopes", [])
-                and main_md
+                and redacted
             ):
-                payload.pages[0].markdown = wrap_untrusted(main_md, url)
+                payload.pages[0].markdown = wrap_untrusted(redacted, url)
         return False
 
     # ── Fetch strategies ─────────────────────────────
@@ -2108,18 +2184,20 @@ class WebResearcherToolbox:
         meta.setdefault("provenance", _browser_provenance(url))
         return md, links, meta, "browser"
 
-    def _fetch_html(self, url: str, use_smart: Optional[bool] = None):
-        """Fetch an HTML page honoring ``self.fetch_mode``.
+    def _fetch_html(self, url: str, use_smart: str = FetchMode.AUTO.value):
+        """Fetch an HTML page honoring ``self.fetch_mode`` / ``use_smart``.
 
-        Modes:
+        ``fetch_mode`` (config) sets the baseline:
             "browser": every fetch goes through the stealth browser;
                 failures propagate (strict).
             "static": plain HTTP fetch via the Rust core only.
             "auto": static first; falls back to the stealth browser when
                 the static fetch raises or returns non-text content.
 
-        ``use_smart`` overrides per call: ``False`` forces static-only,
-        ``True`` tries the stealth browser first (falling back to static).
+        ``use_smart`` (per call, one of "auto"/"browser"/"static",
+        default "auto") overrides it: "static" is static-only, "browser"
+        tries the stealth browser first (falling back to static), and
+        "auto" defers to ``fetch_mode``.
 
         M12: the returned markdown has relative hrefs rewritten to
         absolute URLs so the body is self-contained for the model.
@@ -2128,7 +2206,7 @@ class WebResearcherToolbox:
         return _absolutize_markdown_links(md, url), links, meta, method
 
     def _fetch_html_with_html(
-        self, url: str, use_smart: Optional[bool] = None
+        self, url: str, use_smart: str = FetchMode.AUTO.value
     ) -> tuple:
         """Fetch for ``inspect_html_structured`` (Tier 3.11).
 
@@ -2156,7 +2234,9 @@ class WebResearcherToolbox:
         md, links, meta, method, html = result
         return _absolutize_markdown_links(md, url), links, meta, method, html
 
-    def _fetch_html_dispatch(self, url: str, use_smart: Optional[bool] = None):
+    def _fetch_html_dispatch(
+        self, url: str, use_smart: str = FetchMode.AUTO.value
+    ):
         """Instrumented dispatch wrapper (Tier 2.6).
 
         Records per-fetch latency, bytes, domain, and error class into
@@ -2180,7 +2260,7 @@ class WebResearcherToolbox:
         return result
 
     def _dispatch_fetch(
-        self, url: str, use_smart: Optional[bool] = None, keep_html: bool = False
+        self, url: str, use_smart: str = FetchMode.AUTO.value, keep_html: bool = False
     ):
         """Dispatch a fetch per ``self.fetch_mode`` / ``use_smart`` (raw,
         with relative markdown hrefs). See ``_fetch_html``.
@@ -2188,6 +2268,12 @@ class WebResearcherToolbox:
         Tier 3.11: ``keep_html=True`` extends the result with the raw HTML
         (5-tuple). Only the static path has it — browser renders do not
         expose the raw DOM, so that slot is None there.
+
+        ``use_smart`` is coerced via :func:`_coerce_fetch_mode` and combined
+        with ``fetch_mode`` by :func:`_resolve_fetch_strategy` into one of
+        four strategies: ``static-only``, ``browser-only``, ``browser-first``
+        (browser with static fallback) and ``auto`` (static-first with
+        stealth-browser fallback on failure/non-text).
         """
 
         def _static():
@@ -2200,14 +2286,18 @@ class WebResearcherToolbox:
                 else self._static_fetch(url)
             )
 
-        if self.fetch_mode == "browser":
-            if use_smart is False:
-                return _static()
-                return self._static_fetch(url, keep_html=keep_html)
+        strategy = _resolve_fetch_strategy(
+            self.fetch_mode, _coerce_fetch_mode(use_smart)
+        )
+
+        if strategy == "static-only":
+            return _static()
+
+        if strategy == "browser-only":
             md, links, meta, method = self._browser_fetch(url)
             return (md, links, meta, method, None) if keep_html else (md, links, meta, method)
 
-        if use_smart is True:
+        if strategy == "browser-first":
             try:
                 md, links, meta, method = self._browser_fetch(url)
                 return (
@@ -2219,11 +2309,10 @@ class WebResearcherToolbox:
                 logger.warning(
                     "Stealth fetch failed for %s: %s -- falling back to static", url, e
                 )
-
-        if self.fetch_mode == "static" or use_smart is False:
             return _static()
 
-        # auto: static first, stealth fallback on failure or non-text content
+        # strategy == "auto": static first, stealth fallback on failure or
+        # non-text content
         try:
             result = _static()
             if self._looks_like_text(result[0]):
@@ -2436,7 +2525,7 @@ class WebResearcherToolbox:
     def _inspect_html_page_impl(
         self,
         url: str,
-        use_smart: Optional[bool] = None,
+        use_smart: str = FetchMode.AUTO.value,
         query: Optional[str] = None,
         offset: int = 0,
         max_chunks: int = 1,
@@ -2655,13 +2744,21 @@ class WebResearcherToolbox:
     def inspect_html_page(
         self,
         url: str,
-        use_smart: Optional[bool] = None,
+        use_smart: str = FetchMode.AUTO.value,
         query: Optional[str] = None,
         offset: int = 0,
         max_chunks: int = 1,
+        structured: bool = False,
     ) -> str:
         """
         Fetch and extract markdown + follow-up links + HTML metadata from a web page.
+
+        When ``structured=True`` the page is returned as a structured
+        ``ParsedDocumentPayload`` (metadata, tables, links) instead of
+        raw markdown + a compact metadata summary -- the same payload
+        ``extract_document(structured=True)`` produces. With the default
+        ``structured=False`` the text/markdown shape is returned (and
+        ``query`` / ``offset`` / ``max_chunks`` paging apply).
 
         Results are served from the two-tier cache when a fresh entry exists.
 
@@ -2669,9 +2766,11 @@ class WebResearcherToolbox:
         ----------
         url : str
             The URL to inspect.
-        use_smart : bool
-            If True, attempt headless JS rendering via browser_oxide first,
-            then fall back to static reqwest fetch.
+        use_smart : {"auto", "browser", "static"}
+            Per-call render strategy. "auto" (default) follows fetch_mode
+            (static first, stealth browser on failure/non-text); "browser"
+            renders with the headless browser first (static on failure);
+            "static" is static-only.
         query : str, optional
             The research query. When the page does not fit the output
             budget, only the sections most relevant to this query are
@@ -2689,6 +2788,8 @@ class WebResearcherToolbox:
             payload may exceed it. Explicit paging takes precedence over
             query-based section selection.
         """
+        if structured:
+            return self._inspect_html_structured_impl(url, use_smart)
         return self._inspect_html_page_impl(url, use_smart, query, offset, max_chunks)
 
     def _compact_metadata(self, raw: dict) -> dict:
@@ -2741,7 +2842,7 @@ class WebResearcherToolbox:
     async def inspect_html_page_async(
         self,
         url: str,
-        use_smart: Optional[bool] = None,
+        use_smart: str = FetchMode.AUTO.value,
         query: Optional[str] = None,
         offset: int = 0,
         max_chunks: int = 1,
@@ -2862,20 +2963,47 @@ class WebResearcherToolbox:
                         md = _absolutize_markdown_links(
                             entry.markdown or "", entry.url
                         )
-                        self._mark_visited(entry.url)  # success only (C3)
+                        method = "static"
+                        links = entry.links
                         # Bugfix 5: run the same meta-oxide extraction the
                         # static single-page path runs, so a batch entry and
                         # a single read of the same URL carry identical
                         # metadata instead of the batch shipping {}.
                         meta = self._extract_html_metadata(entry.html, entry.url)
-                        # C6: store back into the shared page cache.
-                        self._page_cache_put(
-                            entry.url, md, entry.links, meta, "static"
-                        )
+                        # M17: batch "auto" mirrors inspect_html_page / crawl --
+                        # the static Rust engine has no browser fallback, so a
+                        # page it couldn't render (empty, binary-garbage, or a
+                        # JS-rendered SPA body) is re-fetched through the Python
+                        # stealth-browser path, exactly like single-page auto,
+                        # and the entry reports which method actually served it.
+                        # Only the non-text entries pay the browser cost; the
+                        # whole batch stays static-only for fetch_mode="static".
+                        if self.fetch_mode == "auto" and not self._looks_like_text(md):
+                            try:
+                                f_md, f_links, f_meta, _ = self._browser_fetch(
+                                    entry.url
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    "Batch browser fallback failed for %s: %s",
+                                    entry.url, e,
+                                )
+                            else:
+                                # Re-absolutize to match the static path (the
+                                # browser seam returns links absolutized, but
+                                # not through the same Python step), and label
+                                # it a stealth fallback per the auto strategy.
+                                md = _absolutize_markdown_links(f_md, entry.url)
+                                links, meta = f_links, f_meta
+                                method = "stealth-fallback"
+                        self._mark_visited(entry.url)  # success only (C3)
+                        # C6: store back into the shared page cache, overwriting
+                        # the static entry so a later single read of this URL
+                        # returns the method that actually served it.
+                        self._page_cache_put(entry.url, md, links, meta, method)
                         self._release_in_flight(entry.url)  # S5
                         fetched[entry.url] = self._batch_result(
-                            entry.url, md, entry.links, meta,
-                            "static", cache_hit=False
+                            entry.url, md, links, meta, method, cache_hit=False
                         )
                     else:
                         self._release_in_flight(entry.url)  # S5: stays retryable
@@ -2975,14 +3103,16 @@ class WebResearcherToolbox:
                 },
                 indent=2,
             )
-        if redacted is not None:
+        if block.get("action") == "redact" and redacted is not None:
             result.content = redacted
-        elif block.get("action") == "annotate" and result.content:
-            result.content = wrap_untrusted(result.content, result.source)
+        elif block.get("action") == "annotate" and redacted:
+            result.content = wrap_untrusted(redacted, result.source)
         result.content_tokens = count_tokens(result.content, self.model_name)
         return result.model_dump_json()
 
-    def extract_document(self, source: str, pages: Optional[str] = None) -> str:
+    def extract_document(
+        self, source: str, pages: Optional[str] = None, structured: bool = False
+    ) -> str:
         """Extract text content from documents.
 
         Structured: PDF, DOCX, XLSX, PPTX. Text (Tier 3.10): TXT, MD, CSV,
@@ -3003,6 +3133,8 @@ class WebResearcherToolbox:
             actionable message. The full document stays cached under its
             own key, so range reads do not evict whole-document reads.
         """
+        if structured:
+            return self._extract_document_structured_impl(source)
         try:
             source = normalize_url(source)  # may still be a local path
             is_url = True
@@ -3433,6 +3565,14 @@ class WebResearcherToolbox:
     # ───────────────────────────────
 
     def extract_document_structured(self, source: str) -> str:
+        """Backwards-compatible wrapper: structured extraction.
+
+        Kept so existing callers keep working; the P8 tool surface now
+        exposes this through ``extract_document(structured=True)``.
+        """
+        return self._extract_document_structured_impl(source)
+
+    def _extract_document_structured_impl(self, source: str) -> str:
         """
         Download (if URL) and parse a document into a structured
         ParsedDocumentPayload with metadata, pages, and tables.
@@ -3550,7 +3690,17 @@ class WebResearcherToolbox:
             for name, headers, rows in raw
         ]
 
-    def inspect_html_structured(self, url: str, use_smart: Optional[bool] = None) -> str:
+    def inspect_html_structured(self, url: str, use_smart: str = FetchMode.AUTO.value) -> str:
+        """Backwards-compatible wrapper: structured output from ``inspect_html_page``.
+
+        Kept so existing callers keep working; the P8 tool surface now
+        exposes this through ``inspect_html_page(..., structured=True)``.
+        """
+        return self._inspect_html_structured_impl(url, use_smart)
+
+    def _inspect_html_structured_impl(
+        self, url: str, use_smart: str = FetchMode.AUTO.value
+    ) -> str:
         """
         Fetch a web page and return it as a structured ParsedDocumentPayload
         with metadata (OG, Twitter, JSON-LD), markdown content, tables,
@@ -3564,8 +3714,11 @@ class WebResearcherToolbox:
         ----------
         url : str
             The URL to inspect.
-        use_smart : bool
-            If True, attempt headless JS rendering via browser_oxide first.
+        use_smart : {"auto", "browser", "static"}
+            Per-call render strategy. "auto" (default) follows fetch_mode
+            (static first, stealth browser on failure/non-text); "browser"
+            renders with the headless browser first (static on failure);
+            "static" is static-only.
 
         Returns
         -------
@@ -4635,6 +4788,11 @@ class WebResearcherToolbox:
                 return
             md = page.get("markdown") or ""
             record["status"] = "ok"
+            # Expose which method served this page (auto -> static, falling
+            # back to the stealth browser on non-text/JS pages). crawl runs
+            # through _inspect_html_page_impl, so the page payload already
+            # carries it; single-page inspect reports the same field.
+            record["fetch_method"] = page.get("fetch_method")
             record["title"] = str(
                 (page.get("metadata") or {}).get("title") or ""
             )
@@ -4694,6 +4852,9 @@ class WebResearcherToolbox:
             "score": 1.0,
             "markdown": root_md[: self._CRAWL_PAGE_CHARS],
             "links_total": int(root_page.get("total_links") or 0),
+            # Mirror the per-page record: report which method served the
+            # root (auto -> static, falling back to the stealth browser).
+            "fetch_method": root_page.get("fetch_method"),
         })
         visited.add(root.split("#", 1)[0])
         corpus.add_page(self._crawl_tokens(root_md))
@@ -4869,6 +5030,20 @@ class WebResearcherToolbox:
             },
             indent=2,
         )
+
+    def manage_cache(self, action: str = "prune") -> str:
+        """Unified cache maintenance (P8 tool ``manage_cache``).
+
+        action : {"clear", "prune", "reset"}
+            "clear"  -> wipe memory + disk caches and the visited set.
+            "prune"  -> remove expired entries and evict to the size cap.
+            "reset"  -> forget visited URLs (caches are NOT cleared).
+        """
+        if action == "clear":
+            return self.clear_cache()
+        if action == "reset":
+            return self.reset_visited()
+        return self.prune_cache()
 
     def reset_visited(self) -> str:
         """Clear the visited URL set (and in-flight claims, S5).

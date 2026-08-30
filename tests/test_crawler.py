@@ -205,9 +205,9 @@ class TestToolbox:
 
     @pytest.mark.slow
     def test_inspect_html_smart(self, toolbox, local_server):
-        """use_smart=True (stealth first, static fallback). May launch
+        """use_smart='browser' (stealth first, static fallback). May launch
         browser_oxide, so marked slow (P9)."""
-        result = toolbox.inspect_html_page(f"{local_server}/alpha", use_smart=True)
+        result = toolbox.inspect_html_page(f"{local_server}/alpha", use_smart="browser")
         data = json.loads(result)
         assert "error" not in data
         assert "markdown" in data
@@ -237,11 +237,10 @@ class TestToolbox:
         assert len(defs) >= 5
 
         names = [d["function"]["name"] for d in defs]
-        assert "search_web" in names
+        assert "web_search" in names
         assert "inspect_html_page" in names
         assert "batch_inspect_pages" in names
         assert "extract_document" in names
-        assert "extract_document_structured" in names
 
         for d in defs:
             assert "type" in d
@@ -803,9 +802,9 @@ class TestHTMLStructuredParsing:
 
     @pytest.mark.slow
     def test_inspect_html_structured_with_smart(self, tmp_path, local_server):
-        """use_smart=True (may launch browser_oxide — slow, P9)."""
+        """use_smart='browser' (may launch browser_oxide — slow, P9)."""
         tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
-        result = tb.inspect_html_structured(f"{local_server}/alpha", use_smart=True)
+        result = tb.inspect_html_structured(f"{local_server}/alpha", use_smart="browser")
         data = json.loads(result)
         assert "metadata" in data
         assert "pages" in data

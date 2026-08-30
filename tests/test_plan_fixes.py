@@ -339,7 +339,7 @@ class TestSearchSpacingJitter:
 
 class TestPerDomainDelayIsolation:
     """Fetch delays apply ONLY between same-domain fetches; different
-    domains never wait on each other (incl. use_smart=True paths, since
+    domains never wait on each other (incl. use_smart='browser' paths, since
     _rate_limit_domain runs before _fetch_html regardless of mode)."""
 
     def test_cross_domain_fetches_are_never_delayed(self, tmp_path, monkeypatch):

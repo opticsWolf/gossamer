@@ -275,16 +275,20 @@ class TestDispatch:
         ]
         tb._fetch_html = _fake_fetch()
 
-        out = tb.execute_tool("research", {"topic": "dispatch me"})
+        out = tb.execute_tool(
+            "web_search", {"query": "dispatch me", "search_only": False}
+        )
 
         result = json.loads(out)
         assert result["topic"] == "dispatch me"
         assert result["count"] == 1
 
     def test_registry_shape(self):
-        spec = next(s for s in TOOL_REGISTRY if s.name == "research")
-        assert spec.method == "research"
+        spec = next(s for s in TOOL_REGISTRY if s.name == "web_search")
+        assert spec.method == "web_search"
         by_name = {p.name: p for p in spec.params}
-        assert "topic" in by_name and by_name["topic"].required
+        # query replaces the old research `topic`; depth/max_tokens carry
+        # over from the research parameters.
+        assert "query" in by_name and by_name["query"].required
         assert by_name["depth"].default == 5
         assert by_name["max_tokens"].default == 0

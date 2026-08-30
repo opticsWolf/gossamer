@@ -12,19 +12,13 @@ mcp = pytest.importorskip("mcp")
 from stitch_web_researcher import mcp_server  # noqa: E402
 
 EXPECTED_TOOLS = {
-    "search_web",
+    "web_search",
     "inspect_html_page",
     "batch_inspect_pages",
     "extract_document",
-    "extract_document_structured",
-    "inspect_html_structured",
     "discover_resources",
-    "research",
     "crawl",
-    "clear_cache",
-    "prune_cache",
-    "reset_visited",
-    "get_stats",
+    "manage_cache",
 }
 
 
@@ -59,18 +53,11 @@ class TestRegistration:
             assert t.description, f"{t.name} lacks a description"
             assert "properties" in t.input_schema
             required = t.input_schema.get("required", [])
-            if t.name == "search_web":
+            if t.name == "web_search":
                 assert "query" in required
 
 
 class TestToolCalls:
-    def test_get_stats_roundtrip(self, server):
-        result = _run(server.call_tool("get_stats", {}))
-        text = result[0][0].text if isinstance(result, tuple) else result.content[0].text
-        data = json.loads(text)
-        assert data["visited_urls_count"] == 0
-        assert "hit_rate" in data["cache"]
-
     def test_inspect_page_via_mcp(self, server):
         from unittest.mock import patch
 

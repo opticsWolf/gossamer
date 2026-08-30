@@ -49,20 +49,20 @@ class TestAsyncDelegation:
 
         tb._inspect_html_page_impl = fake_impl
         result = asyncio.run(tb.inspect_html_page_async("https://example.com"))
-        assert calls == [("https://example.com", None, None, 0, 1)]
+        assert calls == [("https://example.com", "auto", None, 0, 1)]
         assert result == "RESULT:https://example.com"
         result = asyncio.run(
             tb.inspect_html_page_async(
-                "https://example.com", use_smart=True, query="my query"
+                "https://example.com", use_smart="browser", query="my query"
             )
         )
-        assert calls[-1] == ("https://example.com", True, "my query", 0, 1)
+        assert calls[-1] == ("https://example.com", "browser", "my query", 0, 1)
         result = asyncio.run(
             tb.inspect_html_page_async(
                 "https://example.com", offset=100, max_chunks=2
             )
         )
-        assert calls[-1] == ("https://example.com", None, None, 100, 2)
+        assert calls[-1] == ("https://example.com", "auto", None, 100, 2)
 
 
 class TestNoDeprecatedApi:

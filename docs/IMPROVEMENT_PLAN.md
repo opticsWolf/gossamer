@@ -153,7 +153,7 @@ Python copy is redundant.
 
 | # | Task | Notes |
 |---|---|---|
-| 7 | Flatten `_fetch_html` mode matrix | replace nested branches with lookup: `(mode, use_smart) -> strategy fn`; kills the medium deep-nesting + excessive-returns findings |
+| 7 | Flatten `_fetch_html` mode matrix | ✅ done. `_dispatch_fetch` now resolves `(fetch_mode, use_smart)` via `_resolve_fetch_strategy` into one of four strategies (`static-only`, `browser-only`, `browser-first`, `auto`) — no more nested mode branch. `use_smart` is the `FetchMode` tri-state (`auto`/`browser`/`static`) |
 | 8 | Dispatch table in `parse_file` | `{suffix: handler}` map; each handler ~20 lines; removes 157-LOC method and 3 duplicate Office branches |
 | 9 | Split `DocumentMetadata` | sub-models: `FileMeta`, `OpenGraphMeta`, `TwitterMeta`, `StructuredDataMeta`; compose into `DocumentMetadata` while keeping flat serialization via `model_dump()` merge so output schema stays stable |
 | 10 | Config object for toolbox | `ToolboxConfig` dataclass absorbing the 14 `__init__` params; keep old kwargs as deprecated passthrough for one minor version |

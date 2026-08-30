@@ -169,7 +169,7 @@ class TestBrowserProvenance:
         monkeypatch.setattr(agent_tools, "_fetch_with_browser_oxide", fake_browser)
         tb = _toolbox(tmp_path)
         url = "https://example.com/prov-page"
-        data = json.loads(tb.inspect_html_page(url, use_smart=True))
+        data = json.loads(tb.inspect_html_page(url, use_smart="browser"))
         assert calls == [url]
         assert data["fetch_method"] == "browser"
         # Best-effort: the browser layer surfaces no HTTP status or

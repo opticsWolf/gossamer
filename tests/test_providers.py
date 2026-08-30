@@ -272,7 +272,7 @@ class TestToolboxProviders:
         from stitch_web_researcher.agent_tools import WebResearcherToolbox
         toolbox = WebResearcherToolbox()
         defs = toolbox.get_llm_definitions()
-        search_def = [d for d in defs if d["function"]["name"] == "search_web"][0]
+        search_def = [d for d in defs if d["function"]["name"] == "web_search"][0]
         props = search_def["function"]["parameters"]["properties"]
         assert "provider" in props
         assert "duckduckgo" in props["provider"]["enum"]

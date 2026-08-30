@@ -4,6 +4,63 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.4.9]
+
+- **`use_smart` is now an explicit tri-state render strategy** (was `bool`/
+  `None`). New values: `"auto"` (default, follows `fetch_mode` -- static
+  first, stealth `browser_oxide` on failure/non-text), `"browser"` (headless
+  browser first, static on failure), `"static"` (static-only). The per-call
+  default is now `"auto"` (previously `False`), so the `auto` -> stealth
+  fallback is active by default through every entry point, including the
+  `execute_tool` / MCP path that previously forced static-only. Backed by
+  `FetchMode` plus `_coerce_fetch_mode` / `_resolve_fetch_strategy`, which
+  collapse `(fetch_mode, use_smart)` into one of four strategies
+  (`static-only`, `browser-only`, `browser-first`, `auto`). Passing a bool
+  now raises `ValueError` instead of being misread.
+
+- **Crawl now reports `fetch_method` on every page record** (root and
+  discovered pages), so a crawler can see which pages needed the stealth
+  browser. Previously only `inspect_html_page` / `research` surfaced it.
+
+- **Batch `batch_inspect_pages` `fetch_mode="auto"` now falls back to the
+  stealth browser** (was static-only). A page the static Rust engine can't
+  render (empty / non-text / JS-rendered body) is re-fetched through the
+  Python `browser_oxide` path, exactly like single-page `inspect_html_page`
+  and crawl, and the entry's `fetch_method` reports `"stealth-fallback"`
+  (or `"static"` for pages the static engine served). The whole batch stays
+  static-only for `fetch_mode="static"`, and the page cache is overwritten
+  with the method that actually served each page.
+
+- **Tool surface reduced 13 → 7 via clean folds (P8)**. The single
+  `TOOL_REGISTRY` now exposes: `web_search` (folds the old `search_web`
+  pure-search and `research` orchestration into one tool with a `search_only`
+  flag -- `false`/default keeps the old research behavior), `inspect_html_page`
+  (new `structured=True` returns the old `inspect_html_structured` payload),
+  `batch_inspect_pages`, `extract_document` (new `structured=True` returns the
+  old `extract_document_structured` payload), `discover_resources`, `crawl`,
+  and `manage_cache` (folds the old `clear_cache` / `prune_cache` /
+  `reset_visited` cache tools into one `action`-dispatched tool). The old
+  `search_web`, `research`, `extract_document_structured`,
+  `inspect_html_structured`, `clear_cache`, `prune_cache`, `reset_visited`
+  methods are retained as thin backing methods so existing callers and tests
+  keep working; `get_stats` remains a toolbox method but is no longer exposed
+  as an MCP/LLM tool.
+
+- **Indirect prompt-injection hardening of delivered content (Pattern 3 + 4).**
+  When the optional guard is enabled, every delivered scope is (a) wrapped in
+  an explicit `<untrusted-web-content source="url">` marker carrying a
+  directive that the enclosed text is data, not instructions (Pattern 3), and
+  (b) normalized before the detector scans it: every Unicode `C*` category
+  character (zero-width spaces U+200B/U+200C/U+200D, zero-width joiner, BOM,
+  bidirectional controls U+202A..U+202E, other `Cf`) except `\n\r\t` is
+  stripped, and NFKC normalization resolves compatibility glyphs (fullwidth,
+  ligatures, circled). The detector therefore scores exactly what the model
+  reads, and redaction offsets stay aligned. NFKC does **not** merge true
+  homoglyphs (Cyrillic `а` vs Latin `a`) -- those are ordinary letters, not
+  compatibility chars -- and are left to the detector / an allowlist. The
+  transform is opt-in: with the guard off (the default) output is
+  byte-identical. `guard.normalize_untrusted_text()` is exported for reuse.
+
 ## [0.4.8] — semantic crawl: BM25/IDF frontier scoring, thesaurus, richness, ranked documents, discovery seeds
 
 - **BM25/IDF scoring (feature A)**: the crawl frontier's relevance score

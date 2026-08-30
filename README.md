@@ -55,13 +55,13 @@
 - **Zero API Keys**: DuckDuckGo search requires no registration or configuration
 - **Multi-Provider Search**: Plug in Google, Bing, Exa alongside DuckDuckGo with automatic fallback chaining
 - **Async Rust Core**: Tokio-based concurrent fetching with browser impersonation, brotli decompression, and exponential backoff retries
-- **Smart/Fallback Routing**: `use_smart=True` attempts headless JS rendering (`browser_oxide`) first, falls back to static `reqwest` on failure
+- **Smart/Fallback Routing**: `use_smart` is a tri-state render strategy — `"auto"` (default, follows `fetch_mode`, static-first with stealth-browser fallback on failure/non-text), `"browser"` (headless `browser_oxide` first, static on failure), or `"static"` (static-only)
 - **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx)
 - **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
-- **HTML Table Extraction (Tier 3.11)**: `inspect_html_structured` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
+- **HTML Table Extraction (Tier 3.11)**: `inspect_html_page(structured=True)` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
-- **Research Orchestration (Tier 3.13)**: `research(topic, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent
-- **Document Link Detection (v0.4.5)**: `extract_document` / `extract_document_structured` also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
+- **Research Orchestration (Tier 3.13)**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
+- **Document Link Detection (v0.4.5)**: `extract_document` (and `extract_document(structured=True)` for a validated `ParsedDocumentPayload`) also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
 - **Focused Crawl (v0.4.6, semantic v0.4.8)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the crawl has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
@@ -113,8 +113,8 @@ tools = WebResearcherToolbox(
     model_name="gpt-4o",     # tiktoken encoding
 )
 
-# Search the web
-results = tools.search_web("latest AI research papers", max_results=5)
+# Search the web (pure provider search)
+results = tools.web_search("latest AI research papers", max_results=5, search_only=True)
 print(results)
 
 # Inspect a page (static fetch)
@@ -122,7 +122,7 @@ content = tools.inspect_html_page("https://arxiv.org/abs/1234.5678")
 print(content)
 
 # Inspect a JS-rendered page (headless browser)
-content = tools.inspect_html_page("https://react-app.example.com", use_smart=True)
+content = tools.inspect_html_page("https://react-app.example.com", use_smart="browser")
 print(content)
 
 # Batch inspect multiple pages concurrently
@@ -137,7 +137,7 @@ pdf_content = tools.extract_document("https://example.com/paper.pdf")
 print(pdf_content)
 
 # Extract structured document (metadata + pages + tables)
-structured = tools.extract_document_structured("https://example.com/report.pdf")
+structured = tools.extract_document("https://example.com/report.pdf", structured=True)
 print(structured)
 ```
 
@@ -177,10 +177,9 @@ asyncio.run(research())
 tools = WebResearcherToolbox()
 llm_tools = tools.get_llm_definitions()
 
-# Returns OpenAI-compatible function definitions for all ten tools:
-# search_web, inspect_html_page, batch_inspect_pages, extract_document,
-# extract_document_structured, inspect_html_structured, clear_cache,
-# prune_cache, reset_visited, get_stats.
+# Returns OpenAI-compatible function definitions for all seven tools:
+# web_search, inspect_html_page, batch_inspect_pages, extract_document,
+# discover_resources, crawl, manage_cache.
 
 for tool in llm_tools:
     print(tool["function"]["name"], "—", tool["function"]["description"])
@@ -205,7 +204,7 @@ providers = [
 tools = WebResearcherToolbox(search_providers=providers)
 
 # Prefer Google, fall back to Bing, then DuckDuckGo
-results = tools.search_web("quantum computing", provider="google")
+results = tools.web_search("quantum computing", provider="google", search_only=True)
 ```
 
 ### Token Budgeting
@@ -237,9 +236,8 @@ uv pip install "mcp>=2.0"
 python -m stitch_web_researcher.mcp_server
 ```
 
-Exposed tools: `search_web`, `inspect_html_page`, `batch_inspect_pages`,
-`extract_document`, `extract_document_structured`, `inspect_html_structured`,
-`clear_cache`, `prune_cache`, `reset_visited`, `get_stats`.
+Exposed tools: `web_search`, `inspect_html_page`, `batch_inspect_pages`,
+`extract_document`, `discover_resources`, `crawl`, `manage_cache`.
 
 Example client config (Claude Desktop / generic MCP JSON):
 

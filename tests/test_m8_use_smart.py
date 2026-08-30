@@ -1,12 +1,13 @@
 # tests/test_m8_use_smart.py
-"""M8 — use_smart must actually affect the fetch path.
+"""use_smart render-strategy dispatch.
 
-The review reported that inspect_html_page ignored use_smart (the Rust
-core config had no such flag, so every fetch used the core default).
-The static/stealth-browser split fixed this: _fetch_html now dispatches
-on (fetch_mode, use_smart). These tests pin that dispatch matrix and
-verify that inspect_html_page / inspect_html_structured pass use_smart
-through to _fetch_html. Fully offline (fetches are spied, no network).
+inspect_html_page / inspect_html_structured dispatch page fetches on
+(fetch_mode, use_smart). use_smart is now an explicit tri-state enum
+("auto" / "browser" / "static", default "auto"): "static" is static-only,
+"browser" renders with the stealth browser first (static on failure),
+and "auto" defers to fetch_mode. These tests pin that dispatch matrix and
+verify the tools pass use_smart through to _fetch_html. Fully offline
+(fetches are spied, no network).
 """
 
 from stitch_web_researcher import agent_tools
@@ -57,15 +58,15 @@ class TestUseSmartDispatch:
         assert calls == [("static", URL)]
         assert result[0] == "static-md"
 
-    def test_use_smart_true_prefers_browser(self, tmp_path):
+    def test_use_smart_browser_prefers_browser(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = _install_spy_fetches(tb)
-        result = tb._fetch_html(URL, use_smart=True)
+        result = tb._fetch_html(URL, use_smart="browser")
         assert calls == [("browser", URL)]
         assert result[0] == "browser-md"
         assert result[3] == "browser"
 
-    def test_use_smart_true_browser_failure_falls_back(self, tmp_path):
+    def test_use_smart_browser_failure_falls_back(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         _install_spy_fetches(tb)
 
@@ -73,15 +74,15 @@ class TestUseSmartDispatch:
             raise RuntimeError("stealth unavailable")
 
         tb._browser_fetch = broken_browser
-        result = tb._fetch_html(URL, use_smart=True)
+        result = tb._fetch_html(URL, use_smart="browser")
         # Browser failed -> static fallback still delivers content
         assert result[0] == "static-md"
 
-    def test_use_smart_false_forces_static(self, tmp_path):
+    def test_use_smart_static_forces_static(self, tmp_path):
         for mode in ("auto", "browser"):
             tb = _toolbox(tmp_path, mode)
             calls = _install_spy_fetches(tb)
-            result = tb._fetch_html(URL, use_smart=False)
+            result = tb._fetch_html(URL, use_smart="static")
             assert calls == [("static", URL)]
             assert result[3] == "static"
 
@@ -164,19 +165,20 @@ class TestUseSmartPlumbing:
     def test_inspect_html_page_passes_use_smart(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = self._spy(tb)
-        out = tb.inspect_html_page(URL, use_smart=True)
-        assert calls == [True]
+        out = tb.inspect_html_page(URL, use_smart="browser")
+        assert calls == ["browser"]
         assert "Some markdown content." in out
 
     def test_inspect_html_structured_passes_use_smart(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = self._spy_structured(tb)
-        out = tb.inspect_html_structured(URL, use_smart=True)
-        assert calls == [True]
+        out = tb.inspect_html_structured(URL, use_smart="browser")
+        assert calls == ["browser"]
         assert "Some markdown content." in out
 
-    def test_inspect_html_page_default_is_none(self, tmp_path):
+    def test_inspect_html_page_default_is_auto(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = self._spy(tb)
         tb.inspect_html_page(URL)
-        assert calls == [None]
+        # default defers to fetch_mode (auto) rather than forcing a path
+        assert calls == ["auto"]

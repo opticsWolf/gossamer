@@ -36,7 +36,7 @@
 | Visited URL deduplication | ✅ | `visited_urls` set |
 | URL validation | ✅ | scheme + host check |
 | Retry decorator | ✅ | exponential backoff, configurable |
-| Smart/fallback routing | ✅ | `use_smart` flag, browser_oxide → reqwest fallback |
+| Smart/fallback routing | ✅ | `use_smart` tri-state strategy (auto/browser/static), browser_oxide → static fallback |
 | Async variants | ✅ | `search_web_async`, `inspect_html_page_async`, `batch_inspect_pages_async` (thread-pool wrappers) |
 | Tool surface (P8) | ✅ | One `TOOL_REGISTRY` drives every surface — `get_llm_definitions()`, the MCP tools, and the `execute_tool(name, arguments)` dispatcher — 10 tools: search_web, inspect_html_page, batch_inspect_pages, extract_document, extract_document_structured, inspect_html_structured, clear_cache, prune_cache, reset_visited, get_stats |
 | Token-aware truncation | ✅ | two-pass: tokens first, then char cap |
@@ -173,7 +173,7 @@
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | `parse_html()` on `StructuredOxideParser` | ✅ | Standardizes web-fetching output with document parsing |
-| `inspect_html_structured()` on toolbox | ✅ | New LLM function tool with `use_smart` flag |
+| `inspect_html_structured()` on toolbox | ✅ | New LLM function tool with `use_smart` tri-state strategy |
 | HTML table extraction (Tier 3.11) | ✅ | Rust `extract_tables_from_html` parses top-level `<table>` grids (colspan/rowspan expanded, `<th>` headers, caption names, 20-table/500-row caps) and attaches them to the payload and its page; browser path and the M8 page seam are untouched |
 | Sitemap-aware discovery (Tier 3.12) | ✅ | `discover_resources(url)`: feed `<link rel=alternate>` scan (RSS/Atom/Feed-JSON only) plus bounded `/sitemap.xml` probe (index hops ≤ 3, ≤ 10 sitemap fetches, 500 URLs per sitemap, 1000 total, ordered dedupe); best-effort degradation on missing/malformed sitemaps; page left unvisited |
 | Research orchestration (Tier 3.13) | ✅ | `research(topic, depth=5, max_tokens=0)`: searches the topic (≤ depth*2 candidates, cap 20), normalizes/dedupes/SSRF-validates result URLs (≤ depth, cap 10), fetches each through the normal page pipeline (cache/robots/rate-limit/provenance), and returns per-source status + content + provenance; failures isolated per source; repeated runs served from the page cache; global budget enforced, synthesis left to the calling agent |

@@ -30,21 +30,18 @@ def _toolbox(tmp_path) -> WebResearcherToolbox:
 
 
 class TestRegistryShape:
-    def test_registry_lists_all_thirteen_tools(self):
+    def test_registry_lists_all_tools(self):
+        # P8: search_web+research -> web_search; extract_document_structured
+        # + inspect_html_structured folded into their base tools; the cache
+        # trio + get_stats replaced by manage_cache. 7 tools total.
         assert REGISTRY_NAMES == {
-            "search_web",
+            "web_search",
             "inspect_html_page",
             "batch_inspect_pages",
             "extract_document",
-            "extract_document_structured",
-            "inspect_html_structured",
             "discover_resources",
-            "research",
             "crawl",
-            "clear_cache",
-            "prune_cache",
-            "reset_visited",
-            "get_stats",
+            "manage_cache",
         }
 
     def test_every_spec_method_exists(self, tmp_path):
@@ -90,10 +87,13 @@ class TestLlmDefinitions:
 class TestExecuteTool:
     def test_dispatch_matches_direct_calls(self, tmp_path):
         tb = _toolbox(tmp_path)
-        assert tb.execute_tool("get_stats") == tb.get_stats()
-        assert tb.execute_tool("reset_visited") == tb.reset_visited()
-        assert "cache_cleared" in tb.execute_tool("clear_cache")
-        assert "prune" in tb.execute_tool("prune_cache")
+        # manage_cache dispatches to the real cache methods (same return
+        # shapes the old dedicated tools returned).
+        assert tb.execute_tool("manage_cache") == tb.prune_cache()
+        assert tb.execute_tool("manage_cache", {"action": "reset"}) == tb.reset_visited()
+        assert (
+            "cache_cleared" in tb.execute_tool("manage_cache", {"action": "clear"})
+        )
 
     def test_defaults_come_from_registry(self, tmp_path):
         """Omitted optional parameters use the registry defaults (the
@@ -102,7 +102,7 @@ class TestExecuteTool:
         # search_web requires query; max_results/provider must fall back
         # to the registry defaults, so only query is missing.
         with pytest.raises(TypeError, match="query"):
-            tb.execute_tool("search_web")
+            tb.execute_tool("web_search")
 
     def test_unknown_tool_raises_with_valid_names(self, tmp_path):
         tb = _toolbox(tmp_path)

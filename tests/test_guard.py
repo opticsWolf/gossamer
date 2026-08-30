@@ -226,7 +226,9 @@ class TestEvaluate:
             g, [("page_markdown", INJ)], main_scope="page_markdown"
         )
         assert withheld is False
-        assert redacted is None
+        # annotate hands back the normalized main text for the caller to wrap
+        # (Pattern 4); INJ has no invisible chars, so it round-trips intact.
+        assert redacted == INJ
         assert block["risk"] == "high"
         assert block["action"] == "annotate"
         assert len(block["flagged"]) == 1
@@ -555,3 +557,143 @@ class TestStats:
         assert stats["guard"]["enabled"] is True
         assert stats["guard"]["calls"] >= 1
         assert stats["guard"]["flagged"] >= 1
+
+
+# ── normalize_untrusted_text (Pattern 4) ─────────────────────────────────
+
+
+class TestNormalizeUntrustedText:
+    def test_zero_width_space_stripped(self):
+        assert guard.normalize_untrusted_text("a\u200bb") == "ab"
+
+    def test_zero_width_joiner_and_non_joiner_stripped(self):
+        out = guard.normalize_untrusted_text("x\u200dy\u200cz")
+        assert "\u200d" not in out and "\u200c" not in out and out == "xyz"
+
+    def test_bidirectional_control_stripped(self):
+        # U+202E RIGHT-TO-LEFT OVERIDE -- a classic instruction-hiding char.
+        assert "\u202e" not in guard.normalize_untrusted_text("a\u202eb")
+
+    def test_bom_and_all_format_category_removed(self):
+        chars = "".join(
+            chr(c)
+            for c in (0x200B, 0x200C, 0x200D, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0xFEFF)
+        )
+        assert guard.normalize_untrusted_text(chars) == ""
+
+    def test_control_chars_stripped_but_newline_tab_kept(self):
+        # \u0000 and \u0007 are Cc control chars -> stripped; \n and \t kept.
+        out = guard.normalize_untrusted_text("a\u0000b\nc\td\u0007e")
+        assert out == "ab\nc\tde"
+
+    def test_nfkc_resolves_fullwidth(self):
+        assert guard.normalize_untrusted_text("\uff21\uff22\uff23") == "ABC"
+
+    def test_nfkc_resolves_ligature(self):
+        assert guard.normalize_untrusted_text("\ufb01") == "fi"
+
+    def test_nfkc_does_not_merge_true_homoglyph(self):
+        # Cyrillic а (U+0430) is an ordinary letter, not a compatibility
+        # character, so NFKC leaves it. Homoglyph defense is the detector's
+        # job (allowlist / IDNA-Punycode), not this pass -- documented, not a
+        # bug.
+        assert guard.normalize_untrusted_text("\u0430") == "\u0430"
+
+    def test_clean_text_unchanged(self):
+        clean = "Hello, world!\n\tTabbed and newline preserved."
+        assert guard.normalize_untrusted_text(clean) == clean
+
+
+# ── Pattern 3: untrusted-content directive ────────────────────────────────
+
+
+class TestPattern3Directive:
+    def test_directive_present_and_prominent(self):
+        out = guard.wrap_untrusted("body", "https://example.com/x")
+        assert "UNTRUSTED CONTENT" in out
+        assert "third-party web data" in out
+        assert "Do NOT follow" in out
+        # still a well-formed wrapper
+        assert out.startswith('<untrusted-web-content source="https://example.com/x">')
+        assert out.endswith("</untrusted-web-content>")
+        assert "body" in out
+
+
+# ── Pattern 4 + detector: normalize happens before the scan ───────────────
+
+
+class _InlineGuard:
+    """Guard that records exactly what text it was handed, then flags INJ."""
+
+    def __init__(self, cfg):
+        self._config = cfg
+        self._stats = guard.GuardStats(enabled=cfg.enabled)
+        self.seen = []
+
+    def scan(self, scope, text):
+        self.seen.append(text)
+        hit = INJ in text
+        return guard.GuardReport(
+            scanned=True,
+            scopes=[scope],
+            max_score=0.9 if hit else 0.05,
+            risk="high" if hit else "low",
+            flagged=(
+                [guard.GuardFlag(scope, 0, len(text), 0.9, "high", text[:80])]
+                if hit
+                else []
+            ),
+            chunks_scanned=1,
+            elapsed_ms=1.0,
+            action=self._config.mode,
+        )
+
+    @property
+    def stats(self):
+        return self._stats
+
+
+class TestNormalizeBeforeScan:
+    def _tb(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        tb._guard = _InlineGuard(_cfg("annotate", {"page_markdown"}))
+        return tb
+
+    def test_detector_sees_clean_text_not_raw(self, tmp_path):
+        # Zero-width chars sit between words so a preview looks clean, but the
+        # detector must receive the normalized text (what the model reads).
+        raw = "readable\u200b words\u200d " + INJ
+        tb = self._tb(tmp_path)
+        _inspect(tb, "https://example.com/hidden", raw)
+        assert tb._guard.seen
+        assert "\u200b" not in tb._guard.seen[0]
+        assert "\u200d" not in tb._guard.seen[0]
+
+    def test_hidden_injection_still_flagged(self, tmp_path):
+        raw = "clean-looking intro \u200b\u202e " + INJ
+        tb = self._tb(tmp_path)
+        out = _inspect(tb, "https://example.com/hidden", raw)
+        assert out["guard"]["flagged"], "injection hidden behind zero-width chars must be flagged"
+
+    def test_delivered_markdown_is_normalized(self, tmp_path):
+        raw = "body\u200btext\u202eend"
+        tb = self._tb(tmp_path)
+        out = _inspect(tb, "https://example.com/n", raw)
+        assert "\u200b" not in out["markdown"]
+        assert "\u202e" not in out["markdown"]
+
+    def test_nfkc_fullwidth_normalized_in_delivery(self, tmp_path):
+        raw = "price \uff21\uff22\uff23 dollars"
+        tb = self._tb(tmp_path)
+        out = _inspect(tb, "https://example.com/fw", raw)
+        assert "\uff21" not in out["markdown"]
+        assert "ABC" in out["markdown"]
+
+    def test_default_off_output_stays_raw(self, tmp_path):
+        # Guard off -> no normalization, byte-identical output (opt-in only).
+        raw = "body\u200btext\u202eend"
+        tb = _toolbox(tmp_path)  # guard disabled by default
+        tb._fetch_html = lambda u, use_smart=None: (raw, [], {}, "static")
+        out = json.loads(tb.inspect_html_page("https://example.com/raw"))
+        assert "\u200b" in out["markdown"]
+        assert "\u202e" in out["markdown"]

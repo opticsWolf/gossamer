@@ -135,12 +135,12 @@ class TestRepeatVisitServesCache:
 
 
 class TestRecoveryViaMCP:
-    def test_reset_visited_is_an_llm_tool(self, tmp_path):
+    def test_manage_cache_is_an_llm_tool(self, tmp_path):
         tb = _toolbox(tmp_path)
         names = [t["function"]["name"] for t in tb.get_llm_definitions()]
-        assert "reset_visited" in names
+        assert "manage_cache" in names
 
-    def test_reset_visited_tool_registered_on_mcp_server(self):
+    def test_manage_cache_tool_registered_on_mcp_server(self):
         import asyncio
 
         try:
@@ -149,7 +149,7 @@ class TestRecoveryViaMCP:
             pytest.skip("mcp not installed")
         server = build_server()
         tools = {t.name for t in asyncio.run(server.list_tools())}
-        assert "reset_visited" in tools
+        assert "manage_cache" in tools
 
     def test_clear_cache_also_clears_visited(self, tmp_path):
         tb = _toolbox(tmp_path)
