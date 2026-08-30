@@ -11,33 +11,79 @@ import random
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from functools import wraps
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Literal, Mapping, Optional, Union
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 
+class QuotaExhaustedError(RuntimeError):
+    """Raised when an adapter's hard per-window quota has been reached.
+
+    The retry decorator treats this as fatal (never retried — the window
+    will not reset during backoff) and the harness treats it as a skip
+    signal so it can fail over to another adapter instead of hammering an
+    exhausted key or hitting a 429.
+    """
+
+
+@dataclass
+class RateState:
+    """Snapshot of an adapter's live politeness budget after a response.
+
+    Populated by :meth:`ResourceAdapter.parse_headers` from server rate-limit
+    headers (``X-RateLimit-*`` / ``Retry-After``) so the tool surface can
+    report a per-provider ``budget`` to the harness.
+    """
+
+    rps: Optional[float] = None
+    remaining: Optional[int] = None
+    reset_seconds: Optional[int] = None
+    retry_after: Optional[float] = None
+    exhausted: bool = False
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "rps_limit": self.rps,
+            "remaining": self.remaining,
+            "reset_seconds": self.reset_seconds,
+            "retry_after": self.retry_after,
+            "exhausted": self.exhausted,
+        }
+
+
 # ────────────────────────────────────────────────────────────────
-# 1. Abstract Search Provider Interface
+# 1. Unified Adapter Interface
 # ────────────────────────────────────────────────────────────────
 
 @dataclass
 class RateLimit:
-    """Per-provider rate limits.
+    """Per-adapter politeness + quota policy.
 
     Attributes:
-        search_interval: Minimum seconds between search-API calls to this
-            provider (queries to the engine itself).
+        search_interval: Minimum seconds between calls to this adapter
+            (queries to the engine itself).
         fetch_interval: Minimum seconds between content downloads suggested
-            for sessions using this provider. Consumed by
+            for sessions using this adapter. Consumed by
             ``WebResearcherToolbox`` as the default politeness delay when
-            fetching pages found through this provider.
+            fetching pages found through this adapter.
+        jitter: Maximum random seconds added to ``search_interval`` to
+            desynchronize access. ``0`` disables jitter.
+        quota: Hard cap on calls per ``quota_window``. ``None`` means
+            unlimited; once reached the next call raises
+            :class:`QuotaExhaustedError` instead of a 429 / billing overage.
+        quota_window: Granularity of the quota window — ``"day"`` (UTC
+            calendar day) or ``"month"`` (UTC calendar month).
     """
 
     search_interval: float = 1.0
     fetch_interval: float = 0.5
+    jitter: float = 0.0
+    quota: Optional[int] = None
+    quota_window: Literal["day", "month"] = "day"
 
 
 def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
@@ -54,6 +100,11 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
+                except QuotaExhaustedError:
+                    # A hard quota stop must never be retried: the window
+                    # will not reset during backoff. Re-raise at once so the
+                    # harness can fail over to another adapter.
+                    raise
                 except Exception as e:
                     if attempt == max_attempts - 1:
                         logger.error(
@@ -71,38 +122,39 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
     return decorator
 
 
-class SearchProvider(ABC):
-    """Abstract base class for all search providers."""
+class ResourceAdapter(ABC):
+    """Unified interface for API access: web search + domain data sources.
 
-    #: Canonical selection name (M2). Subclasses must override; the
-    #: toolbox matches ``provider=`` arguments against this attribute
-    #: instead of deriving names from ``__class__.__name__``.
+    Every data source the harness can ask for — a web search engine, a
+    scholarly index, a legal register, a financial feed, a geo/climate
+    service — shares the same cross-cutting concerns. This base owns them
+    so a concrete adapter only implements the request + parse contract
+    (:meth:`_search_impl` / :meth:`fetch`). Responsibilities:
+
+      * politeness   — per-call minimum gap + jitter (never hammer a host)
+      * quota        — hard per-window cap; raises :class:`QuotaExhaustedError`
+      * auth injection — provider-specific key injection (no secrets in code)
+      * live retune  — read server rate-limit headers, adjust the bucket live
+      * execution    — retry/backoff wrapper; callers never see a raw 429
+
+    Concrete adapters set :attr:`name` / :attr:`domain` / :attr:`requires_key`
+    and implement :meth:`_search_impl` (and :meth:`fetch` where the source is
+    a lookup rather than a text search).
+    """
+
+    #: stable id, matched by the tool surface (e.g. "google", "openalex")
     name: str = ""
+    #: category used for tool routing and docs
+    domain: str = ""
+    #: whether a key is required (surface can gate on this)
+    requires_key: bool = False
 
-    @retry(max_attempts=3, delay=1.0, backoff=2.0)
-    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
-        """
-        Execute a web search and return a list of results.
-
-        Public entry point: retries the provider's ``_search_impl``
-        with exponential backoff on any exception (M3: the old
-        ``@retry`` on ``WebResearcherToolbox.search_web`` was dead
-        code because that method catches every provider exception
-        and returns an error dict, so it never raised).
-        """
-        return self._search_impl(query, max_results)
-
-    @abstractmethod
-    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
-        """
-        Provider-specific search implementation.
-
-        Each result dict should contain at least:
-          - "title": str
-          - "url": str
-          - "snippet": str
-        """
-        ...
+    # politeness / quota state — set per instance in _init_rate_limit
+    rate_limit: RateLimit
+    _delay: float = 0.0
+    _last_search: float = 0.0
+    _quota_used: int = 0
+    _quota_period: Optional[str] = None
 
     def _init_rate_limit(
         self,
@@ -128,24 +180,122 @@ class SearchProvider(ABC):
         # Back-compat attribute consumed by _enforce_delay()
         self._delay = self.rate_limit.search_interval
 
-    def _enforce_delay(self) -> None:
-        """Per-provider rate limiting for search-API calls.
+    def _reset_quota_if_rolled(self) -> None:
+        """Reset the in-flight quota counter when its UTC window has rolled.
 
-        The minimum gap between calls is ``self._delay`` plus a random
-        0–1 s jitter (only when the delay is non-zero), which
-        desynchronizes access patterns.
+        A new calendar day/month starts the counter at zero automatically.
         """
+        if self.rate_limit.quota is None:
+            return
+        now = datetime.now(timezone.utc)
+        period = (
+            now.date().isoformat()
+            if self.rate_limit.quota_window == "day"
+            else now.strftime("%Y-%m")
+        )
+        if self._quota_period != period:
+            self._quota_period = period
+            self._quota_used = 0
+
+    def _enforce_delay(self) -> None:
+        """Politeness + quota gate for one outgoing call.
+
+        Enforced, in order:
+          1. reset a quota window that has rolled over (UTC day/month);
+          2. enforce the hard quota — raise :class:`QuotaExhaustedError`
+             once the per-window limit is reached;
+          3. wait out the minimum gap, ``self._delay`` + a random
+             ``0..jitter`` s (only when the delay is non-zero).
+
+        The quota counter is bumped only after the gate passes, so it
+        counts calls actually admitted to the provider.
+        """
+        self._reset_quota_if_rolled()
+        quota = self.rate_limit.quota
+        if quota is not None and self._quota_used >= quota:
+            raise QuotaExhaustedError(
+                f"{self.name!r} quota exhausted "
+                f"({self._quota_used}/{quota} per {self.rate_limit.quota_window}); "
+                f"retry after the window resets"
+            )
+
         gap = self._delay
         if gap > 0:
-            gap += random.uniform(0.0, 1.0)
+            gap += random.uniform(0.0, self.rate_limit.jitter)
         elapsed = time.time() - self._last_search
         if elapsed < gap:
             time.sleep(gap - elapsed)
         self._last_search = time.time()
 
-    # Subclasses must set these in __init__
-    _delay: float = 0.0
-    _last_search: float = 0.0
+        if quota is not None:
+            self._quota_used += 1
+
+    # ── auth + response contract (overridable) ──
+    def inject_auth(
+        self, url: str, params: Optional[dict] = None, headers: Optional[dict] = None
+    ) -> tuple:
+        """Return ``(url, params, headers)`` with this adapter's auth applied.
+
+        Base is a no-op for keyless adapters; subclasses with keys override
+        it. Missing keys are not raised here — the tool surface gates on
+        :attr:`requires_key` before construction.
+        """
+        return url, dict(params or {}), dict(headers or {})
+
+    def parse_headers(self, status: int, headers: Mapping[str, str]) -> RateState:
+        """Read server rate-limit headers into a :class:`RateState`.
+
+        Base returns an empty state (adapters without rate-limit headers);
+        subclasses parse ``X-RateLimit-*`` / ``Retry-After`` to retune live.
+        """
+        return RateState()
+
+    # ── execution contract ──
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+        """
+        Execute a search and return a list of result dicts.
+
+        Public entry point: retries :meth:`_search_impl` with exponential
+        backoff on any exception (M3). A :class:`QuotaExhaustedError` is
+        never retried — the window will not reset during backoff — so the
+        harness can fail over to another adapter.
+        """
+        return self._search_impl(query, max_results)
+
+    @abstractmethod
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+        """
+        Adapter-specific search implementation.
+
+        Each result dict should contain at least:
+          - "title": str
+          - "url": str
+          - "snippet": str
+        """
+        ...
+
+    def fetch(self, record_id: str, params: Optional[dict] = None) -> List[Dict[str, str]]:
+        """Fetch one record by id (lookup-style sources).
+
+        Default raises :class:`NotImplementedError`; search-only adapters
+        inherit it. Domain adapters override it.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support fetch")
+
+
+class SearchProvider(ResourceAdapter):
+    """Abstract base class for web-search adapters (``domain='search'``).
+
+    Keeps the historical search contract (:meth:`search` / :meth:`_search_impl`)
+    as the narrowing of the unified :class:`ResourceAdapter`.
+    """
+
+    #: Canonical selection name (M2). Subclasses must override; the
+    #: toolbox matches ``provider=`` arguments against this attribute
+    #: instead of deriving names from ``__class__.__name__``.
+    name: str = ""
+    domain: str = "search"
 
 
 # ────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from stitch_web_researcher.search_providers import ResourceAdapter
 
 
 def _toolbox(tmp_path):
@@ -212,11 +213,26 @@ class TestToolboxConfig:
         assert tb._fetch_interval == 2.5
 
 
-class _FakeProvider:
-    """Minimal provider stand-in for config-resolution tests."""
+class _FakeProvider(ResourceAdapter):
+    """Minimal adapter stand-in for config/delay-resolution tests.
+
+    Inherits the real politeness/quota machinery from ResourceAdapter, so
+    ``_enforce_delay`` (which reads ``rate_limit.jitter`` and calls
+    ``_reset_quota_if_rolled``) runs unmodified against this double.
+    """
+
+    name = "fake"
+    domain = "test"
+    requires_key = False
 
     def __init__(self, rate_limit=None):
-        self.rate_limit = rate_limit
+        self._last_search = 0.0
+        self._init_rate_limit(rate_limit)
+        self.calls = 0
+
+    def _search_impl(self, query, max_results=5):
+        self.calls += 1
+        return []
 
     def search(self, query, max_results=5):
         return []

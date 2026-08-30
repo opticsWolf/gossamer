@@ -77,19 +77,33 @@ guard (prompt-injection protection), SSRF guard, cache, and provider abstraction
    reused: guard (injection), ssrf (URL allow/deny), cache, telemetry
 ```
 
-### 3.1 Provider interface
-Every adapter implements the same contract:
+### 3.1 Provider interface — IMPLEMENTED
+
+The interface is implemented as the `ResourceAdapter` ABC in
+`stitch_web_researcher/search_providers.py`; the search engines already live
+under it via `SearchProvider(ResourceAdapter)`, and the domain adapters live in
+`stitch_web_researcher/research_providers.py`.
+
+Every adapter inherits the same cross-cutting contract — politeness
+(per-call gap + jitter), hard per-window quota (raises `QuotaExhaustedError`),
+auth injection, live header retuning, and a retry/backoff `search()` wrapper — so a concrete adapter only implements the request + parse contract:
 
 ```python
-class ResearchProvider(Protocol):
-    name: str                      # stable id, e.g. "openalex"
-    domain: str                    # "scholarly" | "legal" | "financial" | "geo" | ...
+class ResourceAdapter(ABC):                       # search_providers.py
+    name: str                       # stable id, e.g. "google" | "openalex"
+    domain: str                     # "search" | "scholarly" | "geo" | ...
     requires_key: bool
-    default_limits: Limits         # rps, concurrency, per-page
-    def search(self, query: str, params: dict) -> Iterator[RawRecord]: ...
-    def fetch(self, record_id: str, params: dict) -> RawRecord: ...
-    def inject_auth(self, req: Request) -> Request: ...   # auth per provider
-    def parse_headers(self, resp) -> RateState: ...       # read server limits
+    rate_limit: RateLimit           # interval, jitter, quota, quota_window
+    def _search_impl(self, query, max_results) -> List[Dict]: ...   # retry-wrapped via search()
+    def inject_auth(self, url, params, headers) -> tuple: ...       # auth per provider
+    def parse_headers(self, status, headers) -> RateState: ...      # read server limits
+    def fetch(self, record_id, params) -> List[Dict]: ...           # lookup-style sources
+
+# Search engines (narrow to domain="search"):
+#   DuckDuckGoProvider, GoogleProvider, BingProvider, ExaProvider,
+#   BrowserOxideSearchProvider  (all subclass SearchProvider)
+# Domain adapters (stand beside SearchProvider):
+#   OpenAlexAdapter (scholarly), OpenMeteoAdapter (geo)  — research_providers.py
 ```
 
 ### 3.2 Boundary coordinator (the core deliverable)
@@ -284,6 +298,12 @@ Missing key → tool returns a clean "provider X needs key Y (set STITCH_...)" e
 - New Python module `stitch_web_researcher/research_providers.py` (adapters +
   coordinator + key manager + normalization) — pure Python is fine; keep heavy
   HTTP in the existing async client.
+  - **Done (Phase 1 core + first adapters):** `ResourceAdapter` ABC in
+    `search_providers.py` (politeness + jitter + quota + `QuotaExhaustedError`
+    + auth/header contract + retry-wrapped `search`); `SearchProvider`
+    narrowed to `domain="search"`; `OpenAlexAdapter` and `OpenMeteoAdapter`
+    in `research_providers.py`; `RateState`/`QuotaExhaustedError` exported from
+    the package. Full suite green (951 passed).
 - Register adapters in the existing **tool registry** pattern
   (`agent_tools.py::TOOL_REGISTRY`) or a new `research_tools` group.
 - Wire the six tools into the existing MCP server (`mcp_server.py`).

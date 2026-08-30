@@ -4,6 +4,25 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [Unreleased]
+
+- **Unified API-access interface: `ResourceAdapter`** (new ABC in
+  `search_providers.py`). Every data source the harness can ask for -- a web
+  search engine, a scholarly index, a legal/financial/geo feed -- now shares
+  one contract: politeness (per-call gap + jitter), a hard per-window quota
+  (raises the new `QuotaExhaustedError`), auth injection, live header-based
+  retuning, and a retry/backoff `search()` wrapper. Callers never see a raw
+  429; a quota stop is never retried so the harness can fail over.
+  - `SearchProvider` is now a narrowing of `ResourceAdapter`
+    (`domain="search"`); the five search engines are unchanged from the
+    outside (all existing provider tests still pass).
+  - New `research_providers.py` module with two concrete domain adapters built
+    on the base: `OpenAlexAdapter` (scholarly, polite-email auth) and
+    `OpenMeteoAdapter` (geo, 10 000/day quota). More follow the §4 matrix in
+    `docs/research_access_layer_plan.md`.
+  - `RateLimit` gains `jitter`, `quota`, `quota_window`; new exports
+    `RateState` / `QuotaExhaustedError`.
+
 ## [0.4.9]
 
 - **`use_smart` is now an explicit tri-state render strategy** (was `bool`/

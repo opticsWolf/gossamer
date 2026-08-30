@@ -26,12 +26,15 @@ from stitch_web_researcher.token_budget import (
 )
 from stitch_web_researcher.search_providers import (
     SearchProvider,
+    ResourceAdapter,
     DuckDuckGoProvider,
     GoogleProvider,
     BingProvider,
     ExaProvider,
     BrowserOxideSearchProvider,
     RateLimit,
+    RateState,
+    QuotaExhaustedError,
     get_default_providers,
     resolve_provider_name,
 )
@@ -70,7 +73,8 @@ __all__ = [
     "fit_context_window",
     "estimate_markdown_tokens",
     "resolve_encoding",
-    # Search providers
+    # Unified adapter interface + search providers
+    "ResourceAdapter",
     "SearchProvider",
     "DuckDuckGoProvider",
     "GoogleProvider",
@@ -78,6 +82,8 @@ __all__ = [
     "ExaProvider",
     "BrowserOxideSearchProvider",
     "RateLimit",
+    "RateState",
+    "QuotaExhaustedError",
     "get_default_providers",
     "resolve_provider_name",
     # HTML metadata extraction
