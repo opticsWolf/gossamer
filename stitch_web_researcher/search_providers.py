@@ -478,19 +478,15 @@ class BingProvider(SearchProvider):
 # 5. Exa.ai Provider (semantic, LLM-native search)
 # ────────────────────────────────────────────────────────────────
 
-_exa_available = False
-try:
-    from exa_py import Exa  # noqa: F401
-    _exa_available = True
-except ImportError:
-    pass
-
-
 class ExaProvider(SearchProvider):
     """Search via Exa.ai (semantic, LLM-native search).
 
     Exa returns query-relevant highlights that cut token usage by ~10x
     compared to full-page retrieval.
+
+    Implemented directly against Exa's REST API
+    (``POST https://api.exa.ai/v1/search``) with ``httpx`` -- no third-party
+    SDK required, so Exa works out of the box whenever ``EXA_API_KEY`` is set.
 
     Requires:
         - An API key (set EXA_API_KEY env var or pass explicitly)
@@ -500,6 +496,9 @@ class ExaProvider(SearchProvider):
 
     name = "exa"
 
+    #: Exa search types accepted by ``/v1/search`` (the ``type`` field).
+    SEARCH_TYPES = ("auto", "keyword", "semantic")
+
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -508,14 +507,7 @@ class ExaProvider(SearchProvider):
         fetch_delay: Optional[float] = None,
     ):
         import os
-        if not _exa_available:
-            raise ImportError(
-                "exa-py is not installed. Install it with: pip install exa-py"
-            )
-        from exa_py import Exa
-
         self.api_key = api_key or os.environ.get("EXA_API_KEY", "")
-        self.client = Exa(api_key=self.api_key)
         self._last_search = 0.0
         self._init_rate_limit(
             delay if delay is not None else _EXA_RATE_LIMIT, fetch_delay
@@ -525,20 +517,36 @@ class ExaProvider(SearchProvider):
     def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         self._enforce_delay()
 
-        result = self.client.search(
-            query,
-            type=self.search_type,
-            num_results=max_results,
-            contents={"highlights": True},
+        if not self.api_key:
+            raise RuntimeError(
+                "ExaProvider requires EXA_API_KEY environment variable "
+                "(or explicit api_key parameter)."
+            )
+
+        response = httpx.post(
+            "https://api.exa.ai/v1/search",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "query": query,
+                "type": self.search_type,
+                "numResults": max_results,
+                "contents": {"highlights": True},
+            },
+            timeout=30.0,
         )
+        response.raise_for_status()
+        data = response.json()
 
         return [
             {
-                "title": getattr(r, "title", ""),
-                "url": getattr(r, "url", ""),
-                "snippet": getattr(r, "highlights", ""),
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "snippet": item.get("highlights", ""),
             }
-            for r in result.results
+            for item in data.get("results", [])
         ]
 
 
@@ -558,7 +566,7 @@ def get_default_providers() -> List[SearchProvider]:
     if os.environ.get("BING_API_KEY"):
         providers.append(BingProvider())
 
-    if _exa_available and os.environ.get("EXA_API_KEY"):
+    if os.environ.get("EXA_API_KEY"):
         providers.append(ExaProvider())
 
     return providers

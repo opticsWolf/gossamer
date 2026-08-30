@@ -32,6 +32,14 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
     jitter, no quota; Exa `0.1 s + 0.05 s` jitter, `1000/month`. An
     explicit `delay`/`RateLimit`/`fetch_delay` still wins; the module
     constants are never mutated by construction.
+- **`ExaProvider` no longer depends on the `exa-py` SDK.** It now calls
+  Exa's REST API directly with `httpx` (`POST
+  https://api.exa.ai/v1/search`, `Authorization: Bearer`), so Exa works
+  out of the box whenever `EXA_API_KEY` is set -- no optional package to
+  install. The public contract is unchanged (same `search_type` /
+  `search(query, max_results)` shape, same `title`/`url`/`snippet`
+  output). The `_exa_available` guard is removed; `get_default_providers`
+  now enables Exa purely on `EXA_API_KEY`.
 
 ## [0.4.9]
 

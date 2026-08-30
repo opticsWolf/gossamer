@@ -54,7 +54,7 @@
 | `DuckDuckGoProvider` | ✅ | ddgs package, no API key needed |
 | `GoogleProvider` | ✅ | httpx-based, env vars for keys |
 | `BingProvider` | ✅ | httpx-based, env var for key |
-| `ExaProvider` | ✅ | optional exa-py |
+| `ExaProvider` | ✅ | httpx-based (Exa REST API), env var for key |
 | `get_default_providers()` | ✅ | auto-detects available providers |
 | `resolve_provider_name()` | ✅ | case-insensitive name → provider |
 | Fallback chaining | ✅ | tries named provider, then remaining |

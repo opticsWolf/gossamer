@@ -14,7 +14,6 @@ from stitch_web_researcher.search_providers import (
     _DUCKDUCKGO_RATE_LIMIT,
     _EXA_RATE_LIMIT,
     _GOOGLE_RATE_LIMIT,
-    _exa_available,
     BingProvider,
     DuckDuckGoProvider,
     ExaProvider,
@@ -47,8 +46,8 @@ class TestPerProviderDefaults:
         assert p.rate_limit.quota is None
 
     def test_exa_default_has_monthly_quota(self):
-        if not _exa_available:
-            pytest.skip("exa-py not installed")
+        # Exa is implemented against the REST API with httpx (no SDK), so it
+        # constructs without any optional install.
         p = ExaProvider(api_key="k")
         assert p.rate_limit == _EXA_RATE_LIMIT
         assert p.rate_limit.search_interval == 0.1

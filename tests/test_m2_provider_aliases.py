@@ -29,8 +29,8 @@ from stitch_web_researcher.search_providers import (
 
 def _make_toolbox() -> WebResearcherToolbox:
     """Toolbox with one of each constructible provider, in a known
-    registration order (ExaProvider needs the optional exa-py package
-    and is covered separately)."""
+    registration order. Exa is covered separately in
+    ``test_exa_selectable_when_configured`` (it needs EXA_API_KEY)."""
     return WebResearcherToolbox(
         ToolboxConfig(
             search_providers=[
@@ -129,11 +129,10 @@ class TestResolveProvidersOrdering:
         order = [p.name for p in tb._resolve_providers("does-not-exist")]
         assert order == ["duckduckgo", "google", "bing", "browser"]
 
-    def test_exa_selectable_when_installed(self):
-        try:
-            exa = ExaProvider()
-        except ImportError:
-            pytest.skip("exa-py not installed")
+    def test_exa_selectable_when_configured(self):
+        # Exa is implemented against the REST API with httpx, so it
+        # constructs without any optional install.
+        exa = ExaProvider(api_key="k")
         tb = WebResearcherToolbox(
             ToolboxConfig(
                 search_providers=[DuckDuckGoProvider(), exa]
