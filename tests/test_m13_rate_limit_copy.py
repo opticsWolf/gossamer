@@ -9,6 +9,7 @@ was modified in place by the first construction.
 """
 
 from stitch_web_researcher.search_providers import (
+    _DUCKDUCKGO_RATE_LIMIT,
     DuckDuckGoProvider,
     RateLimit,
 )
@@ -41,6 +42,12 @@ class TestRateLimitIsolation:
         assert p.rate_limit.search_interval == 1.5
         assert p.rate_limit.fetch_interval == RateLimit().fetch_interval
 
-    def test_no_args_gives_defaults(self):
+    def test_no_args_gives_provider_default(self):
+        # DuckDuckGo falls back to its own politeness/quota default
+        # (0.5 s + jitter, no server-side quota) rather than the bare
+        # RateLimit() defaults -- this is the deliberate per-engine limit.
         p = DuckDuckGoProvider()
-        assert p.rate_limit == RateLimit()
+        assert p.rate_limit == _DUCKDUCKGO_RATE_LIMIT
+        assert p.rate_limit.search_interval == 0.5
+        assert p.rate_limit.jitter == 0.25
+        assert p.rate_limit.quota is None

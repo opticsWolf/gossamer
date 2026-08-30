@@ -120,8 +120,14 @@ def test_close_shuts_down_engine():
 
 
 def test_rate_limit_defaults_and_registry():
+    # BrowserOxide scrapes the same DuckDuckGo HTML endpoint, so it inherits
+    # DuckDuckGo's politeness default (0.5 s + jitter, no server-side quota)
+    # rather than the bare RateLimit() defaults.
     p = BrowserOxideSearchProvider()
-    assert (p.rate_limit.search_interval, p.rate_limit.fetch_interval) == (1.0, 0.5)
+    assert p.rate_limit.search_interval == 0.5
+    assert p.rate_limit.jitter == 0.25
+    assert p.rate_limit.fetch_interval == 0.5
+    assert p.rate_limit.quota is None
     assert resolve_provider_name("browser") == "browser"
     # M2: aliases resolve to the canonical name.
     assert resolve_provider_name("Browser_Oxide") == "browser"

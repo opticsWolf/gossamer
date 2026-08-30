@@ -86,6 +86,27 @@ class RateLimit:
     quota_window: Literal["day", "month"] = "day"
 
 
+# Per-provider politeness + quota defaults. Each legacy search engine falls
+# back to its own constant when constructed without an explicit ``delay`` /
+# ``RateLimit`` (the callers below pass the constant in when ``delay is None``).
+# They encode the engines' real limits and keep access desynchronized with
+# jitter:
+#   - DuckDuckGo: no official API; ``ddgs`` scrapes the HTML endpoint, which
+#     answers with HTTP 202 "Ratelimit". Politer than the 1.0 s base default,
+#     with jitter so shared-IP clients don't collide.
+#   - Google: 100 free queries/day, then paid. A hard quota turns an overage
+#     into a clean skip instead of a billing surprise.
+#   - Bing: S0 allows 5 req/s; 0.2 s keeps us compliant with margin.
+#   - Exa: ``/search`` allows 10 QPS and a 1,000 req/month free tier.
+_DUCKDUCKGO_RATE_LIMIT = RateLimit(search_interval=0.5, jitter=0.25)
+_GOOGLE_RATE_LIMIT = RateLimit(
+    search_interval=0.2, jitter=0.1, quota=100, quota_window="day"
+)
+_BING_RATE_LIMIT = RateLimit(search_interval=0.2, jitter=0.1)
+_EXA_RATE_LIMIT = RateLimit(
+    search_interval=0.1, jitter=0.05, quota=1000, quota_window="month"
+)
+
 def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
     """Exponential-backoff retry decorator for Python-layer methods.
 
@@ -313,7 +334,9 @@ class DuckDuckGoProvider(SearchProvider):
         fetch_delay: Optional[float] = None,
     ):
         self._last_search = 0.0
-        self._init_rate_limit(delay, fetch_delay)
+        self._init_rate_limit(
+            delay if delay is not None else _DUCKDUCKGO_RATE_LIMIT, fetch_delay
+        )
 
     def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         from ddgs import DDGS
@@ -363,7 +386,9 @@ class GoogleProvider(SearchProvider):
         self.api_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
         self.cx = cx or os.environ.get("GOOGLE_CX", "")
         self._last_search = 0.0
-        self._init_rate_limit(delay, fetch_delay)
+        self._init_rate_limit(
+            delay if delay is not None else _GOOGLE_RATE_LIMIT, fetch_delay
+        )
 
     def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if not self.api_key or not self.cx:
@@ -418,7 +443,9 @@ class BingProvider(SearchProvider):
         import os
         self.api_key = api_key or os.environ.get("BING_API_KEY", "")
         self._last_search = 0.0
-        self._init_rate_limit(delay, fetch_delay)
+        self._init_rate_limit(
+            delay if delay is not None else _BING_RATE_LIMIT, fetch_delay
+        )
 
     def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if not self.api_key:
@@ -490,7 +517,9 @@ class ExaProvider(SearchProvider):
         self.api_key = api_key or os.environ.get("EXA_API_KEY", "")
         self.client = Exa(api_key=self.api_key)
         self._last_search = 0.0
-        self._init_rate_limit(delay, fetch_delay)
+        self._init_rate_limit(
+            delay if delay is not None else _EXA_RATE_LIMIT, fetch_delay
+        )
         self.search_type = search_type
 
     def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
@@ -564,7 +593,9 @@ class BrowserOxideSearchProvider(SearchProvider):
         fetch_delay: Optional[float] = None,
     ):
         self._last_search = 0.0
-        self._init_rate_limit(delay, fetch_delay)
+        self._init_rate_limit(
+            delay if delay is not None else _DUCKDUCKGO_RATE_LIMIT, fetch_delay
+        )
         self._browser = None
 
     def _get_browser(self):
