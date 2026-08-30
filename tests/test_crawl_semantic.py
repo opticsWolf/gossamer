@@ -13,6 +13,7 @@ import json
 import pytest
 
 from stitch_web_researcher import agent_tools
+from stitch_web_researcher.crawl import Crawler
 from stitch_web_researcher.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
@@ -76,9 +77,9 @@ class TestIdfScoring:
         corpus.add_page({"common", "rare"})
         assert corpus.idf("rare") > corpus.idf("common")
         Q = {"rare", "common"}
-        s_rare = WebResearcherToolbox._crawl_score(
+        s_rare = Crawler._crawl_score(
             "https://example.com/rare", "rare", 1, Q, set(), corpus=corpus)
-        s_common = WebResearcherToolbox._crawl_score(
+        s_common = Crawler._crawl_score(
             "https://example.com/common", "common", 1, Q, set(), corpus=corpus)
         assert s_rare > s_common
 
@@ -86,7 +87,7 @@ class TestIdfScoring:
         corpus = _CrawlCorpus(min_corpus=3)
         corpus.add_page({"alpha"})  # n=1 -> flat weights, no path prior
         Q = {"alpha", "beta"}
-        s = WebResearcherToolbox._crawl_score(
+        s = Crawler._crawl_score(
             "https://example.com/alpha", "alpha", 1, Q, {"alpha"},
             corpus=corpus)
         # Exact flat-weight recomputation of the v0.4.6 formula:
@@ -99,12 +100,12 @@ class TestIdfScoring:
         c3 = _CrawlCorpus(min_corpus=3)
         for _ in range(3):
             c3.add_page({"alpha", "zeta"})
-        s3 = WebResearcherToolbox._crawl_score(
+        s3 = Crawler._crawl_score(
             url, "alpha", 1, Q, set(), corpus=c3)
         c6 = _CrawlCorpus(min_corpus=3)
         for _ in range(6):
             c6.add_page({"alpha", "zeta"})
-        s6 = WebResearcherToolbox._crawl_score(
+        s6 = Crawler._crawl_score(
             url, "alpha", 1, Q, set(), corpus=c6)
         # alpha is more common in the grown corpus -> weaker match.
         assert s6 < s3
@@ -113,7 +114,7 @@ class TestIdfScoring:
         url = "https://example.com/a"
         Q = {"deep", "learning"}
         P = {"deep", "learning", "platform"}
-        s = WebResearcherToolbox._crawl_score(url, "Deep learning guide", 1, Q, P)
+        s = Crawler._crawl_score(url, "Deep learning guide", 1, Q, P)
         # label {deep, learning, guide}; query_cov 2/2 -> 0.7;
         # ctx_cov 2/3 -> 0.2.
         assert s == pytest.approx(0.7 * 1.0 + 0.3 * (2 / 3))
@@ -122,30 +123,30 @@ class TestIdfScoring:
 class TestAnchorContext:
     def test_anchor_context_lifts_relevant_links(self):
         md = "A quiet page with one useful sentence about deep learning."
-        ctx = WebResearcherToolbox._crawl_anchor_context(md, "useful sentence")
+        ctx = Crawler._crawl_anchor_context(md, "useful sentence")
         assert {"deep", "learning"} <= ctx
         Q = {"deep", "learning"}
-        s_plain = WebResearcherToolbox._crawl_score(
+        s_plain = Crawler._crawl_score(
             "https://example.com/x", "guide", 1, Q, set())
-        s_ctx = WebResearcherToolbox._crawl_score(
+        s_ctx = Crawler._crawl_score(
             "https://example.com/x", "guide", 1, Q, set(), label_extra=ctx)
         assert s_ctx > s_plain
 
     def test_anchor_context_empty_when_anchor_absent(self):
-        ctx = WebResearcherToolbox._crawl_anchor_context(
+        ctx = Crawler._crawl_anchor_context(
             "nothing matches this label at all.", "absent label")
         assert ctx == frozenset()
 
     def test_anchor_context_capped_at_eight(self):
         words = " ".join(f"w{i}" for i in range(30))
         md = "Start padding. " + words + " End padding."
-        ctx = WebResearcherToolbox._crawl_anchor_context(md, "w15")
+        ctx = Crawler._crawl_anchor_context(md, "w15")
         assert len(ctx) == 8  # the 30+ window tokens are capped
 
 
 class TestPathPriors:
     def test_path_prior_table(self):
-        T = WebResearcherToolbox
+        T = Crawler
         for path in ("/docs/", "/guide/", "/guides/", "/blog/", "/api/",
                      "/changelog/", "/reference/"):
             assert T._crawl_path_prior(f"https://example.com{path}x") == 1.15
@@ -157,17 +158,17 @@ class TestPathPriors:
         Q = {"deep"}
         corpus = _CrawlCorpus(min_corpus=3)
         corpus.add_page({"alpha"})  # n=1: flat regime, no prior
-        s_docs = WebResearcherToolbox._crawl_score(
+        s_docs = Crawler._crawl_score(
             "https://example.com/docs/deep", "x", 1, Q, set(), corpus=corpus)
-        s_neutral = WebResearcherToolbox._crawl_score(
+        s_neutral = Crawler._crawl_score(
             "https://example.com/deep/docs", "x", 1, Q, set(), corpus=corpus)
         # Identical label token sets -> identical scores while degenerate.
         assert s_docs == pytest.approx(s_neutral)
         corpus.add_page({"beta"})
         corpus.add_page({"gamma"})  # n=3: prior kicks in
-        s_docs = WebResearcherToolbox._crawl_score(
+        s_docs = Crawler._crawl_score(
             "https://example.com/docs/deep", "x", 1, Q, set(), corpus=corpus)
-        s_neutral = WebResearcherToolbox._crawl_score(
+        s_neutral = Crawler._crawl_score(
             "https://example.com/deep/docs", "x", 1, Q, set(), corpus=corpus)
         assert s_docs == pytest.approx(1.15 * s_neutral)
 
@@ -177,7 +178,7 @@ class TestPathPriors:
 
 class TestThesaurus:
     def test_expansion_capped_and_deterministic(self):
-        T = WebResearcherToolbox
+        T = Crawler
         clusters = (("alpha", "beta", "gamma", "delta", "epsilon", "zeta"),)
         expanded, added = T._crawl_expand_query({"alpha"}, clusters=clusters)
         # Cap: additions <= len(base) -> total never exceeds 2x base.
@@ -195,10 +196,10 @@ class TestThesaurus:
         for _ in range(3):
             corpus.add_page({"u1"})
         Q = {"base", "exp"}  # "exp" is a thesaurus expansion
-        s_base = WebResearcherToolbox._crawl_score(
+        s_base = Crawler._crawl_score(
             "https://example.com/b", "base", 1, Q, set(),
             corpus=corpus, base_terms={"base"})
-        s_exp = WebResearcherToolbox._crawl_score(
+        s_exp = Crawler._crawl_score(
             "https://example.com/e", "exp", 1, Q, set(),
             corpus=corpus, base_terms={"base"})
         assert s_base > s_exp
@@ -239,7 +240,7 @@ class TestThesaurus:
             version, clusters = _load_thesaurus()
             assert (version, clusters) == (0, ())
             # With no thesaurus, expansion is a no-op.
-            expanded, added = WebResearcherToolbox._crawl_expand_query({"deep"})
+            expanded, added = Crawler._crawl_expand_query({"deep"})
             assert (expanded, added) == ({"deep"}, 0)
         finally:
             # The fail-open value is lru-cached for the process lifetime;
@@ -349,7 +350,7 @@ class TestExcerpts:
         assert "excerpt" not in parsed["pages"][0]
 
     def test_excerpt_unit_tie_earliest_and_bounds(self):
-        T = WebResearcherToolbox
+        T = Crawler
         md = "a " * 50 + "deep " * 5 + "b " * 50 + "deep " * 5 + "c " * 50
         # Two windows tie at 10 hits -> the earliest window wins.
         ex = T._crawl_excerpt(md, {"deep"})

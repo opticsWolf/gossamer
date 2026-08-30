@@ -96,6 +96,29 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   the MCP server as `STITCH_FETCH_JITTER` (default `1.0`). Tests:
   `tests/test_s7_fetch_politeness.py` (+8).
 
+## [0.4.12]
+
+- **Phase 5 (`crawl.py`): extract the focused-crawl orchestration into a
+  `Crawler` collaborator.** Moves the best-first crawl cluster — the
+  `_CRAWL_*` scoring constants, `_crawl_tokens`, `_crawl_topic_words`,
+  `_crawl_is_document`, `_crawl_anchor_context`, `_crawl_path_prior`,
+  `_crawl_term_hits`, `_crawl_excerpt`, `_crawl_expand_query`, `_crawl_score`,
+  `_shrink_crawl`, and `crawl()` — out of the `WebResearcherToolbox` facade
+  into `crawl.py` (which already held the `_CrawlCorpus` /
+  `_load_thesaurus` helpers). The facade keeps one thin delegation (`crawl`)
+  so the public import surface and tool dispatch are unchanged. `Crawler`
+  reads all shared toolbox state through `self._tb` (the toolbox), mirroring
+  `SearchService` / `FetchService` / `DocumentExtractor`: FetchService reads
+  go to `self._tb._fetch.*`, and the 6 facade-state reads (`_validate_url`,
+  `_fit_json`, `max_tokens`, `max_markdown_chars`, `search_web`,
+  `_inspect_html_page_impl`) are retargeted to `self._tb.*`. `_crawl_host_key`
+  is a small static helper shared by the kept facade method
+  `_rate_limit_domain`, so it stays on the facade and the 4 `crawl()` calls
+  are retargeted to `self._tb._crawl_host_key`. The moved cluster gains the
+  imports it lost with the move (`re`, `os`, `normalize_url`,
+  `DOCUMENT_EXTENSIONS`, `SsrfBlockedError`). Tests that patched moved seams
+  (`tb._crawl_score`, `T._crawl_excerpt`, ...) now call `Crawler.*`.
+
 ## [0.4.11]
 
 - **Phase 4 (`document.py`): extract the document-extraction + structured-
