@@ -40,6 +40,22 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `search(query, max_results)` shape, same `title`/`url`/`snippet`
   output). The `_exa_available` guard is removed; `get_default_providers`
   now enables Exa purely on `EXA_API_KEY`.
+- **Exa provider surface expanded** to mirror the `exa-py` SDK search
+  options against the REST API. `ExaProvider.search()` now accepts SDK-style
+  keyword arguments forwarded to `POST /v1/search`: `type` (all Exa modes --
+  `auto`/`instant`/`fast`/`deep-lite`/`deep`/`deep-reasoning`),
+  `contents` (`highlights`/`text`/`summary`/`extras`/`livecrawl`/`maxAgeHours`),
+  `include_domains` / `exclude_domains`, `start_published_date` /
+  `end_published_date`, `category` (`company`/`publication`/`people`/...),
+  `moderation`, `system_prompt`, `output_schema` (structured output),
+  `additional_queries` (deep-search variants), `text_filters`,
+  `result_filters`. snake_case SDK names translate to the REST camelCase
+  fields; an explicit `num_results` overrides `max_results`. Results always
+  carry `title`/`url`/`snippet` (toolbox-compatible) plus richer fields
+  (`text`, `summary`, `publishedDate`, `author`, `linkingDomains`,
+  structured `content`) when the API returns them. The base interface
+  (`_search_impl`, `search(query, max_results)`) is unchanged. Tests:
+  `tests/test_exa_provider_features.py` (+18).
 
 ## [0.4.9]
 

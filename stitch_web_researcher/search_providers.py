@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from functools import wraps
-from typing import Dict, List, Literal, Mapping, Optional, Union
+from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
 import httpx
 
@@ -481,12 +481,34 @@ class BingProvider(SearchProvider):
 class ExaProvider(SearchProvider):
     """Search via Exa.ai (semantic, LLM-native search).
 
-    Exa returns query-relevant highlights that cut token usage by ~10x
-    compared to full-page retrieval.
-
     Implemented directly against Exa's REST API
     (``POST https://api.exa.ai/v1/search``) with ``httpx`` -- no third-party
     SDK required, so Exa works out of the box whenever ``EXA_API_KEY`` is set.
+
+    A subset of the ``exa-py`` SDK search surface is exposed. The base
+    interface :meth:`_search_impl` (used by the toolbox) runs a balanced
+    ``auto`` search with ``contents={'highlights': True}`` and returns the
+    projectable ``title`` / ``url`` / ``snippet`` shape. The public
+    :meth:`search` method is SDK-like and accepts per-call keyword arguments
+    forwarded to the REST API:
+
+    - ``type`` -- one of :attr:`SEARCH_TYPES` (default ``auto``); also
+      ``instant`` / ``fast`` for low latency and ``deep`` / ``deep-lite`` /
+      ``deep-reasoning`` for multi-step synthesis.
+    - ``num_results`` (per-call, else the ``max_results`` argument),
+      ``include_domains`` / ``exclude_domains``,
+      ``start_published_date`` / ``end_published_date``,
+      ``category`` (e.g. ``company`` / ``publication`` / ``people``),
+      ``moderation``, ``system_prompt``, ``output_schema``,
+      ``additional_queries`` (deep-search variants),
+      ``contents`` (a dict such as ``{'highlights': True}``,
+      ``{'text': True}`` or ``{'summary': {'query': '...'}}``),
+      ``text_filters`` and ``result_filters``.
+
+    Results always carry ``title`` / ``url`` / ``snippet``; richer fields
+    (``text``, ``summary``, ``publishedDate``, ``author``,
+    ``linkingDomains``, structured ``content``) are included when the API
+    returns them.
 
     Requires:
         - An API key (set EXA_API_KEY env var or pass explicitly)
@@ -496,8 +518,36 @@ class ExaProvider(SearchProvider):
 
     name = "exa"
 
-    #: Exa search types accepted by ``/v1/search`` (the ``type`` field).
-    SEARCH_TYPES = ("auto", "keyword", "semantic")
+    #: Search modes accepted by the ``type`` field, slowest / richest last.
+    SEARCH_TYPES = (
+        "auto", "instant", "fast", "deep-lite", "deep", "deep-reasoning",
+    )
+
+    #: Data categories that focus the search (the ``category`` field).
+    CATEGORIES = (
+        "company", "publication", "news", "personal site",
+        "financial report", "people",
+    )
+
+    #: SDK-style (snake_case) -> REST API (camelCase) parameter aliases.
+    _PARAM_ALIASES = {
+        "num_results": "numResults",
+        "include_domains": "includeDomains",
+        "exclude_domains": "excludeDomains",
+        "start_published_date": "startPublishedDate",
+        "end_published_date": "endPublishedDate",
+        "system_prompt": "systemPrompt",
+        "output_schema": "outputSchema",
+        "additional_queries": "additionalQueries",
+        "text_filters": "textFilters",
+        "result_filters": "resultFilters",
+    }
+
+    #: Extra result fields surfaced verbatim alongside title/url/snippet.
+    _EXTRA_FIELDS = (
+        "text", "summary", "publishedDate", "author",
+        "linkingDomains", "fauna", "content",
+    )
 
     def __init__(
         self,
@@ -505,6 +555,7 @@ class ExaProvider(SearchProvider):
         delay: Optional[Union[float, RateLimit]] = None,
         search_type: str = "auto",
         fetch_delay: Optional[float] = None,
+        **search_params,
     ):
         import os
         self.api_key = api_key or os.environ.get("EXA_API_KEY", "")
@@ -513,8 +564,61 @@ class ExaProvider(SearchProvider):
             delay if delay is not None else _EXA_RATE_LIMIT, fetch_delay
         )
         self.search_type = search_type
+        #: configured default per-call search params (SDK snake_case names)
+        self.search_params: dict = dict(search_params or {})
 
-    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    # ── request building ─────────────────────────────────────────────
+    def _effective_params(self, overrides: Mapping[str, Any]) -> dict:
+        """Merge constructor defaults, per-call overrides, and the default
+        ``contents={'highlights': True}`` (so ``snippet`` is populated)."""
+        merged: dict = {
+            "type": self.search_type,
+            "contents": {"highlights": True},
+            **self.search_params,
+        }
+        merged.update(overrides)
+        return merged
+
+    def _build_body(
+        self, query: str, max_results: int, params: Mapping[str, Any]
+    ) -> dict:
+        # ``type`` / ``numResults`` are passed through verbatim; the Exa API
+        # validates them and returns a clear 400 for bad values (mirroring
+        # the SDK, which does no client-side type validation). An explicit
+        # per-call ``num_results`` (SDK alias) wins over ``max_results``.
+        body: dict = {"query": query}
+        body["numResults"] = params.get("num_results", max_results)
+        body["type"] = params.get("type", self.search_type)
+
+        for key, value in params.items():
+            if value is None or key in ("type", "num_results"):
+                continue
+            body[self._PARAM_ALIASES.get(key, key)] = value
+        return body
+
+    def _map_results(self, results: Any) -> List[Dict[str, Any]]:
+        mapped: List[Dict[str, Any]] = []
+        for r in results:
+            if not isinstance(r, dict):
+                continue
+            item: Dict[str, Any] = {
+                "title": r.get("title") or "",
+                "url": r.get("url") or "",
+                "snippet": r.get("highlights") or "",
+            }
+            for key in self._EXTRA_FIELDS:
+                if r.get(key) is not None:
+                    item[key] = r[key]
+            mapped.append(item)
+        return mapped
+
+    def _http_search(
+        self,
+        query: str,
+        max_results: int,
+        params: Mapping[str, Any],
+    ) -> tuple:
+        """Perform the REST call. Returns ``(mapped_results, raw_data)``."""
         self._enforce_delay()
 
         if not self.api_key:
@@ -523,31 +627,40 @@ class ExaProvider(SearchProvider):
                 "(or explicit api_key parameter)."
             )
 
+        body = self._build_body(query, max_results, params)
         response = httpx.post(
             "https://api.exa.ai/v1/search",
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "query": query,
-                "type": self.search_type,
-                "numResults": max_results,
-                "contents": {"highlights": True},
-            },
-            timeout=30.0,
+            json=body,
+            timeout=60.0,
         )
         response.raise_for_status()
         data = response.json()
+        return self._map_results(data.get("results", [])), data
 
-        return [
-            {
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("highlights", ""),
-            }
-            for item in data.get("results", [])
-        ]
+    def _search_impl(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
+        results, _data = self._http_search(
+            query, max_results, self._effective_params({})
+        )
+        return results
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def search(
+        self, query: str, max_results: int = 5, **params
+    ) -> List[Dict[str, Any]]:
+        """SDK-like search: ``search(query, type='deep', contents={...}, ...)``.
+
+        Per-call keyword arguments override the constructor defaults and are
+        forwarded to Exa's REST API. Results always include ``title`` /
+        ``url`` / ``snippet``; richer fields appear when the API returns them.
+        """
+        results, _data = self._http_search(
+            query, max_results, self._effective_params(params)
+        )
+        return results
 
 
 # ────────────────────────────────────────────────────────────────
