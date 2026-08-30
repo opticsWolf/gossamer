@@ -33,7 +33,9 @@ class TestRegistryShape:
     def test_registry_lists_all_tools(self):
         # P8: search_web+research -> web_search; extract_document_structured
         # + inspect_html_structured folded into their base tools; the cache
-        # trio + get_stats replaced by manage_cache. 7 tools total.
+        # trio + get_stats replaced by manage_cache. research_by_category is a
+        # category-aware, provider-specific overlay (scholarly/geo/general).
+        # 8 tools total.
         assert REGISTRY_NAMES == {
             "web_search",
             "inspect_html_page",
@@ -42,6 +44,7 @@ class TestRegistryShape:
             "discover_resources",
             "crawl",
             "manage_cache",
+            "research_by_category",
         }
 
     def test_every_spec_method_exists(self, tmp_path):

@@ -19,6 +19,9 @@ EXPECTED_TOOLS = {
     "discover_resources",
     "crawl",
     "manage_cache",
+    # research_by_category is a category-aware overlay; research_categories()
+    # is an introspection helper that is deliberately NOT an MCP tool.
+    "research_by_category",
 }
 
 

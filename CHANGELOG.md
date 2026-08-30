@@ -96,6 +96,29 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   the MCP server as `STITCH_FETCH_JITTER` (default `1.0`). Tests:
   `tests/test_s7_fetch_politeness.py` (+8).
 
+## [0.5.0]
+
+- **`research_by_category`: category-aware, provider-specific search tool.**
+  A thin overlay on the generic `web_search` toolbox. Given a free-form
+  query it classifies the query into a domain *category* and triggers the
+  provider best suited to it, so the harness can reach domain sources
+  (scholarly / geo) without knowing their names up front.
+  - Categories are declared as data in the new `research_categories.py`
+    (`scholarly` -> `openalex`, `geo` -> `open-meteo`, `general` ->
+    `duckduckgo`); classification is keyword based with word boundaries so
+    `late breaking news` does not match the bare token `lat`. The
+    `general` category is the implicit fallback.
+  - The routing table is the single source of truth: the tool's LLM-facing
+    `description` is auto-generated from it (`describe_categories()`), so
+    adding a category updates the description with no drift. A domain
+    category routes to its adapter called directly (kept out of the default
+    search provider list so `web_search`'s behaviour is untouched); the
+    engine fallback goes through the normal caching/deduped search path.
+  - `research_categories()` introspection helper returns the taxonomy as
+    JSON. It is a callable facade method but is deliberately **not**
+    registered in `TOOL_REGISTRY`, so it is not part of the MCP surface.
+  - Version bump `0.4.13 -> 0.5.0` (Python + Rust core in sync).
+
 ## [0.4.13]
 
 - **Phase 6 (`discovery.py`, `budget.py`): extract the final two cohesive

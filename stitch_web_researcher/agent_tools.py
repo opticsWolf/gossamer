@@ -117,6 +117,7 @@ from stitch_web_researcher.fetch import FetchService  # noqa: F401
 from stitch_web_researcher.document import DocumentExtractor  # noqa: F401
 from stitch_web_researcher.budget import ContentBudget  # noqa: F401
 from stitch_web_researcher.discovery import ResourceDiscovery  # noqa: F401
+from stitch_web_researcher.research_categories import CATEGORIES, search_category  # noqa: F401
 
 
 class WebResearcherToolbox:
@@ -573,6 +574,41 @@ class WebResearcherToolbox:
             max_tokens=max_tokens,
             provider=provider,
         )
+
+    def research_by_category(self, query: str, max_results: int = 5) -> str:
+        """Category-aware, provider-specific search (P8 tool ``research_by_category``).
+
+        Thin wrapper over :func:`research_categories.search_category`. Classifies
+        *query* into a domain category (scholarly / geo / general) and triggers
+        the provider best suited to it: scholarly -> ``openalex``, geo ->
+        ``open-meteo`` (both domain adapters called directly), general ->
+        ``duckduckgo`` (the toolbox's normal caching/deduped search path).
+        Returns a JSON payload naming the chosen category, provider and results.
+        """
+        return json.dumps(
+            search_category(self, query, max_results=max_results),
+            indent=2,
+            default=str,
+        )
+
+    def research_categories(self) -> str:
+        """Introspection: the category -> provider map (NOT an MCP tool).
+
+        Returns the research taxonomy as JSON so callers can enumerate the
+        available categories, their purposes and the provider each routes to.
+        Deliberately *not* registered in ``TOOL_REGISTRY``, so it is not part
+        of the MCP surface; call it directly on the toolbox.
+        """
+        payload = [
+            {
+                "category": c.name,
+                "description": c.description,
+                "provider": c.provider,
+                "provider_kind": c.kind,
+            }
+            for c in CATEGORIES
+        ]
+        return json.dumps(payload, indent=2)
 
     def search_web(
         self,

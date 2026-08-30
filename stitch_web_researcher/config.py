@@ -18,6 +18,7 @@ from urllib.parse import urlparse, urljoin, urlunparse
 
 from stitch_web_researcher.guard import GuardConfig
 from stitch_web_researcher.structured_parser import DOCUMENT_EXTENSIONS
+from stitch_web_researcher.research_categories import describe_categories
 # ── Fetch strategy: FetchMode enum + per-call resolution ─────────
 class FetchMode(str, Enum):
     """Per-call render-strategy override for page fetches.
@@ -342,6 +343,24 @@ TOOL_REGISTRY = (
                 "prune",
                 "Cache operation: 'clear' (wipe caches + visited), 'prune' (default, evict expired/LRU to size cap), or 'reset' (forget visited URLs only).",
                 enum=["clear", "prune", "reset"],
+            ),
+        ),
+    ),
+    ToolSpec(
+        "research_by_category",
+        describe_categories(),
+        "research_by_category",
+        (
+            ToolParam(
+                "query",
+                str,
+                description="The search query / research topic to classify and run.",
+            ),
+            ToolParam(
+                "max_results",
+                int,
+                5,
+                "Maximum number of results to return.",
             ),
         ),
     ),
