@@ -61,7 +61,7 @@ class TestExtractDocumentLocalRouting:
             called["source"] = source
             return "LOCAL CONTENT"
 
-        monkeypatch.setattr(tb, "_extract_local", fake_extract_local)
+        monkeypatch.setattr(tb._doc, "_extract_local", fake_extract_local)
 
         result = json.loads(tb.extract_document("report.pdf"))
         assert "error" not in result

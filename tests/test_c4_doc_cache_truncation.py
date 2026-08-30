@@ -24,7 +24,7 @@ class TestDocumentCacheTruncation:
     def test_cache_hit_respects_current_char_budget(self, tmp_path):
         tb = _toolbox(tmp_path)
         src = str(tmp_path / "report.pdf")
-        with patch.object(tb, "_extract_local", return_value=BIG):
+        with patch.object(tb._doc, "_extract_local", return_value=BIG):
             first = json.loads(tb.extract_document(src))
 
         assert first["cache_hit"] is False
@@ -39,7 +39,7 @@ class TestDocumentCacheTruncation:
     def test_cache_hit_respects_current_token_budget(self, tmp_path):
         tb = _toolbox(tmp_path, max_tokens=2000, max_markdown_chars=1_000_000)
         src = str(tmp_path / "report.pdf")
-        with patch.object(tb, "_extract_local", return_value=BIG):
+        with patch.object(tb._doc, "_extract_local", return_value=BIG):
             first = json.loads(tb.extract_document(src))
         assert first["content_tokens"] <= tb.max_tokens
 
@@ -52,7 +52,7 @@ class TestDocumentCacheTruncation:
     def test_fresh_fetch_still_truncates(self, tmp_path):
         tb = _toolbox(tmp_path)
         src = str(tmp_path / "report.pdf")
-        with patch.object(tb, "_extract_local", return_value=BIG):
+        with patch.object(tb._doc, "_extract_local", return_value=BIG):
             data = json.loads(tb.extract_document(src))
         assert data["cache_hit"] is False
         assert data["content"].endswith("\n\n... [truncated]")

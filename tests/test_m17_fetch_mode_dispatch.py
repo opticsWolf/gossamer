@@ -28,6 +28,7 @@ import threading
 
 import pytest
 import stitch_web_researcher.agent_tools as at
+import stitch_web_researcher.fetch as fetch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from stitch_web_researcher.agent_tools import WebResearcherToolbox, ToolboxConfig
 
@@ -88,25 +89,25 @@ def _allow_private():
 def browser_stub():
     """Replace the browser seam with a deterministic stub; track calls.
 
-    Patching the module-level 3-tuple function (not ``tb._browser_fetch``)
+    Patching the module-level 3-tuple function (not ``tb._fetch._browser_fetch``)
     is what makes both the ``auto`` branch and ``_browser_fetch`` use it;
     a 4-tuple stub would break the auto branch's ``md, links, meta = ...``
     unpacking.
     """
     calls = []
-    orig, avail = at._fetch_with_browser_oxide, at._browser_oxide_available
+    orig, avail = fetch._fetch_with_browser_oxide, fetch._browser_oxide_available
 
     def fake(url):
         calls.append(url)
         return ("BROWSER-CONTENT:" + url, [], {"fetch_method": "browser"})
 
-    at._fetch_with_browser_oxide = fake
-    at._browser_oxide_available = True
+    fetch._fetch_with_browser_oxide = fake
+    fetch._browser_oxide_available = True
     try:
         yield calls
     finally:
-        at._fetch_with_browser_oxide = orig
-        at._browser_oxide_available = avail
+        fetch._fetch_with_browser_oxide = orig
+        fetch._browser_oxide_available = avail
 
 
 def make(mode):

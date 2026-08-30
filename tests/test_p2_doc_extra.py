@@ -61,7 +61,7 @@ class TestToolboxGracefulFailure:
         monkeypatch.setattr(structured_parser, "PdfDocument", None)
         tb = _toolbox(tmp_path)
         with pytest.raises(ImportError, match="documents"):
-            tb._extract_from_bytes(b"", "report.pdf")
+            tb._doc._extract_from_bytes(b"", "report.pdf")
 
     def test_non_document_functionality_unaffected(self, tmp_path, monkeypatch):
         # With both extractors "missing", the toolbox still constructs and

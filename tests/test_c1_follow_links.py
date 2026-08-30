@@ -42,7 +42,7 @@ class TestCharBudget:
         md = "research prose " * 800  # ~11k chars
 
         with patch.object(
-            tb, "_fetch_html", return_value=(md, links, {}, "static")
+            tb._fetch, "_fetch_html", return_value=(md, links, {}, "static")
         ):
             raw = tb.inspect_html_page(URL)
 
@@ -59,7 +59,7 @@ class TestCharBudget:
         tb = _toolbox(tmp_path)
         links = _make_links(3, 1)
         with patch.object(
-            tb, "_fetch_html", return_value=("short page\n", links, {}, "static")
+            tb._fetch, "_fetch_html", return_value=("short page\n", links, {}, "static")
         ):
             data = json.loads(tb.inspect_html_page(URL))
         assert len(data["follow_up_links"]) == 4
@@ -76,7 +76,7 @@ class TestTokenBudget:
         md = "word " * 20_000  # far above a 4000-token budget
 
         with patch.object(
-            tb, "_fetch_html", return_value=(md, links, {}, "static")
+            tb._fetch, "_fetch_html", return_value=(md, links, {}, "static")
         ):
             raw = tb.inspect_html_page(URL)
 
@@ -98,13 +98,13 @@ class TestBudgetReserveConfig:
         links = _make_links()
         md = "research prose " * 400  # ~5.6k chars
         with patch.object(
-            tb, "_fetch_html", return_value=(md, links, {}, "static")
+            tb._fetch, "_fetch_html", return_value=(md, links, {}, "static")
         ):
             data = json.loads(tb.inspect_html_page(URL))
         # More reserve -> more links survive than with the 0.25 default.
         tb_default = _toolbox(tmp_path)
         with patch.object(
-            tb_default, "_fetch_html", return_value=(md, links, {}, "static")
+            tb_default._fetch, "_fetch_html", return_value=(md, links, {}, "static")
         ):
             data_default = json.loads(tb_default.inspect_html_page(URL))
         assert len(data["follow_up_links"]) >= len(data_default["follow_up_links"])

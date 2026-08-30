@@ -31,7 +31,7 @@ class TestRetryAfterFailure:
         url = "https://example.com/flaky"
 
         with patch.object(
-            tb, "_fetch_html", side_effect=RuntimeError("connection reset")
+            tb._fetch, "_fetch_html", side_effect=RuntimeError("connection reset")
         ) as mock_fetch:
             first = json.loads(tb.inspect_html_page(url))
         assert "error" in first
@@ -39,7 +39,7 @@ class TestRetryAfterFailure:
         # Same toolbox, same URL: must NOT return an "already visited"
         # warning and must actually attempt the fetch again.
         with patch.object(
-            tb, "_fetch_html", return_value=("ok", [], {}, "static")
+            tb._fetch, "_fetch_html", return_value=("ok", [], {}, "static")
         ):
             second = json.loads(tb.inspect_html_page(url))
 
@@ -51,13 +51,13 @@ class TestRetryAfterFailure:
         tb = _toolbox(tmp_path)
         url = "https://example.com/fail-then-success"
         with patch.object(
-            tb, "_fetch_html", side_effect=RuntimeError("boom")
+            tb._fetch, "_fetch_html", side_effect=RuntimeError("boom")
         ):
             tb.inspect_html_page(url)
         assert url not in tb.visited_urls
 
         with patch.object(
-            tb, "_fetch_html", return_value=("ok", [], {}, "static")
+            tb._fetch, "_fetch_html", return_value=("ok", [], {}, "static")
         ):
             tb.inspect_html_page(url)
         assert url in tb.visited_urls
@@ -76,7 +76,7 @@ class TestRetryAfterFailure:
                 for u in urls
             ]
 
-        with patch("stitch_web_researcher.agent_tools.batch_research", side_effect=fake_batch):
+        with patch("stitch_web_researcher.fetch.batch_research", side_effect=fake_batch):
             first = json.loads(tb.batch_inspect_pages([ok, bad]))
         assert bad not in tb.visited_urls
         assert ok in tb.visited_urls
@@ -85,7 +85,7 @@ class TestRetryAfterFailure:
 
         # Retry the batch: only the previously-failed URL should go to the
         # engine; the visited (successful) one is skipped.
-        with patch("stitch_web_researcher.agent_tools.batch_research", side_effect=fake_batch) as mock_batch:
+        with patch("stitch_web_researcher.fetch.batch_research", side_effect=fake_batch) as mock_batch:
             json.loads(tb.batch_inspect_pages([ok, bad]))
         assert mock_batch.call_args[0][0] == [bad]
 
@@ -95,7 +95,7 @@ class TestRepeatVisitServesCache:
         tb = _toolbox(tmp_path)
         url = "https://example.com/repeat"
         with patch.object(
-            tb, "_fetch_html", return_value=("hello", [("https://example.com/x", "x")], {}, "static")
+            tb._fetch, "_fetch_html", return_value=("hello", [("https://example.com/x", "x")], {}, "static")
         ) as mock_fetch:
             first = json.loads(tb.inspect_html_page(url))
             second = json.loads(tb.inspect_html_page(url))
@@ -110,8 +110,7 @@ class TestRepeatVisitServesCache:
         # Tier 3.11: the structured path fetches via _fetch_html_with_html
         # (5-tuple with raw HTML; None here, so no tables are extracted).
         with patch.object(
-            tb,
-            "_fetch_html_with_html",
+            tb._fetch, "_fetch_html_with_html",
             return_value=("hello", [], {}, "static", None),
         ) as mock_fetch:
             first = json.loads(tb.inspect_html_structured(url))
@@ -125,10 +124,10 @@ class TestRepeatVisitServesCache:
         (e.g. cache cleared) — the URL is not re-fetched silently."""
         tb = _toolbox(tmp_path)
         url = "https://example.com/visited-uncached"
-        with patch.object(tb, "_fetch_html", return_value=("hello", [], {}, "static")):
+        with patch.object(tb._fetch, "_fetch_html", return_value=("hello", [], {}, "static")):
             tb.inspect_html_page(url)
         tb.cache.clear()  # visited set survives; cache is gone
-        with patch.object(tb, "_fetch_html") as mock_fetch:
+        with patch.object(tb._fetch, "_fetch_html") as mock_fetch:
             out = json.loads(tb.inspect_html_page(url))
         assert out.get("warning") == "URL already visited"
         mock_fetch.assert_not_called()
@@ -154,7 +153,7 @@ class TestRecoveryViaMCP:
     def test_clear_cache_also_clears_visited(self, tmp_path):
         tb = _toolbox(tmp_path)
         url = "https://example.com/clear"
-        with patch.object(tb, "_fetch_html", return_value=("hi", [], {}, "static")):
+        with patch.object(tb._fetch, "_fetch_html", return_value=("hi", [], {}, "static")):
             tb.inspect_html_page(url)
         assert url in tb.visited_urls
 
@@ -164,7 +163,7 @@ class TestRecoveryViaMCP:
 
         # After clear_cache the same URL is fetched again (fresh).
         with patch.object(
-            tb, "_fetch_html", return_value=("fresh", [], {}, "static")
+            tb._fetch, "_fetch_html", return_value=("fresh", [], {}, "static")
         ) as mock_fetch:
             data = json.loads(tb.inspect_html_page(url))
         assert data["markdown"] == "fresh"

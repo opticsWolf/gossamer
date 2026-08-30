@@ -63,8 +63,7 @@ class TestToolCalls:
 
         tb = mcp_server.get_toolbox()
         with patch.object(
-            tb,
-            "_fetch_html",
+            tb._fetch, "_fetch_html",
             return_value=("hello", [("https://example.com/x", "x")], {}, "static"),
         ):
             result = _run(

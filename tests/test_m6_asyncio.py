@@ -47,7 +47,7 @@ class TestAsyncDelegation:
             calls.append((url, use_smart, query, offset, max_chunks))
             return f"RESULT:{url}"
 
-        tb._inspect_html_page_impl = fake_impl
+        tb._fetch._inspect_html_page_impl = fake_impl
         result = asyncio.run(tb.inspect_html_page_async("https://example.com"))
         assert calls == [("https://example.com", "auto", None, 0, 1)]
         assert result == "RESULT:https://example.com"

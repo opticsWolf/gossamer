@@ -96,6 +96,40 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   the MCP server as `STITCH_FETCH_JITTER` (default `1.0`). Tests:
   `tests/test_s7_fetch_politeness.py` (+8).
 
+## [0.4.11]
+
+- **Phase 4 (`document.py`): extract the document-extraction + structured-
+  inspection concern into a `DocumentExtractor` collaborator.** Moves the
+  `_finish_document`, `extract_document`, `_fetch_document_url`,
+  `_download_and_extract`, `_extract_document_pages`, `_parse_document_pages`,
+  `_extract_local`, `_extract_from_bytes`, `_extract_json_text`,
+  `_extract_xml_feed`, `extract_document_structured`,
+  `_extract_document_structured_impl`, `_extract_html_tables`,
+  `inspect_html_structured`, and `_inspect_html_structured_impl` cluster out of
+  the `WebResearcherToolbox` facade into `document.py`. The facade keeps three
+  thin delegations (`extract_document`, `extract_document_structured`,
+  `inspect_html_structured`) so the public import surface and tool dispatch are
+  unchanged. `DocumentExtractor` reads all shared toolbox state through
+  `self._tb` (the toolbox), mirroring `SearchService` / `FetchService`: a
+  caller that reassigns toolbox attributes is seen live instead of via a stale
+  captured copy. The one internal caller of a moved method (`inspect_html_page`
+  -> `_inspect_html_structured_impl`) is retargeted to
+  `self._doc._inspect_html_structured_impl`; `fetch.py`'s
+  `self._tb._extract_html_metadata` stays on the facade. Tests that patched
+  moved seams (`tb._extract_local`, `tb._fetch_document_url`,
+  `tb._extract_from_bytes`, `agent_tools.extract_tables_from_html`) now patch
+  `tb._doc.*` / `document.*`.
+
+## [0.4.10]
+
+- **Per-phase versioning of the `agent_tools.py` composition split.** Each
+  composition phase now bumps the patch version by 0.0.1 (Phase 3 = 0.4.10),
+  so every extracted collaborator has its own released version. Phase 3
+  (`fetch.py`): moves the fetch/inspect concern (fetch strategies, page-level
+  two-tier cache, `inspect_html_page` / `batch_inspect_pages`, result
+  scanning) into a `FetchService` collaborator, leaving thin facade
+  delegations.
+
 ## [0.4.9]
 
 - **`use_smart` is now an explicit tri-state render strategy** (was `bool`/

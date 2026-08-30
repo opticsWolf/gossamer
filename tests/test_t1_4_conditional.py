@@ -24,6 +24,7 @@ on-disk TTL metadata, so no live HTTP and no sleeps are involved.
 import json
 import time
 
+from stitch_web_researcher import fetch
 from stitch_web_researcher import agent_tools
 from stitch_web_researcher.agent_tools import (
     ToolboxConfig,
@@ -72,7 +73,7 @@ def _seed_expired_page(tb, url, md, links, meta, method="static",
     so ``Cache.get`` reports a miss (and purges) while ``Cache.get_stale``
     can still read the validators - exactly the state revalidation needs.
     """
-    tb._page_cache_put(url, md, links, meta, method)
+    tb._fetch._page_cache_put(url, md, links, meta, method)
     key = "page:" + tb._cache_key(url)
     tb.cache._memory.pop(key, None)
     safe = tb.cache._disk_key(key)
@@ -99,7 +100,7 @@ class TestConditionalRevalidation:
     def test_fresh_fetch_stores_validators(self, tmp_path, monkeypatch):
         """A fresh static fetch records the ETag / Last-Modified for later."""
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((False, "<html></html>", PAGE, [], 0,
                         PROV_200, '"v1"', "Wed, 01 Jan 2026 00:00:00 GMT")),
         )
@@ -117,7 +118,7 @@ class TestConditionalRevalidation:
     def test_304_revalidates_preserves_content_and_time(self, tmp_path, monkeypatch):
         calls = []
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((True, "", "", [], 0, PROV_304, '"v1"', None), calls),
         )
         tb = _toolbox(tmp_path)
@@ -141,7 +142,7 @@ class TestConditionalRevalidation:
     def test_304_adopts_rotated_validators(self, tmp_path, monkeypatch):
         """A 304 that advertises new validators updates the stored copy."""
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((True, "", "", [], 0, PROV_304, '"v2"', "NEW-LM")),
         )
         tb = _toolbox(tmp_path)
@@ -160,7 +161,7 @@ class TestConditionalRevalidation:
     def test_200_refetches_new_content(self, tmp_path, monkeypatch):
         calls = []
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((False, "<html></html>", "NEW CONTENT", [], 0,
                         PROV_200, '"v2"', None), calls),
         )
@@ -180,7 +181,7 @@ class TestConditionalRevalidation:
         """An entry without ETag / Last-Modified cannot be revalidated."""
         calls = []
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((False, "<html></html>", "FRESH", [], 0,
                         PROV_200, None, None), calls),
         )
@@ -199,7 +200,7 @@ class TestConditionalRevalidation:
         """Only static entries revalidate; a stale browser entry refetches."""
         calls = []
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((False, "<html></html>", "FRESH", [], 0,
                         PROV_200, None, None), calls),
         )
@@ -218,7 +219,7 @@ class TestConditionalRevalidation:
         """conditional_revalidation=False forces a plain full fetch."""
         calls = []
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional",
+            fetch, "fetch_html_conditional",
             _cond_fake((False, "<html></html>", "FRESH", [], 0,
                         PROV_200, None, None), calls),
         )
@@ -243,7 +244,7 @@ class TestConditionalRevalidation:
                 raise RuntimeError("conditional fetch failed")
             return (False, "<html></html>", "FRESH", [], 0, PROV_200, None, None)
 
-        monkeypatch.setattr(agent_tools, "fetch_html_conditional", fake)
+        monkeypatch.setattr(fetch, "fetch_html_conditional", fake)
         tb = _toolbox(tmp_path)
         _seed_expired_page(
             tb, URL, PAGE, [], _meta_with_prov(etag='"v1"'),
@@ -259,11 +260,11 @@ class TestConditionalRevalidation:
         tb = _toolbox(tmp_path)
         key = "page:" + tb._cache_key(URL)
         tb.cache.put(key, "{not valid json")
-        assert tb._stale_page_entry(URL) is None
+        assert tb._fetch._stale_page_entry(URL) is None
 
     def test_stale_entry_missing_returns_none(self, tmp_path):
         tb = _toolbox(tmp_path)
-        assert tb._stale_page_entry("https://example.com/never") is None
+        assert tb._fetch._stale_page_entry("https://example.com/never") is None
 
 
 class TestCacheGetStale:

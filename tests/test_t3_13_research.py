@@ -98,7 +98,7 @@ class TestPlanningAndFanout:
         )
         tb.providers = [prov]
         fetch = _fake_fetch()
-        tb._fetch_html = fetch
+        tb._fetch._fetch_html = fetch
 
         result = json.loads(tb.research("topic one", depth=3))
 
@@ -126,7 +126,7 @@ class TestPlanningAndFanout:
             (f"P{i}", f"https://example.com/p{i}") for i in range(6)
         ])
         tb.providers = [FakeProvider("duckduckgo", results=results)]
-        tb._fetch_html = _fake_fetch()
+        tb._fetch._fetch_html = _fake_fetch()
 
         result = json.loads(tb.research("cap", depth=3))
 
@@ -146,7 +146,7 @@ class TestPlanningAndFanout:
         ])
         prov = FakeProvider("duckduckgo", results=results)
         tb.providers = [prov]
-        tb._fetch_html = _fake_fetch()
+        tb._fetch._fetch_html = _fake_fetch()
 
         result = json.loads(tb.research("cap", depth=50))
 
@@ -167,7 +167,7 @@ class TestPlanningAndFanout:
                 ),
             )
         ]
-        tb._fetch_html = _fake_fetch(fail_on={"https://example.com/b"})
+        tb._fetch._fetch_html = _fake_fetch(fail_on={"https://example.com/b"})
 
         result = json.loads(tb.research("errors", depth=3))
 
@@ -186,7 +186,7 @@ class TestPlanningAndFanout:
         tb = _toolbox(tmp_path)
         tb.providers = [FakeProvider("duckduckgo", exc=RuntimeError("down"))]
         fetch = _fake_fetch()
-        tb._fetch_html = fetch
+        tb._fetch._fetch_html = fetch
 
         result = json.loads(tb.research("unreachable", depth=3))
 
@@ -218,7 +218,7 @@ class TestBudgetsAndCaching:
                 ),
             )
         ]
-        tb._fetch_html = _fake_fetch(text=long_text)
+        tb._fetch._fetch_html = _fake_fetch(text=long_text)
 
         out = tb.research("budget", depth=2)
 
@@ -233,7 +233,7 @@ class TestBudgetsAndCaching:
                 results=_results(("A1", "https://example.com/a")),
             )
         ]
-        tb._fetch_html = _fake_fetch(text=long_text)
+        tb._fetch._fetch_html = _fake_fetch(text=long_text)
 
         out = tb.research("budget", depth=1, max_tokens=50)
 
@@ -251,7 +251,7 @@ class TestBudgetsAndCaching:
             )
         ]
         fetch = _fake_fetch()
-        tb._fetch_html = fetch
+        tb._fetch._fetch_html = fetch
 
         r1 = json.loads(tb.research("repeat", depth=1))
         r2 = json.loads(tb.research("repeat", depth=1))
@@ -273,7 +273,7 @@ class TestDispatch:
                 results=_results(("A1", "https://example.com/a")),
             )
         ]
-        tb._fetch_html = _fake_fetch()
+        tb._fetch._fetch_html = _fake_fetch()
 
         out = tb.execute_tool(
             "web_search", {"query": "dispatch me", "search_only": False}

@@ -100,7 +100,7 @@ class TestAbsolutizationInTools:
         tb = _toolbox(tmp_path)
         md = "# T\n[Home](/)\n[Sub](sub/child?x=1)\n[M](mailto:a@b.c)\n"
         with mock.patch.object(
-            tb, "_static_fetch", return_value=(md, [], {}, "static")
+            tb._fetch, "_static_fetch", return_value=(md, [], {}, "static")
         ):
             raw = tb.inspect_html_page("https://example.com/dir/page")
 
@@ -114,7 +114,7 @@ class TestAbsolutizationInTools:
         url = "https://example.com/dir/page"
         fake = [(url, "<html><body><p>T</p></body></html>", "# T\n[A](/a)\n", [])]
         with mock.patch(
-            "stitch_web_researcher.agent_tools.batch_research", return_value=fake
+            "stitch_web_researcher.fetch.batch_research", return_value=fake
         ):
             raw = tb.batch_inspect_pages([url])
 
@@ -127,8 +127,7 @@ class TestAbsolutizationInTools:
         # Tier 3.11: the structured path fetches with keep_html=True, so
         # the _static_fetch fake returns the 5-tuple (raw HTML None).
         with mock.patch.object(
-            tb,
-            "_static_fetch",
+            tb._fetch, "_static_fetch",
             return_value=(md, ["/a"], {}, "static", None),
         ):
             raw = tb.inspect_html_structured("https://example.com/dir/page")

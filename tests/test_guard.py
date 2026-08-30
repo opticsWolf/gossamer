@@ -118,7 +118,7 @@ def _cfg(mode: str, scopes) -> guard.GuardConfig:
 
 def _inspect(tb, url, md, meta=None):
     """Point the toolbox at a canned page, then run inspect_html_page."""
-    tb._fetch_html = lambda u, use_smart=None: (md, [], meta or {}, "static")
+    tb._fetch._fetch_html = lambda u, use_smart=None: (md, [], meta or {}, "static")
     return json.loads(tb.inspect_html_page(url))
 
 
@@ -442,7 +442,7 @@ class TestInspectGuard:
             fetch_calls.append(u)
             return (INJ, [], {}, "static")
 
-        tb._fetch_html = spy
+        tb._fetch._fetch_html = spy
         out1 = json.loads(tb.inspect_html_page("https://example.com/block"))
         out2 = json.loads(tb.inspect_html_page("https://example.com/block"))
         assert out1["error"] == "content withheld by prompt-injection guard"
@@ -451,7 +451,7 @@ class TestInspectGuard:
         # Withheld content is never written to the page cache, so the second
         # call refetches instead of serving a stored copy.
         assert fetch_calls == ["https://example.com/block"] * 2
-        assert tb._page_cache_get("https://example.com/block") is None
+        assert tb._fetch._page_cache_get("https://example.com/block") is None
 
     def test_metadata_scope_flagged(self, tmp_path):
         tb = _toolbox(tmp_path)
@@ -693,7 +693,7 @@ class TestNormalizeBeforeScan:
         # Guard off -> no normalization, byte-identical output (opt-in only).
         raw = "body\u200btext\u202eend"
         tb = _toolbox(tmp_path)  # guard disabled by default
-        tb._fetch_html = lambda u, use_smart=None: (raw, [], {}, "static")
+        tb._fetch._fetch_html = lambda u, use_smart=None: (raw, [], {}, "static")
         out = json.loads(tb.inspect_html_page("https://example.com/raw"))
         assert "\u200b" in out["markdown"]
         assert "\u202e" in out["markdown"]

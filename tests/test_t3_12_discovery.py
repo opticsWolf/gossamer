@@ -86,8 +86,8 @@ def _fake_sitemaps(mapping):
 class TestFeedDiscovery:
     def test_feed_links_found_and_absolutized(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({})
         result = json.loads(tb.discover_resources(URL))
         assert "error" not in result
         assert result["feeds"] == [
@@ -104,8 +104,8 @@ class TestFeedDiscovery:
 
     def test_hreflang_and_non_feed_alternates_ignored(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({})
         result = json.loads(tb.discover_resources(URL))
         types = [f["type"] for f in result["feeds"]]
         assert "application/rss+xml" in types
@@ -118,8 +118,8 @@ class TestFeedDiscovery:
             ' href="/f.xml">'
         )
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page(html=html)
-        tb._static_fetch = _fake_sitemaps({})
+        tb._fetch._fetch_html_with_html = _fake_page(html=html)
+        tb._fetch._static_fetch = _fake_sitemaps({})
         result = json.loads(tb.discover_resources(URL))
         assert result["feeds"][0]["type"] == "application/rss+xml"
         assert result["feeds"][0]["url"] == "https://example.com/f.xml"
@@ -130,8 +130,8 @@ class TestFeedDiscovery:
         def fake_browser(url, use_smart=None):
             return ("# md", [], {}, "browser", None)
 
-        tb._fetch_html_with_html = fake_browser
-        tb._static_fetch = _fake_sitemaps({})
+        tb._fetch._fetch_html_with_html = fake_browser
+        tb._fetch._static_fetch = _fake_sitemaps({})
         result = json.loads(tb.discover_resources(URL))
         assert result["feeds"] == []
         assert "error" not in result
@@ -142,7 +142,7 @@ class TestFeedDiscovery:
         def boom(url, use_smart=None):
             raise RuntimeError("connection refused")
 
-        tb._fetch_html_with_html = boom
+        tb._fetch._fetch_html_with_html = boom
         result = json.loads(tb.discover_resources(URL))
         assert "error" in result
         assert "connection refused" in result["error"]
@@ -152,8 +152,8 @@ class TestFeedDiscovery:
 class TestSitemapDiscovery:
     def test_urlset_pages_discovered_and_deduped(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({SITEMAP_URL: PAGES_XML})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({SITEMAP_URL: PAGES_XML})
         result = json.loads(tb.discover_resources(URL))
         assert result["sitemaps"] == [
             {"url": SITEMAP_URL, "kind": "urlset", "count": 3}
@@ -168,8 +168,8 @@ class TestSitemapDiscovery:
 
     def test_sitemap_index_followed_with_relative_child(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps(
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps(
             {
                 SITEMAP_URL: SITEMAP_INDEX,
                 "https://example.com/pages.xml": PAGES_XML,
@@ -190,8 +190,8 @@ class TestSitemapDiscovery:
 
     def test_missing_sitemap_degrades_gracefully(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({})  # 404
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({})  # 404
         result = json.loads(tb.discover_resources(URL))
         assert "error" not in result
         assert result["sitemaps"] == []
@@ -200,8 +200,8 @@ class TestSitemapDiscovery:
 
     def test_malformed_sitemap_xml_skipped(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({SITEMAP_URL: "this is not xml <"})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({SITEMAP_URL: "this is not xml <"})
         result = json.loads(tb.discover_resources(URL))
         assert "error" not in result
         assert result["sitemaps"] == []
@@ -210,8 +210,8 @@ class TestSitemapDiscovery:
         """A /sitemap.xml that is a regular XML document (no urlset /
         sitemapindex root) yields nothing."""
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps(
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps(
             {SITEMAP_URL: "<config><item>x</item></config>"}
         )
         result = json.loads(tb.discover_resources(URL))
@@ -244,8 +244,8 @@ class TestSitemapDiscovery:
             "https://example.com/u3.xml": urlset(500, "c"),
         }
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps(mapping)
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps(mapping)
         result = json.loads(tb.discover_resources(URL))
         assert result["count"] == 1000
         assert result["truncated"] is True
@@ -255,8 +255,8 @@ class TestSitemapDiscovery:
         urls = [f"<url><loc>/p{i}</loc></url>" for i in range(600)]
         xml = f"<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>{'' .join(urls)}</urlset>"
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({SITEMAP_URL: xml})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({SITEMAP_URL: xml})
         result = json.loads(tb.discover_resources(URL))
         assert result["sitemaps"][0]["count"] == 500
         assert result["truncated"] is True
@@ -280,8 +280,8 @@ class TestSitemapDiscovery:
             "https://example.com/s3.xml": index_of("https://example.com/s4.xml"),
         }
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps(mapping)
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps(mapping)
         result = json.loads(tb.discover_resources(URL))
         fetched = {s["url"] for s in result["sitemaps"]}
         assert fetched == {
@@ -302,8 +302,8 @@ class TestSitemapDiscovery:
             "</sitemapindex>"
         )
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps(
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps(
             {SITEMAP_URL: self_indexing, "https://example.com/pages.xml": PAGES_XML}
         )
         result = json.loads(tb.discover_resources(URL))
@@ -318,8 +318,8 @@ class TestSitemapDiscovery:
 class TestToolIntegration:
     def test_execute_tool_dispatch(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({SITEMAP_URL: PAGES_XML})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({SITEMAP_URL: PAGES_XML})
         result = json.loads(tb.execute_tool("discover_resources", {"url": URL}))
         assert "error" not in result
         assert result["url"] == URL
@@ -327,12 +327,12 @@ class TestToolIntegration:
     def test_page_not_marked_visited_after_discovery(self, tmp_path):
         """Discovery is metadata-level: the page stays inspectable."""
         tb = _toolbox(tmp_path)
-        tb._fetch_html_with_html = _fake_page()
-        tb._static_fetch = _fake_sitemaps({})
+        tb._fetch._fetch_html_with_html = _fake_page()
+        tb._fetch._static_fetch = _fake_sitemaps({})
         json.loads(tb.discover_resources(URL))
         # A subsequent page-path fetch of the same URL must not hit the
         # "already visited" warning.
-        tb._fetch_html = lambda url, use_smart=None: ("# md", [], {}, "static")
+        tb._fetch._fetch_html = lambda url, use_smart=None: ("# md", [], {}, "static")
         result = json.loads(tb.inspect_html_page(URL))
         assert "warning" not in result
 

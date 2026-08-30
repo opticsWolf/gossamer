@@ -42,14 +42,14 @@ class TestSliceMarkdown:
     def test_fitting_page_is_returned_whole(self, tmp_path):
         tb = _toolbox(tmp_path)
         md = "short page"
-        content, next_offset, has_more = tb._slice_markdown(md, 0, 1, 750, 0)
+        content, next_offset, has_more = tb._fetch._slice_markdown(md, 0, 1, 750, 0)
         assert content == md
         assert next_offset == len(md)
         assert has_more is False
 
     def test_first_chunk_respects_budget(self, tmp_path):
         tb = _toolbox(tmp_path)
-        content, next_offset, has_more = tb._slice_markdown(PAGE, 0, 1, 750, 0)
+        content, next_offset, has_more = tb._fetch._slice_markdown(PAGE, 0, 1, 750, 0)
         assert 0 < len(content) <= 750
         assert has_more is True
         assert next_offset == len(content)  # no token budget -> raw == delivered
@@ -59,7 +59,7 @@ class TestSliceMarkdown:
         pos = 0
         parts = []
         while True:
-            content, next_offset, has_more = tb._slice_markdown(PAGE, pos, 1, 750, 0)
+            content, next_offset, has_more = tb._fetch._slice_markdown(PAGE, pos, 1, 750, 0)
             parts.append(content)
             pos = next_offset
             if not has_more:
@@ -69,8 +69,8 @@ class TestSliceMarkdown:
 
     def test_max_chunks_returns_consecutive_chunks(self, tmp_path):
         tb = _toolbox(tmp_path)
-        content, next_offset, has_more = tb._slice_markdown(PAGE, 0, 2, 750, 0)
-        single, single_next, _ = tb._slice_markdown(PAGE, 0, 1, 750, 0)
+        content, next_offset, has_more = tb._fetch._slice_markdown(PAGE, 0, 2, 750, 0)
+        single, single_next, _ = tb._fetch._slice_markdown(PAGE, 0, 1, 750, 0)
         assert content.startswith(single)
         assert content != single  # a second chunk was appended
         assert next_offset > single_next
@@ -78,8 +78,8 @@ class TestSliceMarkdown:
 
     def test_resume_starts_where_the_raw_slice_ended(self, tmp_path):
         tb = _toolbox(tmp_path)
-        first, next_offset, _ = tb._slice_markdown(PAGE, 0, 1, 750, 0)
-        second, _, _ = tb._slice_markdown(PAGE, next_offset, 1, 750, 0)
+        first, next_offset, _ = tb._fetch._slice_markdown(PAGE, 0, 1, 750, 0)
+        second, _, _ = tb._fetch._slice_markdown(PAGE, next_offset, 1, 750, 0)
         # No overlap, no gap: the full page is the concatenation.
         assert first + second == PAGE[: next_offset + len(second)]
         # No paragraph-boundary cut may swallow content on resume.
@@ -87,7 +87,7 @@ class TestSliceMarkdown:
 
     def test_offset_beyond_end_is_clamped(self, tmp_path):
         tb = _toolbox(tmp_path)
-        content, next_offset, has_more = tb._slice_markdown(PAGE, 10**6, 1, 750, 0)
+        content, next_offset, has_more = tb._fetch._slice_markdown(PAGE, 10**6, 1, 750, 0)
         assert content == ""
         assert next_offset == len(PAGE)
         assert has_more is False
@@ -95,7 +95,7 @@ class TestSliceMarkdown:
     def test_page_without_paragraphs_hard_cuts(self, tmp_path):
         tb = _toolbox(tmp_path)
         md = "x" * 2000
-        content, next_offset, has_more = tb._slice_markdown(md, 0, 1, 750, 0)
+        content, next_offset, has_more = tb._fetch._slice_markdown(md, 0, 1, 750, 0)
         assert len(content) == 750
         assert next_offset == 750
         assert has_more is True
@@ -106,7 +106,7 @@ class TestSliceMarkdown:
         pos = 0
         parts = []
         while True:
-            content, pos, has_more = tb._slice_markdown(md, pos, 1, 5, 0)
+            content, pos, has_more = tb._fetch._slice_markdown(md, pos, 1, 5, 0)
             parts.append(content)
             if not has_more:
                 break
@@ -117,7 +117,7 @@ class TestInspectHtmlPageChunked:
     """End-to-end paging through inspect_html_page (fetch spied)."""
 
     def _install_fetch(self, tb, markdown):
-        tb._fetch_html = lambda url, use_smart=None: (
+        tb._fetch._fetch_html = lambda url, use_smart=None: (
             markdown,
             [("https://example.com/next", "Next")],
             {},

@@ -209,7 +209,7 @@ class TestContentTypeRouting:
                 "content_type": content_type,
             }
 
-        tb._fetch_document_url = _fake  # type: ignore[method-assign]
+        tb._doc._fetch_document_url = _fake  # type: ignore[method-assign]
 
     def test_text_plain_url_without_extension(self, tmp_path):
         tb = _toolbox(tmp_path)

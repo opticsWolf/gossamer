@@ -100,8 +100,7 @@ class TestStructuredToolEndToEnd:
         # Tier 3.11: the structured path uses the 5-tuple seam (raw HTML
         # None here, so no tables are extracted).
         with patch.object(
-            tb,
-            "_fetch_html_with_html",
+            tb._fetch, "_fetch_html_with_html",
             return_value=("# Content", fake_links, {}, "static", None),
         ):
             result = json.loads(tb.inspect_html_structured("https://example.com/"))
@@ -117,7 +116,7 @@ class TestStructuredToolEndToEnd:
         tb = self._toolbox(tmp_path)
         fake_links = [(f"https://example.com/{i}", f"p{i}") for i in range(50)]
         with patch.object(
-            tb, "_fetch_html", return_value=("# C", fake_links, {}, "static")
+            tb._fetch, "_fetch_html", return_value=("# C", fake_links, {}, "static")
         ):
             result = json.loads(tb.inspect_html_page("https://example.com/"))
         assert "error" not in result

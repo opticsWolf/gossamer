@@ -199,7 +199,7 @@ class TestSelectRelevantSections:
 
 class TestInspectHtmlPageWithQuery:
     def _install_fetch(self, tb, markdown):
-        tb._fetch_html = lambda url, use_smart=None: (
+        tb._fetch._fetch_html = lambda url, use_smart=None: (
             markdown,
             [("https://example.com/next", "Next")],
             {},

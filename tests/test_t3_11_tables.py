@@ -20,6 +20,7 @@ the tool wiring is tested with fetches spied.
 import json
 
 from stitch_web_researcher._core import extract_tables_from_html
+from stitch_web_researcher import fetch
 from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
 from stitch_web_researcher.structured_parser import (
     ExtractedTable,
@@ -260,8 +261,7 @@ class TestStructuredToolWiring:
             "</body></html>"
         )
         monkeypatch.setattr(
-            tb,
-            "_fetch_html_with_html",
+            tb._fetch, "_fetch_html_with_html",
             lambda url, use_smart=None: ("# Report", [], {}, "static", html),
         )
         result = json.loads(tb.inspect_html_structured(URL))
@@ -274,8 +274,7 @@ class TestStructuredToolWiring:
         tb = _toolbox(tmp_path)
         # Browser path: no raw DOM, so no tables.
         monkeypatch.setattr(
-            tb,
-            "_fetch_html_with_html",
+            tb._fetch, "_fetch_html_with_html",
             lambda url, use_smart=None: ("# md", [], {}, "browser", None),
         )
         result = json.loads(tb.inspect_html_structured(URL))
@@ -286,15 +285,16 @@ class TestStructuredToolWiring:
         """A broken Rust extractor must not break the structured fetch —
         the page still ships, just without tables."""
         tb = _toolbox(tmp_path)
-        import stitch_web_researcher.agent_tools as agent_tools
+        import stitch_web_researcher.document as document
 
         def boom(html, max_tables=20, max_rows=500):
             raise RuntimeError("extractor exploded")
 
-        monkeypatch.setattr(agent_tools, "extract_tables_from_html", boom)
+        # _extract_html_tables lives in DocumentExtractor now; it looks up
+        # extract_tables_from_html in document's own namespace.
+        monkeypatch.setattr(document, "extract_tables_from_html", boom)
         monkeypatch.setattr(
-            tb,
-            "_fetch_html_with_html",
+            tb._fetch, "_fetch_html_with_html",
             lambda url, use_smart=None: (
                 "# md",
                 [],
@@ -313,10 +313,9 @@ class TestStructuredToolWiring:
         tb = _toolbox(tmp_path, fetch_mode="browser")
         import stitch_web_researcher.agent_tools as agent_tools
 
-        monkeypatch.setattr(agent_tools, "_browser_oxide_available", True)
+        monkeypatch.setattr(fetch, "_browser_oxide_available", True)
         monkeypatch.setattr(
-            agent_tools,
-            "_fetch_with_browser_oxide",
+            fetch, "_fetch_with_browser_oxide",
             lambda url: ("# md", [], {"title": "t"}),
         )
         result = json.loads(tb.inspect_html_structured(URL))
@@ -327,8 +326,7 @@ class TestStructuredToolWiring:
         """M8: inspect_html_page still uses the 4-tuple _fetch_html seam."""
         tb = _toolbox(tmp_path)
         monkeypatch.setattr(
-            tb,
-            "_fetch_html",
+            tb._fetch, "_fetch_html",
             lambda url, use_smart=None: ("# md", [], {}, "static"),
         )
         result = json.loads(tb.inspect_html_page(URL))

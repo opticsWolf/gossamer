@@ -35,7 +35,7 @@ class TestBatchVisitedSkip:
         tb.visited_urls[url] = None  # M7: bounded FIFO
 
         with patch(
-            "stitch_web_researcher.agent_tools.batch_research"
+            "stitch_web_researcher.fetch.batch_research"
         ) as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages([url])
@@ -50,7 +50,7 @@ class TestBatchVisitedSkip:
         urls = ["https://example.com/a", "https://example.com/b"]
 
         with patch(
-            "stitch_web_researcher.agent_tools.batch_research"
+            "stitch_web_researcher.fetch.batch_research"
         ) as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages(urls)
@@ -65,8 +65,7 @@ class TestInspectionCache:
         url = "https://example.com/cache-hit"
 
         with patch.object(
-            tb,
-            "_fetch_html",
+            tb._fetch, "_fetch_html",
             return_value=("hello world", [("https://example.com/x", "x")], {}, "static"),
         ) as mock_fetch:
             first = json.loads(tb.inspect_html_page(url))
@@ -85,8 +84,7 @@ class TestInspectionCache:
         url = "https://example.com/budget"
 
         with patch.object(
-            tb,
-            "_fetch_html",
+            tb._fetch, "_fetch_html",
             return_value=("x" * 5000, [], {}, "static"),
         ):
             tb.inspect_html_page(url)
@@ -103,8 +101,7 @@ class TestInspectionCache:
         # Tier 3.11: the structured path uses the 5-tuple seam
         # _fetch_html_with_html (raw HTML None -> no tables).
         with patch.object(
-            tb,
-            "_fetch_html_with_html",
+            tb._fetch, "_fetch_html_with_html",
             return_value=("hello", [("https://example.com/x", "x")], {}, "static", None),
         ) as mock_fetch:
             first = json.loads(tb.inspect_html_structured(url))
@@ -159,7 +156,7 @@ class TestBatchConcurrencyParam:
         tb.max_concurrency = 3
 
         with patch(
-            "stitch_web_researcher.agent_tools.batch_research"
+            "stitch_web_researcher.fetch.batch_research"
         ) as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages(["https://example.com/x"])
@@ -480,7 +477,7 @@ class TestBatchSameDomainStaggering:
                 cache_dir=str(tmp_path / "c"), fetch_delay=0.75, respect_robots=False
             )
         )
-        with patch("stitch_web_researcher.agent_tools.batch_research") as mock_batch:
+        with patch("stitch_web_researcher.fetch.batch_research") as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages(["https://example.com/x"])
 

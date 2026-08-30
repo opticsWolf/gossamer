@@ -271,7 +271,7 @@ class TestToolboxConcurrency:
         failures = {"n": 0}
         fail_lock = threading.Lock()
 
-        orig_fetch = tb._fetch_html
+        orig_fetch = tb._fetch._fetch_html
 
         def flaky_fetch(*args, **kwargs):
             with fail_lock:
@@ -280,7 +280,7 @@ class TestToolboxConcurrency:
                     raise RuntimeError("simulated reset")
             return orig_fetch(*args, **kwargs)
 
-        tb._fetch_html = flaky_fetch
+        tb._fetch._fetch_html = flaky_fetch
         results: list = []
         results_lock = threading.Lock()
 

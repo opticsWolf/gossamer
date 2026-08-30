@@ -105,7 +105,7 @@ class TestStaticPathMetadata:
 
     def test_static_fetch_shape(self, tmp_path, http_server):
         tb = _toolbox(tmp_path)
-        md, links, meta, method = tb._static_fetch(http_server + "/page")
+        md, links, meta, method = tb._fetch._static_fetch(http_server + "/page")
         assert method == "static"
         assert "Hello C2" in md
         assert any(u.endswith("/next") and text == "Next page" for u, text in links)

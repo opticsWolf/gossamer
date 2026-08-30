@@ -5,8 +5,9 @@ a partially decoded gzip) used to pass the gate and poison LLM context.
 """
 
 from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from stitch_web_researcher.fetch import FetchService
 
-_looks = WebResearcherToolbox._looks_like_text
+_looks = FetchService._looks_like_text
 
 CLEAN = "The quick brown fox jumps over the lazy dog. "
 GARBAGE = "\x00\x01\x02"  # Cc control chars

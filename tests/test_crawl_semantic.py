@@ -252,7 +252,7 @@ class TestSemanticCrawlEndToEnd:
         P1 = "https://example.com/p1"
         P2 = "https://example.com/p2"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\noverview of the site.\n", links=[
                 (P1, "deep learning guide"), (P2, "about us")]),
             P1: _page("deep content.\n"),
@@ -267,7 +267,7 @@ class TestSemanticCrawlEndToEnd:
     def test_derived_query_expands_and_echoes(self, tmp_path):
         P1 = "https://example.com/p1"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nneural nets overview.\n",
                         links=[(P1, "deep learning guide")]),
             P1: _page("content.\n"),
@@ -279,7 +279,7 @@ class TestSemanticCrawlEndToEnd:
 
     def test_expanded_query_echo_reports_additions(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nnotes only.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nnotes only.\n")})
         parsed = _result(tb, query="notes")
         # "notes" is curation-excluded from the thesaurus -> no additions.
         assert parsed["query"] == "notes"
@@ -293,7 +293,7 @@ class TestRichnessPayload:
         child_md = "deep learning platform. deep deep.\n"
         P1 = "https://example.com/p1"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\ndeep learning hub.\n",
                         links=[(P1, "deep learning guide")], title="Hub"),
             P1: _page(child_md),
@@ -310,7 +310,7 @@ class TestRichnessPayload:
 
     def test_excerpts_default_off_shape(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch(
+        tb._fetch._fetch_html = _fake_fetch(
             {ROOT: _page("# Hub\n\ndeep learning platform.\n")})
         parsed = _result(tb, query="deep learning")
         assert parsed["excerpts"] is False
@@ -325,7 +325,7 @@ class TestExcerpts:
         pad = "quiet filler text " * 40
         block = "deep learning deep learning deep learning " * 10
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page(pad + block + pad)})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page(pad + block + pad)})
         parsed = _result(tb, query="deep learning", excerpts=True)
         ex = parsed["pages"][0]["excerpt"]
         # the densest window sits inside the mid-page keyword block
@@ -337,13 +337,13 @@ class TestExcerpts:
     def test_excerpt_full_coverage_has_no_ellipsis(self, tmp_path):
         md = "deep learning notes " * 5  # shorter than one window
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page(md)})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page(md)})
         parsed = _result(tb, query="deep learning", excerpts=True)
         assert parsed["pages"][0]["excerpt"] == md
 
     def test_excerpt_zero_density_absent(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch(
+        tb._fetch._fetch_html = _fake_fetch(
             {ROOT: _page("# Hub\n\nnothing relevant here at all.\n")})
         parsed = _result(tb, query="deep learning", excerpts=True)
         assert "excerpt" not in parsed["pages"][0]
@@ -371,7 +371,7 @@ class TestBudgetWithRichness:
         for i in range(4):
             pages[f"https://example.com/p{i}"] = _page("platform " * 100)
         tb = _toolbox(tmp_path, max_markdown_chars=3000)
-        tb._fetch_html = _fake_fetch(pages)
+        tb._fetch._fetch_html = _fake_fetch(pages)
         parsed = _result(tb, max_pages=5, excerpts=True)
         raw = json.dumps(parsed)
         assert len(raw) <= 3000 + 128  # slack for re-serialization
@@ -381,7 +381,7 @@ class TestBudgetWithRichness:
             assert "term_hits" in p
         # a generous budget keeps the full payload, excerpts included
         tb2 = _toolbox(tmp_path, max_markdown_chars=8000)
-        tb2._fetch_html = _fake_fetch(pages)
+        tb2._fetch._fetch_html = _fake_fetch(pages)
         full = _result(tb2, max_pages=5, excerpts=True)
         assert full["count"] == 5
         assert all("excerpt" in p for p in full["pages"])
@@ -413,7 +413,7 @@ def _search_results(*items):
 class TestSearchPrior:
     def test_off_by_default(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
         parsed = _result(tb, query="deep learning")
         assert parsed["search_prior"] is False
         assert "search_results" not in parsed
@@ -424,7 +424,7 @@ class TestSearchPrior:
         tb = _toolbox(tmp_path)
         prov = _SearchFake(_search_results(("s1", S1), ("s2", S2)))
         tb.providers = [prov]
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform", links=[]),
             S1: _page("deep learning overview.\n"),
             S2: _page("deep learning basics.\n"),
@@ -445,7 +445,7 @@ class TestSearchPrior:
         S1 = "https://example.com/irrelevant"
         tb = _toolbox(tmp_path)
         tb.providers = [_SearchFake(_search_results(("x", S1)))]
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform", links=[]),
             S1: _page("totally unrelated content.\n"),
         })
@@ -457,7 +457,7 @@ class TestSearchPrior:
         P1 = "https://example.com/p1"
         tb = _toolbox(tmp_path)
         tb.providers = [_SearchFake(exc=RuntimeError("boom"))]
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform",
                         links=[(P1, "deep learning guide")]),
             P1: _page("deep content.\n"),
@@ -475,7 +475,7 @@ class TestSearchPrior:
             return json.dumps({"error": "all providers failed"})
 
         tb.search_web = fake_search
-        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
         parsed = _result(tb, query="deep learning", search_prior=True)
         assert parsed["search_results"] == 0
         assert parsed["errors"] == []
@@ -486,7 +486,7 @@ class TestSearchPrior:
         tb.providers = [
             _SearchFake(_search_results(("deep learning report", PDF)))
         ]
-        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
         parsed = _result(tb, query="deep learning", search_prior=True)
         # The document is collected (scored, floored) — never fetched.
         assert [d["url"] for d in parsed["documents"]] == [PDF]
@@ -497,7 +497,7 @@ class TestSearchPrior:
         tb = _toolbox(tmp_path)
         prov = _SearchFake(_search_results(("s1", S1)))
         tb.providers = [prov]
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform", links=[]),
             S1: _page("deep learning overview.\n"),
         })
@@ -514,7 +514,7 @@ class TestSeedUrls:
         SEED = "https://example.com/deep/seed"
         CHILD = "https://example.com/deep/child"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform", links=[]),
             SEED: _page("deep learning seed page.",
                         links=[(CHILD, "deep learning child")]),
@@ -529,7 +529,7 @@ class TestSeedUrls:
     def test_seed_equal_to_root_is_a_noop(self, tmp_path):
         tb = _toolbox(tmp_path)
         fake = _fake_fetch({ROOT: _page("deep learning platform")})
-        tb._fetch_html = fake
+        tb._fetch._fetch_html = fake
         parsed = _result(tb, query="deep learning", seed_urls=[ROOT])
         assert fake.state["calls"].count(ROOT) == 1
         assert parsed["count"] == 1
@@ -537,7 +537,7 @@ class TestSeedUrls:
     def test_seed_below_floor_skipped_with_reason(self, tmp_path):
         SEED = "https://example.com/irrelevant"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform", links=[]),
             SEED: _page("irrelevant page.\n"),
         })
@@ -549,7 +549,7 @@ class TestSeedUrls:
     def test_seed_external_host_skipped(self, tmp_path):
         EXT = "https://example.org/deep"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
         parsed = _result(
             tb, query="deep learning", same_host=True, seed_urls=[EXT]
         )
@@ -560,7 +560,7 @@ class TestSeedUrls:
         BAD = "https://example.com/deep/bad"
         GOOD = "https://example.com/deep/good"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch(
+        tb._fetch._fetch_html = _fake_fetch(
             {
                 ROOT: _page("deep learning platform", links=[]),
                 GOOD: _page("deep learning good page.\n"),
@@ -577,7 +577,7 @@ class TestSeedUrls:
         monkeypatch.delenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", raising=False)
         META = "http://169.254.169.254/latest/meta-data"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})
         parsed = _result(tb, query="deep learning", seed_urls=[META])
         skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
         assert skipped.get(META) == "ssrf blocked"
@@ -593,7 +593,7 @@ class TestCrossModalLoop:
         U1 = "https://example.com/deep/one"
         U2 = "https://example.com/deep/two"
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("deep learning platform",
                         links=[(PDF, "deep learning annual report")]),
             U1: _page("deep learning detail one.\n"),

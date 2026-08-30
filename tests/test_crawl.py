@@ -75,7 +75,7 @@ def _fetched_urls(parsed):
 class TestRootHandling:
     def test_root_fetch_failure_kills_crawl(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({}, fail_on=())  # root not in pages
+        tb._fetch._fetch_html = _fake_fetch({}, fail_on=())  # root not in pages
         parsed = json.loads(tb.crawl(root_url=ROOT))
         assert "root fetch failed" in parsed["error"]
 
@@ -83,27 +83,27 @@ class TestRootHandling:
         """The impl reports robots/visited failures as {warning} dicts,
         not exceptions — the crawl must classify them as root failures."""
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({})
+        tb._fetch._fetch_html = _fake_fetch({})
 
         def impl(url, use_smart, query, offset, max_chunks, politeness_root=None):
             return json.dumps(
                 {"warning": "URL disallowed by robots.txt", "url": url}
             )
 
-        tb._inspect_html_page_impl = impl
+        tb._fetch._inspect_html_page_impl = impl
         parsed = json.loads(tb.crawl(root_url=ROOT))
         assert "robots" in parsed["error"]
 
     def test_invalid_root_urls(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({})
+        tb._fetch._fetch_html = _fake_fetch({})
         for bad in ("not a url", "ftp://example.com", "javascript:alert(1)"):
             parsed = json.loads(tb.crawl(root_url=bad))
             assert "error" in parsed
 
     def test_root_only_when_max_depth_zero(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform deep learning notes.\n",
                         links=[(A, "Deep learning guide")]),
         })
@@ -117,7 +117,7 @@ class TestRelevanceFrontier:
     def test_relevance_focuses_the_crawl(self, tmp_path):
         """query 'deep learning' follows /a, not the company blurb /b."""
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page(
                 "# Research Hub\n\nA deep learning research platform. "
                 "Guides about deep learning.\n",
@@ -168,7 +168,7 @@ class TestRelevanceFrontier:
         X = "https://example.com/x"
         Y = "https://example.com/y"
         X1 = "https://example.com/x/1"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Notes\n\nnotes notes notes.\n",
                         links=[(X, "notes"), (Y, "notes")]),
             X: _page("# Notes\n\nnotes notes notes.\n", links=[(X1, "notes")]),
@@ -185,7 +185,7 @@ class TestRelevanceFrontier:
         MID = "https://example.com/mid"
         DEEP = "https://example.com/mid/deep"
         WEAK = "https://example.com/weak"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform deep learning notes.\n",
                         links=[(WEAK, "company"), (MID, "platform notes")]),
             MID: _page("# Mid\n\ndeep learning platform details.\n",
@@ -204,13 +204,13 @@ class TestRelevanceFrontier:
         # exhausting the frontier, exactly at the max_pages cap.
         assert parsed["count"] == 3
         assert parsed["stop"] == "frontier exhausted"
-        assert WEAK not in tb._fetch_html.state["calls"]
+        assert WEAK not in tb._fetch._fetch_html.state["calls"]
 
     def test_explicit_query_beats_derived(self, tmp_path):
         tb = _toolbox(tmp_path)
         N = "https://example.com/n"
         X = "https://example.com/x"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform stuff here.\n",
                         links=[(N, "needle deep"), (X, "platform")]),
             N: _page("needle page.\n"),
@@ -218,17 +218,17 @@ class TestRelevanceFrontier:
         })
         parsed = _result(tb, query="needle deep", max_pages=2)
         assert _fetched_urls(parsed) == [ROOT, N]
-        assert X not in tb._fetch_html.state["calls"]
+        assert X not in tb._fetch._fetch_html.state["calls"]
 
     def test_query_echo_derived(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         parsed = _result(tb)
         assert parsed["query"] == "derived from root page"
 
     def test_min_score_zero_follows_unscored(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform.\n", links=[(B, "About the company")]),
             B: _page("company.\n"),
         })
@@ -237,13 +237,13 @@ class TestRelevanceFrontier:
 
     def test_min_score_is_clamped_non_negative(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         parsed = _result(tb, min_score=-1.0)
         assert parsed["min_score"] == 0.0
 
     def test_min_score_bad_value_falls_back_to_default(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         parsed = _result(tb, min_score="bogus")
         assert parsed["min_score"] == 0.05
 
@@ -257,7 +257,7 @@ class TestBudgetAndCaps:
         )}
         for i in range(4):
             pages[f"https://example.com/p{i}"] = _page("page.\n")
-        tb._fetch_html = _fake_fetch(pages)
+        tb._fetch._fetch_html = _fake_fetch(pages)
         parsed = _result(tb, max_pages=3)
         assert parsed["count"] == 3
         assert parsed["stop"] == "max_pages reached"
@@ -268,7 +268,7 @@ class TestBudgetAndCaps:
         tb = _toolbox(tmp_path)
         OK = "https://example.com/ok"
         BAD = "https://example.com/bad"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n",
                         links=[(BAD, "platform"), (OK, "platform")]),
             OK: _page("ok.\n"),
@@ -280,26 +280,26 @@ class TestBudgetAndCaps:
 
     def test_max_pages_hard_cap(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         parsed = _result(tb, max_pages=5000)
         assert parsed["max_pages"] == 50
 
     def test_max_depth_hard_cap(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         parsed = _result(tb, max_depth=50)
         assert parsed["max_depth"] == 5
 
     def test_bad_parameters_fall_back_to_defaults(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         parsed = _result(tb, max_depth="bogus", max_pages=None)
         assert parsed["max_depth"] == 3
         assert parsed["max_pages"] == 15
 
     def test_per_page_skim_is_capped(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("x" * 5000 + "\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("x" * 5000 + "\n")})
         parsed = _result(tb)
         assert len(parsed["pages"][0]["markdown"]) == 300
 
@@ -311,7 +311,7 @@ class TestBudgetAndCaps:
         )}
         for i in range(4):
             pages[f"https://example.com/p{i}"] = _page("y" * 400 + "\n")
-        tb._fetch_html = _fake_fetch(pages)
+        tb._fetch._fetch_html = _fake_fetch(pages)
         parsed = _result(tb, max_pages=5)
         raw = json.dumps(parsed)
         assert len(raw) <= 900 + 128  # slack for re-serialization
@@ -322,13 +322,13 @@ class TestHostAndFilters:
     def test_same_host_skips_external_links(self, tmp_path):
         tb = _toolbox(tmp_path)
         EXT = "https://other.example.net/x"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n",
                         links=[(A, "platform"), (EXT, "platform")]),
             A: _page("page.\n"),
         })
         parsed = _result(tb, same_host=True)
-        assert EXT not in tb._fetch_html.state["calls"]
+        assert EXT not in tb._fetch._fetch_html.state["calls"]
         skipped = {s["url"]: s["reason"] for s in parsed["skipped"]}
         assert skipped[EXT] == "external host"
         assert _fetched_urls(parsed) == [ROOT, A]
@@ -336,7 +336,7 @@ class TestHostAndFilters:
     def test_same_host_false_follows_external(self, tmp_path, monkeypatch):
         tb = _toolbox(tmp_path)
         EXT = "https://other.example.net/x"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n",
                         links=[(EXT, "platform")]),
             EXT: _page("external.\n"),
@@ -347,7 +347,7 @@ class TestHostAndFilters:
 
     def test_same_host_ignores_www(self, tmp_path, monkeypatch):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n",
                         links=[("https://www.example.com/a", "platform")]),
             "https://www.example.com/a": _page("www page.\n"),
@@ -358,7 +358,7 @@ class TestHostAndFilters:
 
     def test_boilerplate_paths_and_assets_are_skipped(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n", links=[
                 ("https://example.com/login", "platform"),
                 ("https://example.com/style.css", "platform"),
@@ -376,7 +376,7 @@ class TestHostAndFilters:
     def test_document_links_collected_not_fetched(self, tmp_path):
         tb = _toolbox(tmp_path)
         DOCX = "https://example.com/spec.docx"
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n", links=[
                 (PDF, "platform report"),
                 (DOCX, "platform spec"),
@@ -387,11 +387,11 @@ class TestHostAndFilters:
         assert [d["url"] for d in parsed["documents"]] == [PDF, DOCX]
         assert parsed["documents_total"] == 2
         assert parsed["documents_below_score"] == 0
-        assert tb._fetch_html.state["calls"] == [ROOT]
+        assert tb._fetch._fetch_html.state["calls"] == [ROOT]
 
     def test_fragment_and_duplicate_links_dedupe(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n", links=[
                 (A, "platform"),
                 (A + "#section2", "platform"),
@@ -400,7 +400,7 @@ class TestHostAndFilters:
             A: _page("page.\n"),
         })
         parsed = _result(tb)
-        calls = tb._fetch_html.state["calls"]
+        calls = tb._fetch._fetch_html.state["calls"]
         assert calls.count(A) == 1
         assert parsed["count"] == 2
 
@@ -408,15 +408,15 @@ class TestHostAndFilters:
 class TestCacheAndIntegration:
     def test_repeat_crawl_is_cache_backed(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n", links=[(A, "platform")]),
             A: _page("page.\n"),
         })
         _result(tb)
-        first = list(tb._fetch_html.state["calls"])
+        first = list(tb._fetch._fetch_html.state["calls"])
         _result(tb)
         # Every URL is fetched at most once across both crawls.
-        assert tb._fetch_html.state["calls"] == first
+        assert tb._fetch._fetch_html.state["calls"] == first
         assert len(first) == 2
 
     def test_crawl_payload_keeps_full_pages_cached(self, tmp_path):
@@ -425,7 +425,7 @@ class TestCacheAndIntegration:
         complete content (subject to its own read-time budget)."""
         long_md = "# A\n\n" + ("deep learning research platform. " * 200)
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({
+        tb._fetch._fetch_html = _fake_fetch({
             ROOT: _page("# Hub\n\nplatform platform.\n", links=[(A, "platform")]),
             A: _page(long_md),
         })
@@ -436,11 +436,11 @@ class TestCacheAndIntegration:
         # Read-time budgeting applies (chunks of 8000 chars by default),
         # but the content served comes from the cache, not a re-fetch.
         assert "markdown" in follow
-        assert tb._fetch_html.state["calls"].count(A) == 1
+        assert tb._fetch._fetch_html.state["calls"].count(A) == 1
 
     def test_execute_tool_dispatch(self, tmp_path):
         tb = _toolbox(tmp_path)
-        tb._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
+        tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
         out = tb.execute_tool("crawl", {"root_url": ROOT})
         assert json.loads(out)["root"] == ROOT
 

@@ -21,6 +21,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from stitch_web_researcher import fetch
 from stitch_web_researcher import agent_tools
 from stitch_web_researcher.agent_tools import (
     TOOL_REGISTRY,
@@ -79,7 +80,7 @@ def _fake_fetch(page: str = PAGE, prov=PROV, etag=None, lm=None):
 
 class TestStaticProvenance:
     def test_fresh_read_carries_full_provenance(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(agent_tools, "fetch_html_conditional", _fake_fetch())
+        monkeypatch.setattr(fetch, "fetch_html_conditional", _fake_fetch())
         tb = _toolbox(tmp_path)
         data = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
         assert data["fetch_method"] == "static"
@@ -98,14 +99,14 @@ class TestStaticProvenance:
             calls.append(url)
             return (False, "<h>", PAGE, [], 0, PROV, None, None)
 
-        monkeypatch.setattr(agent_tools, "fetch_html_conditional", fake)
+        monkeypatch.setattr(fetch, "fetch_html_conditional", fake)
         tb = _toolbox(tmp_path)
         first = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
 
         def dead(url, *a, **k):
             raise AssertionError("cache hit must not re-fetch")
 
-        monkeypatch.setattr(agent_tools, "fetch_html_conditional", dead)
+        monkeypatch.setattr(fetch, "fetch_html_conditional", dead)
         second = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
         assert calls == ["https://example.com/prov-start"]
         assert second["cache_hit"] is True
@@ -115,7 +116,7 @@ class TestStaticProvenance:
         assert second["content_hash"] == first["content_hash"]
 
     def test_chunked_reads_share_one_hash(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(agent_tools, "fetch_html_conditional", _fake_fetch())
+        monkeypatch.setattr(fetch, "fetch_html_conditional", _fake_fetch())
         tb = _toolbox(tmp_path, max_markdown_chars=1000)
         first = json.loads(tb.inspect_html_page("https://example.com/prov-start"))
         second = json.loads(
@@ -132,7 +133,7 @@ class TestStaticProvenance:
 
     def test_query_selection_shares_hash(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            agent_tools, "fetch_html_conditional", _fake_fetch(page=HEADED_PAGE)
+            fetch, "fetch_html_conditional", _fake_fetch(page=HEADED_PAGE)
         )
         tb = _toolbox(tmp_path, max_markdown_chars=1000)
         data = json.loads(
@@ -151,7 +152,7 @@ class TestStaticProvenance:
             return ("spy-md", [], {}, "static")
 
         tb = _toolbox(tmp_path)
-        tb._fetch_html = spy
+        tb._fetch._fetch_html = spy
         data = json.loads(tb.inspect_html_page("https://example.com/prov-spy"))
         assert data["content_hash"] == _sha256("spy-md")
         assert data["fetched_at"] is None
@@ -166,7 +167,7 @@ class TestBrowserProvenance:
             calls.append(url)
             return ("browser-md", [("https://prov.example/next", "Next")], {})
 
-        monkeypatch.setattr(agent_tools, "_fetch_with_browser_oxide", fake_browser)
+        monkeypatch.setattr(fetch, "_fetch_with_browser_oxide", fake_browser)
         tb = _toolbox(tmp_path)
         url = "https://example.com/prov-page"
         data = json.loads(tb.inspect_html_page(url, use_smart="browser"))
@@ -182,17 +183,17 @@ class TestBrowserProvenance:
 
     def test_stealth_fallback_gets_browser_provenance(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            agent_tools, "_fetch_with_browser_oxide", lambda u: ("fb-md", [], {})
+            fetch, "_fetch_with_browser_oxide", lambda u: ("fb-md", [], {})
         )
         # browser-oxide is an optional [browser] extra — pin the flag so the
         # dispatch is exercised even where the package is not installed.
-        monkeypatch.setattr(agent_tools, "_browser_oxide_available", True)
+        monkeypatch.setattr(fetch, "_browser_oxide_available", True)
 
         def dead_static(url):
             raise RuntimeError("static down")
 
         tb = _toolbox(tmp_path)
-        tb._static_fetch = dead_static
+        tb._fetch._static_fetch = dead_static
         data = json.loads(tb.inspect_html_page("https://example.com/prov-fb"))
         assert data["fetch_method"] == "stealth-fallback"
         assert data["http_status"] == 200
@@ -203,7 +204,7 @@ class TestBrowserProvenance:
 
     def test_browser_mode_fetch(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            agent_tools, "_fetch_with_browser_oxide", lambda u: ("bm-md", [], {})
+            fetch, "_fetch_with_browser_oxide", lambda u: ("bm-md", [], {})
         )
         tb = _toolbox(tmp_path, fetch_mode="browser")
         data = json.loads(tb.inspect_html_page("https://example.com/prov-bm"))
@@ -310,7 +311,7 @@ class TestBatchProvenance:
         def fake_batch(urls, **kwargs):
             return [(u, None, f"md-of-{u}", []) for u in urls]
 
-        monkeypatch.setattr(agent_tools, "batch_research", fake_batch)
+        monkeypatch.setattr(fetch, "batch_research", fake_batch)
         tb = _toolbox(tmp_path)
         out = json.loads(
             tb.batch_inspect_pages(["https://example.net/batch-1", "https://example.net/batch-2"])
@@ -323,7 +324,7 @@ class TestBatchProvenance:
         assert out[0]["http_status"] is None
 
     def test_cached_entries_serve_stored_provenance(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(agent_tools, "fetch_html_conditional", _fake_fetch())
+        monkeypatch.setattr(fetch, "fetch_html_conditional", _fake_fetch())
         tb = _toolbox(tmp_path)
         first = json.loads(tb.inspect_html_page("https://example.net/batch-1"))
         out = json.loads(tb.batch_inspect_pages(["https://example.net/batch-1"]))
@@ -335,7 +336,7 @@ class TestBatchProvenance:
 
     def test_browser_mode_entries_get_browser_provenance(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
-            agent_tools, "_fetch_with_browser_oxide", lambda u: ("browser-md", [], {})
+            fetch, "_fetch_with_browser_oxide", lambda u: ("browser-md", [], {})
         )
         tb = _toolbox(tmp_path, fetch_mode="browser")
         out = json.loads(tb.batch_inspect_pages(["https://example.org/batch-b1"]))

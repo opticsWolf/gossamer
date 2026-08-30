@@ -141,8 +141,8 @@ class TestDispatchInstrumentation:
         def fake_dispatch(url, use_smart=None):
             return (md, [("https://example.com/x", "x")], {}, "static")
 
-        tb._dispatch_fetch = fake_dispatch
-        out = tb._fetch_html_dispatch("https://example.com/a")
+        tb._fetch._dispatch_fetch = fake_dispatch
+        out = tb._fetch._fetch_html_dispatch("https://example.com/a")
         assert out[0] == md
         s = tb._fetch_stats.to_dict()
         assert s["fetches"] == 1
@@ -156,9 +156,9 @@ class TestDispatchInstrumentation:
         def fake_dispatch(url, use_smart=None):
             raise RuntimeError("boom")
 
-        tb._dispatch_fetch = fake_dispatch
+        tb._fetch._dispatch_fetch = fake_dispatch
         with pytest.raises(RuntimeError):
-            tb._fetch_html_dispatch("https://example.com/b")
+            tb._fetch._fetch_html_dispatch("https://example.com/b")
         s = tb._fetch_stats.to_dict()
         assert s["fetches"] == 1
         assert s["errors"] == 1
@@ -171,8 +171,8 @@ class TestDispatchInstrumentation:
         def fake_dispatch(url, use_smart=None):
             return (None, [], {}, "static")  # defensive: markdown slot empty
 
-        tb._dispatch_fetch = fake_dispatch
-        tb._fetch_html_dispatch("https://example.com/c")
+        tb._fetch._dispatch_fetch = fake_dispatch
+        tb._fetch._fetch_html_dispatch("https://example.com/c")
         assert tb._fetch_stats.to_dict()["bytes_downloaded"] == 0
 
     def test_get_stats_includes_fetches(self, tmp_path):
@@ -181,8 +181,8 @@ class TestDispatchInstrumentation:
         def fake_dispatch(url, use_smart=None):
             return ("body", [], {}, "static")
 
-        tb._dispatch_fetch = fake_dispatch
-        tb._fetch_html_dispatch("https://example.com/d")
+        tb._fetch._dispatch_fetch = fake_dispatch
+        tb._fetch._fetch_html_dispatch("https://example.com/d")
         stats = json.loads(tb.get_stats())
         assert "fetches" in stats
         assert stats["fetches"]["fetches"] == 1

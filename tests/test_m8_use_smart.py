@@ -10,6 +10,7 @@ verify the tools pass use_smart through to _fetch_html. Fully offline
 (fetches are spied, no network).
 """
 
+from stitch_web_researcher import fetch
 from stitch_web_researcher import agent_tools
 from stitch_web_researcher.agent_tools import (
     ToolboxConfig,
@@ -43,8 +44,8 @@ def _install_spy_fetches(tb) -> list:
         calls.append(("browser", url))
         return ("browser-md", [], {}, "browser")
 
-    tb._static_fetch = fake_static
-    tb._browser_fetch = fake_browser
+    tb._fetch._static_fetch = fake_static
+    tb._fetch._browser_fetch = fake_browser
     return calls
 
 
@@ -54,14 +55,14 @@ class TestUseSmartDispatch:
     def test_static_mode_use_smart_none(self, tmp_path):
         tb = _toolbox(tmp_path, "static")
         calls = _install_spy_fetches(tb)
-        result = tb._fetch_html(URL)
+        result = tb._fetch._fetch_html(URL)
         assert calls == [("static", URL)]
         assert result[0] == "static-md"
 
     def test_use_smart_browser_prefers_browser(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = _install_spy_fetches(tb)
-        result = tb._fetch_html(URL, use_smart="browser")
+        result = tb._fetch._fetch_html(URL, use_smart="browser")
         assert calls == [("browser", URL)]
         assert result[0] == "browser-md"
         assert result[3] == "browser"
@@ -73,8 +74,8 @@ class TestUseSmartDispatch:
         def broken_browser(url):
             raise RuntimeError("stealth unavailable")
 
-        tb._browser_fetch = broken_browser
-        result = tb._fetch_html(URL, use_smart="browser")
+        tb._fetch._browser_fetch = broken_browser
+        result = tb._fetch._fetch_html(URL, use_smart="browser")
         # Browser failed -> static fallback still delivers content
         assert result[0] == "static-md"
 
@@ -82,21 +83,21 @@ class TestUseSmartDispatch:
         for mode in ("auto", "browser"):
             tb = _toolbox(tmp_path, mode)
             calls = _install_spy_fetches(tb)
-            result = tb._fetch_html(URL, use_smart="static")
+            result = tb._fetch._fetch_html(URL, use_smart="static")
             assert calls == [("static", URL)]
             assert result[3] == "static"
 
     def test_browser_mode_default_uses_browser(self, tmp_path):
         tb = _toolbox(tmp_path, "browser")
         calls = _install_spy_fetches(tb)
-        result = tb._fetch_html(URL)
+        result = tb._fetch._fetch_html(URL)
         assert calls == [("browser", URL)]
         assert result[3] == "browser"
 
     def test_auto_static_success_skips_browser(self, tmp_path):
         tb = _toolbox(tmp_path, "auto")
         calls = _install_spy_fetches(tb)
-        tb._fetch_html(URL)
+        tb._fetch._fetch_html(URL)
         assert calls == [("static", URL)]
 
     def test_auto_static_failure_uses_browser_oxide(self, tmp_path, monkeypatch):
@@ -106,19 +107,19 @@ class TestUseSmartDispatch:
         def broken_static(url):
             raise RuntimeError("static 403")
 
-        tb._static_fetch = broken_static
+        tb._fetch._static_fetch = broken_static
         stealth_calls = []
 
         def fake_stealth(url):
             stealth_calls.append(url)
             return ("stealth-md", [], {})
 
-        monkeypatch.setattr(agent_tools, "_fetch_with_browser_oxide", fake_stealth)
+        monkeypatch.setattr(fetch, "_fetch_with_browser_oxide", fake_stealth)
         # The dispatch consults the availability flag, not just the function
         # being patched — set it so the test is hermetic (browser-oxide is an
         # optional [browser] extra and may be absent).
-        monkeypatch.setattr(agent_tools, "_browser_oxide_available", True)
-        result = tb._fetch_html(URL)
+        monkeypatch.setattr(fetch, "_browser_oxide_available", True)
+        result = tb._fetch._fetch_html(URL)
         assert stealth_calls == [URL]
         assert result[0] == "stealth-md"
         assert result[3] == "stealth-fallback"
@@ -141,7 +142,7 @@ class TestUseSmartPlumbing:
                 "static",
             )
 
-        tb._fetch_html = fake_fetch
+        tb._fetch._fetch_html = fake_fetch
         return calls
 
     @staticmethod
@@ -159,7 +160,7 @@ class TestUseSmartPlumbing:
                 None,
             )
 
-        tb._fetch_html_with_html = fake_fetch
+        tb._fetch._fetch_html_with_html = fake_fetch
         return calls
 
     def test_inspect_html_page_passes_use_smart(self, tmp_path):

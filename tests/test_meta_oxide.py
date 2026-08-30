@@ -225,7 +225,7 @@ class TestToolboxMetadata:
 
         toolbox = WebResearcherToolbox()
         raw = extract_all(SAMPLE_HTML, BASE_URL)
-        compact = toolbox._compact_metadata(raw)
+        compact = toolbox._fetch._compact_metadata(raw)
 
         assert compact.get("title") == "Test Page Title"
         assert compact.get("og_title") == "OG Page Title"
@@ -237,8 +237,8 @@ class TestToolboxMetadata:
         from stitch_web_researcher.agent_tools import WebResearcherToolbox
 
         toolbox = WebResearcherToolbox()
-        assert toolbox._compact_metadata({}) == {}
-        assert toolbox._compact_metadata(None) == {}
+        assert toolbox._fetch._compact_metadata({}) == {}
+        assert toolbox._fetch._compact_metadata(None) == {}
 
     def test_fetch_smart_page_returns_metadata(self):
         """Verify fetch_smart_page returns a 3-tuple (md, links, metadata)."""

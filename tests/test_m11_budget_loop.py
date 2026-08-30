@@ -13,6 +13,7 @@ import json
 from unittest import mock
 
 import stitch_web_researcher.agent_tools as agent_tools
+import stitch_web_researcher.fetch as fetch
 from stitch_web_researcher.agent_tools import WebResearcherToolbox
 from stitch_web_researcher.token_budget import count_tokens
 
@@ -35,7 +36,7 @@ def _counting_tokens():
         calls["n"] += 1
         return count_tokens(text, model)
 
-    return mock.patch.object(agent_tools, "count_tokens", counting), calls
+    return mock.patch.object(fetch, "count_tokens", counting), calls
 
 
 class TestBudgetLoopTokenization:
@@ -48,7 +49,7 @@ class TestBudgetLoopTokenization:
         patcher, calls = _counting_tokens()
         with patcher:
             with mock.patch.object(
-                tb, "_fetch_html", return_value=(md, _links(64), {}, "static")
+                tb._fetch, "_fetch_html", return_value=(md, _links(64), {}, "static")
             ):
                 raw = tb.inspect_html_page("https://example.com/budget")
 
@@ -70,7 +71,7 @@ class TestBudgetLoopTokenization:
         patcher, calls = _counting_tokens()
         with patcher:
             with mock.patch.object(
-                tb, "_fetch_html",
+                tb._fetch, "_fetch_html",
                 return_value=("short\n", _links(8), {}, "static"),
             ):
                 raw = tb.inspect_html_page("https://example.com/plain")
@@ -88,7 +89,7 @@ class TestBudgetLoopTokenization:
         # Measure the link-less envelope on a pristine toolbox.
         tb_env = _toolbox(tmp_path / "env", max_tokens=10_000, max_markdown_chars=200_000)
         with mock.patch.object(
-            tb_env, "_fetch_html", return_value=(md, _links(0), {}, "static")
+            tb_env._fetch, "_fetch_html", return_value=(md, _links(0), {}, "static")
         ):
             envelope_raw = tb_env.inspect_html_page("https://example.com/env")
         envelope_tokens = count_tokens(envelope_raw, tb_env.model_name)
@@ -101,7 +102,7 @@ class TestBudgetLoopTokenization:
             max_markdown_chars=200_000,
         )
         with mock.patch.object(
-            tb, "_fetch_html", return_value=(md, _links(16), {}, "static")
+            tb._fetch, "_fetch_html", return_value=(md, _links(16), {}, "static")
         ):
             raw = tb.inspect_html_page("https://example.com/env")
 
