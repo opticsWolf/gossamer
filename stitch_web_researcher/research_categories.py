@@ -206,7 +206,7 @@ def describe_categories() -> str:
 _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "openalex": "stitch_web_researcher.research_providers.OpenAlexAdapter",
     "crossref": "stitch_web_researcher.research_providers.CrossrefAdapter",
-    "arxiv": "stitch_web_researcher.research_providers.ArvivAdapter",
+    "arxiv": "stitch_web_researcher.research_providers.ArxivAdapter",
     "courtlistener": "stitch_web_researcher.research_providers.CourtListenerAdapter",
     "ecfr": "stitch_web_researcher.research_providers.EcfrAdapter",
     "federalregister": "stitch_web_researcher.research_providers.FederalRegisterAdapter",
