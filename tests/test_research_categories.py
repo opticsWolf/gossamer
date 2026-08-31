@@ -128,6 +128,108 @@ def test_search_category_adapter_failure_is_surfaced_not_raised(monkeypatch):
     assert "error" in out["results"]
 
 
+def test_search_category_default_provider_when_omitted(monkeypatch):
+    seen = {}
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                seen["provider"] = provider
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    out = rc.search_category(object(), "a peer reviewed paper on graphs")
+    assert out["category"] == "scholarly"
+    assert out["provider"] == "openalex"
+    assert seen["provider"] == "openalex"
+
+
+def test_search_category_explicit_provider_calls_that_source(monkeypatch):
+    seen = {}
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                seen["provider"] = provider
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    out = rc.search_category(
+        object(), "a citation on arxiv", provider="crossref", max_results=2
+    )
+    assert out["category"] == "scholarly"
+    assert out["provider"] == "crossref"
+    assert seen["provider"] == "crossref"
+    assert out["available_providers"] == ["openalex", "crossref", "arxiv"]
+
+
+def test_search_category_invalid_provider_is_rejected_not_raised():
+    # A provider that does not belong to the classified category is reported
+    # as an error, never raised, and never contacts any adapter.
+    out = rc.search_category(
+        object(), "a peer reviewed paper on graphs", provider="ecfr"
+    )
+    assert out["category"] == "scholarly"
+    assert out["provider"] == "ecfr"
+    assert "error" in out
+    assert "not available" in out["error"]
+    assert out["results"] == []
+
+
+def test_search_category_legal_routes_to_default_provider(monkeypatch):
+    seen = {}
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                seen["provider"] = provider
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    out = rc.search_category(object(), "section 2 of the code of federal regulations")
+    assert out["category"] == "legal"
+    assert out["provider"] == "courtlistener"
+    assert seen["provider"] == "courtlistener"
+
+
+def test_search_category_financial_routes_to_default_provider(monkeypatch):
+    seen = {}
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                seen["provider"] = provider
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    out = rc.search_category(object(), "AAPL stock quote today")
+    assert out["category"] == "financial"
+    assert out["provider"] == "alphavantage"
+    assert seen["provider"] == "alphavantage"
+
+
+def test_every_adapter_category_provider_has_a_registered_factory():
+    # Drift guard: every provider named in an adapter category must resolve
+    # through the factory, so a category can't list a source that isn't wired.
+    for c in rc.CATEGORIES:
+        if c.kind != "adapter":
+            continue  # engine categories (general) use the toolbox search path
+        for p in c.providers:
+            assert p in rc._ADAPTER_FACTORIES, p
+
+
 def test_make_adapter_returns_real_adapter_classes():
     assert isinstance(rc._make_adapter("openalex"), OpenAlexAdapter)
     assert isinstance(rc._make_adapter("open-meteo"), OpenMeteoAdapter)
@@ -148,7 +250,8 @@ def test_describe_categories_reflects_every_category():
     # assert on the display name.
     for c in rc.CATEGORIES:
         assert c.name in text, c.name
-        assert rc._display(c.provider) in text, c.provider
+        for p in c.providers:
+            assert rc._display(p) in text, p
 
 
 def test_facade_research_categories_returns_taxonomy():
@@ -161,11 +264,19 @@ def test_facade_research_categories_returns_taxonomy():
         respect_robots=False,
     )
     data = json.loads(tb.research_categories())
-    assert {d["category"] for d in data} == {"scholarly", "geo", "general"}
+    assert {d["category"] for d in data} == {
+        "scholarly", "legal", "financial", "geo", "general",
+    }
     by_name = {d["category"]: d for d in data}
-    assert by_name["scholarly"]["provider"] == "openalex"
-    assert by_name["geo"]["provider"] == "open-meteo"
-    assert by_name["general"]["provider"] == "duckduckgo"
+    assert by_name["scholarly"]["default_provider"] == "openalex"
+    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv"]
+    assert by_name["legal"]["providers"] == [
+        "courtlistener", "ecfr", "federalregister", "eurlex", "german",
+    ]
+    assert by_name["financial"]["providers"] == ["alphavantage", "yahoo"]
+    assert by_name["geo"]["default_provider"] == "open-meteo"
+    assert by_name["general"]["default_provider"] == "duckduckgo"
+    assert by_name["general"]["provider_kind"] == "engine"
 
 
 # ---------------------------------------------------------------------------

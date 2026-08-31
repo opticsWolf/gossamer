@@ -583,18 +583,22 @@ class WebResearcherToolbox:
             provider=provider,
         )
 
-    def research_by_category(self, query: str, max_results: int = 5) -> str:
+    def research_by_category(
+        self, query: str, max_results: int = 5, provider: Optional[str] = None
+    ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
         Thin wrapper over :func:`research_categories.search_category`. Classifies
-        *query* into a domain category (scholarly / geo / general) and triggers
-        the provider best suited to it: scholarly -> ``openalex``, geo ->
-        ``open-meteo`` (both domain adapters called directly), general ->
-        ``duckduckgo`` (the toolbox's normal caching/deduped search path).
-        Returns a JSON payload naming the chosen category, provider and results.
+        *query* into a domain category (scholarly / legal / financial / geo /
+        general) and triggers **one** provider. Pass ``provider=<id>`` to call a
+        specific provider separately (e.g. ``provider=crossref`` for a
+        scholarly query); otherwise the category's default (first) provider is
+        used. There is no automatic fallback between providers -- the caller
+        chooses which source to query. Returns a JSON payload naming the chosen
+        category, the provider actually called, and results.
         """
         return json.dumps(
-            search_category(self, query, max_results=max_results),
+            search_category(self, query, provider=provider, max_results=max_results),
             indent=2,
             default=str,
         )
@@ -611,7 +615,8 @@ class WebResearcherToolbox:
             {
                 "category": c.name,
                 "description": c.description,
-                "provider": c.provider,
+                "providers": list(c.providers),
+                "default_provider": c.default_provider,
                 "provider_kind": c.kind,
             }
             for c in CATEGORIES

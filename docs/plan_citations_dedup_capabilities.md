@@ -126,56 +126,54 @@ Pure, dependency-free (stdlib `datetime`, `re`, `json` only). No HTTP.
 
 ---
 
-## Workstream 3 — Structured-Domain Capability Interface + Per-Category Fallback
+## Workstream 3 — Structured-Domain Capability Interface + Per-Provider Access
+
+**STATUS: DONE (v0.5.6).** Implemented per-provider access; **no automatic
+fallback chain** — the agent chooses which source to query.
 
 ### 3.1 Current state
 
-`research_categories.py` already has the exact skeleton to extend:
+`research_categories.py` already had a declarative factory registry:
 
-- `CATEGORIES` — ordered list of `Category(name, description, keywords, provider, kind)`. `general` (no keywords) is the implicit fallback.
 - `_ADAPTER_FACTORIES` — `provider → dotted path` map, instantiated lazily by `_make_adapter`.
-- `classify(query)` — first keyword hit wins; `search_category` instantiates the adapter and calls `.search()`, catching all exceptions into a result dict.
+- `_PROVIDER_DISPLAY` — `provider → display name` for the LLM-facing description.
+- `CATEGORIES` — ordered `Category(...)` table; `general` (no keywords) is the implicit fallback.
+- 26 domain adapters already exist in `research_providers.py` (OpenAlex, Crossref, ArXiv, CourtListener, eCFR, Federal Register, EUR-Lex, German Gov, AlphaVantage, Yahoo Finance, …) but only `scholarly→openalex` and `geo→open-meteo` were reachable through the category surface.
 
-Currently only `scholarly→openalex` and `geo→open-meteo` are wired; the other 24 adapters (legal, financial, more scholarly) exist but are unreachable through the category surface.
+### 3.2 Design (per-provider, NOT a fallback chain)
 
-### 3.1 Capability interface
-
-Treat each category as a *capability* with an ordered **fallback chain** rather than a single provider:
+A category groups one or more providers. The caller passes `provider=<id>` to
+`search_category`/`research_by_category` to call any of them **separately**.
+There is **no automatic fallback** between providers — the model keeps control
+of which source it queries (and avoids N+1 calls by design).
 
 ```
-Category(name, description, keywords,
-         providers=[("openalex",), ("crossref",), ("arxiv",)],   # tried in order
-         fallback_engine="duckduckgo", kind="adapter")
+Category(name, description, keywords, providers=(...), kind)
 ```
 
-- `providers` is a list of tuples; each tuple is tried, and the **first** that returns ≥1 result wins. If all raise/fail empty, fall through to the next, finally to `fallback_engine`.
-- `search_category` already loops adapters defensively; extend it to walk the chain. A category with an empty providers list and only a `fallback_engine` is a pure "engine" category (the current `general` behaviour).
+- `providers` is an ordered tuple; the **first** is the default when none is supplied.
+- `search_category(tb, query, provider=None, max_results=5)`:
+  - `provider=None` → category default (first).
+  - `provider=<id>` in `category.providers` → that provider is called.
+  - `provider=<id>` **not** in the category → returns an `error` dict (never raises, never contacts a wrong source).
+- Adapter categories call the adapter's `.search()` directly; the engine category (`general`) calls `tb.search_web(provider=...)`.
+- Payload includes `available_providers` so the model sees every option.
 
-### 3.2 New categories to register
+### 3.3 Categories wired
 
-| capability | keywords (seed) | providers (fallback order) |
-|---|---|---|
-| `scholarly` | (existing, expanded: add "arxiv", "doi", "peer-reviewed") | openalex → crossref → arxiv |
-| `legal` | "case law", "statute", "regulation", "code of federal regulations", "congress bill", "eur-lex", "court", "legislation" | courtlistener → ecfr → federalregister → eurlex → germangov |
-| `financial` | "stock", "quote", "finance", "market", "exchange rate", "index" | alphavantage → yahoofinance |
-| `geo` | (existing) | open-meteo |
+| capability | providers (call any separately) |
+|---|---|
+| `scholarly` | openalex, crossref, arxiv |
+| `legal` | courtlistener, ecfr, federalregister, eurlex, german |
+| `financial` | alphavantage, yahoo |
+| `geo` | open-meteo |
+| `general` (engine) | duckduckgo |
 
-- Register the new providers in `_ADAPTER_FACTORIES` (they already exist in `research_providers.py`).
-- Add display names in `_PROVIDER_DISPLAY`.
-- Keep `classify` keyword-first; new categories slot in before `general`.
-
-### 3.3 Per-category fallback semantics
-
-- **Result-level fallback**: walk `providers`; a provider that returns 0 results (or errors) is skipped, next tried. This is *not* merging — it's "best source first, next-best if the best has nothing."
-- **Budget-aware**: cap the number of fallback attempts per category (e.g. 3) to avoid N+1 calls when every adapter is down; the last failure becomes the result's `error`.
-- **Optics**: the returned payload names the winning provider and any skipped ones (`{"provider": ..., "tried": [...], "skipped": [...]}`) so the model knows why it got what it did.
+New keyword seeds added: `_LEGAL` (case law, statute, regulation, CFR, congress bill, eur-lex, legislation, …), `_FINANCIAL` (stock, quote, market, exchange rate, index, …). `classify` stays keyword-first; `legal`/`financial` slot in before `general`.
 
 ### 3.4 Tests
 
-`tests/test_category_fallback.py` — offline:
-- `classify` routes "latest arXiv paper on RL" → `scholarly`; "Section 2 of the CFR" → `legal`; "AAPL quote" → `financial`.
-- `_make_adapter` instantiates each newly-registered provider.
-- A walk with a stubbed adapter chain: first adapter returns [], second returns results → winner is the second; all fail → falls to engine.
+`tests/test_research_categories.py` (offline) — covers: `classify` routing for the new categories; default-provider selection; explicit `provider=` routing to a specific source; invalid-provider rejection (error dict, no raise, no adapter contact); and a drift guard that every adapter-category provider has a registered factory.
 
 ---
 

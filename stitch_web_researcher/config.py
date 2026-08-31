@@ -374,6 +374,15 @@ TOOL_REGISTRY = (
                 5,
                 "Maximum number of results to return.",
             ),
+            ToolParam(
+                "provider",
+                str,
+                None,
+                "Optional provider to call separately (e.g. 'crossref', 'arxiv', "
+                "'courtlistener', 'ecfr', 'alphavantage', 'yahoo'). When omitted, "
+                "the category's default provider is used. No automatic fallback "
+                "between providers -- the caller chooses.",
+            ),
         ),
     ),
     ToolSpec(

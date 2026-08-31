@@ -128,6 +128,31 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   APA/MLA are documented approximations, not a full CSL-STYLE processor.
   Tests: `tests/test_citations.py` (+32).
 
+- **Result dedup + source liveness (Plan workstream 2, new `dedup.py` / `liveness.py`).**
+  Shared, offline-testable helpers: `dedup.content_hash()` (SHA-256 of trimmed
+  text) and `dedup.dedupe(results, by=("doi","url","hash"))` → `(kept, dropped)`
+  with `dropped` a list of `{index, reason, match}`; accepts dicts and
+  attribute-objects. `citations.dedupe_records` now delegates to the shared
+  helper. `liveness.check_liveness(url, timeout)` probes a URL through the
+  existing httpx/SSRF/robots pipeline via injectable deps, returning
+  `{url, status, alive, http_status, error?}` (status ∈ ok/unreachable/blocked/error).
+  New `check_sources(urls, mode="status")` toolbox tool (SSRF-validated, polite,
+  sequential) and a `liveness_timeout` `ToolboxConfig` field. `research()` now
+  reports `dropped_dupes`. Tests: `tests/test_dedup_liveness.py` (+26).
+
+- **Category-aware routing: per-provider access (Plan workstream 3).**
+  A category now groups one or more providers; `search_category` /
+  `research_by_category` take an optional `provider=<id>` to call any of them
+  **separately**. There is **no automatic fallback chain** — the model chooses
+  the source (avoids N+1 calls by design). New categories `legal`
+  (courtlistener/ecfr/federalregister/eurlex/german) and `financial`
+  (alphavantage/yahoo); `scholarly` exposes openalex/crossref/arxiv. New
+  keyword seeds `_LEGAL` / `_FINANCIAL`; `_ADAPTER_FACTORIES` + `_PROVIDER_DISPLAY`
+  register the new adapters; `describe_categories()` auto-updates the LLM
+  description. Invalid `provider=` for a category returns an error dict (never
+  raises, never contacts a wrong source). Payload gains `available_providers`.
+  Tests: `tests/test_research_categories.py` (+6).
+
 ## [0.5.0]
 
 - **`research_by_category`: category-aware, provider-specific search tool.**
