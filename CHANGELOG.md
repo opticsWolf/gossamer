@@ -6,6 +6,20 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
 ## [Unreleased]
 
+- **Citations: APA (7th) now renders via citeproc-py (official CSL engine).**
+  `citations.py` gains an optional CSL rendering path: `to_apa` builds
+  CSL-JSON (lowercase `id`; string `container-title`, since citeproc-py's
+  plain formatter does a bare `str()` on list fields) and renders it with the
+  bundled `apa.csl` style through `CitationStylesBibliography`. When
+  citeproc-py is not installed, or the style file is unavailable, it falls
+  back to the retained pure-Python approximation, so the module and the
+  `export_citations` tool stay fully functional offline. MLA has no style
+  shipped with citeproc-py-styles, so it always uses the approximation.
+  citeproc-py / citeproc-py-styles are an optional `citations` extra (lazy
+  import; BibTeX / CSL-JSON formatters stay pure and tests stay green with
+  or without it). Adds `TestCiteprocIntegration` (citeproc path + forced-
+  unavailable fallback). Full suite green (1162 passed).
+
 - **`agent_tools.py` composition split (god-class reduction), incremental.**
   The 5100-line `WebResearcherToolbox` facade is split into focused
   collaborators; each phase keeps the class body's behaviour identical and

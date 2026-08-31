@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "stitch-web-researcher"
-version = "0.5.3"
+version = "0.5.4"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -65,6 +65,12 @@ documents = [
 # §7: optional prompt-injection guard (JailGuard ONNX detector). The package
 # imports and runs without it; only an enabled guard needs the model.
 guard = ["jailguard>=0.1.2"]
+# Optional CSL rendering for APA/MLA (citeproc-py + bundled styles). NOT a
+# hard dependency: citeproc is imported lazily inside stitch_web_researcher
+# .citations, and to_apa / to_mla fall back to the pure-Python approximation
+# when the extra is absent. citeproc-py is purely local (no network), so the
+# APA path stays testable offline. six is citeproc-py's runtime dep.
+citations = ["citeproc-py>=0.11", "citeproc-py-styles>=0.1.6", "six>=1.16"]
 
 [project.scripts]
 stitch-web-researcher-mcp = "stitch_web_researcher.mcp_server:main"

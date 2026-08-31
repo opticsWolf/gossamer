@@ -20,6 +20,8 @@ from stitch_web_researcher.citations import (
     to_bibtex,
     to_csl_json,
     to_mla,
+    _apa_approx,
+    _mla_approx,
 )
 
 
@@ -254,25 +256,69 @@ class TestToCslJson:
 # ── APA / MLA ────────────────────────────────────────────────────────
 
 class TestApamla:
+    """Approximation formatters -- the citeproc-py fallback.
+
+    These call the pure approximations directly, so they are deterministic
+    whether or not citeproc-py is installed.
+    """
+
     def test_apa_shape(self):
-        out = to_apa([record_from_result(ALEX)])
+        out = _apa_approx([record_from_result(ALEX)])
         assert out.startswith("Doe, J.")
         assert "(1990)" in out
         assert "Some practical hints for searching" in out
-        assert "*Proceedings of the IEEE*" in out
+        assert "*Proceedings of the IEEE*" in out  # approx uses markdown italics
         assert "https://doi.org/10.1109/5.771073" in out
         assert ".." not in out  # no double period
 
     def test_mla_shape(self):
-        out = to_mla([record_from_result(CROSSREF)])
+        out = _mla_approx([record_from_result(CROSSREF)])
         assert '"A large language model for all living things"' in out
         assert "*Nature Machine Intelligence*" in out
         assert "doi.org/10.1038/s41586-020-0694-2" in out
         assert out.startswith("Brown, Alex")
 
     def test_apa_no_double_period(self):
-        out = to_apa([record_from_result(ALEX)])
+        out = _apa_approx([record_from_result(ALEX)])
         assert "J.. " not in out
+
+
+# ── citeproc-py integration (optional dependency) ────────────────
+
+class TestCiteprocIntegration:
+    """APA via citeproc-py and the graceful fallback.
+
+    citeproc-py is purely local (no network), so these stay offline. The
+    missing-dependency path is exercised by blocking the import.
+    """
+
+    def test_apa_via_citeproc(self):
+        pytest.importorskip("citeproc")
+        out = to_apa([record_from_result(ALEX)])
+        assert out.startswith("Doe, J.")
+        assert "(1990)" in out
+        assert "Some practical hints for searching" in out
+        assert "Proceedings of the IEEE" in out
+        assert "https://doi.org/10.1109/5.771073" in out
+        # citeproc's plain formatter emits no markdown italics
+        assert "*" not in out
+
+    def test_apa_falls_back_without_citeproc(self, monkeypatch):
+        # Simulate citeproc-py not being installed.
+        import sys
+        monkeypatch.setitem(sys.modules, "citeproc", None)
+        out = to_apa([record_from_result(ALEX)])
+        # Fallback approximation: markdown italics present again.
+        assert "*Proceedings of the IEEE*" in out
+        assert out.startswith("Doe, J.")
+
+    def test_mla_uses_fallback_no_style(self):
+        # No 'mla' style ships with citeproc-py-styles, so MLA is always
+        # rendered by the approximation (never citeproc).
+        out = to_mla([record_from_result(CROSSREF)])
+        approx = _mla_approx([record_from_result(CROSSREF)])
+        assert out == approx
+        assert "*Nature Machine Intelligence*" in out
 
 
 # ── format_citations (top-level) ─────────────────────────────────────

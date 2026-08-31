@@ -26,10 +26,16 @@ Design constraints carried over from the existing code:
 
 ## Workstream 1 — Citation / Export Path
 
-> **IMPLEMENTED** (v0.5.3). Artifacts: `stitch_web_researcher/citations.py`,
+> **IMPLEMENTED** (v0.5.4). Artifacts: `stitch_web_researcher/citations.py`,
 > the `export_citations` `ToolSpec` in `config.py::TOOL_REGISTRY`, the
 > `WebResearcherToolbox.export_citations` facade method in `agent_tools.py`,
-> and `tests/test_citations.py` (32 tests). Suite green.
+> and `tests/test_citations.py` (35 tests, incl. `TestCiteprocIntegration`).
+> Suite green (1162 passed). v0.5.4 adds the optional citeproc-py APA path
+> (see the `to_apa`/`to_mla` note in §1.3) on top of the v0.5.3 implementation.
+
+> **Note (v0.5.4):** citeproc-py / citeproc-py-styles are an optional
+> `citations` extra (`pyproject.toml`); lazy import, BibTeX/CSL-JSON stay
+> pure, suite stays green with or without them.
 >
 > Small deviation from the draft spec: the MCP tool's `results` param is a
 > `list[str]` (the schema has no dict type), so the facade parses each entry
@@ -65,7 +71,7 @@ Pure, dependency-free (stdlib `datetime`, `re`, `json` only). No HTTP.
 
 - `to_bibtex(records)` — `@article{key, ...}` / `@inproceedings` heuristic (detect from `venue`/`event` hints, else default `@article`); citation key = `firstauthoryear` lowercased.
 - `to_csl_json(records)` — the canonical machine interchange form (items with `id`→`DOI`, `title`, `author`, `container-title`, `issued`, `URL`, `type: article-journal`). CSL-JSON is the *hub*: APA/MLA can be derived from it, and it's what citeproc libraries consume.
-- `to_apa(records)` and `to_mla(records)` — style templates. These are **approximations** (no full CSL-STYLE processor); document that limitation in the docstring and in the tool description. APA 7th and MLA 9th basic shapes: author `Last, F. M.`, year in parens, title in quotes/title-case, venue italic.
+- `to_apa(records)` and `to_mla(records)` — **APA renders through citeproc-py** (optional `citations` extra) with the bundled `apa.csl` style for style-faithful output; **MLA uses the pure-Python approximation** (no MLA style ships with citeproc-py-styles). When citeproc-py is absent, APA also falls back to the approximation. The approximation (retained as the fallback) covers APA 7th / MLA 9th basic shapes: author `Last, F. M.`, year in parens, title in quotes/title-case, venue italic. citeproc-py is imported lazily and BibTeX/CSL-JSON stay pure, so the module and tests work with or without it. Note: citeproc-py's `CiteProcJSON` reads a lowercase `id` key and its plain formatter emits no markdown italics, so the citeproc path builds its own CSL items (lowercase `id`, string `container-title`) rather than reusing `to_csl_json` output.
 
 ### 1.4 Toolbox tool + registry
 

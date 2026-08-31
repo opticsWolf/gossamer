@@ -378,7 +378,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "export_citations",
-        "Reconstruct and export citations from search results (Plan workstream 1). Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns the citations formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are pulled from the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj). APA/MLA are approximations, not full CSL-STYLE output.",
+        "Reconstruct and export citations from search results (Plan workstream 1). Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns the citations formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are pulled from the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj). APA (7th) renders through citeproc-py (official CSL engine) with the bundled apa.csl style when citeproc-py is installed, falling back to a best-effort approximation otherwise; MLA (9th) uses the approximation (no MLA style ships with citeproc-py).",
         "export_citations",
         (
             ToolParam(

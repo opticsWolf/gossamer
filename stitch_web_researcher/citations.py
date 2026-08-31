@@ -17,10 +17,13 @@ Formatters:
   * :func:`to_csl_json`-- the canonical machine hub (APA/MLA derive from it).
   * :func:`to_apa` / :func:`to_mla` -- style templates.
 
-APA (7th) and MLA (9th) formatters are **approximations**, not a full
-CSL-STYLE processor: they cover the common journal-article shape and leave
-unusual fields to best-effort. That limitation is documented in the tool
-description so callers don't expect style-perfect output.
+APA (7th) renders through **citeproc-py** with the bundled ``apa.csl`` style
+for style-faithful output. MLA (9th) has no style shipped with citeproc-py,
+so it uses the pure-Python approximation below. When citeproc-py is not
+installed, APA also falls back to that approximation. The approximations
+cover the common journal-article shape and leave unusual fields to
+best-effort; that limitation is documented in the tool description so
+callers don't expect style-perfect output.
 """
 
 from __future__ import annotations
@@ -318,7 +321,6 @@ def to_bibtex(records: List[BibliographicRecord]) -> str:
     """Render records as a BibTeX fragment (``@article`` default)."""
     if not records:
         return ""
-        return ""
     out = []
     for r in records:
         kind = r.kind or "article-journal"
@@ -389,9 +391,8 @@ def _apa_author(author: str) -> str:
     return f"{fam}, {initials}" if initials else fam
 
 
-def to_apa(records: List[BibliographicRecord]) -> str:
-    """Render records as APA (7th) approximations, one per line."""
-    records = dedupe_records(records)
+def _apa_approx(records: List[BibliographicRecord]) -> str:
+    """Pure-Python APA (7th) approximation (fallback when citeproc-py is absent)."""
     lines = []
     for r in records:
         author_part = ", ".join(_apa_author(a) for a in r.authors)
@@ -411,9 +412,8 @@ def to_apa(records: List[BibliographicRecord]) -> str:
     return "\n\n".join(lines)
 
 
-def to_mla(records: List[BibliographicRecord]) -> str:
-    """Render records as MLA (9th) approximations, one per line."""
-    records = dedupe_records(records)
+def _mla_approx(records: List[BibliographicRecord]) -> str:
+    """Pure-Python MLA (9th) approximation (fallback when citeproc-py is absent)."""
     lines = []
     for r in records:
         author = (", ".join(r.authors) if r.authors else "").rstrip(".")
@@ -429,6 +429,99 @@ def to_mla(records: List[BibliographicRecord]) -> str:
         line = f"{author}. {title}. {venue}, {year}.{link}".strip()
         lines.append(line)
     return "\n\n".join(lines)
+
+
+# ────────────────────────────────────────────────────────────────
+# citeproc-py integration (optional)
+# ────────────────────────────────────────────────────────────────
+
+def _csl_item_for_citeproc(record: BibliographicRecord, item_id: str) -> Dict[str, Any]:
+    """Build one CSL item for citeproc-py's ``CiteProcJSON`` parser.
+
+    Differs from spec CSL-JSON output (see :func:`to_csl_json`):
+
+      * identifier key is lowercase ``"id"`` -- citeproc-py reads the
+        lowercase key (uppercase ``"ID"`` raises ``UnboundLocalError``);
+      * ``container-title`` is a bare string -- citeproc-py's plain
+        formatter does a bare ``str()`` on list-valued fields and would
+        otherwise emit a Python list repr such as ``['Proceedings']``.
+    """
+    author_list = []
+    for a in record.authors:
+        fam, giv = _author_last_first(a)
+        author_list.append({"family": fam, "given": giv} if giv else {"family": fam})
+    item: Dict[str, Any] = {
+        "id": item_id,
+        "type": record.kind or "article-journal",
+        "title": record.title or "",
+    }
+    if record.doi:
+        item["DOI"] = record.doi
+    if record.url:
+        item["URL"] = record.url
+    if author_list:
+        item["author"] = author_list
+    if record.venue:
+        item["container-title"] = record.venue
+    if record.publisher:
+        item["publisher"] = record.publisher
+    if record.year:
+        issued = {"date-parts": [[int(record.year)]]}
+        if record.month:
+            issued["date-parts"][0].append(int(record.month[:2]))
+        item["issued"] = issued
+    if record.abstract:
+        item["abstract"] = re.sub(r"\s+", " ", record.abstract).strip()
+    return item
+
+
+def _render_with_citeproc(style_name: str, records: List[BibliographicRecord]) -> str:
+    """Render *records* with citeproc-py using the named CSL style.
+
+    Returns the bibliography as a single newline-joined string. Raises when
+    citeproc-py is not installed or the style file is unavailable -- callers
+    fall back to the pure-Python approximation so :func:`format_citations`
+    never breaks.
+    """
+    from citeproc import Citation, CitationItem, CitationStylesBibliography, CitationStylesStyle
+    from citeproc.formatter import plain
+    from citeproc.source.json import CiteProcJSON
+
+    items = [_csl_item_for_citeproc(r, str(i)) for i, r in enumerate(records)]
+    style = CitationStylesStyle(style_name)  # StyleNotFoundError if unavailable
+    bib = CitationStylesBibliography(style, CiteProcJSON(items), formatter=plain)
+    for item in items:
+        bib.register(Citation([CitationItem(item["id"])]))
+    # The plain formatter yields one MixedString per entry; str() flattens
+    # each entry's fragments into clean text.
+    return "\n".join(str(entry) for entry in bib.bibliography())
+
+
+def to_apa(records: List[BibliographicRecord]) -> str:
+    """Render records as APA (7th).
+
+    Uses citeproc-py with the bundled ``apa.csl`` style for style-faithful
+    output. Falls back to :func:`_apa_approx` when citeproc-py is not
+    installed or the style file is unavailable.
+    """
+    records = dedupe_records(records)
+    try:
+        return _render_with_citeproc("apa", records)
+    except Exception:  # noqa: BLE001 -- citeproc is optional; never break export
+        return _apa_approx(records)
+
+
+def to_mla(records: List[BibliographicRecord]) -> str:
+    """Render records as MLA (9th).
+
+    Falls back to :func:`_mla_approx` -- no ``mla`` style ships with
+    citeproc-py-styles, so MLA is always rendered by the approximation.
+    """
+    records = dedupe_records(records)
+    try:
+        return _render_with_citeproc("mla", records)
+    except Exception:  # noqa: BLE001 -- citeproc is optional; never break export
+        return _mla_approx(records)
 
 
 _FORMATTERS = {

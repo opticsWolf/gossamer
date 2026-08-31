@@ -626,6 +626,11 @@ class WebResearcherToolbox:
         ``research_by_category``). DOIs and URLs are extracted from the
         scholarly adapters' ``doi`` / ``url`` fields.
 
+        APA (7th) renders through citeproc-py (official CSL engine) with the
+        bundled ``apa.csl`` style when citeproc-py is installed, falling back
+        to a best-effort approximation otherwise. MLA (9th) uses the
+        approximation -- no MLA style ships with citeproc-py.
+
         Parameters
         ----------
         style:
