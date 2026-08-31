@@ -397,6 +397,18 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
+        "research_categories",
+        "Introspection: the live category -> provider taxonomy as JSON. Returns "
+        "every domain category (scholarly, legal, financial, geo, general) with "
+        "its purpose, the providers it exposes (raw ids), the default provider, "
+        "and whether each is an 'adapter' (domain source) or 'engine' (web "
+        "search). Call this on demand to discover which provider to pass to "
+        "research_by_category's provider= param -- the ids listed here are "
+        "exactly what that param accepts.",
+        "research_categories",
+        (),
+    ),
+    ToolSpec(
         "export_citations",
         "Reconstruct and export citations from search results (Plan workstream 1). Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns the citations formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are pulled from the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj). APA (7th) renders through citeproc-py (official CSL engine) with the bundled apa.csl style when citeproc-py is installed, falling back to a best-effort approximation otherwise; MLA (9th) uses the approximation (no MLA style ships with citeproc-py).",
         "export_citations",

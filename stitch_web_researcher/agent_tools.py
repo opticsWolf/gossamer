@@ -618,12 +618,13 @@ class WebResearcherToolbox:
         )
 
     def research_categories(self) -> str:
-        """Introspection: the category -> provider map (NOT an MCP tool).
+        """Introspection: the category -> provider map as JSON (MCP tool).
 
-        Returns the research taxonomy as JSON so callers can enumerate the
-        available categories, their purposes and the provider each routes to.
-        Deliberately *not* registered in ``TOOL_REGISTRY``, so it is not part
-        of the MCP surface; call it directly on the toolbox.
+        Returns the research taxonomy so callers can enumerate the available
+        categories, their purposes and the provider each routes to. Registered
+        in ``TOOL_REGISTRY`` as ``research_categories`` so the model can fetch
+        the live taxonomy on demand and discover which id to pass to
+        ``research_by_category``'s provider= param.
         """
         payload = [
             {
