@@ -51,7 +51,7 @@ import httpx
 
 from stitch_web_researcher.search_providers import RateLimit, RateState, ResourceAdapter
 
-_UA = "stitch-web-researcher/0.5.2"
+_UA = "stitch-web-researcher/0.5.3"
 
 
 def _parse_lat_lon(lat_lon: Union[str, Tuple[float, float], List[float]]) -> Tuple[float, float]:

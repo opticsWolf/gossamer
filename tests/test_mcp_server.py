@@ -21,7 +21,9 @@ EXPECTED_TOOLS = {
     "manage_cache",
     # research_by_category is a category-aware overlay; research_categories()
     # is an introspection helper that is deliberately NOT an MCP tool.
+    # export_citations reconstructs citations from search results (Plan ws1).
     "research_by_category",
+    "export_citations",
 }
 
 

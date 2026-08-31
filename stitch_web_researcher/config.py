@@ -376,6 +376,40 @@ TOOL_REGISTRY = (
             ),
         ),
     ),
+    ToolSpec(
+        "export_citations",
+        "Reconstruct and export citations from search results (Plan workstream 1). Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns the citations formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are pulled from the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj). APA/MLA are approximations, not full CSL-STYLE output.",
+        "export_citations",
+        (
+            ToolParam(
+                "results",
+                list[str],
+                description=(
+                    "List of DOIs ('10.xxxx/...'), URLs, or JSON-serialized "
+                    "adapter result dicts to cite."
+                ),
+            ),
+            ToolParam(
+                "style",
+                str,
+                "bibtex",
+                "Citation style: bibtex, csl-json, apa, or mla.",
+                enum=["bibtex", "csl-json", "apa", "mla"],
+            ),
+            ToolParam(
+                "enrich",
+                bool,
+                False,
+                "When true, make one canonical DOI lookup per unique DOI to fill in a missing venue/abstract (best-effort).",
+            ),
+            ToolParam(
+                "dedupe",
+                bool,
+                True,
+                "Collapse records that share a DOI or URL before formatting.",
+            ),
+        ),
+    ),
 )
 
 # Module-level LLM function-calling tool definitions — derived from the

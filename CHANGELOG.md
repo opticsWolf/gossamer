@@ -96,6 +96,24 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   the MCP server as `STITCH_FETCH_JITTER` (default `1.0`). Tests:
   `tests/test_s7_fetch_politeness.py` (+8).
 
+- **Citation reconstruction and export (Plan workstream 1, new `citations.py`).**
+  Reconstructs bibliographic records from the result dicts the scholarly
+  adapters already return (`doi`, `id`, `title`, `authors`, `published`,
+  `raw`) with **no extra network calls**, and renders them as BibTeX,
+  CSL-JSON, APA or MLA. The adapters support two shapes -- the unified form
+  (`authors` a ", "-joined string, `published` a date string) and Crossref's
+  native form (`authors` a list of `{family, given}` dicts, `published` a
+  `{date-parts}` dict) -- and `record_from_result()` normalises both.
+  `enrich_with_doi()` can optionally make one canonical DOI lookup per
+  unique DOI to fill a missing venue/abstract; the adapter is injectable so
+  tests stay offline. `format_citations()` accepts adapter result dicts, bare
+  DOIs, or URLs, and dedupes by DOI then URL. The new `export_citations`
+  MCP tool (`config.py` registry + `agent_tools.py` facade method) takes a
+  `list[str]` of DOIs/URLs/JSON-serialized dicts and returns the formatted
+  citations as text (a JSON error dict on empty / bad style, never a raise).
+  APA/MLA are documented approximations, not a full CSL-STYLE processor.
+  Tests: `tests/test_citations.py` (+32).
+
 ## [0.5.0]
 
 - **`research_by_category`: category-aware, provider-specific search tool.**

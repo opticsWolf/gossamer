@@ -118,6 +118,7 @@ from stitch_web_researcher.document import DocumentExtractor  # noqa: F401
 from stitch_web_researcher.budget import ContentBudget  # noqa: F401
 from stitch_web_researcher.discovery import ResourceDiscovery  # noqa: F401
 from stitch_web_researcher.research_categories import CATEGORIES, search_category  # noqa: F401
+from stitch_web_researcher.citations import format_citations  # noqa: F401
 
 
 class WebResearcherToolbox:
@@ -609,6 +610,63 @@ class WebResearcherToolbox:
             for c in CATEGORIES
         ]
         return json.dumps(payload, indent=2)
+
+    def export_citations(
+        self,
+        results,
+        style: str = "bibtex",
+        enrich: bool = False,
+        dedupe: bool = True,
+    ) -> str:
+        """Reconstruct and export citations from results (Plan workstream 1).
+
+        ``results`` is a list of entries; each entry is a bare DOI
+        (``10.xxxx/...``), a URL, or a JSON-serialized adapter result dict
+        (any of the dicts returned by ``web_search`` / ``research`` /
+        ``research_by_category``). DOIs and URLs are extracted from the
+        scholarly adapters' ``doi`` / ``url`` fields.
+
+        Parameters
+        ----------
+        style:
+            One of ``bibtex`` / ``csl-json`` / ``apa`` / ``mla``.
+        enrich:
+            When true, make one canonical DOI lookup per unique DOI to fill
+            in a missing venue / abstract (best-effort; never raises).
+        dedupe:
+            Collapse records sharing a DOI or URL before formatting.
+
+        Returns the formatted citations as text (empty-result case returns a
+        JSON error dict so callers never branch on an empty string). Never
+        raises: a bad *style* or *results* yields a JSON error dict.
+        """
+        parsed = []
+        for item in (results or []):
+            if isinstance(item, str):
+                try:
+                    loaded = json.loads(item)
+                except (json.JSONDecodeError, TypeError):
+                    loaded = None
+                if isinstance(loaded, dict):
+                    parsed.append(loaded)
+                    continue
+            parsed.append(item)
+        try:
+            text = format_citations(
+                parsed, style=style, enrich=enrich, dedupe=dedupe
+            )
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, indent=2)
+        if not text:
+            return json.dumps(
+                {
+                    "error": "no citable records: pass DOIs, URLs, or result dicts",
+                    "style": style,
+                    "count": 0,
+                },
+                indent=2,
+            )
+        return text
 
     def search_web(
         self,

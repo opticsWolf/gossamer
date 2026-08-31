@@ -45,6 +45,8 @@ class TestRegistryShape:
             "crawl",
             "manage_cache",
             "research_by_category",
+            # export_citations reconstructs citations from search results (Plan ws1).
+            "export_citations",
         }
 
     def test_every_spec_method_exists(self, tmp_path):
