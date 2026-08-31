@@ -24,6 +24,8 @@ EXPECTED_TOOLS = {
     # export_citations reconstructs citations from search results (Plan ws1).
     "research_by_category",
     "export_citations",
+    # check_sources probes source reachability without full fetches (Plan ws2).
+    "check_sources",
 }
 
 

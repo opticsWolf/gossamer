@@ -33,6 +33,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from stitch_web_researcher.dedup import dedupe as _shared_dedupe
+
 __all__ = [
     "BibliographicRecord",
     "record_from_result",
@@ -253,22 +255,13 @@ def enrich_with_doi(
 def dedupe_records(
     records: List[BibliographicRecord],
 ) -> List[BibliographicRecord]:
-    """Collapse records sharing a DOI, then a normalised URL. Returns kept."""
-    seen_doi: set = set()
-    seen_url: set = set()
-    kept: List[BibliographicRecord] = []
-    for r in records:
-        if r.doi:
-            key = r.doi.lower()
-            if key in seen_doi:
-                continue
-            seen_doi.add(key)
-        if r.url:
-            u = re.sub(r"[?#].*$", "", str(r.url).rstrip("/")).lower()
-            if u in seen_url:
-                continue
-            seen_url.add(u)
-        kept.append(r)
+    """Collapse records sharing a DOI, then a normalised URL. Returns kept.
+
+    Delegates to the shared :func:`stitch_web_researcher.dedup.dedupe` so
+    DOI/URL identity lives in one place (Workstream 2); the citation order
+    (DOI first, then URL) is preserved via ``by=("doi", "url")``.
+    """
+    kept, _ = _shared_dedupe(records, by=("doi", "url"))
     return kept
 
 

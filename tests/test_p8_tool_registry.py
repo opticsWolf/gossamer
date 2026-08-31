@@ -35,7 +35,7 @@ class TestRegistryShape:
         # + inspect_html_structured folded into their base tools; the cache
         # trio + get_stats replaced by manage_cache. research_by_category is a
         # category-aware, provider-specific overlay (scholarly/geo/general).
-        # 8 tools total.
+        # 10 tools total.
         assert REGISTRY_NAMES == {
             "web_search",
             "inspect_html_page",
@@ -47,6 +47,8 @@ class TestRegistryShape:
             "research_by_category",
             # export_citations reconstructs citations from search results (Plan ws1).
             "export_citations",
+            # check_sources probes source reachability without full fetches (Plan ws2).
+            "check_sources",
         }
 
     def test_every_spec_method_exists(self, tmp_path):

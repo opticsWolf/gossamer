@@ -26,6 +26,10 @@ class SearchService:
 
     def __init__(self, tb):
         self._tb = tb
+        # Workstream 2: number of results collapsed as duplicates by the
+        # most recent search (set by _search_failover / _search_merged).
+        # Surfaced to research() as ``dropped_dupes``.
+        self._last_search_dropped = 0
 
 
 
@@ -168,6 +172,10 @@ class SearchService:
 
         providers_to_try = self._resolve_providers(provider)
 
+        # Reset the drop counter for this search (a cache hit below returns
+        # early without re-deduping, so it reports 0).
+        self._last_search_dropped = 0
+
         if self._tb._search_merge:
             results, any_ok = self._search_merged(
                 providers_to_try, query, max_results
@@ -199,7 +207,9 @@ class SearchService:
                     prov.__class__.__name__, query, e,
                 )
                 continue
-            return self._dedup_results(results), True
+            deduped = self._dedup_results(results)
+            self._last_search_dropped = len(results) - len(deduped)
+            return deduped, True
         return [], False
 
     def _search_merged(self, providers_to_try, query, max_results):
@@ -212,6 +222,7 @@ class SearchService:
         merged: list = []
         seen: set = set()
         any_ok = False
+        dropped_dupes = 0
         for prov in providers_to_try:
             try:
                 results = prov.search(query, max_results=max_results)
@@ -228,6 +239,7 @@ class SearchService:
                 key = self._result_url_key(r)
                 if key:
                     if key in seen:
+                        dropped_dupes += 1
                         continue
                     seen.add(key)
                 merged.append(r)
@@ -235,6 +247,7 @@ class SearchService:
                     break
             if len(merged) >= max_results:
                 break
+        self._last_search_dropped = dropped_dupes
         return merged[:max_results], any_ok
 
     @staticmethod

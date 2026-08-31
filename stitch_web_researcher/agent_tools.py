@@ -113,6 +113,8 @@ from stitch_web_researcher.crawl import (  # noqa: F401
     Crawler,
 )
 from stitch_web_researcher.search import SearchService  # noqa: F401
+from stitch_web_researcher.dedup import dedupe  # noqa: F401  # Workstream 2
+from stitch_web_researcher.liveness import check_liveness, LIVENESS_TIMEOUT  # noqa: F401  # Workstream 2
 from stitch_web_researcher.fetch import FetchService  # noqa: F401
 from stitch_web_researcher.document import DocumentExtractor  # noqa: F401
 from stitch_web_researcher.budget import ContentBudget  # noqa: F401
@@ -218,6 +220,11 @@ class WebResearcherToolbox:
         self.link_cap = max(1, int(config.candidate_cap))
         # Upper bound on simultaneous connections opened by batch fetching.
         self.max_concurrency = max(1, int(config.max_concurrency))
+        # Workstream 2: per-URL timeout for the check_sources liveness probe.
+        try:
+            self._liveness_timeout = float(config.liveness_timeout)
+        except (TypeError, ValueError):
+            self._liveness_timeout = LIVENESS_TIMEOUT
         # S3: response-body size cap, passed through to the Rust core.
         self.max_response_bytes = max(1, int(config.max_response_bytes))
         # S4: robots.txt compliance (per-host fetch + cache, Disallow/
@@ -673,6 +680,70 @@ class WebResearcherToolbox:
             )
         return text
 
+    def check_sources(self, urls: list, mode: str = "status") -> str:
+        """Probe source URLs for reachability without downloading pages.
+
+        (Workstream 2) Mirrors research()'s fan-out: validate each URL
+        through the SSRF guard, then probe it politely (per-domain
+        throttle). Each probe is a lightweight status check (HEAD/
+        minimal GET) -- never a full page load -- so a batch of hundreds
+        of URLs stays cheap. Returns a JSON envelope with per-URL status
+        plus a summary. ``mode=\"status\"`` (default) is the current probe;
+        ``\"content\"`` is reserved for a future full-fetch variant.
+        """
+        try:
+            if mode not in ("status", "content"):
+                mode = "status"
+            # Normalise to a clean list of URLs (accept plain strings or
+            # {url}/{href}/{link} dicts).
+            raw = []
+            for u in urls or []:
+                if isinstance(u, dict):
+                    url = u.get("url") or u.get("href") or u.get("link")
+                else:
+                    url = u
+                if not isinstance(url, str):
+                    continue
+                url = url.strip()
+                if url:
+                    raw.append(url)
+            # De-dup by normalised URL (Workstream 2 shared helper) so the
+            # same resource is not probed twice. dedupe works on dicts, so
+            # wrap, dedupe, then unwrap back to plain URL strings.
+            kept, _ = dedupe([{"url": u} for u in raw], by=("url",))
+            urls_to_probe = [d["url"] for d in kept]
+
+            results = []
+            for url in urls_to_probe:
+                results.append(
+                    check_liveness(
+                        url,
+                        timeout=self._liveness_timeout,
+                        throttle=self._rate_limit_domain,
+                    )
+                )
+
+            summary = {"ok": 0, "unreachable": 0, "blocked": 0, "error": 0}
+            for r in results:
+                status = r.get("status", "error")
+                summary[status] = summary.get(status, 0) + 1
+
+            return json.dumps(
+                {
+                    "tool": "check_sources",
+                    "count": len(results),
+                    "mode": mode,
+                    "summary": summary,
+                    "results": results,
+                },
+                indent=2,
+            )
+        except Exception as exc:  # noqa: BLE001 -- never let the tool crash
+            return json.dumps(
+                {"error": f"{type(exc).__name__}: {exc}", "results": []},
+                indent=2,
+            )
+
     def search_web(
         self,
         query: str,
@@ -952,9 +1023,10 @@ class WebResearcherToolbox:
         if not isinstance(results, list):
             results = []
 
-        # 2) Dedupe + validate candidate URLs (first comes, first served).
+        # 2) Validate + normalise candidate URLs (SSRF). search_web() has
+        # already deduped by URL (Workstream 2) and surfaced the drop count;
+        # this pass only enforces the SSRF guard and takes the top *depth*.
         candidates = []
-        seen = set()
         for item in results:
             if not isinstance(item, dict):
                 continue
@@ -962,13 +1034,12 @@ class WebResearcherToolbox:
                 url = normalize_url(str(item.get("url") or ""))
             except ValueError:
                 continue  # non-http scheme or malformed: skip
-            if not url or url in seen:
+            if not url:
                 continue
             try:
                 self._validate_url(url)
             except Exception:
                 continue  # SSRF guard: skip quietly
-            seen.add(url)
             candidates.append(
                 (
                     url,
@@ -976,8 +1047,8 @@ class WebResearcherToolbox:
                     str(item.get("snippet") or ""),
                 )
             )
-            if len(candidates) >= depth:
-                break
+        candidates = candidates[:depth]
+        dropped_dupes = getattr(self._search, "_last_search_dropped", 0)
 
         # 3) Fan out through the normal page pipeline. Each source gets
         # the toolbox default budget; the final global budget is applied
@@ -1021,6 +1092,9 @@ class WebResearcherToolbox:
             "depth": depth,
             "sources": sources,
             "count": sum(1 for s in sources if s["status"] == "ok"),
+            # Workstream 2: how many candidate URLs were collapsed as
+            # duplicates before the fan-out (informational for the caller).
+            "dropped_dupes": dropped_dupes,
         }
         return self._budget._fit_json(
             lambda b: self._budget._shrink_research(result, b),

@@ -410,6 +410,27 @@ TOOL_REGISTRY = (
             ),
         ),
     ),
+    ToolSpec(
+        "check_sources",
+        "Probe whether source URLs are reachable without downloading their pages (Workstream 2). Takes a list of URLs (strings or {url} dicts), validates each through the SSRF guard, runs a lightweight status probe per URL (polite / parallel / bounded), and returns per-URL status: ok (2xx/3xx), unreachable (4xx/5xx), blocked (SSRF), or error (network/timeout). Reuses the shared fetch pipeline -- no new HTTP surface.",
+        "check_sources",
+        (
+            ToolParam(
+                "urls",
+                list[str],
+                description=(
+                    "List of URLs to probe (plain strings or {url} dicts)."
+                ),
+            ),
+            ToolParam(
+                "mode",
+                str,
+                "status",
+                "Probe mode: 'status' (HEAD/minimal GET, default) or 'content' (full fetch).",
+                enum=["status", "content"],
+            ),
+        ),
+    ),
 )
 
 # Module-level LLM function-calling tool definitions — derived from the
@@ -513,6 +534,10 @@ class ToolboxConfig:
     fetch_mode: str = "auto"
     candidate_cap: int = 500
     max_concurrency: int = 8
+    # Workstream 2: per-URL timeout (seconds) for the check_sources liveness
+    # probe. A slow host is reported as a probe error, not left hanging a
+    # whole parallel batch.
+    liveness_timeout: float = 10.0
     # S3: cap (bytes) on response bodies fetched through the Rust core.
     # Bodies larger than this are rejected before being fully read into
     # memory (Content-Length early-reject + streaming chunk cap).
