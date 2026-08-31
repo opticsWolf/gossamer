@@ -285,14 +285,14 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
-        "crawl",
-        "Bounded focused crawl over a site's link graph: BFS from root_url, but the frontier is ranked by relevance (score x 0.7^depth), so the page budget goes to the most relevant links; flat scores degrade to plain BFS. Optionally seeds the frontier with a site-scoped web search (search_prior) and caller-supplied URLs (seed_urls). Returns per-page title, relevance score, a content skim, and richness stats (content_chars, term_hits; optional keyword-densest excerpt) (full pages stay in the page cache and can be re-read in full via inspect_html_page), plus a rank-ordered list of documents (PDF/DOCX links, never fetched here), skipped links with reasons, and counters.",
-        "crawl",
+        "focused_discovery",
+        "Focused, relevance-ranked traversal of a URL's link graph to find the pages most relevant to a query -- not limited to one site (follows cross-domain links unless same_host=True). Starts at root_url and walks outward, scoring each candidate by query relevance that decays with depth (score x 0.7^depth), so the page budget lands on the most relevant links instead of blind breadth-first order. Optionally seed the frontier with a site-scoped web search (search_prior) and/or caller-supplied URLs (seed_urls). Returns per page: title, relevance score, a 300-char skim, and richness stats (content length, keyword hits, optional keyword-densest excerpt); full pages stay in the cache for a later in-full re-read. Also returns document links (PDF/DOCX/...) as a rank-ordered list that is never fetched, links skipped and why, and run counters.",
+        "focused_discovery",
         (
             ToolParam(
                 "root_url",
                 str,
-                description="Seed URL to start the crawl from",
+                description="Seed URL to start the traversal from",
             ),
             ToolParam(
                 "query",
@@ -334,7 +334,7 @@ TOOL_REGISTRY = (
                 "search_prior",
                 bool,
                 False,
-                "Before crawling, run one site-scoped web search (site:host focus) and feed its top-5 results into the frontier at depth 1. They are exempt from min_score (the engine already ranked them) and a failed search is non-fatal (the crawl continues link-graph only)",
+                "Before the traversal, run one site-scoped web search (site:host focus) and feed its top-5 results into the frontier at depth 1. They are exempt from min_score (the engine already ranked them) and a failed search is non-fatal (the traversal continues link-graph only)",
             ),
             ToolParam(
                 "seed_urls",

@@ -141,17 +141,17 @@ class TestInspectDispatchMatrix:
 class TestCrawlDispatch:
     def test_crawl_js_auto_falls_back_to_browser(self, server, browser_stub):
         calls = browser_stub
-        make("auto").crawl(server + "/js", max_pages=1)
+        make("auto").focused_discovery(server + "/js", max_pages=1)
         assert calls and all(u.endswith("/js") for u in calls)
 
     def test_crawl_js_browser_uses_browser(self, server, browser_stub):
         calls = browser_stub
-        make("browser").crawl(server + "/js", max_pages=1)
+        make("browser").focused_discovery(server + "/js", max_pages=1)
         assert calls and all(u.endswith("/js") for u in calls)
 
     def test_crawl_js_static_never_browser(self, server, browser_stub):
         calls = browser_stub
-        make("static").crawl(server + "/js", max_pages=1)
+        make("static").focused_discovery(server + "/js", max_pages=1)
         assert calls == []
 
 

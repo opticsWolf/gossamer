@@ -109,7 +109,7 @@ _AREA_PREFIXES = [
     ("test_browser_provider", "search"),
     ("test_browser_integration", "search"),
     ("test_guard", "search"),
-    ("test_crawl", "crawl"),
+    ("test_focused_discovery", "crawl"),
     ("test_crawler", "crawl"),
     ("test_extract_links", "crawl"),
     ("test_t3_12_discovery", "crawl"),

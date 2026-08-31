@@ -17,7 +17,7 @@ EXPECTED_TOOLS = {
     "batch_inspect_pages",
     "extract_document",
     "discover_resources",
-    "crawl",
+    "focused_discovery",
     "manage_cache",
     # research_by_category is a category-aware overlay; research_categories()
     # is an introspection helper that is deliberately NOT an MCP tool.

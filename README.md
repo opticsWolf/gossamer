@@ -62,7 +62,7 @@
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **Research Orchestration (Tier 3.13)**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
 - **Document Link Detection (v0.4.5)**: `extract_document` (and `extract_document(structured=True)` for a validated `ParsedDocumentPayload`) also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
-- **Focused Crawl (v0.4.6, semantic v0.4.8)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the crawl has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
+- **Focused Discovery (v0.4.6, semantic v0.4.8)**: `focused_discovery(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -180,7 +180,7 @@ llm_tools = tools.get_llm_definitions()
 
 # Returns OpenAI-compatible function definitions for all seven tools:
 # web_search, inspect_html_page, batch_inspect_pages, extract_document,
-# discover_resources, crawl, manage_cache.
+# discover_resources, focused_discovery, manage_cache.
 
 for tool in llm_tools:
     print(tool["function"]["name"], "—", tool["function"]["description"])
@@ -238,7 +238,7 @@ python -m stitch_web_researcher.mcp_server
 ```
 
 Exposed tools: `web_search`, `inspect_html_page`, `batch_inspect_pages`,
-`extract_document`, `discover_resources`, `crawl`, `manage_cache`.
+`extract_document`, `discover_resources`, `focused_discovery`, `manage_cache`.
 
 Example client config (Claude Desktop / generic MCP JSON):
 
@@ -441,7 +441,7 @@ delivered with `tables: []` rather than failing the whole call.
 ### Sitemap-Aware Discovery (Tier 3.12)
 
 `discover_resources(url)` is a cheaper alternative to link-graph
-crawling when a research task needs "what does this site contain?":
+traversal when a research task needs "what does this site contain?":
 
 - **Feed discovery** — the page is fetched once (static path) and its
   `<link rel="alternate">` declarations are scanned; only feed
@@ -450,7 +450,7 @@ crawling when a research task needs "what does this site contain?":
 - **Sitemap probe** — the site root is probed for `/sitemap.xml`.
   Sitemap *indexes* are followed with bounded depth (3 hops, at most
   10 sitemap fetches total) so an index fan-out cannot turn into an
-  unbounded crawl; every `<loc>` in a `urlset` becomes a discovered
+  unbounded traversal; every `<loc>` in a `urlset` becomes a discovered
   page URL.
 - **Budgeted output** — discovered URLs are deduplicated (ordered) and
   capped (500 per sitemap, 1000 total; `truncated` flags a cap hit).
@@ -499,9 +499,9 @@ for s in report["sources"]:
     # ... the agent writes the cited synthesis ...
 ```
 
-### Focused Crawl (v0.4.6)
+### Focused Discovery (v0.4.6)
 
-`crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
+`focused_discovery(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
 min_score=0.05, excerpts=False, search_prior=False, seed_urls=[])`
 answers "what does this site contain?" with one bounded run. It is BFS over the link graph, but the frontier is a priority
 queue, so hop 1 cannot exhaust the budget before relevant depth-2/3
@@ -513,7 +513,7 @@ pages are seen:
   containing page's topic vocabulary comes from its *full delivered
   text* (top content words, TF-ranked), not just the title or first
   lines. When *query* is omitted, the root page's own title and
-  content stand in for it, so a query-less crawl still knows what its
+  content stand in for it, so a query-less traversal still knows what its
   neighbourhood is about.
 - **Depth decay** — the frontier pops the highest
   `score × 0.7^depth`; ties break by discovery order, so flat scores
@@ -526,7 +526,7 @@ pages are seen:
   static assets (`.css`, `.js`, images, fonts, …) are skipped without
   costing budget; candidates below `min_score` are skipped and
   reported with their reason.
-- **Documents** — links to PDF/DOCX/… are never fetched by the crawl;
+- **Documents** — links to PDF/DOCX/… are never fetched by the traversal;
   they are collected in `documents` as rank-ordered records
   (`{url, anchor, score}` — scored at first sighting with the live
   corpus, no depth decay) for the agent to read via `extract_document`
@@ -539,51 +539,51 @@ pages are seen:
   `excerpt` is added per page (raises the payload — pair with a lower
   `max_pages`).
 - **Discovery seeds** — `search_prior=True` runs one site-scoped web
-  search before the crawl (`site:<host> <focus>`) and feeds its top-5
+  search before the traversal (`site:<host> <focus>`) and feeds its top-5
   results into the frontier at depth 1 with a small rank bonus
   (+0.1/rank); the engine already ranked them, so they are exempt from
-  `min_score`, and a failed search is non-fatal (the crawl degrades to
-  link-graph discovery; repeat crawls hit the in-memory search cache).
+  `min_score`, and a failed search is non-fatal (the traversal degrades to
+  link-graph discovery; repeat traversals hit the in-memory search cache.
   `seed_urls=[…]` are caller-supplied starting URLs: normalised against
   the root, SSRF-checked in full, pushed at depth 0 (their children are
   depth 1), and subject to the floor — a below-floor seed is skipped as
   `"seed below min score"`, never silent.
-- **Cross-modal loop** — crawl → `documents` → `extract_document` on
-  the top PDF → its `links` (text link detection) → next crawl with
-  `seed_urls` (or a fresh crawl rooted at the document's host). The
-  loop is the agent's; the crawl only exposes the pieces.
+- **Cross-modal loop** — focused_discovery → `documents` → `extract_document` on
+  the top PDF → its `links` (text link detection) → next traversal with
+  `seed_urls` (or a fresh focused_discovery rooted at the document's host). The
+  loop is the agent's; focused_discovery only exposes the pieces.
 - **Full re-reads** — every fetched page stays in the page cache in
-  full; the crawl's 300-char skim is presentation-only, so a later
-  `inspect_html_page` of any crawled URL is a cache hit with the
+  full; focused_discovery's 300-char skim is presentation-only, so a later
+  `inspect_html_page` of any discovered URL is a cache hit with the
   complete content.
 
 ```python
-crawl = json.loads(
-    tools.crawl(
+res = json.loads(
+    tools.focused_discovery(
         "https://example.com/docs",
         query="offline caching",
         max_depth=3,
         max_pages=15,
     )
 )
-for p in crawl["pages"]:
+for p in res["pages"]:
     print(p["depth"], p["score"], p["title"], p["url"])
-print(crawl["documents"])  # PDFs to read via extract_document
-print(crawl["stop"])       # max_pages reached | frontier exhausted
+print(res["documents"])  # PDFs to read via extract_document
+print(res["stop"])       # max_pages reached | frontier exhausted
 ```
 
-### Semantic Crawl (v0.4.8)
+### Semantic Discovery (v0.4.8)
 
 The v0.4.6 frontier score was purely lexical and treated every term
 and every page the same. v0.4.8 makes it adapt to the site it is
 reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
 
-- **BM25/IDF over the live corpus** — the crawl keeps a running
+- **BM25/IDF over the live corpus** — the traversal keeps a running
   document-frequency table of the pages it has fetched. Term weights
   are `idf(t) = ln(1 + (N − df + 0.5) / (df + 0.5))`, so a term that
   appears on every page stops being a relevance signal while a rare
   term stands out. While fewer than 3 pages have been read the weights
-  are flat, i.e. the scorer behaves exactly like v0.4.6 at crawl start
+  are flat, i.e. the scorer behaves exactly like v0.4.6 at traversal start
   and sharpens as it goes.
 - **Anchor context** — a link's label is no longer just its anchor
   text plus URL path: the content words within ±50 characters of the
@@ -597,12 +597,12 @@ reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
 - **Offline thesaurus** — `thesaurus.json` (31 curated clusters, ~230
   topic terms, deliberately no ultra-generic tokens) expands the query
   with synonyms at **half weight**, capped at twice the base size, with
-  deterministic iteration. A crawl for `query="neural nets"` follows a
+  deterministic iteration. A traversal for `query="neural nets"` follows a
   link labelled "deep learning guide". The query echo reports how many
   terms were added (e.g. `"deep learning +2"`). The loader fails open:
   a missing or malformed thesaurus simply disables expansion.
 
-No new parameters in this step — the same `crawl(...)` call gets the
+No new parameters in this step — the same `focused_discovery(...)` call gets the
 better ranking. Discovery seeds (search prior, seed URLs, and the
 cross-modal loop) shipped in the same version — see Focused Crawl
 above. Optional local embeddings land in v0.4.9.

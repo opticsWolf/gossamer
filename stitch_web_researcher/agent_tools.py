@@ -938,7 +938,7 @@ class WebResearcherToolbox:
         """
         return self._doc.inspect_html_structured(url, use_smart)
 
-    def crawl(
+    def focused_discovery(
         self,
         root_url: str,
         query: Optional[str] = None,
@@ -950,9 +950,10 @@ class WebResearcherToolbox:
         search_prior: bool = False,
         seed_urls: Optional[list] = None,
     ) -> str:
-        """Bounded focused crawl over a site's link graph. Thin
-        delegation to ``Crawler`` (crawl.py); see that method for the
-        full algorithm.
+        """Focused, relevance-ranked traversal of a URL's link graph to
+        find the pages most relevant to a query (thin delegation to
+        ``Crawler`` in crawl.py; see that method for the full algorithm).
+        Follows cross-domain links unless same_host=True.
         """
         return self._crawler.crawl(
             root_url,
