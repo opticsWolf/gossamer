@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-897%20passing%2C%207%20slow%20live-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1188%20passing%2C%2011%20skipped-brightgreen)](tests/)
 
 ---
 
@@ -715,6 +715,39 @@ stitch-web-researcher/
 | | `office_oxide >=0.1` | DOCX/XLSX/PPTX extraction (PyPI) |
 | **Optional — `[mcp]`** | `mcp >=2.0` | MCP server runtime (Python 3.10+) |
 | **Optional — `[guard]`** | `jailguard >=0.1.2` | Prompt-injection detection (ONNX, §7) |
+
+## Running Tests
+
+The suite is offline and hermetic by default (no network, SSRF guard active).
+It runs green in ~20s in parallel on a multi-core box.
+
+```bash
+# Full suite (serial):
+.venv/Scripts/python.exe -m pytest -q
+
+# Full suite in parallel (recommended; uses all cores via pytest-xdist):
+.venv/Scripts/python.exe -m pytest -q -n auto
+
+# A single logical area (subset) — fast feedback while working on one surface:
+.venv/Scripts/python.exe -m pytest -q -m "area_search"     # search + providers
+.venv/Scripts/python.exe -m pytest -q -m "area_fetch"      # fetch / markdown / tiers 1-2
+.venv/Scripts/python.exe -m pytest -q -m "area_crawl"      # crawler / links / discovery
+.venv/Scripts/python.exe -m pytest -q -m "area_citations"  # citations / dedup / MCP registry
+.venv/Scripts/python.exe -m pytest -q -m "area_security"   # SSRF / robots / size cap / politeness
+.venv/Scripts/python.exe -m pytest -q -m "area_phase3"     # phase-3 adapters
+
+# Combine areas (OR), and parallelize subsets too:
+.venv/Scripts/python.exe -m pytest -q -n auto -m "area_citations or area_security"
+```
+
+Areas are assigned automatically in `tests/conftest.py` by filename prefix
+(longest prefix wins), so new test files land in a group with no per-file
+work. Areas: `search`, `fetch`, `crawl`, `storage`, `citations`, `phase3`,
+`security`, plus `other` for anything unmatched. The `area_*` markers are
+additive — they never change which tests run under the default `pytest`.
+
+> `pytest-xdist` (`-n auto`) is a dev/test dependency, not a runtime one.
+> Install with `uv pip install pytest-xdist`.
 
 ## License
 

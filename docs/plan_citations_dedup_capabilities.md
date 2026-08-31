@@ -230,3 +230,5 @@ Recommended sequence (each independently testable, all low-risk):
 4. **Workstream 4 (hybrids)** — all opt-in, default-off; additive config + guarded hooks.
 
 Each workstream adds its own `tests/test_*.py` and runs green against the existing suite (target: `1127 passed` baseline maintained). No changes to the `ResourceAdapter` base contract; no new third-party dependencies.
+
+**Test workflow (parallel + subsets).** The suite is offline/hermetic by default and runs in ~20s in parallel: `pytest -q -n auto` (pytest-xdist, a dev-only dep). Tests are auto-grouped into logical areas in `tests/conftest.py` by filename prefix; run one surface with `pytest -q -m "area_<name>"` where `<name>` is one of `search`, `fetch`, `crawl`, `storage`, `citations`, `phase3`, `security` (unmatched files fall to `area_other`). Areas are additive — they don't change what the plain `pytest` runs.

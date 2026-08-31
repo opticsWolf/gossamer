@@ -75,6 +75,86 @@ def pytest_configure(config):
         "markers",
         "live: live network smoke test; skipped unless STITCH_LIVE=1.",
     )
+    config.addinivalue_line(
+        "markers",
+        "area:<name>: logical test group (search/fetch/crawl/storage/"""
+        "citations/phase3/security/other); used for subset runs (-m area_<name>).",
+    )
+    # Register each concrete area marker (e.g. ``area_search``) so subset
+    # runs (-m area_search) and the auto-tagging below stay warning-free.
+    for _area in sorted({_DEFAULT_AREA, *{_a for _, _a in _AREA_PREFIXES}}):
+        config.addinivalue_line(
+            "markers", f"area_{_area}: subset marker for the {_area} group."
+        )
+
+
+# Logical test groups, keyed by filename prefix. Ordered by specificity is
+# handled dynamically (longest prefix wins) so a broad prefix like ``test_c``
+# never swallows ``test_crawl`` / ``test_citations``. Anything unmatched falls
+# back to ``_DEFAULT_AREA`` so no test ever loses its marker.
+_AREA_PREFIXES = [
+    ("test_citations", "citations"),
+    ("test_dedup_liveness", "citations"),
+    ("test_mcp_server", "citations"),
+    ("test_p8_tool_registry", "citations"),
+    ("test_search", "search"),
+    ("test_research", "search"),
+    ("test_providers", "search"),
+    ("test_exa", "search"),
+    ("test_meta_oxide", "search"),
+    ("test_t2_6_observability", "search"),
+    ("test_t2_8_search_cache", "search"),
+    ("test_t2_9_async", "search"),
+    ("test_t3_13_research", "search"),
+    ("test_browser_provider", "search"),
+    ("test_browser_integration", "search"),
+    ("test_guard", "search"),
+    ("test_crawl", "crawl"),
+    ("test_crawler", "crawl"),
+    ("test_extract_links", "crawl"),
+    ("test_t3_12_discovery", "crawl"),
+    ("test_c", "crawl"),
+    ("test_cache", "storage"),
+    ("test_html_store", "storage"),
+    ("test_resource_store", "storage"),
+    ("test_p9_doc_store", "storage"),
+    ("test_p2_doc_extra", "storage"),
+    ("test_m10_batch_error", "storage"),
+    ("test_phase3", "phase3"),
+    ("test_plan_fixes", "phase3"),
+    ("test_fix", "phase3"),
+    ("test_s", "security"),
+    ("test_s5_concurrency", "fetch"),
+    ("test_t2_7_transport", "fetch"),
+    ("test_t3_10_formats", "fetch"),
+    ("test_t3_11_tables", "fetch"),
+    ("test_m", "fetch"),
+    ("test_t1", "fetch"),
+]
+_DEFAULT_AREA = "other"
+
+
+def _area_for_node(node) -> str:
+    """Best (longest-prefix) filename match -> logical area name."""
+    name = node.path.name
+    for prefix, area in sorted(
+        _AREA_PREFIXES, key=lambda kv: len(kv[0]), reverse=True
+    ):
+        if name.startswith(prefix):
+            return area
+    return _DEFAULT_AREA
+
+
+def pytest_collection_modifyitems(items):
+    """Tag every collected test with an ``area:<name>`` marker.
+
+    Purely additive: the marker is orthogonal to the existing ``slow`` /
+    ``live`` markers and to any explicit ``@pytest.mark`` a test already
+    carries, so subset runs (``-m area_search``) never disturb the normal
+    suite.
+    """
+    for item in items:
+        item.add_marker(getattr(pytest.mark, f"area_{_area_for_node(item)}"))
 
 
 @pytest.fixture
