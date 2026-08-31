@@ -183,24 +183,19 @@ def describe_categories() -> str:
     Derived from the single source of truth so the ``research_by_category``
     tool description can never drift from the actual routing table -- add a
     category to ``CATEGORIES`` and this description updates automatically.
-    Every category (including the fallback) is listed by name so the model
-    can see the full taxonomy.
+    Only category *names* are listed here to keep the static description small;
+    the full taxonomy (descriptions and provider ids) is returned on demand by
+    calling ``research_by_category`` with no query.
     """
-    category_map = ", ".join(
-        f"{c.name} ({c.description}); providers: "
-        # Show the human-readable name *and* the exact id to pass as
-        # provider=<id>, so the model can never confuse the two.
-        f"{', '.join(f'{_display(p)} ({p})' for p in c.providers)}"
-        for c in CATEGORIES
-    )
+    names = ", ".join(c.name for c in CATEGORIES)
     return (
         "Category-aware, provider-specific search. Classifies the query into a "
-        f"domain category: {category_map}. "
-        "Each category exposes one or more providers; pass provider=<id> to call "
-        "a specific provider separately, otherwise the category's default (first) "
-        "provider is used. There is no automatic fallback between providers -- the "
-        "caller chooses. Queries matching no domain category fall back to the "
-        "general provider. Returns the chosen category, provider and results as JSON."
+        f"domain category ({names}) and calls that category's default provider. "
+        "Omit the query to return the full taxonomy (category descriptions and "
+        "provider ids) as JSON. Pass provider=<id> to call a specific source; "
+        "pass category=<name> to skip classification. No automatic fallback "
+        "between providers -- the caller chooses. Returns the chosen category, "
+        "provider, and results as JSON."
     )
 
 # provider id -> adapter factory (imported lazily so this module stays

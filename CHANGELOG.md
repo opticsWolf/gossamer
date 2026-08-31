@@ -6,6 +6,22 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
 ## [Unreleased]
 
+- **`research_by_category`: taxonomy on demand, single tool.** The separate
+  `research_categories` MCP tool is removed; `research_by_category` now takes an
+  optional `query` and, when called with no query (or an empty/whitespace
+  string), returns the live category → provider taxonomy as JSON so the model
+  can discover which `provider` id to pass. The tool surface is back to 10 tools.
+
+- **Concise LLM-facing tool descriptions.** Trimmed the `research_by_category`,
+  `focused_discovery`, `inspect_html_page`, `web_search`, `export_citations`,
+  and `extract_document` descriptions (and their verbose params) to cut the
+  per-context tool payload by ~530 tokens (~16%, 3,356 → ~2,830). 
+  `describe_categories()` now lists only category names; the full provider
+  taxonomy is fetched on demand via a no-query `research_by_category` call.
+
+- **Parallel test runs by default.** `pytest` now runs under pytest-xdist
+  (`addopts = "-n auto -m 'not slow'"`); run serially with `-p no:xdist`.
+
 - **Citations: APA (7th) now renders via citeproc-py (official CSL engine).**
   `citations.py` gains an optional CSL rendering path: `to_apa` builds
   CSL-JSON (lowercase `id`; string `container-title`, since citeproc-py's

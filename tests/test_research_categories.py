@@ -361,17 +361,33 @@ def test_unknown_adapter_raises():
 
 def test_describe_categories_reflects_every_category():
     # Drift guard: the auto-generated description must mention every category
-    # and provider, so adding a CATEGORIES entry can't be silently dropped
-    # from the LLM-facing contract.
+    # name, so adding a CATEGORIES entry can't be silently dropped from the
+    # LLM-facing contract. Provider ids live in the on-demand taxonomy, not
+    # the static description (see test_taxonomy_reflects_every_provider).
     text = rc.describe_categories()
-    # The description lists each provider as "DisplayName (id)" so the model
-    # sees the friendly name *and* the exact id to pass as provider=<id> --
-    # assert on both the display name and the raw id.
     for c in rc.CATEGORIES:
         assert c.name in text, c.name
+
+
+def test_taxonomy_reflects_every_provider():
+    # The on-demand taxonomy (research_categories()) must list every category
+    # and every provider id, so the model can discover all sources.
+    import json
+
+    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+
+    tb = WebResearcherToolbox(
+        cache_dir="/tmp/x",
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
+    )
+    data = json.loads(tb.research_categories())
+    by_name = {d["category"]: d for d in data}
+    for c in rc.CATEGORIES:
+        assert c.name in by_name, c.name
         for p in c.providers:
-            assert rc._display(p) in text, p
-            assert f"({p})" in text, p
+            assert p in by_name[c.name]["providers"], p
 
 
 def test_facade_research_categories_returns_taxonomy():
@@ -508,21 +524,39 @@ def test_facade_research_by_category_bad_category_returns_error(tmp_path):
     assert data["results"] == []
 
 
-def test_research_categories_is_an_mcp_tool(tmp_path):
-    # The introspection method is registered as an MCP tool so the model can
-    # fetch the live taxonomy on demand; execute_tool must dispatch it.
+def test_research_categories_is_not_an_mcp_tool(tmp_path):
+    # The introspection method is callable directly but is NOT part of the
+    # MCP surface: execute_tool must reject it (not registered). The model
+    # still reaches it indirectly -- research_by_category() with no query.
     from stitch_web_researcher.agent_tools import TOOL_REGISTRY, WebResearcherToolbox
 
-    assert any(s.name == "research_categories" for s in TOOL_REGISTRY)
+    assert not any(s.name == "research_categories" for s in TOOL_REGISTRY)
     tb = WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
         domain_delay=0.0,
         ddgs_delay=0.0,
         respect_robots=False,
     )
+    import pytest
+
+    with pytest.raises(ValueError):
+        tb.execute_tool("research_categories", {})
+
+
+def test_research_by_category_no_query_returns_taxonomy(tmp_path):
+    # With no query, research_by_category returns the live taxonomy as JSON so
+    # the model discovers providers through the single tool.
     import json
 
-    data = json.loads(tb.execute_tool("research_categories", {}))
+    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+
+    tb = WebResearcherToolbox(
+        cache_dir=str(tmp_path / "cache"),
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
+    )
+    data = json.loads(tb.research_by_category())
     assert {d["category"] for d in data} == {
         "scholarly", "legal", "financial", "geo", "general",
     }

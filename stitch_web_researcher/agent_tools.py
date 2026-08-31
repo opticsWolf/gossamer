@@ -585,26 +585,30 @@ class WebResearcherToolbox:
 
     def research_by_category(
         self,
-        query: str,
+        query: Optional[str] = None,
         max_results: int = 5,
         category: Optional[str] = None,
         provider: Optional[str] = None,
     ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
-        Thin wrapper over :func:`research_categories.search_category`. By
-        default it classifies *query* into a domain category (scholarly / legal
-        / financial / geo / general) and triggers that category's default
-        provider. Pass ``category=<name>`` to use a category directly (the query
-        is not reclassified), or ``provider=<id>`` to call a specific provider
-        separately (e.g. ``provider=crossref``) -- given alone, its owning
-        category is reverse-resolved, so the query is still not reclassified.
-        When both ``category=`` and ``provider=`` are given, the provider must
-        belong to that category. There is no automatic fallback between
-        providers -- the caller chooses which source to query. Returns a JSON
-        payload naming the chosen category, the provider actually called, and
-        results.
+        Thin wrapper over :func:`research_categories.search_category`. With no
+        query (and no category=/provider= hint) it returns the live category ->
+        provider taxonomy as JSON so the model can discover which provider to
+        use; pass *query* to run a search. By default the query is classified
+        into a domain category (scholarly / legal / financial / geo / general)
+        and that category's default provider is triggered. Pass ``category=<name>``
+        to use a category directly (the query is not reclassified), or
+        ``provider=<id>`` to call a specific provider separately (e.g.
+        ``provider=crossref``) -- given alone, its owning category is
+        reverse-resolved, so the query is still not reclassified. When both
+        ``category=`` and ``provider=`` are given, the provider must belong to
+        that category. There is no automatic fallback between providers -- the
+        caller chooses which source to query. Returns a JSON payload naming the
+        chosen category, the provider actually called, and results.
         """
+        if not (query or "").strip():
+            return self.research_categories()
         return json.dumps(
             search_category(
                 self,
@@ -621,10 +625,10 @@ class WebResearcherToolbox:
         """Introspection: the category -> provider map as JSON (MCP tool).
 
         Returns the research taxonomy so callers can enumerate the available
-        categories, their purposes and the provider each routes to. Registered
-        in ``TOOL_REGISTRY`` as ``research_categories`` so the model can fetch
-        the live taxonomy on demand and discover which id to pass to
-        ``research_by_category``'s provider= param.
+        categories, their purposes and the provider each routes to. Not part
+        of the MCP surface -- it is returned directly by ``research_by_category``
+        when that tool is called with no query, so the model discovers the live
+        taxonomy through a single tool.
         """
         payload = [
             {

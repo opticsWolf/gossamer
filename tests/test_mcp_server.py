@@ -19,10 +19,8 @@ EXPECTED_TOOLS = {
     "discover_resources",
     "focused_discovery",
     "manage_cache",
-    # research_by_category is a category-aware overlay.
-    # research_categories() exposes the live taxonomy as JSON (MCP tool).
-    "research_categories",
-    # export_citations reconstructs citations from search results (Plan ws1).
+    # research_by_category is a category-aware overlay; it also returns the
+    # live taxonomy when called with no query.
     "research_by_category",
     "export_citations",
     # check_sources probes source reachability without full fetches (Plan ws2).

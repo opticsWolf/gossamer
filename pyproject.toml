@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "stitch-web-researcher"
-version = "0.5.6"
+version = "0.5.7"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -92,7 +92,9 @@ select = ["E4", "E7", "E9", "F"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "strict"
-addopts = "-m 'not slow'"
+# Parallel by default via pytest-xdist (`-n auto`); run serially with
+# `-p no:xdist`. `-m 'not slow'` keeps the live-network suite out of the default.
+addopts = "-n auto -m 'not slow'"
 markers = [
   "slow: slow/integration tests (live network, real browser); run with -m slow",
 ]

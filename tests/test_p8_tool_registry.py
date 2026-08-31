@@ -34,8 +34,8 @@ class TestRegistryShape:
         # P8: search_web+research -> web_search; extract_document_structured
         # + inspect_html_structured folded into their base tools; the cache
         # trio + get_stats replaced by manage_cache. research_by_category is a
-        # category-aware, provider-specific overlay (scholarly/geo/general).
-        # research_categories() exposes the live taxonomy as JSON. 11 tools total.
+        # category-aware, provider-specific overlay (scholarly/geo/general); it
+        # also returns the live taxonomy when called with no query. 10 tools.
         assert REGISTRY_NAMES == {
             "web_search",
             "inspect_html_page",
@@ -44,8 +44,6 @@ class TestRegistryShape:
             "discover_resources",
             "focused_discovery",
             "manage_cache",
-            # research_categories exposes the live taxonomy as JSON (MCP tool).
-            "research_categories",
             "research_by_category",
             # export_citations reconstructs citations from search results (Plan ws1).
             "export_citations",

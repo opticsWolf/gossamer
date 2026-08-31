@@ -350,5 +350,7 @@ class TestBatchProvenance:
 class TestRegistryAdvertisesProvenance:
     def test_inspect_description_mentions_provenance(self):
         spec = next(s for s in TOOL_REGISTRY if s.name == "inspect_html_page")
+        # The description advertises that inspect_html_page returns provenance;
+        # the exact field set (content_hash, http_status, ...) is verified by the
+        # payload tests in this module, not pinned in the concise description.
         assert "provenance" in spec.description
-        assert "content_hash" in spec.description

@@ -152,7 +152,7 @@ class ToolSpec:
 TOOL_REGISTRY = (
     ToolSpec(
         "web_search",
-        "Unified web search + research. With search_only=true (default false) this is a pure provider search across engines (duckduckgo/google/bing/exa/browser), returning a deduped list of results. With search_only=false it also dedupes the top results and fetches up to depth candidate pages through the normal cache/robots/rate-limit/provenance pipeline, returning one record per source with status, markdown, and provenance so the caller can write a cited synthesis.",
+        "Unified web search + research. search_only=true (default false) is a pure provider search across engines (duckduckgo/google/bing/exa/browser) returning a deduped list. search_only=false also fetches up to depth candidate pages, returning one record per source with status, markdown, and provenance for a cited synthesis.",
         "web_search",
         (
             ToolParam("query", str, description="The search query / research topic"),
@@ -191,7 +191,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "inspect_html_page",
-        "Fetch and extract markdown content from a web page. Set use_smart='browser' for JS-rendered pages (SPA, anti-bot); 'auto' (default) follows fetch_mode, 'static' is static-only. When the page exceeds the output budget, pass the research query to keep the most relevant sections instead of truncating head-first; or pass offset / max_chunks to page through the full document in budget-sized chunks. Returns markdown text, follow-up links, and provenance (fetched_at, http_status, final_url, content_type, content_hash; cache_hit flags from-cache reads).",
+        "Fetch and extract markdown content from a web page. Set use_smart='browser' for JS-rendered pages (SPA, anti-bot); 'auto' (default) follows fetch_mode; 'static' is static-only. If the page exceeds the output budget, pass the research query to keep only the most relevant sections, or offset / max_chunks to page through it in chunks. Returns markdown, follow-up links, and provenance.",
         "inspect_html_page",
         (
             ToolParam("url", str, description="The URL to inspect"),
@@ -199,20 +199,20 @@ TOOL_REGISTRY = (
                 "use_smart",
                 str,
                 "auto",
-                "Render strategy: 'auto' (default, follows fetch_mode), 'browser' (headless browser first, static on failure), or 'static' (static only).",
+                "Render strategy: 'auto' (default), 'browser' (headless browser first, static on failure), or 'static'.",
                 enum=["auto", "browser", "static"],
             ),
             ToolParam(
                 "query",
                 str,
                 None,
-                "The research query. When the page does not fit the output budget, only the sections most relevant to this query are returned; the payload reports sections_available / sections_selected / section_anchors.",
+                "The research query. When the page exceeds the output budget, only the most relevant sections are returned.",
             ),
             ToolParam(
                 "offset",
                 int,
                 0,
-                "Character offset into the full page markdown to start reading from. Pass the previous call's next_offset to resume where it stopped. Explicit paging takes precedence over query.",
+                "Character offset into the page markdown to start from; pass the previous call's next_offset to resume.",
             ),
             ToolParam(
                 "max_chunks",
@@ -224,7 +224,7 @@ TOOL_REGISTRY = (
                 "structured",
                 bool,
                 False,
-                "true returns a structured ParsedDocumentPayload (metadata, tables, links) instead of raw markdown; default false returns markdown text (query/offset/max_chunks paging apply).",
+                "true returns a structured payload (metadata, tables, links) instead of raw markdown.",
             ),
         ),
     ),
@@ -238,7 +238,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "extract_document",
-        "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats TXT, MD, CSV, JSON, XML, and RSS/Atom feeds (returned as readable entry lists). Extension-less URLs with a text Content-Type are also handled. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
+        "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats (TXT, MD, CSV, JSON, XML) and RSS/Atom feeds. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
         "extract_document",
         (
             ToolParam(
@@ -250,7 +250,7 @@ TOOL_REGISTRY = (
                 "pages",
                 str,
                 None,
-                "1-based inclusive page range for PDFs ('10', '10-20', '10-', '-20'); for XLSX the range selects sheets. Without it, the whole document is returned (subject to the output budget).",
+                "1-based inclusive page range for PDFs ('10', '10-20', '10-', '-20'); for XLSX the range selects sheets. Omitted -> the whole document.",
             ),
             ToolParam(
                 "structured",
@@ -262,7 +262,7 @@ TOOL_REGISTRY = (
                 "store",
                 bool,
                 False,
-                "true writes the original document bytes (verbatim, <stem><ext>) and the full extracted text as a <stem>.md file under store_dir (default 'stored_documents/'). The returned result includes a 'stored' object with the file paths and sizes. Cannot be combined with pages=.",
+                "true writes the original bytes and the full extracted text to disk under store_dir; the result includes a 'stored' object with paths and sizes. Cannot combine with pages=.",
             ),
             ToolParam(
                 "store_dir",
@@ -286,7 +286,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "focused_discovery",
-        "Focused, relevance-ranked traversal of a URL's link graph to find the pages most relevant to a query -- not limited to one site (follows cross-domain links unless same_host=True). Starts at root_url and walks outward, scoring each candidate by query relevance that decays with depth (score x 0.7^depth), so the page budget lands on the most relevant links instead of blind breadth-first order. Optionally seed the frontier with a site-scoped web search (search_prior) and/or caller-supplied URLs (seed_urls). Returns per page: title, relevance score, a 300-char skim, and richness stats (content length, keyword hits, optional keyword-densest excerpt); full pages stay in the cache for a later in-full re-read. Also returns document links (PDF/DOCX/...) as a rank-ordered list that is never fetched, links skipped and why, and run counters.",
+        "Relevance-ranked traversal of a URL's link graph (cross-domain by default) to find the pages most relevant to a query. Walks from root_url, scoring candidates by query relevance that decays with depth, so the page budget lands on the most relevant links. Optionally seed with a site-scoped search (search_prior) and/or extra URLs (seed_urls). Returns per page: title, relevance score, and a short skim; plus unfetched document links and skipped links. Full pages stay cached for later re-reads.",
         "focused_discovery",
         (
             ToolParam(
@@ -334,13 +334,13 @@ TOOL_REGISTRY = (
                 "search_prior",
                 bool,
                 False,
-                "Before the traversal, run one site-scoped web search (site:host focus) and feed its top-5 results into the frontier at depth 1. They are exempt from min_score (the engine already ranked them) and a failed search is non-fatal (the traversal continues link-graph only)",
+                "Before traversing, run one site-scoped web search and feed its top results into the frontier at depth 1 (exempt from min_score; a failed search is non-fatal)",
             ),
             ToolParam(
                 "seed_urls",
                 list[str],
                 [],
-                "Extra starting URLs, normalized against the root and SSRF-checked, pushed at depth 0 (their children are depth 1); they respect min_score (a below-floor seed is skipped with a reason)",
+                "Extra starting URLs, pushed at depth 0 (children at depth 1); they respect min_score",
             ),
         ),
     ),
@@ -366,16 +366,18 @@ TOOL_REGISTRY = (
             ToolParam(
                 "query",
                 str,
-                description="The search query / research topic to classify and run.",
+                None,
+                "The search query. Omit it to return the full category -> "
+                "provider taxonomy as JSON instead, so you can discover which "
+                "provider to use.",
             ),
             ToolParam(
                 "category",
                 str,
                 None,
-                "Optional domain category to use directly (e.g. 'scholarly', "
-                "'legal', 'financial', 'geo', 'general'). When given, the query is "
-                "not reclassified. Pair with provider= to pick a specific source "
-                "within it.",
+                "Optional category to use directly (e.g. 'scholarly', 'legal', "
+                "'financial', 'geo', 'general'); skips classification. Pair with "
+                "provider= to pick a source within it.",
             ),
             ToolParam(
                 "max_results",
@@ -387,30 +389,16 @@ TOOL_REGISTRY = (
                 "provider",
                 str,
                 None,
-                "Optional provider to call separately (e.g. 'crossref', 'arxiv', "
-                "'courtlistener', 'ecfr', 'alphavantage', 'yahoo'). Given alone, "
-                "its owning category is used (the query is not reclassified); "
-                "given with category= it must belong to that category. When "
-                "omitted, the category's default provider is used. No automatic "
-                "fallback between providers -- the caller chooses.",
+                "Optional provider id to call (see the taxonomy from a no-query "
+                "call). Given alone, its owning category is used; with category= "
+                "it must belong to that category. Omitted -> the category's "
+                "default provider. No automatic fallback.",
             ),
         ),
     ),
     ToolSpec(
-        "research_categories",
-        "Introspection: the live category -> provider taxonomy as JSON. Returns "
-        "every domain category (scholarly, legal, financial, geo, general) with "
-        "its purpose, the providers it exposes (raw ids), the default provider, "
-        "and whether each is an 'adapter' (domain source) or 'engine' (web "
-        "search). Call this on demand to discover which provider to pass to "
-        "research_by_category's provider= param -- the ids listed here are "
-        "exactly what that param accepts.",
-        "research_categories",
-        (),
-    ),
-    ToolSpec(
         "export_citations",
-        "Reconstruct and export citations from search results (Plan workstream 1). Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns the citations formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are pulled from the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj). APA (7th) renders through citeproc-py (official CSL engine) with the bundled apa.csl style when citeproc-py is installed, falling back to a best-effort approximation otherwise; MLA (9th) uses the approximation (no MLA style ships with citeproc-py).",
+        "Reconstruct and export citations from search results. Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns them formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are resolved via the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj).",
         "export_citations",
         (
             ToolParam(
@@ -432,7 +420,7 @@ TOOL_REGISTRY = (
                 "enrich",
                 bool,
                 False,
-                "When true, make one canonical DOI lookup per unique DOI to fill in a missing venue/abstract (best-effort).",
+                "When true, make one canonical DOI lookup per unique DOI to fill in a missing venue/abstract.",
             ),
             ToolParam(
                 "dedupe",
