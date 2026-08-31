@@ -188,7 +188,9 @@ def describe_categories() -> str:
     """
     category_map = ", ".join(
         f"{c.name} ({c.description}); providers: "
-        f"{', '.join(_display(p) for p in c.providers)}"
+        # Show the human-readable name *and* the exact id to pass as
+        # provider=<id>, so the model can never confuse the two.
+        f"{', '.join(f'{_display(p)} ({p})' for p in c.providers)}"
         for c in CATEGORIES
     )
     return (

@@ -364,13 +364,14 @@ def test_describe_categories_reflects_every_category():
     # and provider, so adding a CATEGORIES entry can't be silently dropped
     # from the LLM-facing contract.
     text = rc.describe_categories()
-    # The description uses provider *display* names (OpenAlex), not ids
-    # (openalex) -- the LLM receives a category, never a provider id -- so
-    # assert on the display name.
+    # The description lists each provider as "DisplayName (id)" so the model
+    # sees the friendly name *and* the exact id to pass as provider=<id> --
+    # assert on both the display name and the raw id.
     for c in rc.CATEGORIES:
         assert c.name in text, c.name
         for p in c.providers:
             assert rc._display(p) in text, p
+            assert f"({p})" in text, p
 
 
 def test_facade_research_categories_returns_taxonomy():
