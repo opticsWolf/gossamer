@@ -258,6 +258,18 @@ TOOL_REGISTRY = (
                 False,
                 "true returns a validated ParsedDocumentPayload (metadata, pages, tables) as JSON instead of plain text.",
             ),
+            ToolParam(
+                "store",
+                bool,
+                False,
+                "true writes the original document bytes (verbatim, <stem><ext>) and the full extracted text as a <stem>.md file under store_dir (default 'stored_documents/'). The returned result includes a 'stored' object with the file paths and sizes. Cannot be combined with pages=.",
+            ),
+            ToolParam(
+                "store_dir",
+                str,
+                None,
+                "Directory to write stored files into (created if missing). Only used when store=true.",
+            ),
         ),
     ),
     ToolSpec(

@@ -16,6 +16,7 @@ import json
 import pytest
 
 from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from tests.test_t1_2_pages import PDF_BYTES  # a minimal valid multi-page PDF
 from stitch_web_researcher.structured_parser import (
     DOCUMENT_EXTENSIONS,
     classify_link,
@@ -236,6 +237,17 @@ class TestContentTypeRouting:
         assert "error" in data
         assert "Unsupported document format" in data["error"]
 
+    def test_pdf_content_type_url_without_extension(self, tmp_path):
+        # arXiv serves /pdf/<id> as application/pdf with no extension; the
+        # response Content-Type must route to the PDF parser -- this is the
+        # binary-document extension of the Tier 3.10 content-type routing.
+        tb = _toolbox(tmp_path)
+        self._patch_fetch(tb, PDF_BYTES, "application/pdf")
+        data = json.loads(tb.extract_document("https://arxiv.org/pdf/1707.06376v2"))
+        assert data.get("error") is None
+        assert "BETA" in data["content"]
+        assert data.get("content_type") == "application/pdf"
+
     def test_known_suffix_beats_content_type(self, tmp_path):
         # A .json suffix routes by extension even if the content-type is
         # generic; the JSON pretty-print path is taken.
@@ -243,3 +255,58 @@ class TestContentTypeRouting:
         self._patch_fetch(tb, b'{"y": 9}', "application/octet-stream")
         data = json.loads(tb.extract_document("https://example.com/config.json"))
         assert data["content"] == json.dumps({"y": 9}, indent=2, ensure_ascii=False)
+
+
+class TestStoreExtensionlessUrl:
+    """Extensionless document URLs store under a Content-Type-derived name.
+
+    arXiv serves /pdf/<id> with no extension (the path suffix is a version
+    fragment like ".06376v1"). The stored original must be named from the
+    response Content-Type (".pdf"), not the numeric fragment.
+    """
+
+    def _patch_fetch(self, tb, body: bytes, content_type: str):
+        def _fake(url):
+            return body, {
+                "fetched_at": None,
+                "http_status": 200,
+                "final_url": url,
+                "content_type": content_type,
+            }
+
+        tb._doc._fetch_document_url = _fake  # type: ignore[method-assign]
+
+    def test_extensionless_pdf_stores_as_pdf(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        self._patch_fetch(tb, PDF_BYTES, "application/pdf")
+        data = json.loads(
+            tb.extract_document("https://arxiv.org/pdf/1707.06376v1", store=True)
+        )
+        assert data.get("error") is None
+        # The arXiv id (with version) is preserved verbatim: the numeric
+        # path fragment ".06376v1" is NOT used as the extension.
+        assert data["stored"]["original"].endswith("1707.06376v1.pdf")
+        assert data["stored"]["markdown"].endswith("1707.06376v1.md")
+
+    def test_real_pdf_extension_not_doubled(self, tmp_path):
+        # A URL that already carries a real .pdf extension keeps exactly
+        # one extension (no "paper.pdf.pdf").
+        tb = _toolbox(tmp_path)
+        self._patch_fetch(tb, PDF_BYTES, "application/pdf")
+        data = json.loads(
+            tb.extract_document("https://example.com/paper.pdf", store=True)
+        )
+        assert data["stored"]["original"].endswith("paper.pdf")
+        assert data["stored"]["markdown"].endswith("paper.md")
+
+    def test_extensionless_text_stores_as_bin(self, tmp_path):
+        # Extensionless text/plain succeeds as text extraction, then the
+        # original is preserved under .bin (no real extension to name it).
+        tb = _toolbox(tmp_path)
+        self._patch_fetch(tb, b"hello plain world", "text/plain")
+        data = json.loads(
+            tb.extract_document("https://example.com/raw/plainfile", store=True)
+        )
+        assert data.get("error") is None
+        assert data["stored"]["original"].endswith(".bin")
+        assert data["stored"]["original_bytes"] == 17

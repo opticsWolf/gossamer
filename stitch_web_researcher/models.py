@@ -138,6 +138,10 @@ class ExtractionResult(BaseModel):
     # §7: optional prompt-injection guard block (present only when the
     # guard is enabled and a scanned scope was checked).
     guard: Optional[dict] = None
+    # store=... support: when extract_document is called with store=True this
+    # maps to the files written — {"directory", "pdf", "markdown",
+    # "pdf_bytes", "markdown_chars"}. None when store=False.
+    stored: Optional[dict] = None
 
 
 class InspectionResult(BaseModel):

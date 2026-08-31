@@ -652,6 +652,7 @@ class WebResearcherToolbox:
         offset: int = 0,
         max_chunks: int = 1,
         structured: bool = False,
+        store_dir: Optional[str] = None,
     ) -> str:
         """
         Fetch and extract markdown + follow-up links + HTML metadata from a web page.
@@ -690,11 +691,19 @@ class WebResearcherToolbox:
             Each chunk individually respects the output budget; the total
             payload may exceed it. Explicit paging takes precedence over
             query-based section selection.
+        store_dir : str, optional
+            When set, persist the *full* page markdown plus its images to a
+            ``<stem>.md`` / ``<stem>.files/`` pair under this directory and
+            return a JSON manifest (paths + rewritten body) instead of the
+            markdown slice. Image refs are downloaded and rewritten to local
+            relative paths, so the store is self-contained. Mutually with
+            ``structured`` (structured output ignores ``store_dir``).
         """
         if structured:
             return self._doc._inspect_html_structured_impl(url, use_smart)
         return self._fetch._inspect_html_page_impl(
-            url, use_smart, query, offset, max_chunks
+            url, use_smart, query, offset, max_chunks,
+            store_dir=store_dir,
         )
 
     async def inspect_html_page_async(
@@ -704,18 +713,23 @@ class WebResearcherToolbox:
         query: Optional[str] = None,
         offset: int = 0,
         max_chunks: int = 1,
+        store_dir: Optional[str] = None,
     ) -> str:
         """Async version of inspect_html_page.
 
         "Async" here means *thread pool*: the shared blocking implementation
         is offloaded to the default executor via run_in_executor so the event
         loop stays responsive. The underlying fetch remains synchronous --
-        see the README "Async" note.
+        see the README "Async" note. ``store_dir`` (when set) persists the
+        full page markdown + images to a ``<stem>.md`` / ``<stem>.files/``
+        pair and returns a manifest, mirroring the sync method.
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, self._fetch._inspect_html_page_impl, url, use_smart, query,
-            offset, max_chunks,
+            None,
+            lambda: self._fetch._inspect_html_page_impl(
+                url, use_smart, query, offset, max_chunks, store_dir=store_dir,
+            ),
         )
 
     # ───────────────────────
@@ -752,13 +766,22 @@ class WebResearcherToolbox:
         )
 
     def extract_document(
-        self, source: str, pages: Optional[str] = None, structured: bool = False
+        self,
+        source: str,
+        pages: Optional[str] = None,
+        structured: bool = False,
+        *,
+        store: bool = False,
+        store_dir: Optional[str] = None,
     ) -> str:
         """Extract text content from documents (PDF/DOCX/XLSX/PPTX, JSON,
         XML/RSS feeds, and text-like bodies). Thin delegation to
-        ``DocumentExtractor``; see that method for the full contract.
-        """
-        return self._doc.extract_document(source, pages, structured)
+        ``DocumentExtractor``; see that method for the full contract. With
+        ``store=true`` the original bytes and extracted markdown are written
+        to disk and the result's ``stored`` field reports the paths."""
+        return self._doc.extract_document(
+            source, pages, structured, store=store, store_dir=store_dir
+        )
 
     def extract_document_structured(self, source: str) -> str:
         """Extract a document into a structured ParsedDocumentPayload

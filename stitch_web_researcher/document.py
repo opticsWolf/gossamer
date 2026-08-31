@@ -34,10 +34,20 @@ from stitch_web_researcher.structured_parser import (
     require_office_oxide,
     require_pdf_oxide,
 )
+from stitch_web_researcher.resource_store import ResourceStore
 from stitch_web_researcher.token_budget import count_tokens
 from stitch_web_researcher.text_links import extract_links
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_filename(name: str, fallback: str = "document") -> str:
+    """Collapse ``name`` to a single safe basename (no separators, no ``..``)."""
+    stem = Path(name).stem or ""
+    stem = stem.replace("/", "_").replace("\\", "_").replace("..", "_").strip()
+    stem = "".join(ch if (ch.isalnum() or ch in "-_ ") else "_" for ch in stem)
+    stem = stem.strip("._-")
+    return stem or fallback
 
 
 class DocumentExtractor:
@@ -82,7 +92,13 @@ class DocumentExtractor:
         return result.model_dump_json()
 
     def extract_document(
-        self, source: str, pages: Optional[str] = None, structured: bool = False
+        self,
+        source: str,
+        pages: Optional[str] = None,
+        structured: bool = False,
+        *,
+        store: bool = False,
+        store_dir: Optional[str] = None,
     ) -> str:
         """Extract text content from documents.
 
@@ -103,6 +119,16 @@ class DocumentExtractor:
             (PDF, XLSX); for other formats the call errors with an
             actionable message. The full document stays cached under its
             own key, so range reads do not evict whole-document reads.
+        store : bool
+            When true, write two files — the original document bytes
+            verbatim (``<stem><ext>``) and the full extracted text as
+            markdown (``<stem>.md``) — under ``store_dir`` (default
+            ``stored_documents/`` next to the working directory). The full
+            (untruncated) extracted text is stored even though the returned
+            body is budget-truncated. ``store`` cannot be combined with
+            ``pages``.
+        store_dir : str, optional
+            Directory to write the stored files into. Created if missing.
         """
         if structured:
             return self._extract_document_structured_impl(source)
@@ -134,58 +160,185 @@ class DocumentExtractor:
         # parser (the only path with per-page structure) and are cached
         # under a range-specific key.
         if pages is not None and str(pages).strip():
+            if store:
+                return json.dumps(
+                    {
+                        "error": (
+                            "store=True cannot be combined with pages=...; "
+                            "store the full document instead"
+                        )
+                    },
+                    indent=2,
+                )
             return self._extract_document_pages(source, str(pages).strip(), is_url)
 
         cache_key = self._tb._cache_key(source) if is_url else source
+        raw_bytes: Optional[bytes] = None
+        prov: dict = {}
         cached = self._tb.cache.get(cache_key)
+
         if cached is not None:
             # Re-apply the budget on every read (C4): the cache holds
             # untruncated content and the budget may have changed since the
             # entry was stored — same read-time truncation as the page cache.
-            truncated = self._tb._budget._truncate(cached, self._tb.max_markdown_chars, self._tb.max_tokens)
-            return self._finish_document(
-                ExtractionResult(
-                    source=source,
-                    content=truncated,
-                    content_tokens=count_tokens(truncated, self._tb.model_name),
-                    cache_hit=True,
-                    # Tier 1.3: the stored content carries no fetch timestamp,
-                    # so fetched_at stays None; the hash still ties the read
-                    # back to the stored bytes.
-                    content_hash=_sha256_hex(cached),
-                    links=extract_links(cached),
+            full_content = cached
+            cache_hit = True
+            # Tier 1.3: the stored content carries no fetch timestamp, so
+            # fetched_at stays None; the hash still ties the read back to
+            # the stored bytes.
+        else:
+            try:
+                if is_url:
+                    if store:
+                        content, prov, raw_bytes = self._download_and_extract(
+                            source, with_bytes=True
+                        )
+                    else:
+                        content, prov = self._download_and_extract(source)
+                    full_content = content
+                else:
+                    full_content = self._extract_local(source)
+                    prov = {"fetched_at": _utc_now_iso()}
+            except Exception as e:
+                logger.error("Document extraction failed for %s: %s", source, e)
+                return json.dumps(
+                    {"error": f"Document extraction failed: {str(e)}"}, indent=2
                 )
-            )
+            self._tb.cache.put(cache_key, full_content)
+            cache_hit = False
 
-        try:
-            if is_url:
-                content, prov = self._download_and_extract(source)
+        # Store the original document + full extracted markdown when asked.
+        stored = None
+        if store:
+            if raw_bytes is None:
+                # Cache hit: refetch fresh bytes for storage.
+                if is_url:
+                    raw_bytes, store_prov = self._fetch_document_url(source)
+                else:
+                    raw_bytes = Path(source).read_bytes()
+                    store_prov = {"fetched_at": _utc_now_iso()}
             else:
-                content = self._extract_local(source)
-                prov = {"fetched_at": _utc_now_iso()}
+                store_prov = prov
+            stored = self._store_document(
+                source, raw_bytes, full_content, is_url, store_dir, store_prov
+            )
 
-            self._tb.cache.put(cache_key, content)
-            truncated = self._tb._budget._truncate(content, self._tb.max_markdown_chars, self._tb.max_tokens)
-            return self._finish_document(
-                ExtractionResult(
-                    source=source,
-                    content=truncated,
-                    content_tokens=count_tokens(truncated, self._tb.model_name),
-                    cache_hit=False,
-                    # Tier 1.3: provenance of the download (or parse time for
-                    # local files) plus a hash of the full extracted content.
-                    content_hash=_sha256_hex(content),
-                    # Link detection runs on the full content, not the
-                    # truncated delivery — a budget cut must never lose links.
-                    links=extract_links(content),
-                    **prov,
+        truncated = self._tb._budget._truncate(
+            full_content, self._tb.max_markdown_chars, self._tb.max_tokens
+        )
+        result = ExtractionResult(
+            source=source,
+            content=truncated,
+            content_tokens=count_tokens(truncated, self._tb.model_name),
+            cache_hit=cache_hit,
+            # Hash ties the read back to the full untruncated content.
+            content_hash=_sha256_hex(full_content),
+            # Link detection runs on the full content, not the truncated
+            # delivery — a budget cut must never lose links.
+            links=extract_links(full_content),
+            **prov,
+        )
+        if stored is not None:
+            result.stored = stored
+        return self._finish_document(result)
+
+    def _store_document(self, source, raw_bytes, full_text, is_url, store_dir, prov=None):
+        """Write the original document bytes + extracted markdown to disk.
+
+        ``raw_bytes`` is the untouched document (stored verbatim); ``full_text``
+        is the full, untruncated extracted text written as markdown. Returns a
+        dict with the written paths and sizes.
+        """
+        out_dir = Path(store_dir) if store_dir else Path.cwd() / "stored_documents"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        prov = prov or {}
+        served = prov.get("final_url") or source
+        orig_name = (
+            Path(urlparse(served).path).name if is_url else Path(source).name
+        )
+        suffix = Path(orig_name).suffix
+        if suffix.lower() in self._DOC_TEXT_SUFFIXES:
+            # A real document/text extension is present; Path.stem already
+            # stripped exactly it, so "1707.06376v1.pdf" -> stem
+            # "1707.06376v1" (the id is preserved).
+            stem = Path(orig_name).stem or _sanitize_filename(source)
+        elif is_url:
+            # A URL with no real extension: either extensionless, or an
+            # arXiv-style version fragment ("/pdf/1707.06376v1" ->
+            # ".06376v1", which Python wrongly treats as an extension).
+            # Keep the whole name as the stem and derive the extension from
+            # the Content-Type, so the id is preserved verbatim ->
+            # "1707.06376v1.pdf". "pdf" is checked first because some
+            # servers still emit ``application/pdf; charset=binary``.
+            stem = orig_name or _sanitize_filename(source)
+            ct = (prov.get("content_type") or "").lower()
+            fmt = self._CONTENT_TYPE_FORMAT.get(ct.split(";", 1)[0].strip().lower())
+            suffix = f".{fmt}" if fmt else ".bin"
+        else:
+            # A local file with a non-document extension (e.g. "image.png")
+            # or extensionless: honor the original suffix; extensionless
+            # falls back to ".bin".
+            stem = Path(orig_name).stem or _sanitize_filename(source)
+            suffix = suffix or ".bin"
+
+        orig_path = out_dir / f"{stem}{suffix}"
+        md_path = out_dir / f"{stem}.md"
+
+        if raw_bytes is not None:
+            orig_path.write_bytes(raw_bytes)
+        md_path.write_text(full_text, encoding="utf-8")
+
+        resources = self._store_resources(
+            served, out_dir, stem, full_text, raw_bytes, suffix
+        )
+
+        return {
+            "directory": str(out_dir),
+            "original": str(orig_path),
+            "markdown": str(md_path),
+            "original_bytes": len(raw_bytes) if raw_bytes is not None else 0,
+            "markdown_chars": len(full_text),
+            "content_type": prov.get("content_type"),
+            "resources": resources,
+        }
+
+    def _store_resources(
+        self, served, out_dir, stem, full_text, raw_bytes, suffix
+    ) -> dict:
+        """Extract images referenced in the stored content into
+        ``<stem>.files/`` and rewrite ``<stem>.md`` to point at them.
+
+        HTML pages keep ``![alt](url)`` image refs (already absolute after
+        inspection), so they download here and the markdown is rewritten to
+        local paths. Text/office documents whose converter kept image refs
+        are handled the same way.
+
+        Note: PDF and office converters drop images from the extracted
+        markdown, and the bundled pdf_oxide detects images but cannot extract
+        their bytes, so embedded PDF images are not currently retrievable --
+        this method then yields an empty manifest rather than erroring.
+
+        Best-effort: never raises, so a resource download failure cannot
+        fail the whole store.
+        """
+        try:
+            store = ResourceStore(headers=self._tb._next_headers())
+            manifest = store.extract(
+                markdown=full_text, base_url=served, out_dir=out_dir, stem=stem,
+            )
+            if manifest["referenced"]:
+                (Path(out_dir) / f"{stem}.md").write_text(
+                    manifest["markdown"], encoding="utf-8"
                 )
-            )
-        except Exception as e:
-            logger.error("Document extraction failed for %s: %s", source, e)
-            return json.dumps(
-                {"error": f"Document extraction failed: {str(e)}"}, indent=2
-            )
+            return {
+                "dir": manifest["dir"],
+                "files": manifest["files"],
+                "referenced": manifest["referenced"],
+            }
+        except Exception as e:  # noqa: BLE001 - resources are best-effort
+            logger.warning("ResourceStore failed for %s: %s", served, e)
+            return {"dir": None, "files": [], "referenced": 0}
 
     def _fetch_document_url(self, url: str) -> tuple[bytes, dict]:
         """Tier 1.3: download a document URL; return (bytes, provenance).
@@ -205,27 +358,63 @@ class DocumentExtractor:
         }
         return response.content, prov
 
-    def _download_and_extract(self, url: str) -> tuple[str, dict]:
-        """Download a document from URL; returns (content, provenance).
+    def _download_and_extract(
+        self, url: str, *, with_bytes: bool = False
+    ) -> tuple:
+        """Download a document from URL; return (content, prov[, raw_bytes]).
 
         Tier 3.10: when the URL carries no usable extension (or an
         unrecognized one) but the server says the body is text-like
         (Content-Type: text/plain, application/json, ...), the bytes are
-        extracted as text instead of raising.
+        extracted as text instead of raising. When ``with_bytes`` is true
+        the original document bytes are returned alongside the extracted
+        text so a ``store`` call can write the verbatim original.
         """
         data, prov = self._fetch_document_url(url)
         try:
-            return self._extract_from_bytes(data, url), prov
+            content = self._extract_from_bytes(data, url)
         except ValueError:
             ct = (prov.get("content_type") or "").split(";", 1)[0].strip().lower()
-            kind = self._TEXT_LIKE_CONTENT_TYPES.get(ct)
-            if kind is None:
-                raise
-            if kind == "json":
-                return self._extract_json_text(data), prov
-            if kind == "xml":
-                return self._extract_xml_feed(data), prov
-            return data.decode("utf-8-sig", errors="replace"), prov
+            # Binary document (PDF/OOXML) at an extensionless URL -- arXiv's
+            # /pdf/<id> is the common case -- routes by Content-Type.
+            doc_fmt = self._CONTENT_TYPE_FORMAT.get(ct)
+            if doc_fmt is not None:
+                content = self._parse_document_bytes(data, doc_fmt)
+            else:
+                kind = self._TEXT_LIKE_CONTENT_TYPES.get(ct)
+                if kind is None:
+                    raise
+                if kind == "json":
+                    content = self._extract_json_text(data)
+                elif kind == "xml":
+                    content = self._extract_xml_feed(data)
+                else:
+                    content = data.decode("utf-8-sig", errors="replace")
+        if with_bytes:
+            return content, prov, data
+        return content, prov
+
+    def _parse_document_bytes(self, data: bytes, fmt: str) -> str:
+        """Parse document bytes dispatched by canonical format name.
+
+        Used when a URL gives no usable extension and the response
+        Content-Type decides the format (e.g. arXiv's ``application/pdf``),
+        so ``extract_document`` works on extensionless document URLs. This
+        is the binary-document complement to the text-like fallback in
+        ``_download_and_extract``.
+        """
+        if fmt == "pdf":
+            return require_pdf_oxide().from_bytes(data).to_markdown_all()
+        if fmt in ("docx", "xlsx", "pptx"):
+            return require_office_oxide().from_bytes(data).to_markdown()
+        # Known-but-unsupported legacy office formats: actionable error.
+        suffix = {
+            "doc": ".doc", "xls": ".xls", "ppt": ".ppt", "xlsb": ".xlsb",
+        }.get(fmt, f".{fmt}")
+        hint = self._UNSUPPORTED_FORMAT_HINTS.get(suffix)
+        if hint:
+            raise ValueError(f"Unsupported document format: {suffix} ({hint}).")
+        raise ValueError(f"Unsupported document format: {suffix}")
 
     # Tier 1.2: page-range reads. The flat extractor joins all pages into
     # one string, so a range can only be served by re-deriving the
@@ -234,6 +423,26 @@ class DocumentExtractor:
     # formats have no pages) are refused with an actionable message.
     _PAGED_EXTRACT_SUFFIXES = (".pdf", ".xlsx")
 
+    # Extensions authoritative for a stored original's name. An extension
+    # outside this set (e.g. arXiv's /pdf/<id> -> ".06954v2") is treated as
+    # a version fragment and resolved from the Content-Type instead.
+    _DOC_TEXT_SUFFIXES = (
+        ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+        ".xlsb", ".csv", ".txt", ".md", ".json", ".xml", ".rss", ".atom",
+    )
+
+    # Content-Type (sans parameters) -> canonical document format. Lets an
+    # extensionless document URL -- arXiv serves /pdf/<id> as
+    # application/pdf with no extension -- resolve to the right parser.
+    _CONTENT_TYPE_FORMAT = {
+        "application/pdf": "pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        "application/vnd.msword": "doc",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+        "application/vnd.ms-excel": "xls",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+        "application/vnd.ms-powerpoint": "ppt",
+    }
     def _extract_document_pages(
         self, source: str, pages_spec: str, is_url: bool
     ) -> str:

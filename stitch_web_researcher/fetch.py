@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from pathlib import Path
+from urllib.parse import urlparse
 
 from stitch_web_researcher import meta_extractor
+from stitch_web_researcher.resource_store import ResourceStore
 from stitch_web_researcher._core import (
     extract_main_content_markdown,
     extract_links_from_html as _extract_links_from_html,
@@ -154,6 +158,20 @@ from stitch_web_researcher.models import (
     _sha256_hex,
     InspectionResult,
 )
+
+
+def _html_store_stem(url: str) -> str:
+    """Derive a filesystem-safe stem for a stored HTML page from its URL.
+
+    HTML URLs rarely end in a real filename (``/article`` -> ``article``),
+    so fall back to the last path segment; anything left unsafe is collapsed
+    to ``[A-Za-z0-9._-]``.
+    """
+    path = urlparse(url).path
+    name = Path(path).name or url.rstrip("/").split("/")[-1]
+    stem = Path(name).stem or re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-._")
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem or "page").strip("-._")
+    return stem or "page"
 
 
 class FetchService:
@@ -759,6 +777,7 @@ class FetchService:
         offset: int = 0,
         max_chunks: int = 1,
         politeness_root: Optional[str] = None,
+        store_dir: Optional[str] = None,
     ) -> str:
         """Shared implementation behind ``inspect_html_page`` (sync + async).
 
@@ -838,6 +857,12 @@ class FetchService:
             len(markdown),
             len(links),
         )
+        # store_dir mode: persist the full page markdown + its images to a
+        # ``<stem>.md`` / ``<stem>.files/`` pair and return a manifest. This
+        # branches before paging/query selection because resources must be
+        # extracted from the *full* markdown, not a delivered slice.
+        if store_dir:
+            return self._inspect_html_store(url, markdown, store_dir)
         md_chars, md_tokens = self._tb._budget._content_budget()
         # Tier 1.2: paging operates at read time on the full cached
         # markdown, so resuming never re-fetches. Explicit paging
@@ -929,6 +954,41 @@ class FetchService:
             self._page_cache_put(url, *cached)
         return result.model_dump_json()
 
+    def _inspect_html_store(self, url: str, markdown: str, store_dir: str) -> str:
+        """store_dir mode for ``inspect_html_page``: write the full page
+        markdown plus its images to a ``<stem>.md`` / ``<stem>.files/`` pair.
+
+        The markdown produced by inspection already has absolute image refs
+        (``_absolutize_markdown_links``), so :class:`ResourceStore` downloads
+        them and rewrites the body to local relative paths, leaving the store
+        self-contained. Returns a JSON manifest with the written paths.
+        """
+        try:
+            out_dir = Path(store_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            stem = _html_store_stem(url)
+            store = ResourceStore(headers=self._tb._next_headers())
+            manifest = store.extract(
+                markdown=markdown, base_url=url, out_dir=out_dir, stem=stem,
+            )
+            md_path = out_dir / f"{stem}.md"
+            md_path.write_text(manifest["markdown"], encoding="utf-8")
+            result = {
+                "stored": True,
+                "source": url,
+                "markdown": str(md_path),
+                "resources": {
+                    "dir": manifest["dir"],
+                    "files": manifest["files"],
+                    "referenced": manifest["referenced"],
+                },
+            }
+            return json.dumps(result, indent=2)
+        except Exception as e:  # noqa: BLE001 - report, do not raise
+            logger.error("HTML resource store failed for %s: %s", url, e)
+            return json.dumps(
+                {"error": f"HTML resource store failed: {str(e)}"}, indent=2
+            )
 
     def _slice_markdown(
         self,

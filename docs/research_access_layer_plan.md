@@ -4,7 +4,8 @@
 > resources below, exposed as a single MCP surface for an LLM harness.
 
 Status: **plan**. Build on branch `main` (or a feature branch off it).
-Last verified: **2026-08-31** (live-docs pass over all 30 resources).
+Last verified: **2026-08-31** (live-docs pass over all 30 resources). Added
+2026-08-31: self-contained resource store (HTML/office image extraction).
 
 ---
 
@@ -102,8 +103,11 @@ class ResourceAdapter(ABC):                       # search_providers.py
 # Search engines (narrow to domain="search"):
 #   DuckDuckGoProvider, GoogleProvider, BingProvider, ExaProvider,
 #   BrowserOxideSearchProvider  (all subclass SearchProvider)
-# Domain adapters (stand beside SearchProvider):
-#   OpenAlexAdapter (scholarly), OpenMeteoAdapter (geo)  — research_providers.py
+# Domain adapters (stand beside SearchProvider) — research_providers.py:
+#   Phase 1: OpenAlexAdapter (scholarly), OpenMeteoAdapter (geo)
+#   Phase 2: CrossrefAdapter, ArxivAdapter, PubmedAdapter, DoajAdapter
+#            (scholarly), OpenLibraryAdapter (library), WorldBankAdapter,
+#            FredAdapter (financial), GitHubAdapter (tech)
 ```
 
 ### 3.2 Boundary coordinator (the core deliverable)
@@ -162,7 +166,7 @@ published number (use polite default + header retune, verify before prod).
 ### 4.2 Domain-specific science & medical
 | Provider | Base | Auth | Verified limit | Pagination | Status |
 |---|---|---|---|---|---|
-| arXiv | arxiv.org/api | none | **1 req per 3 s**, single connection; no hard cap (responsible use); max 30k results/query in ≤2k slices | start/index | ✅ |
+| arXiv | `export.arxiv.org/api/query` (Atom 1.0 feed) | none | **1 req per 3 s**, single connection; no hard cap (responsible use); max 30k results/query in ≤2k slices | start/index | ✅ (Atom parser; uses `search_query`/`id_list`) |
 | PubMed / NCBI E-utilities | eutils.ncbi.nlm.nih.gov | none / key | **3 rps no key, 10 rps key**; IP-block if abused | start/retmax | ✅ |
 | bioRxiv | api.biorxiv.org | none | **No official limit**; community best-practice 1 rps/call, ≤3 rps total | page (≤100) | ⚠️ |
 | medRxiv | api.medrxiv.org | none | **No official limit**; ≤3 rps total across bio+med | page | ⚠️ |
@@ -298,18 +302,71 @@ Missing key → tool returns a clean "provider X needs key Y (set STITCH_...)" e
 - New Python module `stitch_web_researcher/research_providers.py` (adapters +
   coordinator + key manager + normalization) — pure Python is fine; keep heavy
   HTTP in the existing async client.
-  - **Done (Phase 1 core + first adapters):** `ResourceAdapter` ABC in
+  - **Done (Phase 1 core + Phase 2 adapters):** `ResourceAdapter` ABC in
     `search_providers.py` (politeness + jitter + quota + `QuotaExhaustedError`
     + auth/header contract + retry-wrapped `search`); `SearchProvider`
-    narrowed to `domain="search"`; `OpenAlexAdapter` and `OpenMeteoAdapter`
-    in `research_providers.py`; `RateState`/`QuotaExhaustedError` exported from
-    the package. Full suite green (951 passed).
-- Register adapters in the existing **tool registry** pattern
-  (`agent_tools.py::TOOL_REGISTRY`) or a new `research_tools` group.
-- Wire the six tools into the existing MCP server (`mcp_server.py`).
+    narrowed to `domain="search"`; in `research_providers.py`:
+    `OpenAlexAdapter`, `OpenMeteoAdapter` (Phase 1) plus the full Phase 2
+    wave — `CrossrefAdapter`, `ArxivAdapter`, `PubmedAdapter`, `DoajAdapter`,
+    `OpenLibraryAdapter`, `WorldBankAdapter`, `FredAdapter`, `GitHubAdapter`
+    — all subclassing `ResourceAdapter` and covered by `tests/test_research_providers.py`
+    (50 tests). `RateState`/`QuotaExhaustedError` exported from the package.
+    Full suite green (1033 passed, 1 skipped).
+- **TODO (Phase 3+):** remaining domain adapters (NASA, NVD, Zenodo, Software
+  Heritage, legal APIs, Yahoo, Overpass, Census, …).
+- **TODO (Phase 4):** register adapters in the existing **tool registry**
+  pattern (`agent_tools.py::TOOL_REGISTRY`) or a new `research_tools` group;
+  wire the six tools (`research_search` / `research_fetch` / `research_doi`
+  / `research_tseries` / `research_geo` / `research_multi`) into the existing
+  MCP server (`mcp_server.py`).
+- **TODO (Phase 2.5):** a thin dispatch layer that maps the six tools above to
+  the adapters (not yet built — adapters are usable directly via `search()` /
+  `fetch()` today).
 - Reuse `guard.py` (injection) and `ssrf.py` (URL allowlist) unchanged.
 - Reuse `cache.py` for read-through caching of idempotent fetches.
 - Version bump in lockstep with any new release (pyproject/Cargo).
+
+### 9.1 Self-contained resource store — IMPLEMENTED
+
+Stored content (from `extract_document` and `inspect_html_page`) is written as
+`<stem>.md` (text/markdown) plus the original bytes as `<stem>.<ext>`. On its own
+that markdown frequently references images by URL, which would break the stored
+artifact once the source is offline. `stitch_web_researcher/resource_store.py`
+(`ResourceStore`, pure Python, fully offline-testable) makes the store
+self-contained:
+
+- `ResourceStore.extract(markdown, base_url, out_dir, stem)` rewrites every
+  `![alt](url)` ref in the markdown to a local copy in a sibling
+  `<stem>.files/` directory, downloads each image into that folder, and returns a
+  manifest (`markdown`, `dir`, `stem`, `referenced`, `files`, `skipped`). The
+  folder is created lazily — no empty folder when there are no image refs.
+- `ResourceStore.extract_embedded(markdown, out_dir, stem, images)` writes images
+  that the converter **dropped** (no ref to rewrite) and appends a `## Figures`
+  section linking each. This is the PDF fallback (see below).
+- **HTML / office:** the inspection markdown keeps `![alt](absolute-url)` image
+  refs (absolutized by `_absolutize_markdown_links`), so `extract` downloads and
+  rewrites them. `inspect_html_page(url, store_dir=...)` routes the full page
+  markdown through `extract` (see §5 `fetch`), leaving `<stem>.md` +
+  `<stem>.files/` behind. `extract_document` applies the same path for office/
+  text whose converter kept refs.
+- **PDF embedded images are NOT extracted.** The bundled `pdf_oxide` exposes
+  `page_images(p)` (a list of `{name,x,y,width,height,matrix}` dicts, so it can
+  *see* images) but `extract_images(...)` / `extract_image_bytes(...)` return
+  **0 bytes** in this environment; only `render_page(...)` produces pixels. So a
+  PDF store writes `<stem>.md` + `<stem>.pdf` with an **empty** resources
+  manifest (best-effort, never raises). Page-rendering (`render_page`) is the
+  reliable fallback for PDF figures and is offered as a possible future step.
+- **SSRF + offline:** downloads honour `ssrf.validate_public_url` (so the
+  operator bypass `STITCH_WEB_RESEARCHER_ALLOW_PRIVATE` is required for
+  loopback/`localhost` targets) and go through an injectable `httpx` client
+  (a lazy module-level client is the default). The store never raises on a
+  failed asset — it records it in `skipped` and continues.
+- Wired into `document.py::_store_document` as `_store_resources(...)`; the
+  returned `stored` dict gains a `resources` key (`dir/files/referenced`), and
+  the `.md` is only rewritten when `referenced > 0`.
+- Tests: `tests/test_resource_store.py` (8), `tests/test_p9_doc_store.py`
+  (manifest keys), `tests/test_html_store.py` (end-to-end HTML store, local
+  server). Full suite green (1062 passed, 11 skipped, 7 deselected).
 
 ---
 
@@ -322,13 +379,21 @@ frozen §4 matrix.
 limiter, header feedback loop, 429/backoff, common schema, key manager. **No
 providers yet** — unit-test the coordinator against a mock server.
 
-**Phase 2 — First wave (robust, low-risk, no/cheap keys).** OpenAlex, Crossref,
+**Phase 2 — First wave (robust, low-risk, no/cheap keys).** ✅ All adapters
+**implemented and tested** in `research_providers.py`: OpenAlex, Crossref,
 arXiv, PubMed, World Bank, FRED, Open-Meteo, DOAJ, Open Library, GitHub(auth).
+Remaining Phase 2 work is the Phase 4 MCP tool surface + dispatch that exposes
+them (see §5 / §9).
 
-**Phase 3 — Domain waves.** Legal (CourtListener only — CAP is sunset; Congress.gov,
-eCFR, FedRegister, EUR-Lex, DE, JP), science (bioRxiv/medRxiv, ChemRxiv, NASA,
-NVD, Software Heritage, Zenodo), financial (Alpha Vantage, Yahoo), geo (Overpass,
-Census).
+**Phase 3 — Domain waves.** Implemented & tested (`research_providers.py`):
+**✅ science** — NASA (`NASAAdapter`, NeoWs), NVD (`NvdAdapter`), Software Heritage
+(`SoftwareHeritageAdapter`), Zenodo (`ZenodoAdapter`); **✅ legal** — Congress
+(`CongressAdapter`, data.gov key); **✅ financial** — Yahoo Finance
+(`YahooFinanceAdapter`); **✅ geo** — Overpass (`OverpassAdapter`), US Census
+(`CensusAdapter`). All 8 follow the `ResourceAdapter` contract (`tests/
+test_phase3_adapters.py`, 33 tests). **Remaining Phase 3:** CourtListener +
+eCFR + Federal Register + EUR-Lex + DE + JP legal APIs; bioRxiv/medRxiv +
+ChemRxiv; Alpha Vantage.
 
 **Phase 4 — MCP surface.** Expose the six tools; normalize; budget reporting.
 
@@ -357,6 +422,15 @@ docs + CHANGELOG, release.
   "search" APIs for bulk use; surface as *lookup-only* and cache aggressively.
 - **Yahoo Finance is unofficial/undocumented/ToS-gray.** Recommend flagging, not
   hiding; gate behind the global soft cap.
+- **arXiv robots.txt — resolved, no caution needed (verified 2026-08-31).**
+  `export.arxiv.org` is arXiv's API host; `ArxivAdapter` uses the documented Atom
+  API (`export.arxiv.org/api/query`), which arXiv explicitly sanctions for
+  programmatic access (Terms of Use: "Retrieve, store, transform, and share
+  descriptive metadata…" under CC0 1.0; content for personal/research use). The
+  robots.txt disallow governs crawling the site's *pages*, not the sanctioned
+  API endpoint. The sole obligation is the stated **1 request / 3 s, single
+  connection** rate limit — enforced by the `ResourceAdapter` politeness layer,
+  so no runtime caution or opt-in is required.
 - **Semantic Scholar nuance:** unauth ceiling (1000 rps shared) is high, but the
   *key* introductory rate is 1 rps — default to unauth with a polite header.
 - **Crossref/OpenAlex/NVD all changed or are strict** — the header-driven retune
@@ -372,6 +446,11 @@ docs + CHANGELOG, release.
   but throttled.
 - **Open question:** key storage — env-only (simplest, this plan) vs. encrypted
   store if multi-tenant. Start env-only.
+- **PDF images are not extracted** by the resource store: the bundled
+  `pdf_oxide` `extract_images`/`extract_image_bytes` return 0 bytes (only
+  `render_page` produces pixels), so a stored PDF's `<stem>.files/` is empty.
+  If figures must be preserved, switch PDF storage to page-rendered PNGs
+  (`render_page`) — a deliberate, documented trade-off, not a latent bug.
 
 ---
 

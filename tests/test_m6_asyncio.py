@@ -40,10 +40,11 @@ class TestAsyncDelegation:
         tb = _toolbox()
         calls = []
 
-        def fake_impl(url, use_smart=None, query=None, offset=0, max_chunks=1):
+        def fake_impl(url, use_smart=None, query=None, offset=0, max_chunks=1, store_dir=None):
             # Tier 1.2 extended the shared impl with paging parameters
             # (offset, max_chunks); the async wrapper must forward all
-            # five positionally, like the sync wrapper.
+            # five positionally, like the sync wrapper. store_dir is an
+            # optional keyword-only addition from the resource-store work.
             calls.append((url, use_smart, query, offset, max_chunks))
             return f"RESULT:{url}"
 

@@ -42,3 +42,68 @@ def ssrf_guard_active_by_default():
             os.environ.pop(_ALLOW_PRIVATE_ENV, None)
         else:
             os.environ[_ALLOW_PRIVATE_ENV] = original
+
+
+# ────────────────────────────────────────────────────────────────
+# Live network smoke tests (feature flag)
+# ────────────────────────────────────────────────────────────────
+#
+# Live tests make real network calls to the providers under test. They are
+# OFF by default so the normal suite stays fast, offline-friendly and hermetic
+# (mirroring the SSRF escape-hatch philosophy above). They are enabled only
+# with an explicit, operator-controlled opt-in: the ``STITCH_LIVE`` env var.
+# Key-gated providers additionally require their key env var to be set, or they
+# skip. (Env-var gating only — no CLI option, so there is nothing to register
+# and no way to enable live tests by accident.)
+
+_LIVE_ENV = "STITCH_LIVE"
+
+
+def _live_enabled(env_value: Optional[str]) -> bool:
+    """Return True when live tests are opted-in.
+
+    Enabled only by a truthy ``STITCH_LIVE`` env var — one of ``1`` / ``true``
+    / ``yes`` (case-insensitive). Off for any other value, so the default
+    suite never touches the network.
+    """
+
+    return (env_value or "").strip().lower() in ("1", "true", "yes")
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "live: live network smoke test; skipped unless STITCH_LIVE=1.",
+    )
+
+
+@pytest.fixture
+def live(request):
+    """Feature-gate a live test: skip it unless live mode is enabled.
+
+    Depend on this fixture at the top of a ``@pytest.mark.live`` test. When
+    live mode is off the test is skipped (not run, not failed), keeping the
+    default suite offline-friendly.
+    """
+
+    if not _live_enabled(os.environ.get(_LIVE_ENV)):
+        pytest.skip("live test (enable with STITCH_LIVE=1)")
+    return True
+
+
+@pytest.fixture
+def live_key(request):
+    """Like :func:`live`, but also skip when a provider key env var is unset.
+
+    Parameterize with the env-var name to require, e.g.
+    ``@pytest.mark.parametrize("live_key", ["STITCH_GITHUB_TOKEN"],
+    indirect=True)``.
+    """
+
+    if not _live_enabled(os.environ.get(_LIVE_ENV)):
+        pytest.skip("live test (enable with STITCH_LIVE=1)")
+    env_name = request.param
+    key = os.environ.get(env_name)
+    if not key:
+        pytest.skip(f"{env_name} not set; live auth test skipped")
+    return key
