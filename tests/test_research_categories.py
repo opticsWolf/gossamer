@@ -169,17 +169,136 @@ def test_search_category_explicit_provider_calls_that_source(monkeypatch):
     assert out["available_providers"] == ["openalex", "crossref", "arxiv"]
 
 
-def test_search_category_invalid_provider_is_rejected_not_raised():
-    # A provider that does not belong to the classified category is reported
-    # as an error, never raised, and never contacts any adapter.
+def test_search_category_provider_mismatch_with_category_is_rejected():
+    # category + provider explicitly given but inconsistent (ecfr is legal,
+    # not scholarly) is reported as an error, never raised, and never
+    # contacts any adapter. The caller over-determined both values.
     out = rc.search_category(
-        object(), "a peer reviewed paper on graphs", provider="ecfr"
+        object(),
+        "a peer reviewed paper on graphs",
+        category="scholarly",
+        provider="ecfr",
     )
     assert out["category"] == "scholarly"
     assert out["provider"] == "ecfr"
     assert "error" in out
     assert "not available" in out["error"]
     assert out["results"] == []
+
+
+def test_search_category_provider_only_reverse_resolves_owning_category(monkeypatch):
+    # A provider given alone must NOT reclassify the query: its owning
+    # category is used directly, so an arxiv call on a non-scholarly query
+    # still resolves to scholarly instead of being rejected.
+    seen = {}
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                seen["provider"] = provider
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    out = rc.search_category(
+        object(), "late breaking news about markets", provider="arxiv"
+    )
+    assert out["category"] == "scholarly"
+    assert out["provider"] == "arxiv"
+    assert "error" not in out
+    assert seen["provider"] == "arxiv"
+    assert out["available_providers"] == ["openalex", "crossref", "arxiv"]
+
+
+def test_search_category_unknown_provider_is_rejected_not_raised():
+    # A provider that belongs to no category is reported as an error.
+    out = rc.search_category(object(), "a peer reviewed paper on graphs", provider="bogus")
+    assert out["provider"] == "bogus"
+    assert "error" in out
+    assert out["results"] == []
+
+
+def test_search_category_unknown_category_is_rejected_not_raised():
+    # An unknown category name is reported as an error, never raised.
+    out = rc.search_category(
+        object(), "a peer reviewed paper on graphs", category="bogus"
+    )
+    assert out["category"] == "bogus"
+    assert "error" in out
+    assert out["results"] == []
+
+
+def test_search_category_category_and_provider_both_respected(monkeypatch):
+    # category + a valid provider within it: both honoured, query untouched.
+    seen = {}
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                seen["provider"] = provider
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    out = rc.search_category(
+        object(), "any topic at all", category="legal", provider="ecfr"
+    )
+    assert out["category"] == "legal"
+    assert out["provider"] == "ecfr"
+    assert "error" not in out
+    assert seen["provider"] == "ecfr"
+
+
+def test_search_category_does_not_classify_when_category_given(monkeypatch):
+    # The classifier must NOT run when a category is given explicitly.
+    calls = {"n": 0}
+    orig = rc.classify
+
+    def spy(query):
+        calls["n"] += 1
+        return orig(query)
+
+    monkeypatch.setattr(rc, "classify", spy)
+
+    out = rc.search_category(object(), "any topic", category="legal")
+    assert calls["n"] == 0
+    assert out["category"] == "legal"
+
+
+def test_search_category_does_not_classify_when_provider_given(monkeypatch):
+    # The classifier must NOT run when a provider is given alone.
+    calls = {"n": 0}
+    orig = rc.classify
+
+    def spy(query):
+        calls["n"] += 1
+        return orig(query)
+
+    monkeypatch.setattr(rc, "classify", spy)
+
+    out = rc.search_category(object(), "any topic", provider="arxiv")
+    assert calls["n"] == 0
+    assert out["category"] == "scholarly"
+
+
+def test_search_category_classifies_when_nothing_given(monkeypatch):
+    # With neither category nor provider, the classifier IS used.
+    calls = {"n": 0}
+    orig = rc.classify
+
+    def spy(query):
+        calls["n"] += 1
+        return orig(query)
+
+    monkeypatch.setattr(rc, "classify", spy)
+
+    out = rc.search_category(object(), "AAPL stock quote today")
+    assert calls["n"] == 1
+    assert out["category"] == "financial"
 
 
 def test_search_category_legal_routes_to_default_provider(monkeypatch):
@@ -311,6 +430,81 @@ def test_facade_research_by_category_returns_json(tmp_path, monkeypatch):
     assert data["provider"] == "openalex"
     assert data["query"] == "a peer reviewed paper on graphs"
     assert data["results"] == [{"source": "openalex", "title": "mock"}]
+
+
+def test_facade_research_by_category_provider_skips_classification(tmp_path, monkeypatch):
+    # Passing provider= alone must resolve its owning category and NOT
+    # reclassify the (non-scholarly) query -- it should still land on arxiv.
+    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+
+    tb = WebResearcherToolbox(
+        cache_dir=str(tmp_path / "cache"),
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
+    )
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    payload = tb.research_by_category("late breaking markets news", provider="arxiv")
+    data = json.loads(payload)
+    assert data["category"] == "scholarly"
+    assert data["provider"] == "arxiv"
+    assert data["query"] == "late breaking markets news"
+    assert data["results"] == [{"source": "arxiv"}]
+
+
+def test_facade_research_by_category_category_and_provider(tmp_path, monkeypatch):
+    # category + provider both honoured; query untouched and not reclassified.
+    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+
+    tb = WebResearcherToolbox(
+        cache_dir=str(tmp_path / "cache"),
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
+    )
+
+    def fake_make_adapter(provider):
+        class _FakeAdapter:
+            def search(_self, query, max_results=5):
+                return [{"source": provider}]
+
+        return _FakeAdapter()
+
+    monkeypatch.setattr(rc, "_make_adapter", fake_make_adapter)
+
+    payload = tb.research_by_category("any topic", category="legal", provider="ecfr")
+    data = json.loads(payload)
+    assert data["category"] == "legal"
+    assert data["provider"] == "ecfr"
+    assert data["query"] == "any topic"
+    assert data["results"] == [{"source": "ecfr"}]
+
+
+def test_facade_research_by_category_bad_category_returns_error(tmp_path):
+    # An unknown category is reported as JSON error, never raised.
+    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+
+    tb = WebResearcherToolbox(
+        cache_dir=str(tmp_path / "cache"),
+        domain_delay=0.0,
+        ddgs_delay=0.0,
+        respect_robots=False,
+    )
+
+    payload = tb.research_by_category("a topic", category="bogus")
+    data = json.loads(payload)
+    assert data["category"] == "bogus"
+    assert "error" in data
+    assert data["results"] == []
 
 
 def test_research_categories_is_not_an_mcp_tool(tmp_path):

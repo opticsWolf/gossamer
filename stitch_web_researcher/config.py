@@ -369,6 +369,15 @@ TOOL_REGISTRY = (
                 description="The search query / research topic to classify and run.",
             ),
             ToolParam(
+                "category",
+                str,
+                None,
+                "Optional domain category to use directly (e.g. 'scholarly', "
+                "'legal', 'financial', 'geo', 'general'). When given, the query is "
+                "not reclassified. Pair with provider= to pick a specific source "
+                "within it.",
+            ),
+            ToolParam(
                 "max_results",
                 int,
                 5,
@@ -379,9 +388,11 @@ TOOL_REGISTRY = (
                 str,
                 None,
                 "Optional provider to call separately (e.g. 'crossref', 'arxiv', "
-                "'courtlistener', 'ecfr', 'alphavantage', 'yahoo'). When omitted, "
-                "the category's default provider is used. No automatic fallback "
-                "between providers -- the caller chooses.",
+                "'courtlistener', 'ecfr', 'alphavantage', 'yahoo'). Given alone, "
+                "its owning category is used (the query is not reclassified); "
+                "given with category= it must belong to that category. When "
+                "omitted, the category's default provider is used. No automatic "
+                "fallback between providers -- the caller chooses.",
             ),
         ),
     ),

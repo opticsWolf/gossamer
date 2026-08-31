@@ -584,21 +584,35 @@ class WebResearcherToolbox:
         )
 
     def research_by_category(
-        self, query: str, max_results: int = 5, provider: Optional[str] = None
+        self,
+        query: str,
+        max_results: int = 5,
+        category: Optional[str] = None,
+        provider: Optional[str] = None,
     ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
-        Thin wrapper over :func:`research_categories.search_category`. Classifies
-        *query* into a domain category (scholarly / legal / financial / geo /
-        general) and triggers **one** provider. Pass ``provider=<id>`` to call a
-        specific provider separately (e.g. ``provider=crossref`` for a
-        scholarly query); otherwise the category's default (first) provider is
-        used. There is no automatic fallback between providers -- the caller
-        chooses which source to query. Returns a JSON payload naming the chosen
-        category, the provider actually called, and results.
+        Thin wrapper over :func:`research_categories.search_category`. By
+        default it classifies *query* into a domain category (scholarly / legal
+        / financial / geo / general) and triggers that category's default
+        provider. Pass ``category=<name>`` to use a category directly (the query
+        is not reclassified), or ``provider=<id>`` to call a specific provider
+        separately (e.g. ``provider=crossref``) -- given alone, its owning
+        category is reverse-resolved, so the query is still not reclassified.
+        When both ``category=`` and ``provider=`` are given, the provider must
+        belong to that category. There is no automatic fallback between
+        providers -- the caller chooses which source to query. Returns a JSON
+        payload naming the chosen category, the provider actually called, and
+        results.
         """
         return json.dumps(
-            search_category(self, query, provider=provider, max_results=max_results),
+            search_category(
+                self,
+                query,
+                category=category,
+                provider=provider,
+                max_results=max_results,
+            ),
             indent=2,
             default=str,
         )

@@ -252,6 +252,29 @@ def classify(query: str) -> Category:
 resolve = classify
 
 
+def _find_category(name: str) -> Optional[Category]:
+    """Return the category named *name* (case-insensitive), or None."""
+    key = (name or "").strip().lower()
+    for category in CATEGORIES:
+        if category.name.lower() == key:
+            return category
+    return None
+
+
+def _category_for_provider(provider: str) -> Optional[Category]:
+    """Return the category that owns *provider*, or None if unknown."""
+    for category in CATEGORIES:
+        if provider in category.providers:
+            return category
+    return None
+
+
+# Every provider named across all categories, for "unknown provider" errors.
+_ALL_PROVIDERS: Tuple[str, ...] = tuple(
+    provider for category in CATEGORIES for provider in category.providers
+)
+
+
 def _parse_engine_results(raw: object) -> object:
     """Best-effort parse of a toolbox ``search_web`` JSON reply."""
     if isinstance(raw, str):
@@ -265,15 +288,25 @@ def _parse_engine_results(raw: object) -> object:
 
 
 def search_category(
-    tb: object, query: str, provider: Optional[str] = None, max_results: int = 5
+    tb: object,
+    query: str,
+    category: Optional[str] = None,
+    provider: Optional[str] = None,
+    max_results: int = 5,
 ) -> dict:
-    """Classify *query* and trigger **one** provider via *tb*.
+    """Trigger **one** provider via *tb* for *query*.
 
-    A category exposes one or more providers. The caller may pass
-    ``provider=<id>`` to call a specific provider separately; otherwise the
-    category's default (first) provider is used. There is **no automatic
-    fallback** between providers -- the caller chooses, so the model keeps
-    control over which source it queries.
+    Resolution order (the caller keeps control -- there is no implicit
+    fallback chain):
+
+      1. ``category=<name>`` given            -> use that category directly.
+      2. ``provider=<id>`` given (no category) -> use the category that owns
+         that provider (reverse-resolved). The query is *not* reclassified.
+      3. neither given                         -> classify *query* into a
+         domain category and use its default provider.
+
+    When a category is fixed, an explicit ``provider`` must belong to it;
+    otherwise the category's default (first) provider is used.
 
     Parameters
     ----------
@@ -281,9 +314,15 @@ def search_category(
         The toolbox facade; used for the engine search path.
     query : str
         The free-form search query / research topic.
+    category : str, optional
+        Force a domain category (e.g. ``scholarly``, ``legal``,
+        ``financial``, ``geo``, ``general``). When given, the query is not
+        reclassified.
     provider : str, optional
-        Explicit provider to call (must belong to the classified category).
-        When omitted, the category's default provider is used.
+        Explicit provider to call. Given alone, its owning category is
+        reverse-resolved; given with *category*, it must belong to that
+        category. When omitted, the resolved category's default provider is
+        used.
     max_results : int
         Maximum number of results to return.
 
@@ -293,26 +332,58 @@ def search_category(
         A normalized, JSON-serialisable payload naming the chosen category,
         the provider actually called, its available providers, and results.
     """
-    category = classify(query)
+    # Resolve the category: explicit, reverse-resolved from the provider, or
+    # by classifying the query (only when the caller left both unspecified).
+    if category is not None:
+        category_obj = _find_category(category)
+        if category_obj is None:
+            return {
+                "query": query,
+                "category": category,
+                "provider": provider,
+                "available_categories": [c.name for c in CATEGORIES],
+                "error": (
+                    f"unknown category {category!r}; choose from: "
+                    f"{', '.join(c.name for c in CATEGORIES)}"
+                ),
+                "results": [],
+            }
+    elif provider is not None:
+        category_obj = _category_for_provider(provider)
+        if category_obj is None:
+            return {
+                "query": query,
+                "category": None,
+                "provider": provider,
+                "available_providers": list(_ALL_PROVIDERS),
+                "error": (
+                    f"unknown provider {provider!r}; choose from: "
+                    f"{', '.join(_ALL_PROVIDERS)}"
+                ),
+                "results": [],
+            }
+    else:
+        category_obj = classify(query)
 
     # Resolve the provider: explicit (validated) or the category default.
     if provider is None:
-        provider = category.default_provider
-    elif not category.has_provider(provider):
+        provider = category_obj.default_provider
+    elif not category_obj.has_provider(provider):
         return {
             "query": query,
-            "category": category.name,
+            "category": category_obj.name,
             "provider": provider,
-            "available_providers": list(category.providers),
-            "provider_kind": category.kind,
+            "available_providers": list(category_obj.providers),
+            "provider_kind": category_obj.kind,
             "error": (
                 f"provider {provider!r} is not available for category "
-                f"{category.name!r}; choose from: {', '.join(category.providers)}"
+                f"{category_obj.name!r}; choose from: "
+                f"{', '.join(category_obj.providers)}"
             ),
             "results": [],
         }
 
-    if category.kind == "adapter":
+    if category_obj.kind == "adapter":
         try:
             adapter = _make_adapter(provider)
             results: object = adapter.search(query, max_results=max_results)
@@ -325,10 +396,10 @@ def search_category(
 
     return {
         "query": query,
-        "category": category.name,
+        "category": category_obj.name,
         "provider": provider,
-        "available_providers": list(category.providers),
-        "provider_kind": category.kind,
-        "description": category.description,
+        "available_providers": list(category_obj.providers),
+        "provider_kind": category_obj.kind,
+        "description": category_obj.description,
         "results": results,
     }
