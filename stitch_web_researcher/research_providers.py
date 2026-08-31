@@ -528,7 +528,7 @@ class ArxivAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     BASE = "http://export.arxiv.org/api/query"
-    _ARXIV_UA = "stitch-web-researcher/0.5.1 (mailto:researcher@example.org)"
+    _ARXIV_UA = "stitch-web-researcher/0.5.3 (mailto:researcher@example.org)"
 
     def __init__(
         self,
