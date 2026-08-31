@@ -386,14 +386,19 @@ Remaining Phase 2 work is the Phase 4 MCP tool surface + dispatch that exposes
 them (see §5 / §9).
 
 **Phase 3 — Domain waves.** Implemented & tested (`research_providers.py`):
-**✅ science** — NASA (`NASAAdapter`, NeoWs), NVD (`NvdAdapter`), Software Heritage
-(`SoftwareHeritageAdapter`), Zenodo (`ZenodoAdapter`); **✅ legal** — Congress
-(`CongressAdapter`, data.gov key); **✅ financial** — Yahoo Finance
-(`YahooFinanceAdapter`); **✅ geo** — Overpass (`OverpassAdapter`), US Census
-(`CensusAdapter`). All 8 follow the `ResourceAdapter` contract (`tests/
-test_phase3_adapters.py`, 33 tests). **Remaining Phase 3:** CourtListener +
-eCFR + Federal Register + EUR-Lex + DE + JP legal APIs; bioRxiv/medRxiv +
-ChemRxiv; Alpha Vantage.
+**Wave 1** (science/legal/financial/geo) — NASA, NVD, Software Heritage, Zenodo,
+Congress, Yahoo Finance, Overpass, US Census (`tests/test_phase3_adapters.py`,
+33 tests). **Wave 2** (legal/sholarly/financial) — CourtListener
+(`CourtListenerAdapter`, REST v4, keyless); eCFR (`EcfrAdapter`, GovInfo
+citation-addressed, keyless); Federal Register
+(`FederalRegisterAdapter`, data.gov key); EUR-Lex (`EurlexAdapter`, v3 JSON,
+keyless); German Federal Gazette / gov data (`GermanGovAdapter`, keyless);
+bioRxiv/medRxiv (`BioRxivAdapter`, date/DOI-based, keyless); ChemRxiv
+(`ChemRxivAdapter`, Cambridge OpenEngage, token); Alpha Vantage
+(`AlphaVantageAdapter`, key). All 8 follow the `ResourceAdapter` contract
+(`tests/test_phase3_wave2.py`, 32 tests). **Remaining Phase 3:** JP (Japan)
+legal API — no clean verifiable REST endpoint (e-Gov returns HTML; NDL
+unreachable from CI). **Total adapters: 26.**
 
 **Phase 4 — MCP surface.** Expose the six tools; normalize; budget reporting.
 

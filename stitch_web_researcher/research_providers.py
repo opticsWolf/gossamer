@@ -26,11 +26,22 @@ Built so far (Phase 3 — domain waves):
   * :class:`YahooFinanceAdapter` — unofficial quote / chart data (financial)
   * :class:`OverpassAdapter`  — OSM geo queries (geo)
   * :class:`CensusAdapter`    — US Census data API (geo, key)
+
+Built so far (Phase 3 wave 2 — legal / scholarly / financial):
+  * :class:`CourtListenerAdapter` — court-opinion search (legal, keyless)
+  * :class:`EcfrAdapter`          — US Code of Federal Regulations lookup (legal, keyless)
+  * :class:`FederalRegisterAdapter` — US Federal Register notices (legal, key)
+  * :class:`EurlexAdapter`        — EU law search (legal, keyless)
+  * :class:`GermanGovAdapter`     — German Federal Gazette / gov data (legal, keyless)
+  * :class:`BioRxivAdapter`       — bioRxiv / medRxiv preprints (scholarly, keyless)
+  * :class:`ChemRxivAdapter`      — ChemRxiv preprints (scholarly, token)
+  * :class:`AlphaVantageAdapter`  — market data: company search + daily OHLC (financial, key)
 """
 
 import json
 import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import date as _date
 from typing import Dict, List, Optional, Tuple, Union
@@ -40,7 +51,7 @@ import httpx
 
 from stitch_web_researcher.search_providers import RateLimit, RateState, ResourceAdapter
 
-_UA = "stitch-web-researcher/0.5.1"
+_UA = "stitch-web-researcher/0.5.2"
 
 
 def _parse_lat_lon(lat_lon: Union[str, Tuple[float, float], List[float]]) -> Tuple[float, float]:
@@ -1640,7 +1651,7 @@ class YahooFinanceAdapter(ResourceAdapter):
             {"q": query, "quotesCount": min(max_results, 20)},
             {},
         )
-        resp = httpx.get(url, params=params, timeout=20.0)
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
         quotes = (
             (resp.json().get("quoteCollection", {}) or {}).get("quotes", []) or []
@@ -1674,7 +1685,7 @@ class YahooFinanceAdapter(ResourceAdapter):
         url, params, headers = self.inject_auth(
             f"{self.BASE}/v8/finance/chart/{record_id}", params, {}
         )
-        resp = httpx.get(url, params=params, timeout=20.0)
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
         meta = (
             (resp.json().get("chart", {}) or {}).get("result", [{}])[0]
@@ -1872,3 +1883,686 @@ def _strip_tags(text: str) -> str:
         return ""
     return re.sub(r"<[^>]+>", " ", text)
 
+
+# ── Phase 3 (second wave): legal, science, financial ────────────────────
+
+class CourtListenerAdapter(ResourceAdapter):
+    """CourtListener court-opinion search — https://www.courtlistener.com.
+
+    Keyless (1,000 req / hr, no auth) via the REST v4 API. ``search`` runs a
+    CourtListener query-language string (free text, or ``caseName:"..."``,
+    ``court:"scotus"``, ``dateFiled:>=2024-01-01``) against
+    ``/api/rest/v4/search/``; ``fetch`` pulls one cluster by its ``cluster_id``.
+    """
+
+    name = "courtlistener"
+    domain = "legal"
+    requires_key = False
+    BASE = "https://www.courtlistener.com/api/rest/v4"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.1, jitter=0.02)
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        h = dict(headers or {})
+        h.setdefault("User-Agent", _UA)
+        return url, dict(params or {}), h
+
+    def _row(self, r):
+        return {
+            "source": "courtlistener",
+            "id": str(r.get("cluster_id", "")),
+            "title": r.get("caseName") or r.get("caseNameFull", ""),
+            "url": f"https://www.courtlistener.com{r.get('absolute_url', '')}",
+            "published": r.get("dateFiled", ""),
+            "snippet": _strip_tags(
+                (r.get("caseNameFull") or r.get("caseName") or ""))[:240],
+            "fields": {
+                "court": r.get("court", ""),
+                "court_citation": r.get("court_citation_string", ""),
+                "docket_number": r.get("docketNumber", ""),
+                "neutral_cite": r.get("neutralCite", ""),
+                "cite_count": r.get("citeCount", ""),
+            },
+            "raw": json.dumps(r),
+        }
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        q = (query or "").strip()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/search/",
+            {"q": q or "*", "per_page": min(max_results, 100), "format": "json"},
+            {},
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        return [self._row(r) for r in results[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/cluster/{record_id}/", params, {}
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        return [self._row(resp.json())]
+
+
+class EcfrAdapter(ResourceAdapter):
+    """US Code of Federal Regulations (eCFR) lookup via GovInfo — https://www.govinfo.gov.
+
+    Keyless. The eCFR REST API is citation-addressed rather than full-text:
+    ``search`` and ``fetch`` both parse a citation (``"21 CFR 113"``,
+    ``"21/113"``, ``"21.113"``) and return the corresponding CFR part / section
+    body. ``record_id`` / ``query`` accepts ``"title"`` alone (whole title) or
+    ``"title/part"``.
+    """
+
+    name = "ecfr"
+    domain = "legal"
+    requires_key = False
+    BASE = "https://www.govinfo.gov/ecfr/rest/ecfr/json"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
+        )
+
+    def _parse_citation(self, citation):
+        # "21 CFR 113" / "21/113" / "21.113" / "113" -> (title, part)
+        s = str(citation or "").strip()
+        if "/" in s:
+            title, _, part = s.partition("/")
+        elif "CFR" in s.upper():
+            parts = re.split(r"[,\s/]+", s)
+            title = next((p for p in parts if p.isdigit()), "")
+            part = next((p for p in parts if p.isdigit() and p != title), "")
+        else:
+            title, _, part = re.split(r"[\s./]+", s, 1) if ("." in s or " " in s) else (s, "", "")
+        return title.strip(), part.strip()
+
+    def _part(self, title, part):
+        url = f"{self.BASE}/{title}/{part}" if part else f"{self.BASE}/{title}"
+        resp = httpx.get(url, timeout=20.0)
+        resp.raise_for_status()
+        doc = resp.json()
+        title_txt = doc.get("title_title", f"Title {title}")
+        part_txt = doc.get("part_title", "")
+        sections = doc.get("sections", {})
+        if sections:
+            first = next(iter(sections.values()))
+            body = _strip_tags(first.get("content", ""))[:240]
+            label = first.get("label", part)
+        else:
+            body = _strip_tags(doc.get("content", ""))[:240]
+            label = doc.get("section_number", part)
+        return {
+            "source": "ecfr",
+            "id": f"{title}/{part}",
+            "title": f"{title_txt}" + (f": {part_txt}" if part_txt else ""),
+            "url": f"https://www.ecfr.gov/public/current/title/{title}/part/{part}",
+            "snippet": body,
+            "fields": {
+                "title_no": title,
+                "part": part,
+                "part_title": part_txt,
+                "section_count": len(sections) if isinstance(sections, dict) else 0,
+            },
+            "raw": json.dumps(doc),
+        }
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        title, part = self._parse_citation(query)
+        if not part:
+            # Whole title: return the first part as a representative row.
+            url = f"{self.BASE}/{title}"
+            resp = httpx.get(url, timeout=20.0)
+            resp.raise_for_status()
+            doc = resp.json()
+            sections = doc.get("sections", {})
+            first = next(iter(sections.values())) if isinstance(sections, dict) else {}
+            return [{
+                "source": "ecfr",
+                "id": str(title),
+                "title": doc.get("title_title", f"Title {title}"),
+                "url": f"https://www.ecfr.gov/public/current/title/{title}",
+                "snippet": _strip_tags(first.get("content", ""))[:240],
+                "fields": {
+                    "title_no": str(title),
+                    "section_count": len(sections) if isinstance(sections, dict) else 0,
+                },
+                "raw": json.dumps(doc),
+            }]
+        return [self._part(title, part)]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        title, part = self._parse_citation(record_id)
+        if not part:
+            return self._search_impl(title)
+        return [self._part(title, part)]
+
+
+class FederalRegisterAdapter(ResourceAdapter):
+    """US Federal Register documents via api.federalregister.gov.
+
+    Requires ``STITCH_FEDREG_KEY`` (data.gov key; 5,000 calls / hr). Search is
+    full-text over documents / notices via ``/v1/documents.json``; fetch pulls
+    one document by its ``document_number``.
+    """
+
+    name = "federalregister"
+    domain = "legal"
+    requires_key = True
+    BASE = "https://api.federalregister.gov/v1"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+    ):
+        self.api_key = api_key or os.environ.get("STITCH_FEDREG_KEY", "")
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.25, jitter=0.05)
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        p = dict(params or {})
+        p["api_key"] = self.api_key
+        return url, p, dict(headers or {})
+
+    def _doc(self, d):
+        agency = d.get("agency", {}) or {}
+        return {
+            "source": "federalregister",
+            "id": d.get("document_number", ""),
+            "title": d.get("title", ""),
+            "url": d.get("html_url", d.get("text_url", "")),
+            "published": d.get("doc_date", ""),
+            "snippet": _strip_tags(d.get("abstract", d.get("excerpt", "")))[:240],
+            "fields": {
+                "document_type": d.get("document_type", ""),
+                "type": d.get("type", ""),
+                "agency": agency.get("name", ""),
+                "document_number": d.get("document_number", ""),
+            },
+            "raw": json.dumps(d),
+        }
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/documents.json",
+            {"q": query, "per_page": min(max_results, 100)},
+            {},
+        )
+        resp = httpx.get(url, params=params, timeout=20.0)
+        resp.raise_for_status()
+        docs = resp.json().get("documents", [])
+        return [self._doc(d) for d in docs[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/documents/{record_id}.json", params, {}
+        )
+        resp = httpx.get(url, params=params, timeout=20.0)
+        resp.raise_for_status()
+        return [self._doc(resp.json())]
+
+
+class EurlexAdapter(ResourceAdapter):
+    """EUR-Lex (EU law) search — https://eur-lex.europa.eu.
+
+    Keyless via the v3 JSON search endpoint (append ``format=json``). ``search``
+    runs an EUR-Lex query string (free text, or ``COLLECTION="legis_prim"``);
+    ``fetch`` looks up one document by its ``docid`` / CELEX / ELI.
+    """
+
+    name = "eurlex"
+    domain = "legal"
+    requires_key = False
+    BASE = "https://eur-lex.europa.eu/search/api/v3"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        h = dict(headers or {})
+        h.setdefault("User-Agent", _UA)
+        return url, dict(params or {}), h
+
+    def _hit(self, h):
+        return {
+            "source": "eurlex",
+            "id": h.get("docid", h.get("documentIdentifier", "")),
+            "title": h.get("title", h.get("docresoltitle", "")),
+            "url": h.get("uri", f"https://eur-lex.europa.eu/legal-content/EN/TXT/?docid={h.get('docid', '')}"),
+            "published": h.get("publicationDate", ""),
+            "snippet": _strip_tags(h.get("abstract", ""))[:240],
+            "fields": {
+                "language": h.get("language", ""),
+                "document_type": h.get("documentType", ""),
+                "legal_status": h.get("legalStatus", ""),
+            },
+            "raw": json.dumps(h),
+        }
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/search",
+            {
+                "q": query,
+                "type": "all",
+                "field": "all",
+                "scope": "all",
+                "lang": "en",
+                "format": "json",
+                "qid": str(int(time.time() * 1000)),
+            },
+            {},
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        response = body.get("response", {}) if isinstance(body, dict) else {}
+        results = response.get("results", body if isinstance(body, list) else [])
+        return [self._hit(h) for h in results[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        # Single-document lookup via the same endpoint, scoping to the docid.
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/search",
+            {
+                "q": f"docid:{record_id}",
+                "type": "all",
+                "field": "all",
+                "scope": "all",
+                "lang": "en",
+                "format": "json",
+                "qid": str(int(time.time() * 1000)),
+            },
+            {},
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        response = body.get("response", {}) if isinstance(body, dict) else {}
+        results = response.get("results", [])
+        return [self._hit(results[0])] if results else []
+
+
+class GermanGovAdapter(ResourceAdapter):
+    """German Federal Government data portal (Deutsches Gesetzblatt) — https://api.de.gov.de.
+
+    Keyless. Searches the official gazette (``Amtlicher Teil``) via
+    ``/v1/aktenseiten`` with ``suchbegriff`` (search term); fetches one gazette
+    entry by its ``id``.
+    """
+
+    name = "german"
+    domain = "legal"
+    requires_key = False
+    BASE = "https://api.de.gov.de/v1"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+    ):
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        h = dict(headers or {})
+        h.setdefault("User-Agent", _UA)
+        return url, dict(params or {}), h
+
+    def _entry(self, e):
+        return {
+            "source": "german",
+            "id": str(e.get("id", "")),
+            "title": e.get("titel", e.get("title", "")),
+            "url": e.get("url", e.get("url_pdf", "")),
+            "published": e.get("datum", e.get("date", "")),
+            "snippet": _strip_tags(e.get("kurztitel", e.get("abstract", "")))[:240],
+            "fields": {
+                "art": e.get("art", ""),
+                "dokumentart": e.get("dokumentart", ""),
+                "suchbegriffe": ", ".join(e.get("suchbegriffe", []) or []),
+            },
+            "raw": json.dumps(e),
+        }
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/aktenseiten",
+            {"suchbegriff": query, "page_size": min(max_results, 100)},
+            {},
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        entries = resp.json()
+        if isinstance(entries, dict):
+            entries = entries.get("results", entries.get("aktenseiten", []))
+        return [self._entry(e) for e in entries[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/aktenseiten/{record_id}", params, {}
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        entry = body.get("aktenseite", body) if isinstance(body, dict) else body
+        return [self._entry(entry)]
+
+
+class BioRxivAdapter(ResourceAdapter):
+    """bioRxiv / medRxiv preprint lookup — https://api.biorxiv.org.
+
+    Keyless. The official API is not full-text: it serves preprint metadata by
+    date interval, by "N most recent", or by DOI. ``search`` therefore accepts
+    a DOI (single lookup), a ``YYYY-MM-DD`` / ``YYYY-MM-DD/YYYY-MM-DD`` interval
+    (date range), or any other string (returns the N most recent preprints,
+    N = ``max_results``). ``fetch`` looks up one preprint by DOI.
+    """
+
+    name = "biorxiv"
+    domain = "scholarly"
+    requires_key = False
+    BASE = "https://api.biorxiv.org/details"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        server: str = "biorxiv",
+    ):
+        self.server = server if server in ("biorxiv", "medrxiv") else "biorxiv"
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
+        )
+
+    def _paper(self, p):
+        doi = p.get("doi", "")
+        return {
+            "source": "biorxiv",
+            "id": doi,
+            "title": p.get("title", ""),
+            "url": f"https://www.biorxiv.org/content/{doi}" if doi else "",
+            "published": p.get("date", ""),
+            "snippet": _strip_tags(p.get("abstract", ""))[:240],
+            "authors": p.get("authors", ""),
+            "fields": {
+                "server": self.server,
+                "category": p.get("category", ""),
+                "version": p.get("version", ""),
+                "type": p.get("type", ""),
+                "license": p.get("license", ""),
+            },
+            "raw": json.dumps(p),
+        }
+
+    def _lookup(self, interval, server=None):
+        server = server or self.server
+        url = f"{self.BASE}/{server}/{interval}/0/json"
+        resp = httpx.get(url, timeout=20.0)
+        resp.raise_for_status()
+        return resp.json().get("collection", [])
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        q = (query or "").strip()
+        if re.match(r"^10\.\d{4,9}/\S+", q):
+            # DOI -> single-manuscript lookup.
+            url = f"{self.BASE}/{self.server}/{q}/na/json"
+            resp = httpx.get(url, timeout=20.0)
+            resp.raise_for_status()
+            papers = resp.json().get("collection", [])
+            return [self._paper(p) for p in papers[:max_results]]
+        if re.match(r"^\d{4}-\d{2}-\d{2}(/?\d{4}-\d{2}-\d{2})?$", q):
+            papers = self._lookup(q)
+        else:
+            # No interpretable date/DOI -> most recent N preprints.
+            papers = self._lookup(str(max_results))
+        return [self._paper(p) for p in papers[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        if not re.match(r"^10\.\d{4,9}/\S+", str(record_id)):
+            return []
+        papers = self._lookup_doi(str(record_id))
+        if not papers:
+            return []
+        return [self._paper(papers[0])]
+
+    def _lookup_doi(self, doi):
+        url = f"{self.BASE}/{self.server}/{doi}/na/json"
+        resp = httpx.get(url, timeout=20.0)
+        resp.raise_for_status()
+        return resp.json().get("collection", [])
+
+
+class ChemRxivAdapter(ResourceAdapter):
+    """ChemRxiv preprint search — https://chemrxiv.org (OpenEngage API).
+
+    Requires an OpenEngage ``token`` (``STITCH_CHEMXIV_TOKEN``); the token is
+    sent as an ``Authorization: Bearer`` header. Search is full-text via
+    ``/item/search``; fetch pulls one preprint by its ``id``.
+    """
+
+    name = "chemrxiv"
+    domain = "scholarly"
+    requires_key = True
+    BASE = "https://chemrxiv.org/engage/api-gateway/chemrxiv/assets/orp/item"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+    ):
+        self.api_key = api_key or os.environ.get("STITCH_CHEMXIV_TOKEN", "")
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        h = dict(headers or {})
+        if self.api_key:
+            h["Authorization"] = f"Bearer {self.api_key}"
+        return url, dict(params or {}), h
+
+    def _item(self, it):
+        authors = it.get("authors", [])
+        if isinstance(authors, list):
+            names = [a.get("name", "") if isinstance(a, dict) else str(a) for a in authors]
+        else:
+            names = [str(authors)]
+        return {
+            "source": "chemrxiv",
+            "id": str(it.get("id", "")),
+            "title": it.get("title", ""),
+            "url": it.get("url", f"https://chemrxiv.org/engage/chemrxiv/public-article-details/{it.get('id', '')}"),
+            "published": it.get("published_on", ""),
+            "snippet": _strip_tags(it.get("abstract", ""))[:240],
+            "authors": ", ".join(n for n in names if n),
+            "fields": {
+                "doi": it.get("doi", ""),
+                "topics": ", ".join(t.get("name", "") if isinstance(t, dict) else str(t) for t in it.get("topics", []) or []),
+            },
+            "raw": json.dumps(it),
+        }
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/search",
+            {"query": query, "page_size": min(max_results, 100)},
+            {},
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        items = body.get("data", []) if isinstance(body, dict) else body
+        return [self._item(i) for i in items[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/{record_id}", params, {}
+        )
+        resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        item = body.get("data", body) if isinstance(body, dict) else body
+        if not item:
+            return []
+        if isinstance(item, list):
+            return [self._item(item[0])]
+        return [self._item(item)]
+
+
+class AlphaVantageAdapter(ResourceAdapter):
+    """Alpha Vantage market data — https://www.alphavantage.co.
+
+    Requires ``STITCH_ALPHA_VANTAGE_KEY`` (free key; ~5-75 req / day). ``search``
+    runs a company/business-keyword ``SEARCH`` lookup; ``fetch`` pulls daily
+    OHLC market data for a symbol via ``TIME_SERIES_DAILY``. Error payloads
+    (``notes`` / ``information``) surface as a single empty result.
+    """
+
+    name = "alphavantage"
+    domain = "financial"
+    requires_key = True
+    BASE = "https://www.alphavantage.co"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+    ):
+        self.api_key = api_key or os.environ.get("STITCH_ALPHA_VANTAGE_KEY", "")
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=2.0, jitter=1.0)
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        p = dict(params or {})
+        p["apikey"] = self.api_key
+        return url, p, dict(headers or {})
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/query",
+            {"function": "SEARCH", "keywords": query, "apikey": self.api_key},
+            {},
+        )
+        resp = httpx.get(url, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        rows = body.get("data", [])
+        if not rows:
+            # No data / rate-limit -> surface the note, no crash.
+            note = body.get("notes") or body.get("information") or ""
+            return [{"source": "alphavantage", "id": "", "title": note or query, "url": "", "snippet": note, "fields": {}, "raw": json.dumps(body)}]
+        out = []
+        for r in rows[:max_results]:
+            out.append({
+                "source": "alphavantage",
+                "id": r.get("symbol", ""),
+                "title": r.get("companyName", r.get("symbol", "")),
+                "url": "",
+                "snippet": f"{r.get('companyName', '')} — {r.get('industry', '')}",
+                "fields": {
+                    "instrument_type": r.get("instrument_type", ""),
+                    "ticker": r.get("ticker", ""),
+                    "sector": r.get("sector", ""),
+                },
+                "raw": json.dumps(r),
+            })
+        return out
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/query",
+            {"function": "TIME_SERIES_DAILY", "symbol": record_id, "apikey": self.api_key},
+            {},
+        )
+        resp = httpx.get(url, params=params, timeout=20.0)
+        resp.raise_for_status()
+        body = resp.json()
+        ts = body.get("Time Series (Daily)")
+        if not ts:
+            note = body.get("notes") or body.get("information") or ""
+            return [{"source": "alphavantage", "id": str(record_id), "title": note or str(record_id), "url": "", "snippet": note, "fields": {}, "raw": json.dumps(body)}]
+        first_date, ohlcv = next(iter(ts.items()))
+        meta = body.get("Meta Data", {})
+        return [
+            {
+                "source": "alphavantage",
+                "id": meta.get("2. symbol", str(record_id)),
+                "title": f"{meta.get('1. symbol', str(record_id))} daily close",
+                "url": "",
+                "snippet": f"latest {first_date}: open {ohlcv.get('1. open', '')}, close {ohlcv.get('4. close', '')}",
+                "fields": {
+                    "symbol": meta.get("2. symbol", str(record_id)),
+                    "last_refreshed": meta.get("4. last refreshed", ""),
+                    "open": ohlcv.get("1. open", ""),
+                    "high": ohlcv.get("2. high", ""),
+                    "low": ohlcv.get("3. low", ""),
+                    "close": ohlcv.get("4. close", ""),
+                    "volume": ohlcv.get("5. volume", ""),
+                },
+                "raw": json.dumps(ohlcv),
+            }
+        ]
