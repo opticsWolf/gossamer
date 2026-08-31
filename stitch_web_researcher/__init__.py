@@ -2,6 +2,13 @@
 High-Performance Web Researcher – Rust core + Oxide extractors.
 """
 
+from importlib.metadata import version as _pkg_version
+
+try:
+    __version__ = _pkg_version("stitch-web-researcher")
+except Exception:  # pragma: no cover - fallback when installed without metadata
+    __version__ = "0.0.0"
+
 from stitch_web_researcher._core import fetch_and_extract, batch_research
 from stitch_web_researcher._core import extract_main_content_markdown
 from stitch_web_researcher._core import fetch_html_full
@@ -52,6 +59,7 @@ from stitch_web_researcher.robots import RobotsChecker
 from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
 
 __all__ = [
+    "__version__",
     # Rust core
     "fetch_and_extract",
     "batch_research",
