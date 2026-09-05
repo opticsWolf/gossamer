@@ -153,3 +153,15 @@ def text_links_scan(text: str, max_links: int = 50) -> List[str]:
     Python side; this never returns ``[]``-by-contract violations.
     """
     ...
+
+def dedupe_plan(
+    items: List[dict],
+    by: Optional[List[str]] = None,
+) -> tuple:
+    """Dedup collision core (port of ``gossamer.dedup`` matching).
+
+    *items* are pre-extracted ``doi/url/title/snippet/summary/description``
+    maps (missing → ``None``). Returns ``(kept_indices, dropped)`` with
+    dropped entries as ``(index, reason, match)`` tuples.
+    """
+    ...

@@ -4,6 +4,16 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.2] — Rust port M2: dedupe matching core
+
+- `src/dedupe.rs`: `dedupe_plan` (DOI/URL/hash key computation +
+  first-seen collision loop over pre-extracted fields; Python keeps
+  attribute extraction and outcome reassembly with live objects).
+- `gossamer/dedup.py` shrunk by 74 lines of dead matching code.
+- Parity proof: `tests/test_rust_parity_dedupe.py` (vendored v0.8.1
+  original, 12 cases × 8 `by` permutations + 300 seeded fuzz rounds
+  over dicts/objects/non-string values) + 4 Rust unit tests.
+
 ## [0.8.1] — Rust port M1: URL identity + text-link primitives
 
 - `src/urls.rs`: `normalize_url` / `canonical_url` / `content_hash`

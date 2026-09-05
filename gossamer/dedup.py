@@ -22,10 +22,9 @@ or log exactly why an entry was removed.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from gossamer import _core as _rust
-from gossamer.config import canonical_url
 
 __all__ = ["content_hash", "dedupe"]
 
@@ -45,52 +44,32 @@ def content_hash(text: str) -> str:
     return _rust.content_hash(text)
 
 
-def _scalar(item: Any, keys: Sequence[str]) -> Optional[str]:
-    """First non-empty value for *keys* from a dict (by key) or object (attr)."""
-    if isinstance(item, Mapping):
-        candidates = (item.get(k) for k in keys)
-    else:
-        candidates = (getattr(item, k, None) for k in keys)
-    for v in candidates:
-        if v:
-            return v if isinstance(v, str) else str(v)
-    return None
+def _extract_raw(item: Any) -> dict:
+    """Raw identity fields for the Rust matching core.
 
-
-def _doi_key(item: Any) -> Optional[str]:
-    doi = _scalar(item, _DOI_KEYS)
-    return doi.strip().lower() if doi else None
-
-
-def _url_key(item: Any) -> Optional[str]:
-    """Canonical URL key: same resource regardless of scheme/host case,
-    ``www.``, default port, trailing slash, query string, or fragment.
-
-    Delegates to :func:`gossamer.config.canonical_url` (``drop`` mode) so
-    the shared dedup agrees with the cache and search identities (B.1).
+    First truthy value per group, stringified — the same rule the old
+    ``_scalar`` applied, so semantics are unchanged while the key
+    computation and the collision loop live in ``src/dedupe.rs``.
     """
-    url = _scalar(item, _URL_KEYS)
-    if not url:
+
+    def first(keys: Sequence[str]) -> Optional[str]:
+        if isinstance(item, Mapping):
+            candidates = (item.get(k) for k in keys)
+        else:
+            candidates = (getattr(item, k, None) for k in keys)
+        for v in candidates:
+            if v:
+                return v if isinstance(v, str) else str(v)
         return None
-    try:
-        return canonical_url(url, query="drop")
-    except ValueError:
-        return None
 
-
-def _hash_key(item: Any) -> Optional[str]:
-    title = _scalar(item, _TITLE_KEYS) or ""
-    snippet = _scalar(item, _SNIPPET_KEYS) or ""
-    if not title and not snippet:
-        return None
-    return content_hash(f"{title.strip()}||{snippet.strip()}")
-
-
-_FIELD_FOR: Dict[str, Callable[[Any], Optional[str]]] = {
-    "doi": _doi_key,
-    "url": _url_key,
-    "hash": _hash_key,
-}
+    return {
+        "doi": first(_DOI_KEYS),
+        "url": first(_URL_KEYS),
+        "title": first(_TITLE_KEYS),
+        "snippet": first(_SNIPPET_KEYS[:1]),
+        "summary": first(_SNIPPET_KEYS[1:2]),
+        "description": first(_SNIPPET_KEYS[2:]),
+    }
 
 
 def dedupe(
@@ -115,36 +94,17 @@ def dedupe(
     (kept, dropped)
         *kept* is the surviving items in original order. *dropped* is a
         list of ``{"index", "reason", "match"}``.
+
+    The matching core lives in Rust (``src/dedupe.rs``); this extracts
+    the raw identity fields and reassembles the outcome with the
+    original item objects. Pinned by ``tests/test_rust_parity_dedupe.py``.
     """
-    kept: list = []
-    dropped: list = []
-    # field -> {key_value: kept_index}
-    seen: dict = {}
-    for i, item in enumerate(results):
-        reason: Optional[str] = None
-        match: Optional[str] = None
-        for field in by:
-            fn = _FIELD_FOR.get(field)
-            if fn is None:
-                continue
-            key = fn(item)
-            if not key:
-                continue
-            bucket = seen.setdefault(field, {})
-            if key in bucket:
-                reason, match = field, key
-                break
-        if reason is None:
-            # Register every identity this kept item carries, so a later
-            # item can collide on DOI *or* URL *or* hash as appropriate.
-            for field in by:
-                fn = _FIELD_FOR.get(field)
-                if fn is None:
-                    continue
-                key = fn(item)
-                if key:
-                    seen.setdefault(field, {})[key] = len(kept)
-            kept.append(item)
-        else:
-            dropped.append({"index": i, "reason": reason, "match": match})
+    items = list(results)
+    raw = [_extract_raw(item) for item in items]
+    kept_idx, dropped_plan = _rust.dedupe_plan(raw, list(by))
+    kept = [items[i] for i in kept_idx]
+    dropped = [
+        {"index": i, "reason": reason, "match": match}
+        for (i, reason, match) in dropped_plan
+    ]
     return kept, dropped
