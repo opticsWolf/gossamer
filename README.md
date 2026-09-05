@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-1282%20passing%2C%2028%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1318%20passing%2C%2031%20skipped-brightgreen)](tests/)
 
 ---
 
@@ -241,6 +241,7 @@ report = tools.research_by_category("AAPL", category="financial", provider="yaho
 |----------|------------------------------|
 | scholarly | OpenAlex, Crossref, arXiv, Zenodo |
 | legal | CourtListener, eCFR, Federal Register, Open Legal Data, HUDOC (ECtHR), GovInfo |
+| patent | EPO OPS, KIPRIS, PatentsView 🔑 (all key-gated — no keyless patent API remains) |
 | financial | Yahoo, Frankfurter (FX), Eurostat (EU macro), Bundesbank, BIS, CoinGecko, AlphaVantage 🔑 |
 | geo | Open-Meteo, Overpass |
 | general | DuckDuckGo (fallback; Google/Bing/Exa 🔑 opt-in via `search_providers=`) |
@@ -304,6 +305,36 @@ Example client config (Claude Desktop / generic MCP JSON):
 
 All toolbox options are configurable via `GOSSAMER_*` environment variables —
 see the module docstring in `gossamer/mcp_server.py`.
+
+### File Configuration & Keystore (no code changes)
+
+Options can also live in a `gossamer.json` file (explicit path >
+`$GOSSAMER_CONFIG` > `./gossamer.json` > `~/.gossamer/config.json`);
+environment variables always win over file values:
+
+```json
+{
+  "max_tokens": 4000,
+  "model_name": "gpt-4o",
+  "fetch_mode": "auto",
+  "guard": {"enabled": false}
+}
+```
+
+API keys belong in the keystore, not in code or the config file:
+`~/.gossamer/keys.json` (or `$GOSSAMER_KEYSTORE`, or the `"keys"` section
+of `gossamer.json`) as a flat object — short names (`"OPENALEX_KEY"`) or
+full names (`"GOSSAMER_OPENALEX_KEY"`) both work:
+
+```bash
+# write an empty template (0600) listing every known key, then fill it in
+python -m gossamer.keystore --init
+python -m gossamer.keystore --init-config   # gossamer.json template
+python -m gossamer.keystore --check          # validate (never prints secrets)
+```
+
+Resolution order everywhere: explicit argument > `GOSSAMER_*` env > legacy
+`STITCH_*` env > keystore file > `gossamer.json` `"keys"` > default.
 
 ### HTML Metadata Extraction
 

@@ -423,7 +423,7 @@ def test_facade_research_categories_returns_taxonomy():
     )
     data = json.loads(tb.research_categories())
     assert {d["category"] for d in data} == {
-        "scholarly", "legal", "financial", "geo", "general",
+        "scholarly", "legal", "patent", "financial", "geo", "general",
     }
     by_name = {d["category"]: d for d in data}
     assert by_name["scholarly"]["default_provider"] == "openalex"
@@ -585,7 +585,7 @@ def test_research_by_category_no_query_returns_taxonomy(tmp_path):
     )
     data = json.loads(tb.research_by_category())
     assert {d["category"] for d in data} == {
-        "scholarly", "legal", "financial", "geo", "general",
+        "scholarly", "legal", "patent", "financial", "geo", "general",
     }
     by_name = {d["category"]: d for d in data}
     assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
@@ -613,3 +613,27 @@ def test_classify_picks_dominant_topic_over_first_hit():
     assert rc.classify("bill market stock portfolio news").name == "financial"
     # Tie keeps table order: scholarly before legal.
     assert rc.classify("paper court").name == "scholarly"
+
+
+def test_classify_routes_patent_queries():
+    assert rc.classify("quantum computing patent").name == "patent"
+    assert rc.classify("EPO patent search ti=quantum").name == "patent"
+    assert rc.classify("prior art search KIPRIS").name == "patent"
+    assert rc.classify("patent infringement lawsuit damages").name == "patent"
+    # A genuine tie (courts + patents) keeps table order: legal first.
+    assert rc.classify("BVerfG patent case").name == "legal"
+    # Deliberately excluded generics never route to patent.
+    assert rc.classify("pct of revenue grew").name != "patent"
+    assert rc.classify("filed an insurance claim").name == "general"
+
+
+def test_patent_category_taxonomy():
+    data = {d["category"]: d for d in json.loads(
+        __import__("gossamer.agent_tools", fromlist=["WebResearcherToolbox"])
+        .WebResearcherToolbox(cache_dir="/tmp/x", domain_delay=0.0,
+                              ddgs_delay=0.0, respect_robots=False)
+        .research_categories()
+    )}
+    assert data["patent"]["providers"] == ["epo", "kipris", "patentsview"]
+    assert data["patent"]["default_provider"] == "epo"
+    assert data["patent"]["provider_kind"] == "adapter"

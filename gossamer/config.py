@@ -695,6 +695,67 @@ class ToolboxConfig:
     # URL, preserving provider priority order, up to max_results.
     search_merge: bool = False
 
+    @staticmethod
+    def _coerce(default, value):
+        """Lenient JSON value coercion guided by the field's default type."""
+        if value is None or default is None:
+            return value
+        try:
+            if isinstance(default, bool):
+                if isinstance(value, str):
+                    return value.strip().lower() in ("1", "true", "yes", "on")
+                return bool(value)
+            if isinstance(default, int) and not isinstance(default, bool):
+                return int(value)
+            if isinstance(default, float):
+                return float(value)
+            if isinstance(default, str):
+                return value if isinstance(value, str) else str(value)
+        except (TypeError, ValueError):
+            return value  # let __post_init__ / later use reject it loudly
+        return value
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ToolboxConfig":
+        """Build from a ``gossamer.json`` dict (see :mod:`gossamer.settings`).
+
+        Known fields are mapped (``guard`` accepts a nested dict); unknown
+        keys warn and are ignored so older files never break newer code.
+        ``search_providers`` cannot come from JSON (provider objects are not
+        serializable) and is likewise ignored with a warning.
+        """
+        import dataclasses
+        import logging
+
+        log = logging.getLogger(__name__)
+        data = dict(data or {})
+        kwargs: dict = {}
+        known = {f.name: f for f in dataclasses.fields(cls)}
+        for key, value in data.items():
+            if key in ("keys", "keystore", "$comment"):
+                continue  # settings-layer keys, not toolbox options
+            if key not in known:
+                log.warning("gossamer.json: ignoring unknown option %r", key)
+                continue
+            if key == "search_providers":
+                log.warning(
+                    "gossamer.json: 'search_providers' needs provider objects; "
+                    "configure it in code instead"
+                )
+                continue
+            if key == "guard" and isinstance(value, dict):
+                guard_kwargs = {
+                    k: v for k, v in value.items()
+                    if k in GuardConfig.__dataclass_fields__
+                }
+                unknown_guard = set(value) - set(guard_kwargs)
+                for ignored in sorted(unknown_guard):
+                    log.warning("gossamer.json: ignoring unknown guard option %r", ignored)
+                kwargs[key] = GuardConfig(**guard_kwargs)
+                continue
+            kwargs[key] = cls._coerce(known[key].default, value)
+        return cls(**kwargs)
+
     def __post_init__(self):
         if self.fetch_mode not in ("auto", "browser", "static"):
             raise ValueError(

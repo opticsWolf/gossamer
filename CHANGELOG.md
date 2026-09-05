@@ -4,6 +4,35 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.7.0] — settings files + patent category
+
+### File configuration & keystore (no code changes)
+
+- `gossamer.json` toolbox options (explicit path > `$GOSSAMER_CONFIG` >
+  `./gossamer.json` > `~/.gossamer/config.json`), merged under environment
+  variables in `mcp_server` (`ToolboxConfig.from_dict`, nested `guard` dict,
+  unknown keys warn + ignore). New knobs also wired: `cache_memory_entries`.
+- Keystore for secrets (`gossamer/keystore.py`, `gossamer/settings.py`):
+  explicit path > `$GOSSAMER_KEYSTORE` > config `"keystore"` field >
+  `~/.gossamer/keys.json`. Resolution order everywhere: explicit arg >
+  `GOSSAMER_*` env > legacy `STITCH_*` env > keystore > config `"keys"` >
+  default. Short or full key names both work; conventional third-party names
+  (`GOOGLE_API_KEY`, …) now also fall through to the keystore.
+- `python -m gossamer.keystore --init [--init-config] [--check]`: templates
+  (0600) + validation that never prints secrets; world-readable keystores warn.
+
+### Patent category + wave-4 adapters (all key-gated)
+
+- New `patent` category (`epo` default, `kipris`, `patentsview`) + tight
+  classifier keywords (bare `pct`/`claims` deliberately excluded).
+- `EpoOpsAdapter` (OPS 3.2 OAuth2 + CQL search + EPODOC fetch),
+  `KiprisAdapter` (Plus REST `serviceKey`, XML-only), `PatentsViewAdapter`
+  (Search API, `X-Api-Key`, `api/v1/*`, `{error,count,total_hits}` envelope).
+- JPO and DPMAconnectPlus documented but not implemented (endpoints behind
+  account walls / paid contracts — see `docs/PATENT_LANDSCAPE_2026-09-05.md`).
+- Key-gated live smoke tests (skip without keys); mocked-shape regression
+  tests for all three.
+
 ## [0.6.0] — gossamer rename + review implementation
 
 ### Rename: `stitch-web-researcher` → `gossamer`

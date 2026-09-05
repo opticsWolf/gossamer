@@ -75,6 +75,9 @@ from gossamer.research_providers import (
     BundesbankAdapter,
     BisAdapter,
     CoinGeckoAdapter,
+    EpoOpsAdapter,
+    KiprisAdapter,
+    PatentsViewAdapter,
 )
 
 __all__ = [
@@ -147,4 +150,8 @@ __all__ = [
     "BundesbankAdapter",
     "BisAdapter",
     "CoinGeckoAdapter",
+    # Wave-4 patent adapters (key-gated; see docs/PATENT_LANDSCAPE_*.md)
+    "EpoOpsAdapter",
+    "KiprisAdapter",
+    "PatentsViewAdapter",
 ]

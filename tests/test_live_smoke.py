@@ -28,6 +28,7 @@ from gossamer.research_providers import (
     CrossrefAdapter,
     DoajAdapter,
     EcfrAdapter,
+    EpoOpsAdapter,
     EurostatAdapter,
     FederalRegisterAdapter,
     FrankfurterAdapter,
@@ -35,6 +36,7 @@ from gossamer.research_providers import (
     GitHubAdapter,
     GovInfoAdapter,
     HudocAdapter,
+    KiprisAdapter,
     NASAAdapter,
     NvdAdapter,
     OldpAdapter,
@@ -42,6 +44,7 @@ from gossamer.research_providers import (
     OpenLibraryAdapter,
     OpenMeteoAdapter,
     OverpassAdapter,
+    PatentsViewAdapter,
     SoftwareHeritageAdapter,
     YahooFinanceAdapter,
     ZenodoAdapter,
@@ -361,3 +364,44 @@ def test_live_flag_on():
     assert _live_enabled("1") is True
     assert _live_enabled("true") is True
     assert _live_enabled("YES") is True
+
+
+# ────────────────────────────────────────────────────────────────
+# Wave-4 patent adapters (all key-gated; skipped without keys)
+# ────────────────────────────────────────────────────────────────
+
+def _need_keys(*names):
+    import os
+
+    missing = [n for n in names if not os.environ.get(n)]
+    if missing:
+        pytest.skip(f"needs {', '.join(missing)}")
+
+
+@pytest.mark.live
+def test_epo_ops_search(live):
+    _need_keys("GOSSAMER_EPO_KEY", "GOSSAMER_EPO_SECRET")
+    prov = EpoOpsAdapter(delay=0.0)
+    results = prov.search("ti=quantum", max_results=2)
+    assert results, "EPO OPS returned no results"
+    _assert_common_result(results[0], source="epo")
+    assert results[0]["id"]
+
+
+@pytest.mark.live
+def test_kipris_search(live):
+    _need_keys("GOSSAMER_KIPRIS_KEY")
+    prov = KiprisAdapter(delay=0.0)
+    results = prov.search("quantum", max_results=2)
+    assert results, "KIPRIS returned no results"
+    _assert_common_result(results[0], source="kipris")
+
+
+@pytest.mark.live
+def test_patentsview_search(live):
+    _need_keys("GOSSAMER_PATENTSVIEW_API_KEY")
+    prov = PatentsViewAdapter(delay=0.0)
+    results = prov.search("quantum", max_results=2)
+    assert results, "PatentsView returned no results"
+    _assert_common_result(results[0], source="patentsview")
+    assert results[0]["id"]

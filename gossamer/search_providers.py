@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
 import httpx
 
+from gossamer.env import getenv as _env_get
+
 logger = logging.getLogger(__name__)
 
 
@@ -389,9 +391,8 @@ class GoogleProvider(SearchProvider):
         delay: Optional[Union[float, RateLimit]] = None,
         fetch_delay: Optional[float] = None,
     ):
-        import os
-        self.api_key = api_key or os.environ.get("GOOGLE_API_KEY", "")
-        self.cx = cx or os.environ.get("GOOGLE_CX", "")
+        self.api_key = api_key or _env_get("GOOGLE_API_KEY", "")
+        self.cx = cx or _env_get("GOOGLE_CX", "")
         self._last_search = 0.0
         self._init_rate_limit(
             delay if delay is not None else _GOOGLE_RATE_LIMIT, fetch_delay
@@ -447,8 +448,7 @@ class BingProvider(SearchProvider):
         delay: Optional[Union[float, RateLimit]] = None,
         fetch_delay: Optional[float] = None,
     ):
-        import os
-        self.api_key = api_key or os.environ.get("BING_API_KEY", "")
+        self.api_key = api_key or _env_get("BING_API_KEY", "")
         self._last_search = 0.0
         self._init_rate_limit(
             delay if delay is not None else _BING_RATE_LIMIT, fetch_delay
@@ -564,8 +564,7 @@ class ExaProvider(SearchProvider):
         fetch_delay: Optional[float] = None,
         **search_params,
     ):
-        import os
-        self.api_key = api_key or os.environ.get("EXA_API_KEY", "")
+        self.api_key = api_key or _env_get("EXA_API_KEY", "")
         self._last_search = 0.0
         self._init_rate_limit(
             delay if delay is not None else _EXA_RATE_LIMIT, fetch_delay
@@ -678,15 +677,13 @@ def get_default_providers() -> List[SearchProvider]:
     """Return a list of providers that are actually available (keys configured)."""
     providers: List[SearchProvider] = [DuckDuckGoProvider()]
 
-    import os
-
-    if os.environ.get("GOOGLE_API_KEY") and os.environ.get("GOOGLE_CX"):
+    if _env_get("GOOGLE_API_KEY", "") and _env_get("GOOGLE_CX", ""):
         providers.append(GoogleProvider())
 
-    if os.environ.get("BING_API_KEY"):
+    if _env_get("BING_API_KEY", ""):
         providers.append(BingProvider())
 
-    if os.environ.get("EXA_API_KEY"):
+    if _env_get("EXA_API_KEY", ""):
         providers.append(ExaProvider())
 
     return providers

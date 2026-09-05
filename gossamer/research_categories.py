@@ -16,6 +16,8 @@ model controls which source it queries.
                      ``oldp`` / ``hudoc`` / ``govinfo``
                      (``eurlex`` / ``german`` were retired — no public
                      endpoint; see the provider docs)
+  * ``patent``      -> ``epo`` / ``kipris`` / ``patentsview``
+                     (all key-gated — no keyless patent API remains)
   * ``financial`` -> ``yahoo`` / ``frankfurter`` / ``eurostat`` /
                      ``bundesbank`` / ``bis`` / ``coingecko`` / ``alphavantage``
   * ``geo``       -> ``open-meteo`` (place/coordinate lookup) / ``overpass``
@@ -129,6 +131,17 @@ _FINANCIAL: Tuple[str, ...] = (
     "aktie", "aktien", "aktienkurs", "dax", "dividende",
 )
 
+# Patents and prior art (new in 0.7.0 — all providers key-gated; there is no
+# keyless patent search API left). Deliberately *no* bare "pct" (finance
+# false positive: "pct of revenue") or "claims" (insurance) — the phrased
+# forms below are unambiguous.
+_PATENT: Tuple[str, ...] = (
+    "patent", "patents", "patented", "patentability",
+    "patent application", "patent search", "prior art",
+    "uspto", "epo", "espacenet", "jpo", "kipo", "kipris",
+    "cnipa", "dpma", "depatisnet", "pct application", "patent office",
+)
+
 # Weather / climate / coordinates / place lookups.
 _GEO: Tuple[str, ...] = (
     "weather", "climate", "temperature", "forecast", "forecasts",
@@ -157,6 +170,16 @@ CATEGORIES: Tuple[Category, ...] = (
         keywords=_LEGAL,
         providers=("courtlistener", "ecfr", "federalregister",
                    "oldp", "hudoc", "govinfo"),
+        kind="adapter",
+    ),
+    Category(
+        name="patent",
+        description=(
+            "Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA). "
+            "All providers key-gated — no keyless patent API remains."
+        ),
+        keywords=_PATENT,
+        providers=("epo", "kipris", "patentsview"),
         kind="adapter",
     ),
     Category(
@@ -210,6 +233,9 @@ _PROVIDER_DISPLAY: Dict[str, str] = {
     "oldp": "Open Legal Data",
     "hudoc": "HUDOC (ECtHR)",
     "govinfo": "GovInfo",
+    "epo": "EPO OPS",
+    "kipris": "KIPRIS",
+    "patentsview": "PatentsView",
     "open-meteo": "Open-Meteo",
     "duckduckgo": "DuckDuckGo",
 }
@@ -261,6 +287,9 @@ _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "oldp": "gossamer.research_providers.OldpAdapter",
     "hudoc": "gossamer.research_providers.HudocAdapter",
     "govinfo": "gossamer.research_providers.GovInfoAdapter",
+    "epo": "gossamer.research_providers.EpoOpsAdapter",
+    "kipris": "gossamer.research_providers.KiprisAdapter",
+    "patentsview": "gossamer.research_providers.PatentsViewAdapter",
     "open-meteo": "gossamer.research_providers.OpenMeteoAdapter",
 }
 

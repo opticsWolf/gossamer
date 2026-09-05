@@ -3299,3 +3299,375 @@ class CoinGeckoAdapter(ResourceAdapter):
         }]
 
 
+# ────────────────────────────────────────────────────────────────
+# Wave 4 — patent offices (2026-09). All key-gated: there is no keyless
+# patent search API left (see docs/PATENT_LANDSCAPE_2026-09-05.md).
+# Shapes follow the offices' public documentation; authed live paths
+# are covered by key-gated smoke tests, not the offline suite.
+# ────────────────────────────────────────────────────────────────
+
+class EpoOpsAdapter(ResourceAdapter):
+    """European patents via EPO Open Patent Services (OPS 3.2).
+
+    Requires ``GOSSAMER_EPO_KEY`` + ``GOSSAMER_EPO_SECRET`` (free OPS
+    registration; OAuth2 client-credentials). ``search`` runs a CQL query
+    (``ti=``, ``pa=``, ``pn=``…) over published data; ``fetch`` pulls one
+    publication by EPODOC number (``EP1234567``). INPADOC family/legal-event
+    data covers JP/CN/DE documents too, which makes this the default
+    ``patent`` provider.
+    """
+
+    name = "epo"
+    domain = "patent"
+    requires_key = True
+    BASE = "https://ops.epo.org/3.2"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+        api_secret: Optional[str] = None,
+    ):
+        self.api_key = api_key or _env_get("GOSSAMER_EPO_KEY", "")
+        self.api_secret = api_secret or _env_get("GOSSAMER_EPO_SECRET", "")
+        self._token = ""
+        self._token_expires = 0.0
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
+        )
+
+    def _auth_headers(self) -> dict:
+        import time as _time
+
+        if not self.api_key or not self.api_secret:
+            raise RuntimeError(
+                "EpoOpsAdapter needs GOSSAMER_EPO_KEY + GOSSAMER_EPO_SECRET "
+                "(free OPS registration)."
+            )
+        if not self._token or _time.time() >= self._token_expires - 30:
+            resp = httpx.post(
+                f"{self.BASE}/auth/accesstoken",
+                data={"grant_type": "client_credentials"},
+                auth=(self.api_key, self.api_secret),
+                timeout=20.0,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            self._token = body.get("access_token", "")
+            try:
+                ttl = int(body.get("expires_in", 1200))
+            except (TypeError, ValueError):
+                ttl = 1200
+            self._token_expires = _time.time() + max(60, ttl)
+        return {"Authorization": f"Bearer {self._token}", "Accept": "application/xml"}
+
+    @staticmethod
+    def _text(element, limit: int = 400) -> str:
+        parts = []
+        for el in element.iter():
+            if _local_name(el.tag) in ("invention-title", "title") and el.text:
+                lang = el.attrib.get("lang", "")
+                parts.append(f"[{lang}] {el.text.strip()}" if lang else el.text.strip())
+        return " ".join(parts)[:limit]
+
+    def _row(self, doc) -> Dict[str, str]:
+        number, kind, date, applicants = "", "", "", []
+        for el in doc.iter():
+            lname = _local_name(el.tag)
+            if lname == "document-id" and el.attrib.get("document-id-type") == "epodoc":
+                for child in el:
+                    cname = _local_name(child.tag)
+                    if cname == "doc-number":
+                        number = (child.text or "").strip()
+                    elif cname == "kind":
+                        kind = (child.text or "").strip()
+                    elif cname == "date":
+                        date = (child.text or "").strip()[:10]
+            elif lname in ("applicant-name", "inventor-name"):
+                name = (el.findtext(".//{*}name") or "").strip()
+                if name:
+                    applicants.append(name)
+        epodoc = f"{number}{kind}"
+        title = self._text(doc) or epodoc
+        return {
+            "source": "epo",
+            "id": epodoc or number,
+            "title": title,
+            "url": f"https://worldwide.espacenet.com/patent/search?q=pn%3D{epodoc}" if epodoc else "",
+            "published": date,
+            "snippet": f"{title} — {', '.join(applicants[:3])}".strip(" —"),
+            "fields": {
+                "publication_number": number,
+                "kind": kind,
+                "applicants": ", ".join(applicants[:5]),
+            },
+            "raw": json.dumps({"epodoc": epodoc, "title": title, "date": date}),
+        }
+
+    def search(self, query, max_results=5):
+        # Missing credentials never succeed on retry: fail fast instead of
+        # burning backoff sleeps (same pattern as BioRxivAdapter).
+        if not self.api_key or not self.api_secret:
+            raise RuntimeError(
+                "EpoOpsAdapter needs GOSSAMER_EPO_KEY + GOSSAMER_EPO_SECRET "
+                "(free OPS registration)."
+            )
+        return super().search(query, max_results)
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        q = (query or "").strip()
+        if not q:
+            raise ValueError("EpoOpsAdapter search needs a CQL query (e.g. ti=quantum)")
+        headers = self._auth_headers()
+        end = min(max(1, max_results), 100)
+        resp = httpx.get(
+            f"{self.BASE}/rest-services/published-data/search",
+            params={"q": q, "Range": f"1-{end}"},
+            headers=headers,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        out = []
+        for el in root.iter():
+            if _local_name(el.tag) != "exchange-document":
+                continue
+            out.append(self._row(el))
+            if len(out) >= max_results:
+                break
+        return out
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        rid = str(record_id or "").strip()
+        if not rid:
+            raise ValueError("EpoOpsAdapter fetch needs an EPODOC number")
+        headers = self._auth_headers()
+        resp = httpx.get(
+            f"{self.BASE}/rest-services/published-data/publication/epodoc/{rid}",
+            headers=headers,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        for el in root.iter():
+            if _local_name(el.tag) == "exchange-document":
+                return [self._row(el)]
+        return []
+
+
+class KiprisAdapter(ResourceAdapter):
+    """Korean patents/utility models via the KIPRIS Plus open API.
+
+    Requires ``GOSSAMER_KIPRIS_KEY`` (per-user ``serviceKey``; free
+    development tier, paid operation tier). ``search`` runs a keyword
+    search (``getWordSearch``); ``fetch`` looks up one application number.
+    Responses are XML-only. One key per deployment (ToS §11).
+    """
+
+    name = "kipris"
+    domain = "patent"
+    requires_key = True
+    BASE = "http://kipo-api.kipi.or.kr/openapi/service"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+    ):
+        self.api_key = api_key or _env_get("GOSSAMER_KIPRIS_KEY", "")
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
+        )
+
+    def _require_key(self):
+        if not self.api_key:
+            raise RuntimeError("KiprisAdapter needs GOSSAMER_KIPRIS_KEY (free dev tier).")
+
+    @staticmethod
+    def _item_to_dict(item) -> dict:
+        """Generic XML item -> {tag: text} (field names vary by service)."""
+        out = {}
+        for child in item:
+            name = _local_name(child.tag)
+            out[name] = (child.text or "").strip()
+        return out
+
+    @staticmethod
+    def _row(d: dict) -> Dict[str, str]:
+        app_no = d.get("applicationNumber", d.get("application_number", ""))
+        title = d.get("inventionTitle", d.get("title", app_no))
+        return {
+            "source": "kipris",
+            "id": app_no,
+            "title": title,
+            "url": "",
+            "published": d.get("publicationDate", d.get("registrationDate", "")),
+            "snippet": f"{title} — {d.get('applicantName', '')}".strip(" —"),
+            "fields": {
+                "applicant": d.get("applicantName", ""),
+                "status": d.get("applicationStatus", d.get("registerStatus", "")),
+            },
+            "raw": json.dumps(d, ensure_ascii=False),
+        }
+
+    def _items(self, service: str, operation: str, params: dict):
+        self._require_key()
+        query = {"serviceKey": self.api_key, "numOfRows": 10, **params}
+        resp = httpx.get(f"{self.BASE}/{service}/{operation}", params=query, timeout=25.0)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        items = []
+        for el in root.iter():
+            if _local_name(el.tag) == "item":
+                items.append(self._item_to_dict(el))
+        return items
+
+    def search(self, query, max_results=5):
+        if not self.api_key:
+            raise RuntimeError("KiprisAdapter needs GOSSAMER_KIPRIS_KEY (free dev tier).")
+        return super().search(query, max_results)
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        q = (query or "").strip()
+        if not q:
+            raise ValueError("KiprisAdapter search needs a keyword query")
+        items = self._items(
+            "patUtliInfoSearchService", "getWordSearch",
+            {"word": q, "numOfRows": min(max_results, 100)},
+        )
+        return [self._row(d) for d in items[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        rid = str(record_id or "").strip()
+        if not rid:
+            raise ValueError("KiprisAdapter fetch needs an application number")
+        items = self._items(
+            "patUtliInfoSearchService", "getWordSearch",
+            {"word": rid, "numOfRows": 5},
+        )
+        return [self._row(items[0])] if items else []
+
+
+class PatentsViewAdapter(ResourceAdapter):
+    """US patents via the PatentsView Search Platform (v2 search API).
+
+    Requires ``GOSSAMER_PATENTSVIEW_API_KEY`` (``X-Api-Key`` header; request
+    via the PatentsView service desk). The legacy keyless v1 query API is
+    retired. ``search`` runs a title/abstract full-text query
+    (``api/v1/patents``) or accepts a raw query dict passthrough;
+    ``fetch`` pulls one patent by number (``api/v1/patents/<id>/``).
+    Base URL is configurable (``GOSSAMER_PATENTSVIEW_BASE``) in case the
+    platform host moves again.
+    """
+
+    name = "patentsview"
+    domain = "patent"
+    requires_key = True
+    DEFAULT_BASE = "https://search.patentsview.org"
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.api_key = api_key or _env_get("GOSSAMER_PATENTSVIEW_API_KEY", "")
+        self.base_url = (
+            base_url or _env_get("GOSSAMER_PATENTSVIEW_BASE", "") or self.DEFAULT_BASE
+        ).rstrip("/")
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
+        )
+
+    def _headers(self) -> dict:
+        if not self.api_key:
+            raise RuntimeError(
+                "PatentsViewAdapter needs GOSSAMER_PATENTSVIEW_API_KEY "
+                "(service desk)."
+            )
+        return {"X-Api-Key": self.api_key, "Accept": "application/json"}
+
+    @staticmethod
+    def _row(p: dict) -> Dict[str, str]:
+        number = str(p.get("patent_number", p.get("id", "")))
+        title = p.get("patent_title", p.get("title", number))
+        date = str(p.get("patent_date", p.get("date", "")))[:10]
+        return {
+            "source": "patentsview",
+            "id": number,
+            "title": title,
+            "url": f"https://patents.google.com/patent/US{number}" if number else "",
+            "published": date,
+            "snippet": f"{title} ({date})",
+            "fields": {
+                "assignee": p.get("assignee_organization", p.get("assignee", "")),
+            },
+            "raw": json.dumps(p),
+        }
+
+    def search(self, query, max_results=5):
+        # Fail fast without credentials (see EpoOpsAdapter).
+        self._headers()
+        return super().search(query, max_results)
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        headers = self._headers()
+        if isinstance(query, dict):
+            q = query.get("q", {})
+            fields = query.get("f", ["patent_number", "patent_title", "patent_date"])
+        else:
+            text = (query or "").strip()
+            if not text:
+                raise ValueError("PatentsViewAdapter search needs a text query")
+            q = {"_text_all": {"patent_title": text}}
+            fields = ["patent_number", "patent_title", "patent_date"]
+        resp = httpx.get(
+            f"{self.base_url}/api/v1/patents/",
+            params={"q": json.dumps(q), "f": json.dumps(fields),
+                    "o": json.dumps({"per_page": min(max_results, 100)})},
+            headers=headers,
+            timeout=25.0,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get("error"):
+            raise RuntimeError(f"PatentsView error: {body.get('error')}")
+        return [self._row(p) for p in body.get("patents", [])[:max_results]]
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        headers = self._headers()
+        rid = str(record_id or "").strip()
+        if not rid:
+            raise ValueError("PatentsViewAdapter fetch needs a patent number")
+        resp = httpx.get(
+            f"{self.base_url}/api/v1/patents/{rid}/",
+            headers=headers,
+            timeout=25.0,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if isinstance(body, dict) and body.get("patents"):
+            return [self._row(body["patents"][0])]
+        if isinstance(body, dict) and body.get("patent_number"):
+            return [self._row(body)]
+        return []
+
+

@@ -134,58 +134,80 @@ def _guard_config_from_env():
     ``GOSSAMER_GUARD_ENABLED`` is truthy (which implies the optional
     ``jailguard`` dependency is installed via ``pip install ...[guard]``).
     """
-    if not _env_bool("GOSSAMER_GUARD_ENABLED", False):
+    from gossamer.settings import load_config_file
+
+    try:
+        file_guard = load_config_file().get("guard", {}) or {}
+    except (OSError, ValueError):
+        file_guard = {}
+    if not isinstance(file_guard, dict):
+        file_guard = {}
+    if not _env_bool("GOSSAMER_GUARD_ENABLED", file_guard.get("enabled", False)):
         return None
     return GuardConfig(
         enabled=True,
-        mode=_env("GOSSAMER_GUARD_MODE", "annotate"),
-        scopes=_env("GOSSAMER_GUARD_SCOPES", "page_markdown,document_text"),
-        threshold=_env("GOSSAMER_GUARD_THRESHOLD", 0.7, float),
-        max_chunks=_env("GOSSAMER_GUARD_MAX_CHUNKS", 40, int),
+        mode=_env("GOSSAMER_GUARD_MODE", file_guard.get("mode", "annotate")),
+        scopes=_env("GOSSAMER_GUARD_SCOPES", file_guard.get("scopes", "page_markdown,document_text")),
+        threshold=_env("GOSSAMER_GUARD_THRESHOLD", file_guard.get("threshold", 0.7), float),
+        max_chunks=_env("GOSSAMER_GUARD_MAX_CHUNKS", file_guard.get("max_chunks", 40), int),
     )
 
 
 def _config_from_env() -> ToolboxConfig:
-    fetch_delay = _env("GOSSAMER_FETCH_DELAY", None, float)
+    # Precedence: explicit env > gossamer.json > built-in defaults. Each
+    # _env() call falls back to the file value, so an unset variable
+    # inherits the file and a malformed one warns + falls back (A.6).
+    from gossamer.settings import load_config_file
+
+    try:
+        file_cfg = load_config_file()
+    except (OSError, ValueError) as exc:
+        logging.getLogger(__name__).warning("ignoring gossamer.json: %s", exc)
+        file_cfg = {}
+
+    def _f(key, default):
+        return file_cfg.get(key, default)
+
+    fetch_delay = _env("GOSSAMER_FETCH_DELAY", _f("fetch_delay", None), float)
     return ToolboxConfig(
-        cache_dir=_env("GOSSAMER_CACHE_DIR", ".gossamer_cache"),
-        cache_ttl_seconds=_env("GOSSAMER_CACHE_TTL_SECONDS", 3600, int),
-        cache_max_bytes=_env("GOSSAMER_CACHE_MAX_BYTES", 0, int),
-        cache_memory_entries=_env("GOSSAMER_CACHE_MEMORY_ENTRIES", 100, int),
+        cache_dir=_env("GOSSAMER_CACHE_DIR", _f("cache_dir", ".gossamer_cache")),
+        cache_ttl_seconds=_env("GOSSAMER_CACHE_TTL_SECONDS", _f("cache_ttl_seconds", 3600), int),
+        cache_max_bytes=_env("GOSSAMER_CACHE_MAX_BYTES", _f("cache_max_bytes", 0), int),
+        cache_memory_entries=_env("GOSSAMER_CACHE_MEMORY_ENTRIES", _f("cache_memory_entries", 100), int),
         max_response_bytes=_env(
-            "GOSSAMER_MAX_RESPONSE_BYTES", 5 * 1024 * 1024, int,
+            "GOSSAMER_MAX_RESPONSE_BYTES", _f("max_response_bytes", 5 * 1024 * 1024), int,
             legacy="STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES",
         ),
-        liveness_timeout=_env("GOSSAMER_LIVENESS_TIMEOUT", 10.0, float),
-        ddgs_delay=_env("GOSSAMER_DDGS_DELAY", 1.0, float),
-        ddgs_jitter=_env("GOSSAMER_DDGS_JITTER", 1.0, float),
-        domain_delay=_env("GOSSAMER_DOMAIN_DELAY", 0.5, float),
+        liveness_timeout=_env("GOSSAMER_LIVENESS_TIMEOUT", _f("liveness_timeout", 10.0), float),
+        ddgs_delay=_env("GOSSAMER_DDGS_DELAY", _f("ddgs_delay", 1.0), float),
+        ddgs_jitter=_env("GOSSAMER_DDGS_JITTER", _f("ddgs_jitter", 1.0), float),
+        domain_delay=_env("GOSSAMER_DOMAIN_DELAY", _f("domain_delay", 0.5), float),
         fetch_delay=fetch_delay,
-        fetch_jitter=_env("GOSSAMER_FETCH_JITTER", 1.0, float),
-        max_markdown_chars=_env("GOSSAMER_MAX_MARKDOWN_CHARS", 8000, int),
-        max_tokens=_env("GOSSAMER_MAX_TOKENS", 0, int),
-        model_name=_env("GOSSAMER_MODEL_NAME", "gpt-4o"),
-        max_links=_env("GOSSAMER_MAX_LINKS", 20, int),
-        fetch_mode=_env("GOSSAMER_FETCH_MODE", "auto"),
-        candidate_cap=_env("GOSSAMER_CANDIDATE_CAP", 500, int),
-        max_concurrency=_env("GOSSAMER_MAX_CONCURRENCY", 8, int),
+        fetch_jitter=_env("GOSSAMER_FETCH_JITTER", _f("fetch_jitter", 1.0), float),
+        max_markdown_chars=_env("GOSSAMER_MAX_MARKDOWN_CHARS", _f("max_markdown_chars", 8000), int),
+        max_tokens=_env("GOSSAMER_MAX_TOKENS", _f("max_tokens", 0), int),
+        model_name=_env("GOSSAMER_MODEL_NAME", _f("model_name", "gpt-4o")),
+        max_links=_env("GOSSAMER_MAX_LINKS", _f("max_links", 20), int),
+        fetch_mode=_env("GOSSAMER_FETCH_MODE", _f("fetch_mode", "auto")),
+        candidate_cap=_env("GOSSAMER_CANDIDATE_CAP", _f("candidate_cap", 500), int),
+        max_concurrency=_env("GOSSAMER_MAX_CONCURRENCY", _f("max_concurrency", 8), int),
         # S4: robots.txt compliance; operators can opt out explicitly.
-        respect_robots=_env_bool("GOSSAMER_RESPECT_ROBOTS", True),
+        respect_robots=_env_bool("GOSSAMER_RESPECT_ROBOTS", _f("respect_robots", True)),
         # Tier 1.4: revalidate expired cached pages with ETag / Last-Modified
         # before re-downloading; operators can opt out explicitly.
         conditional_revalidation=_env_bool(
-            "GOSSAMER_CONDITIONAL_REVALIDATE", True
+            "GOSSAMER_CONDITIONAL_REVALIDATE", _f("conditional_revalidation", True)
         ),
         # §7: optional prompt-injection guard, off by default.
         guard=_guard_config_from_env(),
         # Tier 2.7: HTTP transport overrides (proxy / User-Agent / headers /
         # cookies) for authenticated sources. Headers and cookies are JSON
         # objects; proxy and User-Agent are plain strings.
-        http_proxy=_env("GOSSAMER_HTTP_PROXY", None),
-        user_agent=_env("GOSSAMER_USER_AGENT", None),
-        custom_headers=_env_json_dict("GOSSAMER_CUSTOM_HEADERS"),
-        cookies=_env_json_dict("GOSSAMER_COOKIES"),
-        search_merge=_env_bool("GOSSAMER_SEARCH_MERGE", False),
+        http_proxy=_env("GOSSAMER_HTTP_PROXY", _f("http_proxy", None)),
+        user_agent=_env("GOSSAMER_USER_AGENT", _f("user_agent", None)),
+        custom_headers=_env_json_dict("GOSSAMER_CUSTOM_HEADERS") or _f("custom_headers", {}),
+        cookies=_env_json_dict("GOSSAMER_COOKIES") or _f("cookies", {}),
+        search_merge=_env_bool("GOSSAMER_SEARCH_MERGE", _f("search_merge", False)),
     )
 
 
