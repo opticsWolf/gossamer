@@ -991,7 +991,7 @@ class WebResearcherToolbox:
         """
         return self._doc.inspect_html_structured(url, use_smart)
 
-    def focused_discovery(
+    def crawl(
         self,
         root_url: str,
         query: Optional[str] = None,

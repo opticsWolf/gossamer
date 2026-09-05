@@ -461,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "gossamer-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "html2md",
  "log",

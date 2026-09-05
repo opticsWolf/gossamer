@@ -62,7 +62,7 @@ def _fake_fetch(pages, fail_on=()):
 
 
 def _result(tb, **kwargs):
-    out = tb.focused_discovery(root_url=kwargs.pop("root_url", ROOT), **kwargs)
+    out = tb.crawl(root_url=kwargs.pop("root_url", ROOT), **kwargs)
     parsed = json.loads(out)
     assert "error" not in parsed, parsed
     return parsed
@@ -76,7 +76,7 @@ class TestRootHandling:
     def test_root_fetch_failure_kills_crawl(self, tmp_path):
         tb = _toolbox(tmp_path)
         tb._fetch._fetch_html = _fake_fetch({}, fail_on=())  # root not in pages
-        parsed = json.loads(tb.focused_discovery(root_url=ROOT))
+        parsed = json.loads(tb.crawl(root_url=ROOT))
         assert "root fetch failed" in parsed["error"]
 
     def test_root_fetch_failure_returns_error_dict(self, tmp_path):
@@ -91,14 +91,14 @@ class TestRootHandling:
             )
 
         tb._fetch._inspect_html_page_impl = impl
-        parsed = json.loads(tb.focused_discovery(root_url=ROOT))
+        parsed = json.loads(tb.crawl(root_url=ROOT))
         assert "robots" in parsed["error"]
 
     def test_invalid_root_urls(self, tmp_path):
         tb = _toolbox(tmp_path)
         tb._fetch._fetch_html = _fake_fetch({})
         for bad in ("not a url", "ftp://example.com", "javascript:alert(1)"):
-            parsed = json.loads(tb.focused_discovery(root_url=bad))
+            parsed = json.loads(tb.crawl(root_url=bad))
             assert "error" in parsed
 
     def test_root_only_when_max_depth_zero(self, tmp_path):
@@ -441,12 +441,12 @@ class TestCacheAndIntegration:
     def test_execute_tool_dispatch(self, tmp_path):
         tb = _toolbox(tmp_path)
         tb._fetch._fetch_html = _fake_fetch({ROOT: _page("# Hub\n\nplatform.\n")})
-        out = tb.execute_tool("focused_discovery", {"root_url": ROOT})
+        out = tb.execute_tool("crawl", {"root_url": ROOT})
         assert json.loads(out)["root"] == ROOT
 
     def test_registry_shape(self):
-        spec = next(s for s in TOOL_REGISTRY if s.name == "focused_discovery")
-        assert spec.method == "focused_discovery"
+        spec = next(s for s in TOOL_REGISTRY if s.name == "crawl")
+        assert spec.method == "crawl"
         params = {p.name: p for p in spec.params}
         assert params["root_url"].required  # no default
         assert params["max_depth"].default == 3

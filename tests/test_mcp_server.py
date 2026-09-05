@@ -17,7 +17,7 @@ EXPECTED_TOOLS = {
     "batch_inspect_pages",
     "extract_document",
     "discover_resources",
-    "focused_discovery",
+    "crawl",
     "manage_cache",
     # research_by_category is a category-aware overlay; it also returns the
     # live taxonomy when called with no query.

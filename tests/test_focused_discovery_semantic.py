@@ -56,7 +56,7 @@ def _fake_fetch(pages, fail_on=()):
 
 
 def _result(tb, **kwargs):
-    out = tb.focused_discovery(root_url=kwargs.pop("root_url", ROOT), **kwargs)
+    out = tb.crawl(root_url=kwargs.pop("root_url", ROOT), **kwargs)
     parsed = json.loads(out)
     assert "error" not in parsed, parsed
     return parsed

@@ -42,7 +42,7 @@ class TestRegistryShape:
             "batch_inspect_pages",
             "extract_document",
             "discover_resources",
-            "focused_discovery",
+            "crawl",
             "manage_cache",
             "research_by_category",
             # export_citations reconstructs citations from search results (Plan ws1).

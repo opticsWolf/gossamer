@@ -4,6 +4,19 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.0] — direct harness integration
+
+- `gossamer` CLI (`python -m gossamer.cli`, `gossamer` console script):
+  `search` / `research` / `categories` / `inspect` / `batch` / `extract` /
+  `check`, same JSON as the MCP tools, global `--cache-dir` / `--config` /
+  `--keystore` / `--log-level` flags (before or after the subcommand).
+- `skills/gossamer/SKILL.md` (routing, budgets, auth) for Claude Code
+  (`~/.claude/skills/`) and pi (skills dir); repo-root `AGENTS.md` for
+  Codex; README harness matrix (pi / Codex / Claude Code) updated.
+- **Breaking**: MCP tool + toolbox method `focused_discovery` renamed to
+  `crawl` (same params, same JSON); CLI subcommand consolidated to a
+  single `crawl` (aliases dropped). Update saved prompts accordingly.
+
 ## [0.7.0] — settings files + patent category
 
 ### File configuration & keystore (no code changes)

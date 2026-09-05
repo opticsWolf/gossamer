@@ -298,9 +298,9 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
-        "focused_discovery",
-        "Relevance-ranked traversal of a URL's link graph (cross-domain by default) to find the pages most relevant to a query. Walks from root_url, scoring candidates by query relevance that decays with depth, so the page budget lands on the most relevant links. Optionally seed with a site-scoped search (search_prior) and/or extra URLs (seed_urls). Returns per page: title, relevance score, and a short skim; plus unfetched document links and skipped links. Full pages stay cached for later re-reads.",
-        "focused_discovery",
+        "crawl",
+        "Relevance-ranked crawl of a URL's link graph (cross-domain by default) to find the pages most relevant to a query. Walks from root_url, scoring candidates by query relevance that decays with depth, so the page budget lands on the most relevant links. Optionally seed with a site-scoped search (search_prior) and/or extra URLs (seed_urls). Returns per page: title, relevance score, and a short skim; plus unfetched document links and skipped links. Full pages stay cached for later re-reads.",
+        "crawl",
         (
             ToolParam(
                 "root_url",

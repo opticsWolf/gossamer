@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-1318%20passing%2C%2031%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1323%20passing%2C%2031%20skipped-brightgreen)](tests/)
 
 ---
 
@@ -78,7 +78,7 @@
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **Research Orchestration (Tier 3.13)**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
 - **Document Link Detection (v0.4.5)**: `extract_document` (and `extract_document(structured=True)` for a validated `ParsedDocumentPayload`) also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
-- **Focused Discovery (v0.4.6, semantic v0.4.8)**: `focused_discovery(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
+- **Crawl (v0.4.6 as focused_discovery, semantic v0.4.8; renamed to `crawl` in v0.8.0)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
@@ -196,7 +196,7 @@ llm_tools = tools.get_llm_definitions()
 
 # Returns OpenAI-compatible function definitions for all ten tools:
 # web_search, inspect_html_page, batch_inspect_pages, extract_document,
-# discover_resources, focused_discovery, manage_cache, research_by_category,
+# discover_resources, crawl, manage_cache, research_by_category,
 # export_citations, check_sources.
 
 for tool in llm_tools:
@@ -283,7 +283,7 @@ gossamer-mcp
 ```
 
 Exposed tools: `web_search`, `inspect_html_page`, `batch_inspect_pages`,
-`extract_document`, `discover_resources`, `focused_discovery`, `manage_cache`,
+`extract_document`, `discover_resources`, `crawl`, `manage_cache`,
 `research_by_category`, `export_citations`, `check_sources`.
 
 Example client config (Claude Desktop / generic MCP JSON):
@@ -311,7 +311,18 @@ see the module docstring in `gossamer/mcp_server.py`.
 Any MCP-capable harness talks to the same stdio server (verified against
 `initialize` + `tools/list`: 10 tools). No secrets need to live in client
 configs — point the server at the project venv and keep API keys in the
-keystore (`~/.gossamer/keys.json`):
+keystore (`~/.gossamer/keys.json`).
+
+Three integration depths, shallowest first:
+
+1. **Direct CLI (no setup)** — `gossamer search|research|categories|inspect|batch|extract|check|discover|crawl|cache|cite`
+   (or `python -m gossamer.cli …`) mirrors all 10 MCP tools 1:1 (`categories`
+   lists the routing table) and prints the same JSON they return. Works
+   from any shell tool in any harness, plus cron.
+2. **MCP server** — model calls tools directly (below).
+3. **Skills** — `skills/gossamer/SKILL.md` teaches routing, budgets and
+   auth; copy to `~/.claude/skills/gossamer/` (Claude Code) or the pi
+   skills dir so the harness auto-loads it.
 
 **pi** (`C:/Users/Main/.pi/agent/mcp.json`, then reload the harness):
 
@@ -629,7 +640,7 @@ for s in report["sources"]:
 
 ### Focused Discovery (v0.4.6)
 
-`focused_discovery(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
+`crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
 min_score=0.05, excerpts=False, search_prior=False, seed_urls=[], use_smart="auto")`
 answers "what does this site contain?" with one bounded run. `use_smart`
 (`auto`/`browser`/`static`) sets the render strategy for crawled pages. It is BFS over the link graph, but the frontier is a priority
@@ -677,18 +688,18 @@ pages are seen:
   the root, SSRF-checked in full, pushed at depth 0 (their children are
   depth 1), and subject to the floor — a below-floor seed is skipped as
   `"seed below min score"`, never silent.
-- **Cross-modal loop** — focused_discovery → `documents` → `extract_document` on
+- **Cross-modal loop** — crawl → `documents` → `extract_document` on
   the top PDF → its `links` (text link detection) → next traversal with
-  `seed_urls` (or a fresh focused_discovery rooted at the document's host). The
-  loop is the agent's; focused_discovery only exposes the pieces.
+  `seed_urls` (or a fresh crawl rooted at the document's host). The
+  loop is the agent's; crawl only exposes the pieces.
 - **Full re-reads** — every fetched page stays in the page cache in
-  full; focused_discovery's 300-char skim is presentation-only, so a later
+  full; crawl's 300-char skim is presentation-only, so a later
   `inspect_html_page` of any discovered URL is a cache hit with the
   complete content.
 
 ```python
 res = json.loads(
-    tools.focused_discovery(
+    tools.crawl(
         "https://example.com/docs",
         query="offline caching",
         max_depth=3,
@@ -731,7 +742,7 @@ reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
   terms were added (e.g. `"deep learning +2"`). The loader fails open:
   a missing or malformed thesaurus simply disables expansion.
 
-No new parameters in this step — the same `focused_discovery(...)` call gets the
+No new parameters in this step — the same `crawl(...)` call gets the
 better ranking. Discovery seeds (search prior, seed URLs, and the
 cross-modal loop) shipped in the same version — see Focused Crawl
 above. Optional local embeddings land in v0.4.9.

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gossamer"
-version = "0.7.0"
+version = "0.8.0"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -74,6 +74,7 @@ citations = ["citeproc-py>=0.11", "citeproc-py-styles>=0.1.6", "six>=1.16"]
 
 [project.scripts]
 gossamer-mcp = "gossamer.mcp_server:main"
+gossamer = "gossamer.cli:main"
 # Legacy alias from the stitch-web-researcher era; harmless to keep.
 stitch-web-researcher-mcp = "gossamer.mcp_server:main"
 
