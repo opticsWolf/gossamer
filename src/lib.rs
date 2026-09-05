@@ -1,4 +1,6 @@
 mod dedupe;
+mod guard;
+mod pycompat;
 mod sections;
 mod textlinks;
 mod urls;
@@ -1509,6 +1511,12 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(urls::content_hash, m)?)?;
     m.add_function(wrap_pyfunction!(textlinks::text_links_scan, m)?)?;
     m.add_function(wrap_pyfunction!(dedupe::dedupe_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(guard::normalize_scopes, m)?)?;
+    m.add_function(wrap_pyfunction!(guard::validate_guard_config, m)?)?;
+    m.add_function(wrap_pyfunction!(guard::chunk_text, m)?)?;
+    m.add_function(wrap_pyfunction!(guard::normalize_untrusted_text, m)?)?;
+    m.add_function(wrap_pyfunction!(guard::redact_spans, m)?)?;
+    m.add_function(wrap_pyfunction!(guard::wrap_untrusted, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

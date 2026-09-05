@@ -19,10 +19,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, runtime_checkable
+
+from gossamer import _core as _rust
 
 logger = logging.getLogger(__name__)
 
@@ -58,25 +59,13 @@ def _normalize_scopes(scopes) -> frozenset:
     Shorthands ``all`` / ``none`` / ``off`` expand or clear the set. Unknown
     scope names raise (fail fast at config time, not mid-call).
     """
+    # Implemented in Rust (src/guard.rs); parity-pinned by
+    # tests/test_rust_parity_guard.py (messages included).
     if scopes is None:
-        return set(_DEFAULT_SCOPES)
+        return frozenset(_rust.normalize_scopes(None))
     if isinstance(scopes, str):
-        scopes = [s for s in (p.strip() for p in scopes.split(",")) if s]
-    out = set()
-    for item in scopes:
-        key = str(item).strip().lower()
-        if not key:
-            continue
-        if key in _SCOPE_SHORTHANDS:
-            out |= set(_SCOPE_SHORTHANDS[key])
-        elif key in KNOWN_SCOPES:
-            out.add(key)
-        else:
-            raise ValueError(
-                f"unknown guard scope: {item!r} "
-                f"(valid: {sorted(KNOWN_SCOPES) + ['all', 'none']})"
-            )
-    return frozenset(out)
+        return frozenset(_rust.normalize_scopes([scopes]))
+    return frozenset(_rust.normalize_scopes([str(s) for s in scopes]))
 
 
 @dataclass
@@ -104,21 +93,18 @@ class GuardConfig:
     timing: bool = True  # feeds the measurement hooks in get_stats()
 
     def __post_init__(self) -> None:
-        if self.mode not in _VALID_MODES:
-            raise ValueError(
-                f"guard mode must be one of {list(_VALID_MODES)}, got {self.mode!r}"
+        # Validation + scope normalization in Rust (src/guard.rs).
+        scopes_arg = (
+            None if self.scopes is None
+            else [self.scopes] if isinstance(self.scopes, str)
+            else [str(s) for s in self.scopes]
+        )
+        self.scopes = frozenset(
+            _rust.validate_guard_config(
+                self.mode, self.threshold, self.chunk_chars,
+                self.chunk_overlap, self.max_chunks, scopes_arg,
             )
-        if not (0.0 < self.threshold <= 1.0):
-            raise ValueError(
-                f"guard threshold must be in (0, 1], got {self.threshold!r}"
-            )
-        if self.chunk_chars <= 0:
-            raise ValueError("guard chunk_chars must be > 0")
-        if self.chunk_overlap < 0 or self.chunk_overlap >= self.chunk_chars:
-            raise ValueError("guard chunk_overlap must be in [0, chunk_chars)")
-        if self.max_chunks <= 0:
-            raise ValueError("guard max_chunks must be > 0")
-        self.scopes = _normalize_scopes(self.scopes)
+        )
 
 
 @dataclass
@@ -225,19 +211,8 @@ def chunk_text(text: str, chunk_chars: int, overlap: int, max_chunks: int) -> li
     windows are returned (a hard latency ceiling) — text beyond that is not
     scanned.
     """
-    if not text:
-        return []
-    step = max(1, chunk_chars - overlap)
-    chunks = []
-    start = 0
-    n = len(text)
-    while start < n and len(chunks) < max_chunks:
-        window = text[start : start + chunk_chars]
-        chunks.append((start, window))
-        if start + chunk_chars >= n:
-            break
-        start += step
-    return chunks
+    # Implemented in Rust (src/guard.rs); char-based offsets like here.
+    return _rust.chunk_text(text, chunk_chars, overlap, max_chunks)
 
 
 def normalize_untrusted_text(text: str) -> str:
@@ -265,10 +240,8 @@ def normalize_untrusted_text(text: str) -> str:
     Clean ASCII / Unicode text is unchanged in practice (both transforms are
     no-ops on it), so normal pages are not perturbed.
     """
-    filtered = "".join(
-        c for c in text if unicodedata.category(c)[0] != "C" or c in "\n\r\t"
-    )
-    return unicodedata.normalize("NFKC", filtered)
+    # Implemented in Rust (src/guard.rs: C* strip + NFKC).
+    return _rust.normalize_untrusted_text(text)
 
 
 @runtime_checkable
@@ -511,24 +484,10 @@ def merge_reports(reports: list) -> dict:
 
 def _redact_spans(text: str, flagged: list) -> str:
     """Replace each flagged span with a redaction placeholder (deduped)."""
-    spans = []
-    for flag in flagged:
-        end = min(len(text), flag.offset + flag.length)
-        if flag.offset < end:
-            spans.append((flag.offset, end, flag.score))
-    if not spans:
-        return text
-    spans.sort()
-    out = []
-    last = 0
-    for start, end, score in spans:
-        if start < last:  # overlapping span: already covered
-            continue
-        out.append(text[last:start])
-        out.append(f"[redacted: possible prompt injection - score {score:.2f}]")
-        last = end
-    out.append(text[last:])
-    return "".join(out)
+    # Implemented in Rust (src/guard.rs); offsets are char-based like here.
+    return _rust.redact_spans(
+        text, [(f.offset, f.offset + f.length, f.score) for f in flagged]
+    )
 
 
 def evaluate(
@@ -598,9 +557,5 @@ def wrap_untrusted(markdown: str, source_url: str) -> str:
     explicit at the point of delivery. Only applied when the guard is enabled,
     so default (off) output is byte-identical.
     """
-    return (
-        f'<untrusted-web-content source="{source_url}">\n'
-        f"{_UNTRUSTED_DIRECTIVE}\n"
-        f"{markdown}\n"
-        f"{_UNTRUSTED_CLOSE}"
-    )
+    # Implemented in Rust (src/guard.rs).
+    return _rust.wrap_untrusted(markdown, source_url)

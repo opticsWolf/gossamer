@@ -12,6 +12,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use sha2::{Digest, Sha256};
 use std::path::Path;
+use crate::pycompat::py_repr;
 use unicode_normalization::UnicodeNormalization;
 
 // Mirrors gossamer.structured_parser.DOCUMENT_EXTENSIONS. A Python parity
@@ -23,48 +24,6 @@ const DOCUMENT_EXTENSIONS: &[&str] = &[
 
 const TRACKING_PARAM_PREFIXES: &[&str] = &["utm_", "fbclid", "gclid", "mc_", "ref_"];
 
-/// Minimal Python-`repr()` for error messages: single quotes unless the
-/// string holds a single quote but no double quote (CPython rule).
-fn py_repr(s: &str) -> String {
-    let (open, close, escape_single) = if s.contains('\'') && !s.contains('"') {
-        ('"', '"', false)
-    } else {
-        ('\'', '\'', true)
-    };
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push(open);
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '\'' if escape_single => out.push_str("\\'"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if !is_py_printable(c) => {
-                let n = c as u32;
-                if n < 0x100 {
-                    out.push_str(&format!("\\x{n:02x}"));
-                } else if n < 0x10000 {
-                    out.push_str(&format!("\\u{n:04x}"));
-                } else {
-                    out.push_str(&format!("\\U{n:08x}"));
-                }
-            }
-            c => out.push(c),
-        }
-    }
-    out.push(close);
-    out
-}
-
-fn is_py_printable(c: char) -> bool {
-    // Approximation of str.isprintable() good enough for URLs; the
-    // differential fuzz (not this predicate) is the arbiter.
-    if (c as u32) < 0x20 || (c as u32) == 0x7f {
-        return false;
-    }
-    !matches!(c, '\u{80}'..='\u{9f}')
-}
 
 /// Python `urlparse` scheme detection: leading ASCII letter, then scheme
 /// chars, before the first ':'.

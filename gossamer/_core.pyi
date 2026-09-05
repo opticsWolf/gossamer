@@ -202,3 +202,39 @@ def select_relevant_sections(
 ) -> Optional[SectionSelection]:
     """Port of ``gossamer.sections.select_relevant_sections``."""
     ...
+
+def normalize_scopes(scopes: Optional[List[str]] = None) -> List[str]:
+    """Port of ``gossamer.guard._normalize_scopes`` (src/guard.rs)."""
+    ...
+
+def validate_guard_config(
+    mode: str,
+    threshold: float,
+    chunk_chars: int,
+    chunk_overlap: int,
+    max_chunks: int,
+    scopes: Optional[List[str]] = None,
+) -> List[str]:
+    """Port of ``GuardConfig.__post_init__`` validation (src/guard.rs)."""
+    ...
+
+def chunk_text(
+    text: str,
+    chunk_chars: int,
+    overlap: int,
+    max_chunks: int,
+) -> List[tuple]:
+    """Overlapping ``(offset, window)`` chunks (src/guard.rs)."""
+    ...
+
+def normalize_untrusted_text(text: str) -> str:
+    """C* strip + NFKC (port of ``gossamer.guard``, src/guard.rs)."""
+    ...
+
+def redact_spans(text: str, spans: list) -> str:
+    """Redact ``(offset, end, score)`` spans (src/guard.rs)."""
+    ...
+
+def wrap_untrusted(markdown: str, source_url: str) -> str:
+    """Untrusted-content wrapper (src/guard.rs)."""
+    ...

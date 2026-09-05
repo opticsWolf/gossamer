@@ -4,6 +4,19 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.4] — Rust port M4: guard kernels
+
+- `src/guard.rs` (+ shared `src/pycompat.rs`): scope/config validation
+  with identical messages, overlapping chunking, untrusted-text
+  normalization (C* strip + NFKC via `unic-ucd-category`), span
+  redaction, untrusted wrapping. ML-backed `JailGuardGuard` and
+  orchestration (`evaluate`/`merge_reports`) stay Python.
+- Documented boundary: lone surrogates cannot cross PyO3 (invalid
+  UTF-8) — Python strips them, Rust raises at conversion.
+- Parity proof: `tests/test_rust_parity_guard.py` (vendored v0.8.3
+  originals + 500 seeded fuzz rounds over hostile Unicode) + 5 Rust
+  unit tests.
+
 ## [0.8.3] — Rust port M3: sections + BM25
 
 - `src/sections.rs`: heading splitting (ATX + Setext, lookaheads as

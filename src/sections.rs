@@ -13,6 +13,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
+use crate::pycompat::{byte_to_char_idx, char_count, char_head, py_strip};
 use std::sync::OnceLock;
 
 static HEADING_RE: OnceLock<Regex> = OnceLock::new();
@@ -80,28 +81,6 @@ fn stopwords() -> &'static HashSet<&'static str> {
     })
 }
 
-/// Python `str.strip()` set: ASCII whitespace + 0x1C–0x1F + NEL +
-/// everything Unicode-White_Space.
-fn py_strip(s: &str) -> &str {
-    s.trim_matches(|c: char| {
-        c.is_whitespace() || c == '\u{85}' || ('\u{1C}'..='\u{1F}').contains(&c)
-    })
-}
-
-fn char_count(s: &str) -> usize {
-    s.chars().count()
-}
-
-fn char_head(s: &str, n: usize) -> &str {
-    match s.char_indices().nth(n) {
-        Some((i, _)) => &s[..i],
-        None => s,
-    }
-}
-
-fn byte_to_char_idx(text: &str, byte: usize) -> usize {
-    text[..byte.min(text.len())].chars().count()
-}
 
 #[pyclass]
 pub struct Section {
