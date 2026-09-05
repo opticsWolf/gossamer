@@ -306,6 +306,57 @@ Example client config (Claude Desktop / generic MCP JSON):
 All toolbox options are configurable via `GOSSAMER_*` environment variables —
 see the module docstring in `gossamer/mcp_server.py`.
 
+### Harness Integration (pi, Codex, Claude Code)
+
+Any MCP-capable harness talks to the same stdio server (verified against
+`initialize` + `tools/list`: 10 tools). No secrets need to live in client
+configs — point the server at the project venv and keep API keys in the
+keystore (`~/.gossamer/keys.json`):
+
+**pi** (`C:/Users/Main/.pi/agent/mcp.json`, then reload the harness):
+
+```json
+{
+  "mcpServers": {
+    "gossamer": {
+      "command": "D:/User/Documents/Python/stitch-web-researcher/.venv/Scripts/python.exe",
+      "args": ["-m", "gossamer.mcp_server"],
+      "env": {
+        "GOSSAMER_CACHE_DIR": "D:/User/Documents/Python/stitch-web-researcher/.gossamer_cache",
+        "GOSSAMER_LOG_LEVEL": "WARNING"
+      },
+      "directTools": true
+    }
+  }
+}
+```
+
+**Codex** (`~/.codex/config.toml`, restart the CLI):
+
+```toml
+[mcp_servers.gossamer]
+command = "D:/User/Documents/Python/stitch-web-researcher/.venv/Scripts/python.exe"
+args = ["-m", "gossamer.mcp_server"]
+startup_timeout_sec = 30
+```
+
+**Claude Code** (no keys in the command — the keystore covers auth):
+
+```bash
+claude mcp add gossamer -- D:/User/Documents/Python/stitch-web-researcher/.venv/Scripts/python.exe -m gossamer.mcp_server
+# …or share it per-project with a checked-in .mcp.json:
+# { "mcpServers": { "gossamer": {
+#   "command": "python", "args": ["-m", "gossamer.mcp_server"] } } }
+```
+
+Practical notes:
+
+- Long crawls can outlast a harness tool timeout — keep `max_pages` modest
+  (≤15) or raise the client's timeout (`startup_timeout_sec` only covers
+  spawn; use per-call budgets for the work itself).
+- `GOSSAMER_LOG_LEVEL=WARNING` keeps harness logs quiet; the Rust bridge
+  (`GOSSAMER_RUST_LOG`) stays off unless debugging transport issues.
+
 ### File Configuration & Keystore (no code changes)
 
 Options can also live in a `gossamer.json` file (explicit path >
