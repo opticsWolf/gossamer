@@ -238,3 +238,7 @@ def redact_spans(text: str, spans: list) -> str:
 def wrap_untrusted(markdown: str, source_url: str) -> str:
     """Untrusted-content wrapper (src/guard.rs)."""
     ...
+
+def classify_query(query: str | None = None) -> str:
+    """Category name for *query* (port of the ``classify`` kernel)."""
+    ...

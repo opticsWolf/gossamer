@@ -4,6 +4,15 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.5] — Rust port M5: category routing
+
+- `src/categories.rs`: `classify_query` (verbatim keyword tables,
+  word-boundary matching, distinct-hit scoring, table-order ties).
+  `Category` objects/descriptions/providers/factories stay Python.
+- Parity proof: `tests/test_rust_parity_categories.py` (every keyword
+  in isolation = table-drift guard, mixed queries, 500 seeded fuzz
+  rounds) + 2 Rust unit tests.
+
 ## [0.8.4] — Rust port M4: guard kernels
 
 - `src/guard.rs` (+ shared `src/pycompat.rs`): scope/config validation

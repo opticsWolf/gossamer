@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "gossamer-core"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "html2md",
  "log",

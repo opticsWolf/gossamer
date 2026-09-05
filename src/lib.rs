@@ -1,3 +1,4 @@
+mod categories;
 mod dedupe;
 mod guard;
 mod pycompat;
@@ -1517,6 +1518,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(guard::normalize_untrusted_text, m)?)?;
     m.add_function(wrap_pyfunction!(guard::redact_spans, m)?)?;
     m.add_function(wrap_pyfunction!(guard::wrap_untrusted, m)?)?;
+    m.add_function(wrap_pyfunction!(categories::classify_query, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;
