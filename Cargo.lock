@@ -3,20 +3,6 @@
 version = 4
 
 [[package]]
-name = "_stitch_web_researcher_core"
-version = "0.5.3"
-dependencies = [
- "html2md",
- "log",
- "pyo3",
- "reqwest",
- "scraper",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -471,6 +457,20 @@ dependencies = [
  "r-efi",
  "wasip2",
  "wasip3",
+]
+
+[[package]]
+name = "gossamer-core"
+version = "0.6.0"
+dependencies = [
+ "html2md",
+ "log",
+ "pyo3",
+ "reqwest",
+ "scraper",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

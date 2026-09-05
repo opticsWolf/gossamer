@@ -12,10 +12,10 @@ verifications. The final payload must still satisfy both budgets.
 import json
 from unittest import mock
 
-import stitch_web_researcher.agent_tools as agent_tools
-import stitch_web_researcher.fetch as fetch
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
-from stitch_web_researcher.token_budget import count_tokens
+import gossamer.agent_tools as agent_tools
+import gossamer.fetch as fetch
+from gossamer.agent_tools import WebResearcherToolbox
+from gossamer.token_budget import count_tokens
 
 
 def _links(n):

@@ -14,9 +14,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher._core import batch_research, fetch_html_full
+from gossamer._core import batch_research, fetch_html_full
 
-_ALLOW_PRIVATE_ENV = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+_ALLOW_PRIVATE_ENV = "GOSSAMER_ALLOW_PRIVATE"
 
 _PAGE = (
     b"<!DOCTYPE html><html><head><title>Pooled page</title></head>"
@@ -90,7 +90,7 @@ class TestSharedClientFetches:
         urls = [f"{local_server}/batch-1", f"{local_server}/batch-2"]
         results = batch_research(urls)
         assert len(results) == 2
-        for _url, _html, md, links in results:
+        for _url, _html, md, links, _prov in results:
             assert "Pooled" in md
             assert isinstance(links, list)
 

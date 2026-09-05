@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 PAGE = (
     b"<html><head><title>Good</title></head><body><main>"
@@ -117,7 +117,7 @@ class TestBatchIsolatesBadUrls:
     def test_one_bad_url_does_not_discard_the_good_ones(
         self, toolbox, server, monkeypatch
     ):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         good = f"{server}/good"
         out = json.loads(toolbox.batch_inspect_pages([BAD_LOCAL_PATH, good]))
 
@@ -127,7 +127,7 @@ class TestBatchIsolatesBadUrls:
         assert "Good page" in by_error[False]["markdown"]
 
     def test_rejected_entries_keep_input_order(self, toolbox, server, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         good = f"{server}/good"
         out = json.loads(toolbox.batch_inspect_pages([good, BAD_LOCAL_PATH]))
         assert len(out) == 2

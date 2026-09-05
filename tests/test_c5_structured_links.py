@@ -9,8 +9,8 @@ so the structured payload always came back with zero links.
 import json
 from unittest.mock import patch
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
-from stitch_web_researcher.structured_parser import (
+from gossamer.agent_tools import WebResearcherToolbox
+from gossamer.structured_parser import (
     DocumentMetadata,
     FollowUpCandidate,
     ParsedDocumentPayload,

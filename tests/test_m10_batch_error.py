@@ -12,7 +12,7 @@ and batch_inspect_pages now branches on the tag. All tests offline
 import json
 from unittest.mock import patch
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     BatchEntry,
     WebResearcherToolbox,
     _normalize_batch_results,
@@ -98,7 +98,7 @@ class TestBatchInspectErrorChannel:
     def test_mixed_success_and_failure(self, tmp_path):
         tb = _toolbox(tmp_path)
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[
                 ("https://example.com/ok", FAKE_HTML, FAKE_MD, FAKE_LINKS),
                 ("https://example.com/bad", None, "connection refused", None),
@@ -120,14 +120,14 @@ class TestBatchInspectErrorChannel:
         tb = _toolbox(tmp_path)
         urls = ["https://example.com/flaky"]
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[("https://example.com/flaky", None, "boom", None)],
         ):
             first = json.loads(tb.batch_inspect_pages(urls))
         assert first[0]["error"] == "boom"
 
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[("https://example.com/flaky", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ):
             second = json.loads(tb.batch_inspect_pages(urls))

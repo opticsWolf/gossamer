@@ -10,7 +10,7 @@ import inspect
 
 import pytest
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     TOOL_REGISTRY,
     WebResearcherToolbox,
 )
@@ -124,7 +124,7 @@ class TestMcpSurface:
         import asyncio
 
         try:
-            from stitch_web_researcher.mcp_server import build_server
+            from gossamer.mcp_server import build_server
         except ImportError:
             pytest.skip("mcp not installed")
         server = build_server()
@@ -135,7 +135,7 @@ class TestMcpSurface:
         import asyncio
 
         try:
-            from stitch_web_researcher.mcp_server import build_server
+            from gossamer.mcp_server import build_server
         except ImportError:
             pytest.skip("mcp not installed")
         server = build_server()

@@ -1,7 +1,7 @@
 """Prompt-injection annotation layer (review item 7).
 
 A pluggable :class:`Guard` protocol with a default implementation backed by
-the optional ``jailguard`` detector (``pip install stitch-web-researcher[guard]``).
+the optional ``jailguard`` detector (``pip install gossamer[guard]``).
 Off by default: when disabled there is zero import, zero latency, and zero
 payload change. When enabled, the guard scans the configured output scopes for
 prompt-injection-like text, in **chunks** (the detector truncates input to
@@ -20,6 +20,7 @@ import hashlib
 import logging
 import time
 import unicodedata
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Optional, Protocol, runtime_checkable
 
@@ -320,10 +321,15 @@ class JailGuardGuard:
     than failing the call.
     """
 
+    # Bound on cached chunk verdicts: a server scanning distinct web content
+    # all day must not grow this map without limit (review C.1/M7).
+    MAX_VERDICTS = 4096
+
     def __init__(self, config: GuardConfig) -> None:
         self._config = config
         self._stats = GuardStats(enabled=True)
-        self._verdicts: dict = {}  # sha256(chunk) -> (score, risk, injected)
+        # OrderedDict as LRU: hits refresh recency, inserts evict oldest.
+        self._verdicts: OrderedDict = OrderedDict()
         self._jg = None
         self._load_error: Optional[str] = None
 
@@ -336,7 +342,7 @@ class JailGuardGuard:
         except ImportError as exc:
             self._load_error = (
                 f"jailguard not importable ({exc}); install "
-                "stitch-web-researcher[guard]"
+                "gossamer[guard]"
             )
             logger.warning("guard disabled at runtime: %s", self._load_error)
             return
@@ -387,6 +393,7 @@ class JailGuardGuard:
         """Return (score, risk, injected, cache_hit) for one chunk."""
         key = hashlib.sha256(chunk.encode("utf-8")).hexdigest()
         if self._config.cache_verdicts and key in self._verdicts:
+            self._verdicts.move_to_end(key)
             score, risk, injected = self._verdicts[key]
             return score, risk, injected, True
         self._ensure()
@@ -398,6 +405,9 @@ class JailGuardGuard:
         injected = bool(self._field(res, "is_injection", score >= self._config.threshold))
         if self._config.cache_verdicts:
             self._verdicts[key] = (score, risk, injected)
+            self._verdicts.move_to_end(key)
+            while len(self._verdicts) > self.MAX_VERDICTS:
+                self._verdicts.popitem(last=False)
         return score, risk, injected, False
 
     def scan(self, scope: str, text: str) -> GuardReport:

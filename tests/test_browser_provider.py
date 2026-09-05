@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     BrowserOxideSearchProvider,
     RateLimit,
     resolve_provider_name,

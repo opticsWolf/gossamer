@@ -19,8 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.cache import Cache
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.cache import Cache
 
 N_THREADS = 8
 
@@ -67,7 +67,7 @@ def server(monkeypatch):
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     yield f"http://127.0.0.1:{srv.server_address[1]}"
     srv.shutdown()
     srv.server_close()

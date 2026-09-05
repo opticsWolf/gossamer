@@ -10,9 +10,9 @@ verify the tools pass use_smart through to _fetch_html. Fully offline
 (fetches are spied, no network).
 """
 
-from stitch_web_researcher import fetch
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import (
+from gossamer import fetch
+from gossamer import agent_tools
+from gossamer.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
 )

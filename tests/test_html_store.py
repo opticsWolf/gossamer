@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer.agent_tools import WebResearcherToolbox
 
 # Minimal PNG-prefixed bytes: the store only validates the magic header
 # (and content-type), not that the PNG decodes. Distinct per path so the
@@ -52,7 +52,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 @pytest.fixture()
 def http_server(monkeypatch):
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

@@ -1,9 +1,9 @@
-"""Shared pytest fixtures for the stitch-web-researcher test suite.
+"""Shared pytest fixtures for the gossamer test suite.
 
 SSRF escape hatch is OFF by default during test runs.
 
-``STITCH_WEB_RESEARCHER_ALLOW_PRIVATE`` is an operator-controlled escape
-hatch (see ``stitch_web_researcher.ssrf``). It exists for interactive
+``GOSSAMER_ALLOW_PRIVATE`` is an operator-controlled escape
+hatch (see ``gossamer.ssrf``). It exists for interactive
 local development and for tests that deliberately exercise loopback
 servers. It must *not* leak from the ambient environment into the suite,
 or the SSRF guard (S1) would appear to pass while being inert — a test
@@ -22,26 +22,32 @@ import os
 
 import pytest
 
-_ALLOW_PRIVATE_ENV = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+_ALLOW_PRIVATE_ENV = "GOSSAMER_ALLOW_PRIVATE"
+_ALLOW_PRIVATE_ENV_LEGACY = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+_LIVE_ENV_LEGACY = "STITCH_LIVE"
 
 
 @pytest.fixture(autouse=True, scope="session")
 def ssrf_guard_active_by_default():
     """Keep the SSRF guard active for the entire test session.
 
-    The ambient ``STITCH_WEB_RESEARCHER_ALLOW_PRIVATE`` value (which an
+    The ambient ``GOSSAMER_ALLOW_PRIVATE`` value (which an
     operator may have set for interactive local dev) is stashed and
-    removed for the run, then restored on teardown.
+    removed for the run, then restored on teardown. The legacy
+    ``STITCH_*`` spellings are cleared too, so the fallback in
+    :mod:`gossamer.env` cannot re-enable anything mid-suite.
     """
-    original = os.environ.get(_ALLOW_PRIVATE_ENV)
-    os.environ.pop(_ALLOW_PRIVATE_ENV, None)
+    stashed = {}
+    for key in (_ALLOW_PRIVATE_ENV, _ALLOW_PRIVATE_ENV_LEGACY):
+        stashed[key] = os.environ.pop(key, None)
     try:
         yield
     finally:
-        if original is None:
-            os.environ.pop(_ALLOW_PRIVATE_ENV, None)
-        else:
-            os.environ[_ALLOW_PRIVATE_ENV] = original
+        for key, original in stashed.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
 
 
 # ────────────────────────────────────────────────────────────────
@@ -51,29 +57,32 @@ def ssrf_guard_active_by_default():
 # Live tests make real network calls to the providers under test. They are
 # OFF by default so the normal suite stays fast, offline-friendly and hermetic
 # (mirroring the SSRF escape-hatch philosophy above). They are enabled only
-# with an explicit, operator-controlled opt-in: the ``STITCH_LIVE`` env var.
+# with an explicit, operator-controlled opt-in: the ``GOSSAMER_LIVE`` env var.
 # Key-gated providers additionally require their key env var to be set, or they
 # skip. (Env-var gating only — no CLI option, so there is nothing to register
 # and no way to enable live tests by accident.)
 
-_LIVE_ENV = "STITCH_LIVE"
+_LIVE_ENV = "GOSSAMER_LIVE"
 
 
-def _live_enabled(env_value: Optional[str]) -> bool:
+def _live_enabled(env_value: Optional[str], _legacy: Optional[str] = None) -> bool:
     """Return True when live tests are opted-in.
 
-    Enabled only by a truthy ``STITCH_LIVE`` env var — one of ``1`` / ``true``
+    Enabled only by a truthy ``GOSSAMER_LIVE`` env var — one of ``1`` / ``true``
     / ``yes`` (case-insensitive). Off for any other value, so the default
     suite never touches the network.
     """
 
-    return (env_value or "").strip().lower() in ("1", "true", "yes")
+    # Legacy STITCH_LIVE still opts in (rename fallback).
+    return ((env_value or "").strip().lower() in ("1", "true", "yes")) or (
+        (_legacy or "").strip().lower() in ("1", "true", "yes")
+    )
 
 
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
-        "live: live network smoke test; skipped unless STITCH_LIVE=1.",
+        "live: live network smoke test; skipped unless GOSSAMER_LIVE=1.",
     )
     config.addinivalue_line(
         "markers",
@@ -166,8 +175,8 @@ def live(request):
     default suite offline-friendly.
     """
 
-    if not _live_enabled(os.environ.get(_LIVE_ENV)):
-        pytest.skip("live test (enable with STITCH_LIVE=1)")
+    if not _live_enabled(os.environ.get(_LIVE_ENV), os.environ.get(_LIVE_ENV_LEGACY)):
+        pytest.skip("live test (enable with GOSSAMER_LIVE=1)")
     return True
 
 
@@ -176,12 +185,12 @@ def live_key(request):
     """Like :func:`live`, but also skip when a provider key env var is unset.
 
     Parameterize with the env-var name to require, e.g.
-    ``@pytest.mark.parametrize("live_key", ["STITCH_GITHUB_TOKEN"],
+    ``@pytest.mark.parametrize("live_key", ["GOSSAMER_GITHUB_TOKEN"],
     indirect=True)``.
     """
 
-    if not _live_enabled(os.environ.get(_LIVE_ENV)):
-        pytest.skip("live test (enable with STITCH_LIVE=1)")
+    if not _live_enabled(os.environ.get(_LIVE_ENV), os.environ.get(_LIVE_ENV_LEGACY)):
+        pytest.skip("live test (enable with GOSSAMER_LIVE=1)")
     env_name = request.param
     key = os.environ.get(env_name)
     if not key:

@@ -10,8 +10,8 @@ itself, and never unrelated files.
 
 import json
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.cache import Cache
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.cache import Cache
 
 
 class TestScopedClearDisk:

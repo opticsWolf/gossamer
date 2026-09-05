@@ -1,7 +1,7 @@
 """Citation reconstruction and export (Plan workstream 1).
 
 Reconstructs bibliographic records from the result dicts returned by the
-scholarly :class:`~stitch_web_researcher.research_providers.ResourceAdapter`
+scholarly :class:`~gossamer.research_providers.ResourceAdapter`
 adapters and renders them as BibTeX, CSL-JSON, APA or MLA.
 
 The adapters already return the fields a citation needs -- ``doi``, ``id``,
@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from stitch_web_researcher.dedup import dedupe as _shared_dedupe
+from gossamer.dedup import dedupe as _shared_dedupe
 
 __all__ = [
     "BibliographicRecord",
@@ -257,7 +257,7 @@ def dedupe_records(
 ) -> List[BibliographicRecord]:
     """Collapse records sharing a DOI, then a normalised URL. Returns kept.
 
-    Delegates to the shared :func:`stitch_web_researcher.dedup.dedupe` so
+    Delegates to the shared :func:`gossamer.dedup.dedupe` so
     DOI/URL identity lives in one place (Workstream 2); the citation order
     (DOI first, then URL) is preserved via ``by=("doi", "url")``.
     """

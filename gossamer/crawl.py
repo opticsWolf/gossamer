@@ -22,11 +22,24 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-from stitch_web_researcher.config import normalize_url
-from stitch_web_researcher.structured_parser import DOCUMENT_EXTENSIONS
-from stitch_web_researcher.ssrf import SsrfBlockedError
+from gossamer.config import canonical_url, ensure_str_list, normalize_url
+from gossamer.structured_parser import DOCUMENT_EXTENSIONS
+from gossamer.ssrf import SsrfBlockedError
 
 logger = logging.getLogger(__name__)
+
+
+def _crawl_key(url: str) -> str:
+    """Canonical visited-identity for crawl bookkeeping (B.1).
+
+    One resource = one frontier/visited/documents entry, regardless of
+    ``www.``/case/slash/fragment/tracking-param spelling. Falls back to a
+    fragment-stripped URL when canonicalization fails (never fatal mid-crawl).
+    """
+    try:
+        return canonical_url(url, query="drop-tracking")
+    except ValueError:
+        return url.split("#", 1)[0]
 # ── Live-site corpus + offline thesaurus (semantic crawl) ──────
 class _CrawlCorpus:
     """Live site vocabulary for BM25-style crawl scoring (semantic A).
@@ -421,6 +434,7 @@ class Crawler:
         excerpts: bool = False,
         search_prior: bool = False,
         seed_urls: Optional[list] = None,
+        use_smart: str = "auto",
     ) -> str:
         """Bounded focused crawl over a site's link graph.
 
@@ -507,16 +521,17 @@ class Crawler:
         min_score = max(0.0, min_score)
         excerpts = bool(excerpts)
         search_prior = bool(search_prior)
-        if isinstance(seed_urls, str):
-            seed_urls = [seed_urls]
-        seeds = [str(s) for s in (seed_urls or [])]
+        try:
+            seeds = [str(s) for s in ensure_str_list(seed_urls, "seed_urls")]
+        except TypeError as e:
+            return json.dumps({"error": f"crawl: {e}"}, indent=2)
 
         root_key = self._tb._crawl_host_key(root)
         # Politeness is scoped to the crawl's own host: same-domain pages
         # are spaced out with delay+jitter, external hosts are fetched
         # without throttling (each is visited at most once).
         politeness_root = root_key
-        queue: list = []  # (effective score, seq, url, depth, anchor)
+        queue: list = []  # (effective score, seq, key, depth, anchor, url)
         seq = 0
         queue_dropped = 0
         documents_total = 0
@@ -565,7 +580,7 @@ class Crawler:
                     url = normalize_url(raw_url, base=page_url)
                 except ValueError:
                     continue  # non-http or malformed: never fatal
-                key = url.split("#", 1)[0]
+                key = _crawl_key(url)
                 if key in visited:
                     continue
                 if cand.get("type") == "document":
@@ -626,12 +641,15 @@ class Crawler:
                     continue
                 visited.add(key)
                 seq += 1
+                # The queue carries the discovered spelling for fetching /
+                # reporting; *key* is only the dedup identity (B.1).
                 queue.append((
                     score * (self._CRAWL_DEPTH_DECAY ** (depth + 1)),
                     seq,
                     key,
                     depth + 1,
                     str(cand.get("title") or ""),
+                    url,
                 ))
             trim_queue()
 
@@ -652,7 +670,7 @@ class Crawler:
             the candidate entered the page frontier.
             """
             nonlocal seq, documents_total, documents_below_score
-            key = url.split("#", 1)[0]
+            key = _crawl_key(url)
             if key in visited:
                 return False
             if self._crawl_is_document(url):
@@ -703,6 +721,7 @@ class Crawler:
                 key,
                 push_depth,
                 anchor,
+                url,
             ))
             return True
 
@@ -715,7 +734,7 @@ class Crawler:
             }
             try:
                 raw_page = self._tb._fetch._inspect_html_page_impl(
-                    url, None, "", 0, 1, politeness_root
+                    url, use_smart, "", 0, 1, politeness_root
                 )
                 try:
                     page = json.loads(raw_page)
@@ -768,7 +787,7 @@ class Crawler:
         # Root: always fetched (depth 0); a root failure kills the crawl.
         try:
             raw_root = self._tb._fetch._inspect_html_page_impl(
-                root, None, "", 0, 1, politeness_root
+                root, use_smart, "", 0, 1, politeness_root
             )
             try:
                 root_page = json.loads(raw_root)
@@ -806,7 +825,7 @@ class Crawler:
             # root (auto -> static, falling back to the stealth browser).
             "fetch_method": root_page.get("fetch_method"),
         })
-        visited.add(root.split("#", 1)[0])
+        visited.add(_crawl_key(root))
         corpus.add_page(self._crawl_tokens(root_md))
         # E1/E2 scoring context: the root page's own topic words stand in
         # for a containing page when the candidate comes from outside the
@@ -919,7 +938,7 @@ class Crawler:
             # Best-first: highest effective score, ties by discovery
             # order (so flat scores degrade to plain BFS).
             queue.sort(key=lambda e: (-e[0], e[1]))
-            score_eff, _s, url, depth, _anchor = queue.pop(0)
+            score_eff, _s, _key, depth, _anchor, url = queue.pop(0)
             fetch_record(url, depth, score_eff)
 
         # Semantic D: documents ranked by score; the stable sort keeps

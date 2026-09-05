@@ -1,5 +1,5 @@
 """
-Two-tier caching layer for stitch_web_researcher.
+Two-tier caching layer for gossamer.
 
 Provides:
   - In-memory LRU cache (fast, session-scoped)
@@ -28,7 +28,7 @@ class Cache:
     Usage
     -----
     >>> cache = Cache(
-    ...     cache_dir=".web_research_cache",
+    ...     cache_dir=".gossamer_cache",
     ...     ttl_seconds=3600,
     ...     max_memory_entries=100,
     ... )
@@ -40,7 +40,7 @@ class Cache:
 
     def __init__(
         self,
-        cache_dir: str = ".web_research_cache",
+        cache_dir: str = ".gossamer_cache",
         ttl_seconds: int = 3600,
         max_memory_entries: int = 100,
         max_disk_bytes: int = 0,

@@ -7,7 +7,7 @@ probes through ``_static_fetch`` (5-tuple when keep_html=True).
 
 import json
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 URL = "https://example.com/blog/post"
 SITE_ROOT = "https://example.com"
@@ -334,7 +334,7 @@ class TestToolIntegration:
         # "already visited" warning.
         tb._fetch._fetch_html = lambda url, use_smart=None: ("# md", [], {}, "static")
         result = json.loads(tb.inspect_html_page(URL))
-        assert "warning" not in result
+        assert not result.get("warning")
 
     def test_robots_disallow_short_circuits(self, tmp_path, monkeypatch):
         tb = _toolbox(tmp_path)
@@ -345,7 +345,7 @@ class TestToolIntegration:
 
     def test_registry_spec_matches_method_signature(self, tmp_path):
         """P8: the registry params must match discover_resources()."""
-        from stitch_web_researcher.agent_tools import TOOL_REGISTRY
+        from gossamer.agent_tools import TOOL_REGISTRY
 
         tb = _toolbox(tmp_path)
         spec = next(s for s in TOOL_REGISTRY if s.name == "discover_resources")

@@ -6,8 +6,8 @@ for models tiktoken does not know (e.g. Anthropic) or when tiktoken
 is missing.
 """
 
-import stitch_web_researcher.token_budget as token_budget
-from stitch_web_researcher.token_budget import count_tokens, resolve_encoding
+import gossamer.token_budget as token_budget
+from gossamer.token_budget import count_tokens, resolve_encoding
 
 
 class TestTiktokenPreferred:

@@ -22,8 +22,8 @@ import asyncio
 import json
 import threading
 
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer import agent_tools
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 
 def _make_toolbox(tmp_path, **overrides):

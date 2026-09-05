@@ -1,6 +1,6 @@
 [package]
-name = "_stitch_web_researcher_core"
-version = "0.5.3"
+name = "gossamer-core"
+version = "0.6.0"
 edition = "2021"
 
 [lib]

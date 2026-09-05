@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 # Optional document extractors
 #
 # pdf_oxide / office_oxide ship in the ``documents`` extra
-# (``pip install "stitch-web-researcher[documents]"``). The import is
+# (``pip install "gossamer[documents]"``). The import is
 # best-effort so the rest of the package (HTML research, search) works
 # without them; the error surfaces at parse time with an install hint.
 # ────────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ except ImportError:  # optional extra not installed
 
 DOCUMENTS_EXTRA_HINT = (
     "PDF/Office extraction requires the 'documents' extra — "
-    'install it with: pip install "stitch-web-researcher[documents]"'
+    'install it with: pip install "gossamer[documents]"'
 )
 
 
@@ -758,7 +758,7 @@ class StructuredOxideParser:
         ParsedDocumentPayload
             Validated payload with metadata, pages, and links.
         """
-        from stitch_web_researcher.meta_extractor import merge_into_document_metadata
+        from gossamer.meta_extractor import merge_into_document_metadata
 
         # Build base metadata from URL
         from urllib.parse import urlparse

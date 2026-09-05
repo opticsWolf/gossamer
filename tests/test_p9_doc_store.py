@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-from stitch_web_researcher import document as doc_mod
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer import document as doc_mod
+from gossamer.agent_tools import WebResearcherToolbox
 
 
 def _toolbox(tmp_path) -> WebResearcherToolbox:

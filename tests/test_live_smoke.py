@@ -1,9 +1,9 @@
 """Live network smoke tests for the domain adapters (feature-flagged).
 
 These make *real* calls to each provider, so they are skipped by default.
-Enable with STITCH_LIVE=1:
+Enable with GOSSAMER_LIVE=1:
 
-    STITCH_LIVE=1 pytest tests/test_live_smoke.py
+    GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py
 
 They are deliberately lightweight — a single search (+ a fetch where the
 source supports lookups) per adapter — to exercise the end-to-end path
@@ -11,7 +11,7 @@ source supports lookups) per adapter — to exercise the end-to-end path
 consuming rate budgets or asserting brittle exact values.
 
 Key-gated adapters (PubMed / GitHub / FRED) use their key automatically when
-the corresponding ``STITCH_*`` env var is set; they still run keyless
+the corresponding ``GOSSAMER_*`` env var is set; they still run keyless
 otherwise, so they do not require a key to smoke-test.
 """
 
@@ -19,15 +19,32 @@ from __future__ import annotations
 
 import pytest
 
-from stitch_web_researcher.research_providers import (
+from gossamer.research_providers import (
     ArxivAdapter,
+    BisAdapter,
+    BundesbankAdapter,
+    CoinGeckoAdapter,
+    CourtListenerAdapter,
     CrossrefAdapter,
     DoajAdapter,
+    EcfrAdapter,
+    EurostatAdapter,
+    FederalRegisterAdapter,
+    FrankfurterAdapter,
     FredAdapter,
     GitHubAdapter,
+    GovInfoAdapter,
+    HudocAdapter,
+    NASAAdapter,
+    NvdAdapter,
+    OldpAdapter,
     OpenAlexAdapter,
     OpenLibraryAdapter,
     OpenMeteoAdapter,
+    OverpassAdapter,
+    SoftwareHeritageAdapter,
+    YahooFinanceAdapter,
+    ZenodoAdapter,
     PubmedAdapter,
     WorldBankAdapter,
 )
@@ -53,7 +70,7 @@ def _assert_common_result(rec: dict, *, source: str) -> None:
 
 @pytest.mark.live
 def test_openalex_search_and_fetch(live):
-    prov = OpenAlexAdapter(delay=0.0, email="stitch-test@example.org")
+    prov = OpenAlexAdapter(delay=0.0, email="probe@example.org")
     results = prov.search("quantum computing", max_results=3)
     assert results, "OpenAlex returned no results"
     _assert_common_result(results[0], source="openalex")
@@ -66,7 +83,7 @@ def test_openalex_search_and_fetch(live):
 
 @pytest.mark.live
 def test_crossref_search_and_fetch(live):
-    prov = CrossrefAdapter(delay=0.0, email="stitch-test@example.org")
+    prov = CrossrefAdapter(delay=0.0, email="probe@example.org")
     results = prov.search("quantum computing", max_results=3)
     assert results, "Crossref returned no results"
     _assert_common_result(results[0], source="crossref")
@@ -175,6 +192,153 @@ def test_github_search(live):
     assert results, "GitHub returned no results"
     _assert_common_result(results[0], source="github")
     assert results[0]["url"]
+
+
+# ────────────────────────────────────────────────────────────────
+# Fixed + wave-3 adapters (verified live 2026-09; keyless paths only)
+# ────────────────────────────────────────────────────────────────
+
+@pytest.mark.live
+def test_yahoo_search(live):
+    prov = YahooFinanceAdapter(delay=0.0)
+    results = prov.search("AAPL", max_results=2)
+    assert results, "Yahoo returned no results"
+    _assert_common_result(results[0], source="yahoo")
+    assert results[0]["id"] == "AAPL"
+
+
+@pytest.mark.live
+def test_federal_register_keyless(live):
+    prov = FederalRegisterAdapter(delay=0.0)
+    results = prov.search("immigration", max_results=2)
+    assert results, "Federal Register returned no results"
+    _assert_common_result(results[0], source="federalregister")
+
+
+@pytest.mark.live
+def test_zenodo_search(live):
+    prov = ZenodoAdapter(delay=0.0)
+    results = prov.search("quantum", max_results=2)
+    assert results, "Zenodo returned no results"
+    _assert_common_result(results[0], source="zenodo")
+    assert results[0]["title"]
+
+
+@pytest.mark.live
+def test_nasa_demo_key(live):
+    prov = NASAAdapter(delay=0.0)
+    results = prov.search("2024-01-01", max_results=2)
+    assert results, "NeoWs returned no objects"
+    _assert_common_result(results[0], source="nasa")
+
+
+@pytest.mark.live
+def test_nvd_search(live):
+    prov = NvdAdapter(delay=0.0)
+    results = prov.search("log4j", max_results=2)
+    assert results, "NVD returned no results"
+    _assert_common_result(results[0], source="nvd")
+    assert results[0]["id"].startswith("CVE-")
+
+
+@pytest.mark.live
+def test_courtlistener_search(live):
+    prov = CourtListenerAdapter(delay=0.0)
+    results = prov.search("miranda", max_results=2)
+    assert results, "CourtListener returned no results"
+    _assert_common_result(results[0], source="courtlistener")
+
+
+@pytest.mark.live
+def test_ecfr_structure(live):
+    prov = EcfrAdapter(delay=0.0)
+    out = prov.fetch("21/113")
+    assert out and out[0]["id"] == "21/113"
+    assert out[0]["url"].startswith("https://www.ecfr.gov/")
+
+
+@pytest.mark.live
+def test_softwareheritage_origin(live):
+    prov = SoftwareHeritageAdapter(delay=0.0)
+    out = prov.search("https://github.com/python/cpython", max_results=1)
+    assert out, "SWH origin lookup failed"
+    _assert_common_result(out[0], source="softwareheritage")
+
+
+@pytest.mark.live
+def test_overpass_mirror(live):
+    prov = OverpassAdapter(delay=0.0)
+    out = prov.search(
+        "[out:json];node(around:100,52.520008,13.404954)[amenity=cafe];out 1;",
+        max_results=1,
+    )
+    assert out, "Overpass returned no elements"
+    _assert_common_result(out[0], source="overpass")
+
+
+@pytest.mark.live
+def test_oldp_search(live):
+    prov = OldpAdapter(delay=0.0)
+    results = prov.search("Mietminderung", max_results=2)
+    assert results, "OLDP returned no results"
+    _assert_common_result(results[0], source="oldp")
+    assert results[0]["title"]
+
+
+@pytest.mark.live
+def test_hudoc_search(live):
+    prov = HudocAdapter(delay=0.0)
+    results = prov.search("privacy", max_results=2)
+    assert results, "HUDOC returned no results"
+    _assert_common_result(results[0], source="hudoc")
+    assert results[0]["id"]
+
+
+@pytest.mark.live
+def test_frankfurter_rates(live):
+    prov = FrankfurterAdapter(delay=0.0)
+    out = prov.search("USD/EUR", max_results=1)
+    assert out and float(out[0]["fields"]["rate"]) > 0
+    assert out[0]["id"] == "USD/EUR"
+
+
+@pytest.mark.live
+def test_eurostat_gdp(live):
+    prov = EurostatAdapter(delay=0.0)
+    out = prov.search("nama_10_gdp?freq=A&unit=CP_MEUR&na_item=B1GQ&geo=DE&time=2023")
+    assert out and float(out[0]["fields"]["value"]) > 0
+
+
+@pytest.mark.live
+def test_bundesbank_rates(live):
+    prov = BundesbankAdapter(delay=0.0)
+    out = prov.search("BBEX3/D.USD.EUR.BB.AC.000?startPeriod=2024-01-02&endPeriod=2024-01-02")
+    assert out and float(out[0]["fields"]["value"]) > 0
+
+
+@pytest.mark.live
+def test_bis_policy_rates(live):
+    prov = BisAdapter(delay=0.0)
+    out = prov.search("WS_CBPOL/M.XM.EUR?startPeriod=2024-01&endPeriod=2024-01")
+    assert out, "BIS returned no observations"
+    _assert_common_result(out[0], source="bis")
+
+
+@pytest.mark.live
+def test_govinfo_search(live):
+    prov = GovInfoAdapter(delay=0.0)
+    results = prov.search("clean water", max_results=2)
+    assert results, "GovInfo returned no results"
+    _assert_common_result(results[0], source="govinfo")
+
+
+@pytest.mark.live
+def test_coingecko_search(live):
+    prov = CoinGeckoAdapter(delay=0.0)
+    results = prov.search("bitcoin", max_results=2)
+    assert results, "CoinGecko returned no results"
+    _assert_common_result(results[0], source="coingecko")
+    assert results[0]["id"] == "bitcoin"
 
 
 # ────────────────────────────────────────────────────────────────

@@ -22,21 +22,21 @@ from urllib.parse import urlparse
 
 import httpx
 
-from stitch_web_researcher._core import extract_tables_from_html
-from stitch_web_researcher.config import FetchMode, normalize_url
-from stitch_web_researcher.guard import evaluate, wrap_untrusted
-from stitch_web_researcher.models import ExtractionResult, _sha256_hex, _utc_now_iso
-from stitch_web_researcher.ssrf import SsrfBlockedError
-from stitch_web_researcher.structured_parser import (
+from gossamer._core import extract_tables_from_html
+from gossamer.config import FetchMode, normalize_url
+from gossamer.guard import evaluate, wrap_untrusted
+from gossamer.models import ExtractionResult, _sha256_hex, _utc_now_iso
+from gossamer.ssrf import SsrfBlockedError
+from gossamer.structured_parser import (
     StructuredOxideParser,
     ParsedDocumentPayload,
     build_follow_up_candidates,
     require_office_oxide,
     require_pdf_oxide,
 )
-from stitch_web_researcher.resource_store import ResourceStore
-from stitch_web_researcher.token_budget import count_tokens
-from stitch_web_researcher.text_links import extract_links
+from gossamer.resource_store import ResourceStore
+from gossamer.token_budget import count_tokens
+from gossamer.text_links import extract_links
 
 logger = logging.getLogger(__name__)
 
@@ -346,17 +346,45 @@ class DocumentExtractor:
         Redirects are followed so provenance.final_url is the URL that
         actually served the bytes — final_url != url tells the model the
         content moved.
+
+        S3: the body is streamed under ``max_response_bytes`` (Content-Length
+        early-reject + running chunk cap, mirroring the Rust page-fetch
+        path) — an LLM-supplied URL must not be able to exhaust process
+        memory (review A.2).
         """
+        cap = max(1, int(self._tb.max_response_bytes))
         with httpx.Client(timeout=30, follow_redirects=True) as client:
-            response = client.get(url, headers=self._tb._next_headers())
-            response.raise_for_status()
-        prov = {
-            "fetched_at": _utc_now_iso(),
-            "http_status": response.status_code,
-            "final_url": str(response.url),
-            "content_type": response.headers.get("content-type"),
-        }
-        return response.content, prov
+            with client.stream(
+                "GET", url, headers=self._tb._next_headers()
+            ) as response:
+                response.raise_for_status()
+                declared_n = None
+                try:
+                    if response.headers.get("content-length") is not None:
+                        declared_n = int(response.headers["content-length"])
+                except (KeyError, TypeError, ValueError):
+                    declared_n = None  # unparseable: fall through to chunk cap
+                if declared_n is not None and declared_n > cap:
+                    raise ValueError(
+                        f"Document too large: declared {declared_n} bytes "
+                        f"(cap {cap})"
+                    )
+                prov = {
+                    "fetched_at": _utc_now_iso(),
+                    "http_status": response.status_code,
+                    "final_url": str(response.url),
+                    "content_type": response.headers.get("content-type"),
+                }
+                chunks: list[bytes] = []
+                total = 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > cap:
+                        raise ValueError(
+                            f"Document too large: exceeds {cap} bytes"
+                        )
+                    chunks.append(chunk)
+        return b"".join(chunks), prov
 
     def _download_and_extract(
         self, url: str, *, with_bytes: bool = False
@@ -447,7 +475,7 @@ class DocumentExtractor:
         self, source: str, pages_spec: str, is_url: bool
     ) -> str:
         """Serve one page range of a document (see extract_document)."""
-        from stitch_web_researcher.structured_parser import parse_page_range
+        from gossamer.structured_parser import parse_page_range
 
         try:
             start, end = parse_page_range(pages_spec)
@@ -580,7 +608,20 @@ class DocumentExtractor:
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {path}")
+        # S3: same byte cap as URL downloads (review A.2) — checked via
+        # stat() before reading so a huge file fails fast.
+        cap = max(1, int(self._tb.max_response_bytes))
+        try:
+            if file_path.stat().st_size > cap:
+                raise ValueError(
+                    f"Document too large: {file_path.stat().st_size} bytes "
+                    f"(cap {cap})"
+                )
+        except OSError:
+            pass
         content = file_path.read_bytes()
+        if len(content) > cap:
+            raise ValueError(f"Document too large: exceeds {cap} bytes")
         return self._extract_from_bytes(content, str(file_path))
 
     # M16: plain-text formats the extractor can really deliver — these are
@@ -856,7 +897,7 @@ class DocumentExtractor:
         page content itself is never affected. Returns a list of
         ExtractedTable (name, headers, rows) in document order.
         """
-        from stitch_web_researcher.structured_parser import ExtractedTable
+        from gossamer.structured_parser import ExtractedTable
 
         try:
             raw = extract_tables_from_html(

@@ -11,11 +11,14 @@ one or more providers; the caller may pass ``provider=`` to :func:`search_catego
 to call any of them separately. There is **no implicit fallback chain** -- the
 model controls which source it queries.
 
-  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv``
+  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo``
   * ``legal``     -> ``courtlistener`` / ``ecfr`` / ``federalregister`` /
-                     ``eurlex`` / ``german``
-  * ``financial`` -> ``alphavantage`` / ``yahoo``
-  * ``geo``       -> ``open-meteo`` (domain adapter: place/coordinate lookup)
+                     ``oldp`` / ``hudoc`` / ``govinfo``
+                     (``eurlex`` / ``german`` were retired — no public
+                     endpoint; see the provider docs)
+  * ``financial`` -> ``yahoo`` / ``frankfurter`` / ``eurostat`` /
+                     ``bundesbank`` / ``bis`` / ``coingecko`` / ``alphavantage``
+  * ``geo``       -> ``open-meteo`` (place/coordinate lookup) / ``overpass``
   * ``general``   -> ``duckduckgo`` (generic search-engine fallback)
 
 Routing rules:
@@ -35,6 +38,7 @@ category carries no trigger keywords and is always the implicit fallback.
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -89,21 +93,40 @@ _SCHOLARLY: Tuple[str, ...] = (
     "open access",
 )
 
-# Case law, statutes, regulations, bills, government codes.
+# Case law, statutes, regulations, bills, government codes — plus EU /
+# German case law (HUDOC/ECtHR, CJEU, BVerfG/BGH). Deliberately *no* bare
+# "datenschutz" / "klage" (too broad — they pull generic privacy news and
+# complaints into legal); the distinctive "dsgvo"/"gdpr" cover that need.
 _LEGAL: Tuple[str, ...] = (
     "case law", "statute", "statutes", "regulation", "regulations",
     "code of federal regulations", "cfr", "congress bill", "bill",
     "eur-lex", "eu law", "court", "legislation", "legislature",
     "federal register", "ordinance", "precedent", "appeal",
     "supreme court", "government code",
+    # EU / German case law (Part 2 provider research).
+    "echr", "hudoc", "egmr", "menschenrechte", "eugh", "cjeu",
+    "celex", "ecli", "gdpr", "dsgvo", "bverfg",
+    "bundesverfassungsgericht", "bgh", "bundesgerichtshof",
+    "rechtsprechung", "urteil", "urteile", "aktenzeichen",
 )
 
-# Stock quotes, market data, exchange rates, indices.
+# Stock quotes, market data, exchange rates, indices — plus Eurozone
+# central-bank / macro statistics (Bundesbank, ECB, Eurostat, BIS). Deliberately
+# *no* bare "bis" (German for "until") or "frankfurter" (sausage/newspaper)
+# — both caused false positives in review; the specific forms below are safe.
 _FINANCIAL: Tuple[str, ...] = (
     "stock", "quote", "quotes", "finance", "financial", "market",
     "exchange rate", "index", "indices", "share", "shares", "trading",
     "bull market", "bear market", "portfolio", "dividend", "ticker",
     "cryptocurrency", "crypto",
+    # Eurozone / German macro & rates (Part 2 provider research).
+    "bundesbank", "ecb", "ezb", "eurostat", "hicp", "hvpi",
+    "leitzins", "leitzinsen", "geldpolitik", "zinssatz",
+    "euribor", "eonia", "estr", "eurozone", "euro-zone",
+    "euro area", "euroraum", "bip", "staatsverschuldung",
+    "staatsschulden", "arbeitslosenquote",
+    # German equity terms (DAX coverage gap found in review spot-checks).
+    "aktie", "aktien", "aktienkurs", "dax", "dividende",
 )
 
 # Weather / climate / coordinates / place lookups.
@@ -115,34 +138,45 @@ _GEO: Tuple[str, ...] = (
     "rainfall", "snowfall",
 )
 
-# --- category table (order matters: first keyword hit wins) --------------
+# --- category table (order matters: tie-break for equal hit counts) ------
 CATEGORIES: Tuple[Category, ...] = (
     Category(
         name="scholarly",
         description="Academic works, papers, citations, DOIs, journals.",
         keywords=_SCHOLARLY,
-        providers=("openalex", "crossref", "arxiv"),
+        providers=("openalex", "crossref", "arxiv", "zenodo"),
         kind="adapter",
     ),
     Category(
         name="legal",
-        description="Case law, statutes, regulations, bills, government codes.",
+        description=(
+            "Case law, statutes, regulations, bills, government codes; "
+            "ECHR/HUDOC, CJEU/CELEX and German case law "
+            "(BVerfG, BGH, Rechtsprechung)."
+        ),
         keywords=_LEGAL,
-        providers=("courtlistener", "ecfr", "federalregister", "eurlex", "german"),
+        providers=("courtlistener", "ecfr", "federalregister",
+                   "oldp", "hudoc", "govinfo"),
         kind="adapter",
     ),
     Category(
         name="financial",
-        description="Stock quotes, market data, exchange rates, indices.",
+        description=(
+            "Stock quotes, market data, exchange rates, indices; "
+            "ECB/Eurozone rates and EU macro statistics "
+            "(Bundesbank, Eurostat, HICP, Euribor)."
+        ),
         keywords=_FINANCIAL,
-        providers=("alphavantage", "yahoo"),
+        # Keyless first: alphavantage needs a key.
+        providers=("yahoo", "frankfurter", "eurostat", "bundesbank",
+                   "bis", "coingecko", "alphavantage"),
         kind="adapter",
     ),
     Category(
         name="geo",
         description="Weather, climate, coordinates and place lookups.",
         keywords=_GEO,
-        providers=("open-meteo",),
+        providers=("open-meteo", "overpass"),
         kind="adapter",
     ),
     Category(
@@ -164,10 +198,18 @@ _PROVIDER_DISPLAY: Dict[str, str] = {
     "courtlistener": "CourtListener",
     "ecfr": "eCFR",
     "federalregister": "Federal Register",
-    "eurlex": "EUR-Lex",
-    "german": "German Gov",
     "alphavantage": "AlphaVantage",
     "yahoo": "Yahoo Finance",
+    "frankfurter": "Frankfurter",
+    "eurostat": "Eurostat",
+    "bundesbank": "Bundesbank",
+    "bis": "BIS",
+    "coingecko": "CoinGecko",
+    "zenodo": "Zenodo",
+    "overpass": "Overpass",
+    "oldp": "Open Legal Data",
+    "hudoc": "HUDOC (ECtHR)",
+    "govinfo": "GovInfo",
     "open-meteo": "Open-Meteo",
     "duckduckgo": "DuckDuckGo",
 }
@@ -201,17 +243,25 @@ def describe_categories() -> str:
 # provider id -> adapter factory (imported lazily so this module stays
 # importable even if research_providers is unavailable in a slim runtime).
 _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
-    "openalex": "stitch_web_researcher.research_providers.OpenAlexAdapter",
-    "crossref": "stitch_web_researcher.research_providers.CrossrefAdapter",
-    "arxiv": "stitch_web_researcher.research_providers.ArxivAdapter",
-    "courtlistener": "stitch_web_researcher.research_providers.CourtListenerAdapter",
-    "ecfr": "stitch_web_researcher.research_providers.EcfrAdapter",
-    "federalregister": "stitch_web_researcher.research_providers.FederalRegisterAdapter",
-    "eurlex": "stitch_web_researcher.research_providers.EurlexAdapter",
-    "german": "stitch_web_researcher.research_providers.GermanGovAdapter",
-    "alphavantage": "stitch_web_researcher.research_providers.AlphaVantageAdapter",
-    "yahoo": "stitch_web_researcher.research_providers.YahooFinanceAdapter",
-    "open-meteo": "stitch_web_researcher.research_providers.OpenMeteoAdapter",
+    "openalex": "gossamer.research_providers.OpenAlexAdapter",
+    "crossref": "gossamer.research_providers.CrossrefAdapter",
+    "arxiv": "gossamer.research_providers.ArxivAdapter",
+    "courtlistener": "gossamer.research_providers.CourtListenerAdapter",
+    "ecfr": "gossamer.research_providers.EcfrAdapter",
+    "federalregister": "gossamer.research_providers.FederalRegisterAdapter",
+    "alphavantage": "gossamer.research_providers.AlphaVantageAdapter",
+    "yahoo": "gossamer.research_providers.YahooFinanceAdapter",
+    "frankfurter": "gossamer.research_providers.FrankfurterAdapter",
+    "eurostat": "gossamer.research_providers.EurostatAdapter",
+    "bundesbank": "gossamer.research_providers.BundesbankAdapter",
+    "bis": "gossamer.research_providers.BisAdapter",
+    "coingecko": "gossamer.research_providers.CoinGeckoAdapter",
+    "zenodo": "gossamer.research_providers.ZenodoAdapter",
+    "overpass": "gossamer.research_providers.OverpassAdapter",
+    "oldp": "gossamer.research_providers.OldpAdapter",
+    "hudoc": "gossamer.research_providers.HudocAdapter",
+    "govinfo": "gossamer.research_providers.GovInfoAdapter",
+    "open-meteo": "gossamer.research_providers.OpenMeteoAdapter",
 }
 
 
@@ -221,28 +271,62 @@ def _import_path(dotted: str) -> object:
     return getattr(module, attr)
 
 
+# Process-wide adapter instances, keyed by provider id. Adapter politeness
+# (per-call gaps) and quota accounting live on the instance, so a fresh
+# instance per call would make cross-call throttling a no-op (review B.4).
+# The cache holds one instance per provider for the process lifetime;
+# `reset_adapter_cache` drops them (tests, or after fork).
+_ADAPTER_CACHE: Dict[str, object] = {}
+_ADAPTER_CACHE_LOCK = threading.Lock()
+
+
+def reset_adapter_cache() -> None:
+    """Drop all cached adapter instances (see above)."""
+    with _ADAPTER_CACHE_LOCK:
+        _ADAPTER_CACHE.clear()
+
+
 def _make_adapter(provider: str) -> object:
-    """Instantiate the domain adapter registered for *provider*."""
-    dotted = _ADAPTER_FACTORIES.get(provider)
-    if dotted is None:
-        raise ValueError(f"no adapter registered for provider {provider!r}")
-    return _import_path(dotted)()
+    """Return the shared domain adapter registered for *provider*.
+
+    Instances are cached per provider id so rate-limit and quota state
+    persists across calls instead of resetting on every query.
+    """
+    with _ADAPTER_CACHE_LOCK:
+        cached = _ADAPTER_CACHE.get(provider)
+        if cached is None:
+            dotted = _ADAPTER_FACTORIES.get(provider)
+            if dotted is None:
+                raise ValueError(f"no adapter registered for provider {provider!r}")
+            cached = _import_path(dotted)()
+            _ADAPTER_CACHE[provider] = cached
+        return cached
 
 
 def classify(query: str) -> Category:
-    """Return the first category whose trigger keywords appear in *query*.
+    """Return the category with the most trigger-keyword hits in *query*.
 
-    Matching uses word boundaries. The ``general`` category (no keywords) is
-    the implicit fallback and is never matched directly.
+    Matching uses word boundaries; the score is the number of distinct
+    keywords matched, so a mixed query ("stock photos of bill murray") goes
+    to the dominant topic instead of the first table entry. Ties keep the
+    table order (scholarly > legal > financial > geo), which preserves the
+    old first-hit behavior for single-topic queries. The ``general``
+    category (no keywords) is the implicit fallback and is never matched
+    directly.
     """
     text = (query or "").lower()
+    best = DEFAULT_CATEGORY
+    best_score = 0
     for category in CATEGORIES:
         if category.is_fallback:
             continue
-        for kw in category.keywords:
-            if re.search(rf"\b{re.escape(kw)}\b", text):
-                return category
-    return DEFAULT_CATEGORY
+        score = sum(
+            1 for kw in category.keywords
+            if re.search(rf"\b{re.escape(kw)}\b", text)
+        )
+        if score > best_score:
+            best, best_score = category, score
+    return best
 
 
 # Public alias -- "resolve a query to its category".

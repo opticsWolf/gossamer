@@ -16,8 +16,8 @@ resolves every accepted alias to that name.
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.search_providers import (
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.search_providers import (
     BingProvider,
     BrowserOxideSearchProvider,
     DuckDuckGoProvider,

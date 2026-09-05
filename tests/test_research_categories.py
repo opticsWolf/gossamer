@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from stitch_web_researcher import research_categories as rc
-from stitch_web_researcher.research_providers import (
+from gossamer import research_categories as rc
+from gossamer.research_providers import (
     OpenAlexAdapter,
     OpenMeteoAdapter,
 )
@@ -33,6 +33,19 @@ from stitch_web_researcher.research_providers import (
         ("zip code lookup", "geo"),
         ("latest breaking news today", "general"),
         ("what is the capital city", "general"),
+        # Eurozone financial (Part 2: Bundesbank / ECB / Eurostat).
+        ("ezb leitzins entscheidung", "financial"),
+        ("bip deutschland eurostat 2023", "financial"),
+        ("hicp eurozone inflation rate", "financial"),
+        ("euribor 3 monate geldpolitik", "financial"),
+        ("bundesbank euribor zinssatz", "financial"),
+        ("aktienkurs dax dividende", "financial"),
+        # EU / German case law (Part 2: HUDOC / CJEU / BVerfG / BGH).
+        ("egmr urteil hudoc menschenrechte", "legal"),
+        ("eugh celex vorabentscheidung", "legal"),
+        ("bverfg urteil bundesverfassungsgericht", "legal"),
+        ("bgh urteil aktenzeichen", "legal"),
+        ("dsgvo beschwerde", "legal"),
     ],
 )
 def test_classify_routes_to_expected_category(query, expected):
@@ -53,6 +66,14 @@ def test_word_boundary_guard_does_not_overmatch():
     # "university" contains no trigger word on its own here; a bare "news"
     # query should stay general.
     assert rc.classify("news").name == "general"
+    # Deliberately *excluded* Euro-adjacent generics (Part 2 review):
+    # "bis" is German for "until", "frankfurter" is a sausage/newspaper.
+    assert rc.classify("bis spater sehen wir uns").name == "general"
+    assert rc.classify("frankfurter wurstchen rezept").name == "general"
+    # …while the distinctive forms they were excluded for still route right.
+    assert rc.classify("frankfurter app ezb kurse").name == "financial"  # via ezb
+    assert rc.classify("bis der leitzins steigt").name == "financial"  # via leitzins
+
 
 
 def test_resolve_is_an_alias_for_classify():
@@ -166,7 +187,7 @@ def test_search_category_explicit_provider_calls_that_source(monkeypatch):
     assert out["category"] == "scholarly"
     assert out["provider"] == "crossref"
     assert seen["provider"] == "crossref"
-    assert out["available_providers"] == ["openalex", "crossref", "arxiv"]
+    assert out["available_providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
 
 
 def test_search_category_provider_mismatch_with_category_is_rejected():
@@ -209,7 +230,7 @@ def test_search_category_provider_only_reverse_resolves_owning_category(monkeypa
     assert out["provider"] == "arxiv"
     assert "error" not in out
     assert seen["provider"] == "arxiv"
-    assert out["available_providers"] == ["openalex", "crossref", "arxiv"]
+    assert out["available_providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
 
 
 def test_search_category_unknown_provider_is_rejected_not_raised():
@@ -335,8 +356,9 @@ def test_search_category_financial_routes_to_default_provider(monkeypatch):
 
     out = rc.search_category(object(), "AAPL stock quote today")
     assert out["category"] == "financial"
-    assert out["provider"] == "alphavantage"
-    assert seen["provider"] == "alphavantage"
+    # Keyless default: yahoo comes before the keyed alphavantage.
+    assert out["provider"] == "yahoo"
+    assert seen["provider"] == "yahoo"
 
 
 def test_every_adapter_category_provider_has_a_registered_factory():
@@ -374,7 +396,7 @@ def test_taxonomy_reflects_every_provider():
     # and every provider id, so the model can discover all sources.
     import json
 
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir="/tmp/x",
@@ -391,7 +413,7 @@ def test_taxonomy_reflects_every_provider():
 
 
 def test_facade_research_categories_returns_taxonomy():
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir="/tmp/x",
@@ -405,11 +427,16 @@ def test_facade_research_categories_returns_taxonomy():
     }
     by_name = {d["category"]: d for d in data}
     assert by_name["scholarly"]["default_provider"] == "openalex"
-    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv"]
+    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
     assert by_name["legal"]["providers"] == [
-        "courtlistener", "ecfr", "federalregister", "eurlex", "german",
+        "courtlistener", "ecfr", "federalregister",
+        "oldp", "hudoc", "govinfo",
     ]
-    assert by_name["financial"]["providers"] == ["alphavantage", "yahoo"]
+    assert by_name["financial"]["providers"] == [
+        "yahoo", "frankfurter", "eurostat", "bundesbank",
+        "bis", "coingecko", "alphavantage",
+    ]
+    assert by_name["geo"]["providers"] == ["open-meteo", "overpass"]
     assert by_name["geo"]["default_provider"] == "open-meteo"
     assert by_name["general"]["default_provider"] == "duckduckgo"
     assert by_name["general"]["provider_kind"] == "engine"
@@ -421,7 +448,7 @@ def test_facade_research_categories_returns_taxonomy():
 
 
 def test_facade_research_by_category_returns_json(tmp_path, monkeypatch):
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
@@ -452,7 +479,7 @@ def test_facade_research_by_category_returns_json(tmp_path, monkeypatch):
 def test_facade_research_by_category_provider_skips_classification(tmp_path, monkeypatch):
     # Passing provider= alone must resolve its owning category and NOT
     # reclassify the (non-scholarly) query -- it should still land on arxiv.
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
@@ -480,7 +507,7 @@ def test_facade_research_by_category_provider_skips_classification(tmp_path, mon
 
 def test_facade_research_by_category_category_and_provider(tmp_path, monkeypatch):
     # category + provider both honoured; query untouched and not reclassified.
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
@@ -508,7 +535,7 @@ def test_facade_research_by_category_category_and_provider(tmp_path, monkeypatch
 
 def test_facade_research_by_category_bad_category_returns_error(tmp_path):
     # An unknown category is reported as JSON error, never raised.
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
@@ -528,7 +555,7 @@ def test_research_categories_is_not_an_mcp_tool(tmp_path):
     # The introspection method is callable directly but is NOT part of the
     # MCP surface: execute_tool must reject it (not registered). The model
     # still reaches it indirectly -- research_by_category() with no query.
-    from stitch_web_researcher.agent_tools import TOOL_REGISTRY, WebResearcherToolbox
+    from gossamer.agent_tools import TOOL_REGISTRY, WebResearcherToolbox
 
     assert not any(s.name == "research_categories" for s in TOOL_REGISTRY)
     tb = WebResearcherToolbox(
@@ -548,7 +575,7 @@ def test_research_by_category_no_query_returns_taxonomy(tmp_path):
     # the model discovers providers through the single tool.
     import json
 
-    from stitch_web_researcher.agent_tools import WebResearcherToolbox
+    from gossamer.agent_tools import WebResearcherToolbox
 
     tb = WebResearcherToolbox(
         cache_dir=str(tmp_path / "cache"),
@@ -561,7 +588,28 @@ def test_research_by_category_no_query_returns_taxonomy(tmp_path):
         "scholarly", "legal", "financial", "geo", "general",
     }
     by_name = {d["category"]: d for d in data}
-    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv"]
+    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
     assert by_name["legal"]["providers"] == [
-        "courtlistener", "ecfr", "federalregister", "eurlex", "german",
+        "courtlistener", "ecfr", "federalregister",
+        "oldp", "hudoc", "govinfo",
     ]
+
+
+def test_make_adapter_returns_shared_instance():
+    from gossamer.research_categories import _make_adapter, reset_adapter_cache
+
+    reset_adapter_cache()
+    try:
+        first = _make_adapter("openalex")
+        second = _make_adapter("openalex")
+        assert first is second
+        assert _make_adapter("crossref") is not first
+    finally:
+        reset_adapter_cache()
+
+
+def test_classify_picks_dominant_topic_over_first_hit():
+    # "bill" (legal) appears, but the financial hits dominate 3-to-1.
+    assert rc.classify("bill market stock portfolio news").name == "financial"
+    # Tie keeps table order: scholarly before legal.
+    assert rc.classify("paper court").name == "scholarly"

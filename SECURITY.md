@@ -1,6 +1,6 @@
 # Security Policy
 
-`stitch-web-researcher` fetches URLs that are frequently **LLM-supplied or
+`gossamer` fetches URLs that are frequently **LLM-supplied or
 web-derived**, and ships two security-sensitive subsystems:
 
 - the **SSRF guard** (`ssrf.py` + Rust re-check on redirects) — blocks

@@ -117,4 +117,4 @@ jobs:
         run: pip install "ruff==0.16.4"
 
       - name: Run ruff
-        run: ruff check stitch_web_researcher/
+        run: ruff check gossamer/

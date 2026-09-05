@@ -13,9 +13,9 @@ never built and no network is touched.
 """
 from __future__ import annotations
 
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.mcp_server import _config_from_env, _env_json_dict
+from gossamer import agent_tools
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.mcp_server import _config_from_env, _env_json_dict
 
 
 def _toolbox(tmp_path, **config_kwargs) -> WebResearcherToolbox:
@@ -105,33 +105,33 @@ class TestRustConfigureHttp:
         # safe to call more than once (last non-empty value wins). No fetch
         # happens here, so the shared client is never built and no bogus
         # proxy is left behind.
-        agent_tools._configure_http(None, None, [("X-Stitch-Test", "1")], [])
+        agent_tools._configure_http(None, None, [("X-Gossamer-Test", "1")], [])
         agent_tools._configure_http(None, None, [], [])
 
 
 class TestEnvKnobs:
     def test_env_json_dict(self, monkeypatch):
-        monkeypatch.delenv("STITCH_CUSTOM_HEADERS", raising=False)
-        assert _env_json_dict("STITCH_CUSTOM_HEADERS") == {}
+        monkeypatch.delenv("GOSSAMER_CUSTOM_HEADERS", raising=False)
+        assert _env_json_dict("GOSSAMER_CUSTOM_HEADERS") == {}
         monkeypatch.setenv(
-            "STITCH_CUSTOM_HEADERS", '{"Authorization": "Bearer t"}'
+            "GOSSAMER_CUSTOM_HEADERS", '{"Authorization": "Bearer t"}'
         )
-        assert _env_json_dict("STITCH_CUSTOM_HEADERS") == {
+        assert _env_json_dict("GOSSAMER_CUSTOM_HEADERS") == {
             "Authorization": "Bearer t"
         }
-        monkeypatch.setenv("STITCH_CUSTOM_HEADERS", "not json")
-        assert _env_json_dict("STITCH_CUSTOM_HEADERS") == {}
-        monkeypatch.setenv("STITCH_CUSTOM_HEADERS", '["a", "b"]')
-        assert _env_json_dict("STITCH_CUSTOM_HEADERS") == {}
-        monkeypatch.setenv("STITCH_CUSTOM_HEADERS", '{"a": 1}')
-        assert _env_json_dict("STITCH_CUSTOM_HEADERS") == {"a": "1"}
+        monkeypatch.setenv("GOSSAMER_CUSTOM_HEADERS", "not json")
+        assert _env_json_dict("GOSSAMER_CUSTOM_HEADERS") == {}
+        monkeypatch.setenv("GOSSAMER_CUSTOM_HEADERS", '["a", "b"]')
+        assert _env_json_dict("GOSSAMER_CUSTOM_HEADERS") == {}
+        monkeypatch.setenv("GOSSAMER_CUSTOM_HEADERS", '{"a": 1}')
+        assert _env_json_dict("GOSSAMER_CUSTOM_HEADERS") == {"a": "1"}
 
     def test_config_from_env_wires_transport(self, monkeypatch):
         for var in (
-            "STITCH_HTTP_PROXY",
-            "STITCH_USER_AGENT",
-            "STITCH_CUSTOM_HEADERS",
-            "STITCH_COOKIES",
+            "GOSSAMER_HTTP_PROXY",
+            "GOSSAMER_USER_AGENT",
+            "GOSSAMER_CUSTOM_HEADERS",
+            "GOSSAMER_COOKIES",
         ):
             monkeypatch.delenv(var, raising=False)
         cfg = _config_from_env()
@@ -140,10 +140,10 @@ class TestEnvKnobs:
         assert cfg.custom_headers == {}
         assert cfg.cookies == {}
 
-        monkeypatch.setenv("STITCH_HTTP_PROXY", "http://proxy:8080")
-        monkeypatch.setenv("STITCH_USER_AGENT", "agent/1.0")
-        monkeypatch.setenv("STITCH_CUSTOM_HEADERS", '{"Authorization": "Bearer t"}')
-        monkeypatch.setenv("STITCH_COOKIES", '{"session": "abc"}')
+        monkeypatch.setenv("GOSSAMER_HTTP_PROXY", "http://proxy:8080")
+        monkeypatch.setenv("GOSSAMER_USER_AGENT", "agent/1.0")
+        monkeypatch.setenv("GOSSAMER_CUSTOM_HEADERS", '{"Authorization": "Bearer t"}')
+        monkeypatch.setenv("GOSSAMER_COOKIES", '{"session": "abc"}')
         cfg = _config_from_env()
         assert cfg.http_proxy == "http://proxy:8080"
         assert cfg.user_agent == "agent/1.0"

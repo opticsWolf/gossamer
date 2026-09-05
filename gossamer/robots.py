@@ -198,7 +198,7 @@ class RobotsChecker:
         client: Optional[httpx.Client] = None,
     ) -> None:
         self.enabled = enabled
-        self.user_agent = user_agent or "stitch-web-researcher/1.0"
+        self.user_agent = user_agent or "gossamer/1.0"
         self.timeout = timeout
         self.ttl = ttl
         self.failure_ttl = failure_ttl

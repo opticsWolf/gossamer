@@ -11,8 +11,8 @@ instead, and search_web_async must not re-import asyncio locally
 import asyncio
 import inspect
 
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer import agent_tools
+from gossamer.agent_tools import WebResearcherToolbox
 
 
 def _toolbox() -> WebResearcherToolbox:

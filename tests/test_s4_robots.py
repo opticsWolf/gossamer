@@ -12,8 +12,8 @@ from urllib.parse import urlparse
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.robots import RobotsChecker
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.robots import RobotsChecker
 
 ROBOTS_TXT = (
     "User-agent: *\n"
@@ -106,7 +106,7 @@ class TestToolboxRobotsGate:
     def test_disallowed_path_returns_warning_without_fetch(
         self, server, tmp_path, monkeypatch
     ):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(server, tmp_path)
         url = _url(server, "/private/secret")
         res = json.loads(tb.inspect_html_page(url))
@@ -117,7 +117,7 @@ class TestToolboxRobotsGate:
         assert len(_times(server, "/robots.txt")) >= 1
 
     def test_allowed_path_fetches(self, server, tmp_path, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(server, tmp_path)
         res = json.loads(tb.inspect_html_page(_url(server, "/open")))
         assert "warning" not in res
@@ -126,21 +126,21 @@ class TestToolboxRobotsGate:
     def test_longer_allow_rule_overrides_disallow(
         self, server, tmp_path, monkeypatch
     ):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(server, tmp_path)
         res = json.loads(tb.inspect_html_page(_url(server, "/private/public.txt")))
         assert "warning" not in res
         assert "Public doc" in res.get("markdown", "")
 
     def test_opt_out_fetches_disallowed(self, server, tmp_path, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(server, tmp_path, respect_robots=False)
         res = json.loads(tb.inspect_html_page(_url(server, "/private/secret")))
         assert "warning" not in res
         assert "Secret page" in res.get("markdown", "")
 
     def test_batch_skips_disallowed(self, server, tmp_path, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(server, tmp_path)
         res = json.loads(
             tb.batch_inspect_pages(
@@ -151,7 +151,7 @@ class TestToolboxRobotsGate:
         assert _times(server, "/private/secret") == []
 
     def test_structured_disallowed(self, server, tmp_path, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(server, tmp_path)
         res = json.loads(
             tb.inspect_html_structured(_url(server, "/private/secret"))
@@ -162,7 +162,7 @@ class TestToolboxRobotsGate:
     def test_robots_404_allows(self, tmp_path, monkeypatch):
         srv = _start_server("", robots_404=True)
         try:
-            monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+            monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
             tb = _toolbox(srv, tmp_path)
             res = json.loads(tb.inspect_html_page(_url(srv, "/open")))
             assert "warning" not in res
@@ -176,7 +176,7 @@ class TestCrawlDelay:
     def test_crawl_delay_enforced_between_fetches(self, tmp_path, monkeypatch):
         srv = _start_server(CRAWL_DELAY_ROBOTS)
         try:
-            monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+            monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
             tb = _toolbox(srv, tmp_path)
             # Two different allowed pages so the second is a real fetch,
             # not a page-cache hit (C3).

@@ -12,9 +12,9 @@ import json
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.structured_parser import ParsedDocumentPayload
-from stitch_web_researcher.text_links import extract_links
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.structured_parser import ParsedDocumentPayload
+from gossamer.text_links import extract_links
 
 
 class TestExtractLinksUnit:
@@ -136,7 +136,7 @@ class TestExtractDocumentWiring:
 
 class TestStructuredWiring:
     def test_payload_links_filled_from_page_text(self):
-        from stitch_web_researcher.structured_parser import (
+        from gossamer.structured_parser import (
             DocumentMetadata,
             ExtractedPage,
         )
@@ -156,7 +156,7 @@ class TestStructuredWiring:
         )
         # Mirror of the wiring in extract_document_structured.
         if not payload.links:
-            from stitch_web_researcher.structured_parser import (
+            from gossamer.structured_parser import (
                 build_follow_up_candidates,
             )
 

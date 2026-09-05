@@ -4,24 +4,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stitch_web_researcher.research_providers import (
+from gossamer.research_providers import (
     AlphaVantageAdapter,
     BioRxivAdapter,
     CourtListenerAdapter,
     EcfrAdapter,
-    EurlexAdapter,
     FederalRegisterAdapter,
-    GermanGovAdapter,
     ChemRxivAdapter,
 )
-
 
 def _resp(payload):
     r = MagicMock()
     r.json.return_value = payload
     r.raise_for_status.return_value = None
     return r
-
 
 # ── Wave 2: CourtListener, eCFR, Federal Register, EUR-Lex, German gov ─────
 
@@ -32,7 +28,7 @@ class TestCourtListenerAdapter:
         assert a.domain == "legal"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses_cluster(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -64,7 +60,7 @@ class TestCourtListenerAdapter:
         # Free-text query is passed through as the QL string.
         assert mock_get.call_args.kwargs["params"]["q"] == "smith"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses_cluster(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -77,8 +73,18 @@ class TestCourtListenerAdapter:
         a = CourtListenerAdapter(delay=0.0)
         out = a.fetch("10599950")
         assert out[0]["id"] == "10599950"
-        assert mock_get.call_args.args[0].endswith("/cluster/10599950/")
+        assert mock_get.call_args.args[0].endswith("/clusters/10599950/")
 
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_401_is_actionable(self, mock_get):
+        # Cluster detail needs a token; search stays keyless.
+        denied = MagicMock()
+        denied.status_code = 401
+        denied.raise_for_status.side_effect = AssertionError("must not raise")
+        mock_get.return_value = denied
+        a = CourtListenerAdapter(delay=0.0)
+        with pytest.raises(RuntimeError, match="GOSSAMER_COURTLISTENER_KEY"):
+            a.fetch("10599950")
 
 class TestEcfrAdapter:
     def test_metadata(self):
@@ -87,61 +93,102 @@ class TestEcfrAdapter:
         assert a.domain == "legal"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_parse_cfr_citation(self, mock_get):
-        mock_get.return_value = _resp(
+    @staticmethod
+    def _titles_response():
+        return _resp(
             {
-                "title": 21,
-                "part": 113,
-                "title_title": "FOOD AND DRUG ADMINISTRATION",
-                "part_title": "PHYSICAL ENTRY REQUIREMENTS",
-                "section_numbers": ["113"],
-                "sections": {
-                    "113": {
-                        "label": "113",
-                        "section_number": "113",
-                        "content": "<p>Requirements for ...</p>",
+                "titles": [
+                    {
+                        "number": 21,
+                        "name": "Food and Drugs",
+                        "latest_issue_date": "2026-08-31",
                     }
-                },
+                ]
             }
         )
+
+    @staticmethod
+    def _structure_response():
+        return _resp(
+            {
+                "identifier": "21",
+                "label": "Title 21—Food and Drugs",
+                "type": "title",
+                "children": [
+                    {
+                        "identifier": "113",
+                        "label": "Part 113—Physical Entry Requirements",
+                        "label_description": "Requirements for physical entry.",
+                        "type": "part",
+                        "children": [
+                            {
+                                "identifier": "113.3",
+                                "label": "§ 113.3 Definitions",
+                                "type": "section",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_parse_cfr_citation(self, mock_get):
+        mock_get.side_effect = [
+            self._titles_response(),
+            self._structure_response(),
+        ]
         a = EcfrAdapter(delay=0.0)
         out = a.search("21 CFR 113", max_results=5)
         assert len(out) == 1
         assert out[0]["id"] == "21/113"
         assert out[0]["fields"]["part"] == "113"
-        assert "FOOD AND DRUG ADMINISTRATION" in out[0]["title"]
-        # Citation parsed into title/part path.
-        assert mock_get.call_args.args[0].endswith("/21/113")
+        assert "113.3" in out[0]["snippet"]
+        urls = [c.args[0] for c in mock_get.call_args_list]
+        assert urls[0].endswith("/titles.json")
+        assert "/structure/2026-08-31/title-21.json" in urls[1]
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_slash_citation(self, mock_get):
-        mock_get.return_value = _resp(
-            {"title": 21, "part": 113, "sections": {"113": {"label": "113", "content": "x"}}}
-        )
+        mock_get.side_effect = [
+            self._titles_response(),
+            self._structure_response(),
+        ]
         a = EcfrAdapter(delay=0.0)
         out = a.fetch("21/113")
         assert out[0]["id"] == "21/113"
-        assert mock_get.call_args.args[0].endswith("/21/113")
+        assert out[0]["url"] == "https://www.ecfr.gov/current/title-21/part-113"
 
+    @patch("gossamer.research_providers.httpx.get")
+    def test_unknown_part_raises(self, mock_get):
+        mock_get.side_effect = [
+            self._titles_response(),
+            self._structure_response(),
+        ]
+        a = EcfrAdapter(delay=0.0)
+        with pytest.raises(ValueError, match="no part"):
+            a.fetch("21/999")
 
 class TestFederalRegisterAdapter:
-    def test_metadata_requires_key(self):
+    def test_metadata_keyless(self):
         a = FederalRegisterAdapter(delay=0.0)
         assert a.name == "federalregister"
         assert a.domain == "legal"
-        assert a.requires_key is True
+        assert a.requires_key is False
 
-    def test_inject_auth_sets_data_key(self):
-        a = FederalRegisterAdapter(delay=0.0, api_key="DKEY")
-        _, params, _ = a.inject_auth("https://api.federalregister.gov/v1/documents.json", {}, {})
-        assert params["api_key"] == "DKEY"
+    def test_inject_auth_sends_no_key(self):
+        # An empty api_key triggers a redirect loop; never send one.
+        a = FederalRegisterAdapter(delay=0.0)
+        _, params, _ = a.inject_auth("https://www.federalregister.gov/api/v1/documents.json", {}, {})
+        assert "api_key" not in params
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses_documents(self, mock_get):
+        # Live envelope nests hits under "results".
         mock_get.return_value = _resp(
             {
-                "documents": [
+                "count": 1,
+                "results": [
                     {
                         "document_number": "2024-12345",
                         "title": "Guidance on ...",
@@ -155,14 +202,15 @@ class TestFederalRegisterAdapter:
                 ]
             }
         )
-        a = FederalRegisterAdapter(delay=0.0, api_key="DKEY")
+        a = FederalRegisterAdapter(delay=0.0)
         out = a.search("guidance", max_results=5)
         assert out[0]["id"] == "2024-12345"
         assert out[0]["fields"]["agency"] == "Food and Drug Administration"
         assert "<p>" not in out[0]["snippet"]  # tags stripped
-        assert mock_get.call_args.kwargs["params"]["api_key"] == "DKEY"
+        assert "api_key" not in mock_get.call_args.kwargs["params"]
+        assert mock_get.call_args.args[0].startswith("https://www.federalregister.gov/api/v1/")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses_document(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -172,93 +220,10 @@ class TestFederalRegisterAdapter:
                 "agency": {"name": "FDA"},
             }
         )
-        a = FederalRegisterAdapter(delay=0.0, api_key="DKEY")
+        a = FederalRegisterAdapter(delay=0.0)
         out = a.fetch("2024-12345")
         assert out[0]["id"] == "2024-12345"
         assert mock_get.call_args.args[0].endswith("/documents/2024-12345.json")
-
-
-class TestEurlexAdapter:
-    def test_metadata(self):
-        a = EurlexAdapter(delay=0.0)
-        assert a.name == "eurlex"
-        assert a.domain == "legal"
-        assert a.requires_key is False
-
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_parses_hits(self, mock_get):
-        mock_get.return_value = _resp(
-            {
-                "response": {
-                    "results": [
-                        {
-                            "docid": "ETXTINXT:32016X0526(01.02.002",
-                            "title": "Regulation (EU, Euratom) No 883/2016",
-                            "language": "en",
-                            "publicationDate": "2016-04-27",
-                            "uri": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0883",
-                        }
-                    ]
-                }
-            }
-        )
-        a = EurlexAdapter(delay=0.0)
-        out = a.search("regulation", max_results=5)
-        assert out[0]["id"] == "ETXTINXT:32016X0526(01.02.002"
-        assert out[0]["fields"]["language"] == "en"
-        assert mock_get.call_args.kwargs["params"]["format"] == "json"
-
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_fetch_scopes_to_docid(self, mock_get):
-        mock_get.return_value = _resp({"response": {"results": [{"docid": "CELEX:32016R0883", "title": "Reg 883"}]}})
-        a = EurlexAdapter(delay=0.0)
-        out = a.fetch("CELEX:32016R0883")
-        assert out[0]["title"] == "Reg 883"
-        assert mock_get.call_args.kwargs["params"]["q"] == "docid:CELEX:32016R0883"
-
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_fetch_empty_when_no_hits(self, mock_get):
-        mock_get.return_value = _resp({"response": {"results": []}})
-        a = EurlexAdapter(delay=0.0)
-        assert a.fetch("NOPE") == []
-
-
-class TestGermanGovAdapter:
-    def test_metadata(self):
-        a = GermanGovAdapter(delay=0.0)
-        assert a.name == "german"
-        assert a.domain == "legal"
-        assert a.requires_key is False
-
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_parses_entries(self, mock_get):
-        mock_get.return_value = _resp(
-            [
-                {
-                    "id": "12345",
-                    "titel": "Verordnung über ...",
-                    "art": "Verordnung",
-                    "datum": "2024-05-30",
-                    "suchbegriffe": ["Verbraucherschutz"],
-                    "url": "https://www.de.gov.de/id/12345",
-                }
-            ]
-        )
-        a = GermanGovAdapter(delay=0.0)
-        out = a.search("Verbraucherschutz", max_results=5)
-        assert out[0]["id"] == "12345"
-        assert out[0]["title"] == "Verordnung über ..."
-        assert out[0]["fields"]["art"] == "Verordnung"
-        assert mock_get.call_args.kwargs["params"]["suchbegriff"] == "Verbraucherschutz"
-
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_fetch_parses_entry(self, mock_get):
-        mock_get.return_value = _resp({"aktenseite": {"id": "12345", "titel": "Vo. ..."}})
-        a = GermanGovAdapter(delay=0.0)
-        out = a.fetch("12345")
-        assert out[0]["id"] == "12345"
-        assert mock_get.call_args.args[0].endswith("/aktenseiten/12345")
-
 
 # ── Wave 2: bioRxiv, ChemRxiv, Alpha Vantage ──────────────────────────────
 
@@ -269,8 +234,17 @@ class TestBioRxivAdapter:
         assert a.domain == "scholarly"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_recent_defaults_to_most_recent(self, mock_get):
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_free_text_raises_actionable_error(self, mock_get):
+        # The API is date/DOI-addressed; free text used to hit an endpoint
+        # that always answers empty. Fail fast instead (no retry burn).
+        a = BioRxivAdapter(delay=0.0)
+        with pytest.raises(ValueError, match="date/DOI-addressed"):
+            a.search("neuroscience", max_results=2)
+        assert not mock_get.called
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_doi_lookup(self, mock_get):
         mock_get.return_value = _resp(
             {
                 "collection": [
@@ -289,21 +263,19 @@ class TestBioRxivAdapter:
             }
         )
         a = BioRxivAdapter(delay=0.0)
-        out = a.search("neuroscience", max_results=2)
+        out = a.search("10.1101/2024.07.17.603927", max_results=2)
         assert out[0]["id"] == "10.1101/2024.07.17.603927"
         assert out[0]["fields"]["category"] == "neuroscience"
         assert "<p>" not in out[0]["snippet"]
-        # Non-date, non-DOI query -> most-recent-N interval (2).
-        assert mock_get.call_args.args[0].endswith("/biorxiv/2/0/json")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_date_interval(self, mock_get):
         mock_get.return_value = _resp({"collection": []})
         a = BioRxivAdapter(delay=0.0)
         a.search("2024-08-01/2024-08-02", max_results=2)
         assert mock_get.call_args.args[0].endswith("/biorxiv/2024-08-01/2024-08-02/0/json")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_by_doi(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -321,7 +293,7 @@ class TestBioRxivAdapter:
         assert out[0]["id"] == "10.1101/2024.07.17.603927"
         assert mock_get.call_args.args[0].endswith("/biorxiv/10.1101/2024.07.17.603927/na/json")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_non_doi_returns_empty(self, mock_get):
         a = BioRxivAdapter(delay=0.0)
         assert a.fetch("not-a-doi") == []
@@ -330,7 +302,6 @@ class TestBioRxivAdapter:
     def test_medrxiv_server(self):
         a = BioRxivAdapter(delay=0.0, server="medrxiv")
         assert a.server == "medrxiv"
-
 
 class TestChemRxivAdapter:
     def test_metadata_requires_key(self):
@@ -344,7 +315,7 @@ class TestChemRxivAdapter:
         _, _, headers = a.inject_auth("https://chemrxiv.org/engage/api-gateway/chemrxiv/assets/orp/item/search", {}, {})
         assert headers["Authorization"] == "Bearer TKN"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses_items(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -369,14 +340,13 @@ class TestChemRxivAdapter:
         assert out[0]["fields"]["doi"] == "10.26434/chemrxiv.2020-abcde"
         assert mock_get.call_args.kwargs["headers"]["Authorization"] == "Bearer TKN"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses_item(self, mock_get):
         mock_get.return_value = _resp({"data": {"id": 5349151, "title": "Catalytic"}})
         a = ChemRxivAdapter(delay=0.0, api_key="TKN")
         out = a.fetch("5349151")
         assert out[0]["title"] == "Catalytic"
         assert mock_get.call_args.args[0].endswith("/item/5349151")
-
 
 class TestAlphaVantageAdapter:
     def test_metadata_requires_key(self):
@@ -390,17 +360,19 @@ class TestAlphaVantageAdapter:
         _, params, _ = a.inject_auth("https://www.alphavantage.co/query", {}, {})
         assert params["apikey"] == "K"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_parses_data(self, mock_get):
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_parses_best_matches(self, mock_get):
+        # Live SYMBOL_SEARCH shape: bestMatches with numbered keys.
         mock_get.return_value = _resp(
             {
-                "data": [
+                "bestMatches": [
                     {
-                        "symbol": "AAPL",
-                        "companyName": "Apple Inc.",
-                        "instrument_type": "EQUITY",
-                        "ticker": "AAPL",
-                        "sector": "Technology",
+                        "1. symbol": "AAPL",
+                        "2. name": "Apple Inc.",
+                        "3. type": "Equity",
+                        "4. region": "United States",
+                        "8. currency": "USD",
+                        "9. matchScore": "1.0000",
                     }
                 ]
             }
@@ -409,10 +381,10 @@ class TestAlphaVantageAdapter:
         out = a.search("apple", max_results=5)
         assert out[0]["id"] == "AAPL"
         assert out[0]["title"] == "Apple Inc."
-        assert out[0]["fields"]["sector"] == "Technology"
+        assert out[0]["fields"]["currency"] == "USD"
         assert mock_get.call_args.kwargs["params"]["function"] == "SEARCH"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses_daily(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -434,7 +406,7 @@ class TestAlphaVantageAdapter:
         assert out[0]["fields"]["close"] == "185.5"
         assert mock_get.call_args.kwargs["params"]["function"] == "TIME_SERIES_DAILY"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_no_data_surfaces_note(self, mock_get):
         mock_get.return_value = _resp({"notes": "Takeaway: no data for the requested symbol."})
         a = AlphaVantageAdapter(delay=0.0, api_key="K")

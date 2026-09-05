@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.token_budget import count_tokens
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.token_budget import count_tokens
 
 URL = "https://example.com/big"
 

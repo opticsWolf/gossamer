@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 # Comfortably larger than the default 8000-char output budget.
 BIG_PAGE = (
@@ -52,7 +52,7 @@ def server():
 
 @pytest.fixture
 def toolbox(tmp_path, monkeypatch):
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     return WebResearcherToolbox(
         ToolboxConfig(cache_dir=str(tmp_path / "c"), fetch_delay=0.0, ddgs_delay=0.0)
     )
@@ -111,7 +111,7 @@ class TestResearch:
     def test_dropped_sources_are_reported(self, tmp_path, server, monkeypatch):
         # A budget too tight for every source must say so rather than
         # silently return a short list.
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = WebResearcherToolbox(
             ToolboxConfig(
                 cache_dir=str(tmp_path / "c"),
@@ -131,7 +131,7 @@ class TestOverflowEnvelope:
     def test_impossible_budget_returns_valid_json(self, tmp_path, server, monkeypatch):
         # Even a budget no payload can meet must produce parseable JSON —
         # the invariant is absolute.
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = WebResearcherToolbox(
             ToolboxConfig(
                 cache_dir=str(tmp_path / "c"),

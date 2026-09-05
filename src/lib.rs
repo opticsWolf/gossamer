@@ -160,7 +160,7 @@ fn configure_http(
         ov.cookies = cookies;
     }
     log::info!(
-        "stitch-web-researcher: http overrides set proxy={} user_agent={} default_headers={} cookies={}",
+        "gossamer: http overrides set proxy={} user_agent={} default_headers={} cookies={}",
         ov.proxy.as_deref().unwrap_or("-"),
         ov.user_agent.as_deref().unwrap_or("-"),
         ov.headers.len(),
@@ -184,13 +184,24 @@ const MAX_REDIRECTS: u32 = 10;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 5 * 1024 * 1024;
 
 /// S3: operator override (same pattern as the S1 bypass). The
-/// environment is under operator control, not the LLM's.
+/// environment is under operator control, not the LLM's. Renamed with the
+/// package; the legacy STITCH_* spelling still works.
+fn env_first(new: &str, legacy: &str) -> Option<String> {
+    std::env::var(new).ok().filter(|v| !v.trim().is_empty()).or_else(|| {
+        std::env::var(legacy)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+    })
+}
+
 fn max_response_bytes() -> usize {
-    std::env::var("STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(DEFAULT_MAX_RESPONSE_BYTES)
+    env_first(
+        "GOSSAMER_MAX_RESPONSE_BYTES",
+        "STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES",
+    )
+    .and_then(|v| v.trim().parse::<usize>().ok())
+    .filter(|n| *n > 0)
+    .unwrap_or(DEFAULT_MAX_RESPONSE_BYTES)
 }
 
 /// S3: the HTML fetch path accepts text-family media types. A missing
@@ -212,15 +223,17 @@ fn is_html_content_type(ctype: &str) -> bool {
 /// that need local servers). The environment is under operator control,
 /// not the LLM's.
 fn ssrf_bypass() -> bool {
-    std::env::var("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE")
-        .ok()
-        .map(|v| {
-            matches!(
-                v.trim().to_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
+    env_first(
+        "GOSSAMER_ALLOW_PRIVATE",
+        "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE",
+    )
+    .map(|v| {
+        matches!(
+            v.trim().to_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+    .unwrap_or(false)
 }
 
 /// True for addresses that must never be fetched: loopback, private
@@ -637,7 +650,7 @@ async fn fetch_attempt(
 
         let status = response.status();
         // Tier 2.6: observability -- per-hop status for the Python logging
-        // bridge (only emitted when STITCH_RUST_LOG is enabled).
+        // bridge (only emitted when GOSSAMER_RUST_LOG is enabled).
         log::debug!("HTTP response status={} url={}", status.as_u16(), current.as_str());
         // Tier 1.4: 304 Not Modified — the caller's cached copy is still
         // current. No body follows, but the response may carry rotated
@@ -810,7 +823,7 @@ async fn fetch_pairs_inner(
     cap: usize,
     max_bytes: usize,
 ) -> Result<(String, Vec<(String, String)>), String> {
-    let (html, _meta) = http_fetch_html(shared_client(), url, max_bytes).await?;
+    let (html, meta) = http_fetch_html(shared_client(), url, max_bytes).await?;
     let (md, pairs, _removed) = process_html_anchored(&html, url, cap)?;
     Ok((md, pairs))
 }
@@ -871,10 +884,16 @@ type FullPage = (String, String, Vec<(String, String)>, usize, FetchMeta);
 /// carried out so the Python layer can run meta-oxide extraction on batch
 /// entries too -- without it the batch path returned empty metadata while
 /// single-page reads returned the real thing (bugfix 5).
-type BatchPage = (String, String, Vec<(String, String)>);
+type BatchPage = (String, String, Vec<(String, String)>, FetchMeta);
 type BatchOutcome = Vec<(String, Result<BatchPage, String>)>;
 type PyBatchResult =
-    Vec<(String, Option<String>, Option<String>, Option<Vec<(String, String)>>)>;
+    Vec<(
+        String,
+        Option<String>,
+        Option<String>,
+        Option<Vec<(String, String)>>,
+        Option<FetchMeta>,
+    )>;
 
 
 /// Cheap pseudo-random milliseconds in `0..bound`, used for politeness
@@ -941,10 +960,10 @@ async fn fetch_many_inner(
             }
 
             let res = async {
-                let (html, _meta) =
+                let (html, meta) =
                     http_fetch_html(shared_client(), &url, max_bytes).await?;
                 let (md, pairs, _removed) = process_html_anchored(&html, &url, cap)?;
-                Ok((html, md, pairs))
+                Ok((html, md, pairs, meta))
             }
             .await;
             (url, res)
@@ -1176,12 +1195,12 @@ fn batch_research(
         let mut out = Vec::new();
         for (url, res) in results {
             match res {
-                Ok((html, md, links)) => {
-                    out.push((url, Some(html), Some(md), Some(links)))
+                Ok((html, md, links, meta)) => {
+                    out.push((url, Some(html), Some(md), Some(links), Some(meta)))
                 }
                 // Failure keeps the error in the markdown slot (M10 tags it
                 // Python-side); html stays None.
-                Err(e) => out.push((url, None, Some(e), None)),
+                Err(e) => out.push((url, None, Some(e), None, None)),
             }
         }
         Ok(out)
@@ -1277,7 +1296,7 @@ fn init_rust_logging(level: &str) -> bool {
     });
     log::set_max_level(parse_level_filter(level));
     log::info!(
-        "stitch-web-researcher: rust logging bridge initialized level={}",
+        "gossamer: rust logging bridge initialized level={}",
         level
     );
     true

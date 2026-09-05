@@ -14,11 +14,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import urlparse, urljoin, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urljoin, urlunparse
 
-from stitch_web_researcher.guard import GuardConfig
-from stitch_web_researcher.structured_parser import DOCUMENT_EXTENSIONS
-from stitch_web_researcher.research_categories import describe_categories
+from gossamer.guard import GuardConfig
+from gossamer.structured_parser import DOCUMENT_EXTENSIONS
+from gossamer.research_categories import describe_categories
 # ── Fetch strategy: FetchMode enum + per-call resolution ─────────
 class FetchMode(str, Enum):
     """Per-call render-strategy override for page fetches.
@@ -106,6 +106,8 @@ class ToolParam:
             schema = {"type": "string"}
         elif self.type is int:
             schema = {"type": "integer"}
+        elif self.type is float:
+            schema = {"type": "number"}
         elif self.type is bool:
             schema = {"type": "boolean"}
         else:  # list[str]
@@ -145,8 +147,19 @@ class ToolSpec:
         }
 
     def kwargs(self, arguments: Optional[dict] = None) -> dict:
-        """Registry defaults plus caller-supplied arguments."""
-        merged = {p.name: p.default for p in self.params if not p.required}
+        """Registry defaults plus caller-supplied arguments.
+
+        Mutable defaults (e.g. ``seed_urls=[]``) are copied per call so one
+        invocation can never contaminate the next (review A.5).
+        """
+        merged = {}
+        for p in self.params:
+            if p.required:
+                continue
+            default = p.default
+            if isinstance(default, list):
+                default = list(default)
+            merged[p.name] = default
         merged.update(arguments or {})
         return merged
 TOOL_REGISTRY = (
@@ -184,7 +197,7 @@ TOOL_REGISTRY = (
                 "provider",
                 str,
                 "duckduckgo",
-                "Search engine to prefer when search_only=true. Falls back through other providers on failure.",
+                "Search engine to prefer, in both modes. search_only=false plans the research run through this provider. Falls back through other providers on failure.",
                 enum=["duckduckgo", "google", "bing", "exa", "browser"],
             ),
         ),
@@ -341,6 +354,13 @@ TOOL_REGISTRY = (
                 list[str],
                 [],
                 "Extra starting URLs, pushed at depth 0 (children at depth 1); they respect min_score",
+            ),
+            ToolParam(
+                "use_smart",
+                str,
+                "auto",
+                "Render strategy for crawled pages: 'auto' (default), 'browser' (headless first), or 'static'.",
+                enum=["auto", "browser", "static"],
             ),
         ),
     ),
@@ -522,6 +542,85 @@ def normalize_url(raw: str, base: Optional[str] = None) -> str:
     if not host:
         raise ValueError(f"Cannot parse {raw!r} as a URL (no host)")
     return s
+
+
+# Query parameters that never change page content -- stripped so that
+# campaign-tagged variants of one document share a single cache entry.
+_TRACKING_PARAM_PREFIXES = ("utm_", "fbclid", "gclid", "mc_", "ref_")
+
+
+def canonical_url(url: str, *, query: str = "keep") -> str:
+    """One canonical identity for a URL, shared by every dedup/cache/visited
+    call site (review B.1).
+
+    Normalization (all modes): the input is parsed with :func:`normalize_url`
+    (so relative spellings collapse first), then scheme/host are lowercased,
+    a leading ``www.`` is stripped, default ports are dropped, trailing
+    slashes are stripped (except the root ``/``), and the fragment is dropped.
+
+    ``query`` controls the query string:
+
+    - ``"keep"`` — sorted, kept (search-result identity: ``?page=1`` and
+      ``?page=2`` are different results);
+    - ``"drop"`` — removed entirely (weak cross-tool identity);
+    - ``"drop-tracking"`` — only tracking params (``utm_*``/``fbclid``/…)
+      are removed (cache/visited identity: campaign tags never change the
+      resource, other params might).
+    """
+    normalized = normalize_url(url)
+    parts = urlparse(normalized)
+    host = (parts.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[len("www."):]
+    port = parts.port
+    default_port = {"http": 80, "https": 443}.get(parts.scheme)
+    netloc = host if (port is None or port == default_port) else f"{host}:{port}"
+    path = parts.path.rstrip("/") or "/"
+    if query == "drop":
+        query_str = ""
+    else:
+        items = parse_qsl(parts.query, keep_blank_values=True)
+        if query == "drop-tracking":
+            items = [
+                (k, v) for k, v in items
+                if not k.lower().startswith(_TRACKING_PARAM_PREFIXES)
+            ]
+        # Key names are lowercased and items sorted: ?ID=7 and ?id=7 hit
+        # the same entry, and ?b=1&a=2 matches ?a=2&b=1.
+        query_str = urlencode(sorted((k.lower(), v) for k, v in items))
+    # Scheme preserved (http/https may genuinely serve different content).
+    return urlunparse((parts.scheme, netloc, path, "", query_str, ""))
+
+
+def ensure_str_list(value, name: str) -> list:
+    """Coerce a ``list[str]`` tool argument into a clean list (review A.3).
+
+    A bare string is the most likely LLM shape mistake for a ``list[str]``
+    parameter — iterating it would probe/fetch one *character* at a time.
+    So: ``None`` → ``[]``, a bare ``str`` → ``[str]`` (empty/blank → ``[]``),
+    a list/tuple → its items (each must be a string). Anything else raises
+    ``TypeError`` naming the expected type, so callers can return one clear
+    JSON error instead of confident-looking per-character garbage.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+        for item in items:
+            if not isinstance(item, str):
+                raise TypeError(
+                    f"{name} must be a list of strings, got an item of type "
+                    f"{type(item).__name__}"
+                )
+        return items
+    raise TypeError(
+        f"{name} must be a list of strings (a bare string is also accepted "
+        f"and wrapped), got {type(value).__name__}"
+    )
+
+
 @dataclass
 class ToolboxConfig:
     """Construction options for :class:`WebResearcherToolbox`.
@@ -531,11 +630,14 @@ class ToolboxConfig:
     used.
     """
 
-    cache_dir: str = ".web_research_cache"
+    cache_dir: str = ".gossamer_cache"
     cache_ttl_seconds: int = 3600
     # Tier 2.5: byte cap for the disk cache (0 = unlimited). Least-recently-
     # used entries are evicted to stay under it; see Cache.max_disk_bytes.
     cache_max_bytes: int = 0
+    # Memory-tier entry cap for the two-tier cache (review C.4: previously
+    # hardcoded to 100 inside the toolbox with no config path).
+    cache_memory_entries: int = 100
     ddgs_delay: float = 1.0
     ddgs_jitter: float = 1.0
     domain_delay: float = 0.5
@@ -572,10 +674,10 @@ class ToolboxConfig:
     # Tier 1.4: when a cached page has expired, revalidate it with a cheap
     # ETag / Last-Modified conditional request before re-downloading. A 304
     # re-freshens the entry for free; a 200 stores the new content. Default
-    # True; opt out with STITCH_CONDITIONAL_REVALIDATE=0.
+    # True; opt out with GOSSAMER_CONDITIONAL_REVALIDATE=0.
     conditional_revalidation: bool = True
     # §7: optional prompt-injection guard (off by default). Pass a
-    # GuardConfig to enable; see stitch_web_researcher.guard.
+    # GuardConfig to enable; see gossamer.guard.
     guard: Optional[GuardConfig] = None
     # Tier 2.6: size of the fetch-latency sliding window (samples) kept in
     # memory for percentile computation in get_stats()["fetches"].

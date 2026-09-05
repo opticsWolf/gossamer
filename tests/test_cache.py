@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from stitch_web_researcher.cache import Cache
+from gossamer.cache import Cache
 
 
 # ────────────────────────────────────────────────────────────────

@@ -18,9 +18,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher import _core
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.sections import (
+from gossamer import _core
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.sections import (
     select_relevant_sections,
     split_sections,
 )
@@ -112,7 +112,7 @@ class TestEndToEnd:
     def test_query_keeps_the_relevant_section_off_a_real_page(
         self, tmp_path, server, monkeypatch
     ):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = WebResearcherToolbox(
             ToolboxConfig(
                 cache_dir=str(tmp_path / "c"), fetch_delay=0.0, ddgs_delay=0.0

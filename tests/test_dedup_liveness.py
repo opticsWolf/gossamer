@@ -2,8 +2,8 @@
 
 Two offline, dependency-light units plus their wiring:
 
-* :mod:`stitch_web_researcher.dedup` -- pure ``dedupe`` / ``content_hash``.
-* :mod:`stitch_web_researcher.liveness` -- ``check_liveness`` status probe
+* :mod:`gossamer.dedup` -- pure ``dedupe`` / ``content_hash``.
+* :mod:`gossamer.liveness` -- ``check_liveness`` status probe
   with injectable validator / throttle / request_fn (never touches the
   network in tests).
 * ``WebResearcherToolbox.check_sources`` -- the toolbox method that ties
@@ -21,12 +21,12 @@ from unittest.mock import patch
 
 import pytest
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
 )
-from stitch_web_researcher.dedup import content_hash, dedupe
-from stitch_web_researcher.liveness import check_liveness
+from gossamer.dedup import content_hash, dedupe
+from gossamer.liveness import check_liveness
 
 
 class _Record:
@@ -201,13 +201,13 @@ class TestCheckSourcesTool:
     def _patched(self, tb, mapping):
         """Patch check_liveness to return canned statuses by URL substring."""
 
-        def fake(url, timeout=None, throttle=None):
+        def fake(url, timeout=None, throttle=None, method="head"):
             for substr, status in mapping.items():
                 if substr in str(url):
                     return {"url": url, "status": status, "alive": status == "ok", "http_status": 200}
             return {"url": url, "status": "error", "alive": False, "http_status": None, "error": "x"}
 
-        return patch("stitch_web_researcher.agent_tools.check_liveness", fake)
+        return patch("gossamer.agent_tools.check_liveness", fake)
 
     def test_accepts_strings_and_dicts(self):
         tb = _toolbox(None)
@@ -220,11 +220,11 @@ class TestCheckSourcesTool:
         tb = _toolbox(None)
         probed = []
 
-        def fake(url, timeout=None, throttle=None):
+        def fake(url, timeout=None, throttle=None, method="head"):
             probed.append(str(url))
             return {"url": url, "status": "ok", "alive": True, "http_status": 200}
 
-        with patch("stitch_web_researcher.agent_tools.check_liveness", fake):
+        with patch("gossamer.agent_tools.check_liveness", fake):
             out = json.loads(tb.check_sources(["https://x.com/a", {"url": "https://x.com/a/"}]))
         # The trailing-slash variant collapses onto the first (no-slash) URL.
         assert out["count"] == 1
@@ -239,7 +239,7 @@ class TestCheckSourcesTool:
 
     def test_empty_returns_zero(self):
         tb = _toolbox(None)
-        with patch("stitch_web_researcher.agent_tools.check_liveness", side_effect=AssertionError("should not probe")):
+        with patch("gossamer.agent_tools.check_liveness", side_effect=AssertionError("should not probe")):
             out = json.loads(tb.check_sources([]))
         assert out["count"] == 0
         assert out["summary"] == {"ok": 0, "unreachable": 0, "blocked": 0, "error": 0}
@@ -252,7 +252,7 @@ class TestCheckSourcesTool:
 
     def test_exception_does_not_crash_tool(self):
         tb = _toolbox(None)
-        with patch("stitch_web_researcher.agent_tools.check_liveness", side_effect=RuntimeError("kaboom")):
+        with patch("gossamer.agent_tools.check_liveness", side_effect=RuntimeError("kaboom")):
             out = json.loads(tb.check_sources(["https://x.com/a"]))
         assert "kaboom" in out["error"]
         assert out["results"] == []
@@ -261,11 +261,11 @@ class TestCheckSourcesTool:
         tb = _toolbox(tmp_path, liveness_timeout=3.5)
         seen = {}
 
-        def fake(url, timeout=None, throttle=None):
+        def fake(url, timeout=None, throttle=None, method="head"):
             seen["timeout"] = timeout
             return {"url": url, "status": "ok", "alive": True, "http_status": 200}
 
-        with patch("stitch_web_researcher.agent_tools.check_liveness", fake):
+        with patch("gossamer.agent_tools.check_liveness", fake):
             tb.check_sources(["https://x.com/a"])
         assert seen["timeout"] == 3.5
 

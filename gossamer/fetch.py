@@ -9,22 +9,21 @@ used to live on ``WebResearcherToolbox`` are added in a later phase.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from stitch_web_researcher import meta_extractor
-from stitch_web_researcher.resource_store import ResourceStore
-from stitch_web_researcher._core import (
+from gossamer import meta_extractor
+from gossamer.resource_store import ResourceStore
+from gossamer._core import (
     extract_main_content_markdown,
     extract_links_from_html as _extract_links_from_html,
     fetch_html_full,
     process_rendered_html as _process_rendered_html,
     init_rust_logging as _init_rust_logging,
 )
-from stitch_web_researcher.models import (_browser_provenance, _provenance_from_fetch_meta)
-from stitch_web_researcher.ssrf import validate_public_url
+from gossamer.models import (_browser_provenance, _provenance_from_fetch_meta)
+from gossamer.ssrf import validate_public_url
 
 logger = logging.getLogger(__name__)
 # ── Rust `tracing` -> Python `logging` bridge (opt-in) ─────────
@@ -35,7 +34,9 @@ def _maybe_init_rust_logging() -> None:
     global _rust_log_initialized
     if _rust_log_initialized:
         return
-    level = os.environ.get("STITCH_RUST_LOG", "").strip()
+    from gossamer.env import getenv
+
+    level = (getenv("GOSSAMER_RUST_LOG", "") or "").strip()
     if not level:
         _rust_log_initialized = True
         return
@@ -140,18 +141,18 @@ import json
 import time
 from typing import Optional
 
-from stitch_web_researcher._core import batch_research, fetch_html_conditional
-from stitch_web_researcher.token_budget import count_tokens
-from stitch_web_researcher.structured_parser import build_follow_up_candidates
-from stitch_web_researcher.sections import select_relevant_sections
-from stitch_web_researcher.guard import evaluate, wrap_untrusted
-from stitch_web_researcher.config import (
+from gossamer._core import batch_research, fetch_html_conditional
+from gossamer.token_budget import count_tokens
+from gossamer.structured_parser import build_follow_up_candidates
+from gossamer.sections import select_relevant_sections
+from gossamer.guard import evaluate, wrap_untrusted
+from gossamer.config import (
     _coerce_fetch_mode,
     _resolve_fetch_strategy,
     FetchMode,
-    normalize_url,
+    ensure_str_list,
 )
-from stitch_web_researcher.models import (
+from gossamer.models import (
     _absolutize_markdown_links,
     _domain_of,
     _normalize_batch_results,
@@ -936,6 +937,11 @@ class FetchService:
             result.next_offset = next_offset
             result.has_more = has_more
             result.chars_total = len(markdown)
+            if offset >= len(markdown) and markdown:
+                result.warning = (
+                    f"offset {offset} is past the end of the content "
+                    f"({len(markdown)} chars); nothing new was returned"
+                )
         if result.guard and result.guard.get("withheld"):
             # Withheld content is neither cached nor marked visited: the
             # request did not complete, so a retry can re-evaluate it.
@@ -1099,10 +1105,23 @@ class FetchService:
         # page can never occupy two cache/visited entries), then partition
         # into cached vs. uncached. Visited URLs are marked only after
         # success (C3), so failed batch entries remain retryable.
-        pending: list[str] = []
+        pending: list[tuple] = []  # (canonical key, fetch URL) pairs
         cached_entries: dict[str, tuple] = {}
         rejected: dict[str, dict] = {}
+        echo: dict[str, str] = {}  # canonical key -> first submitted spelling
         seen = set()
+        if urls is None:
+            # A missing argument is a bad *call*, not an empty batch.
+            return json.dumps(
+                {"error": "Batch inspection failed: urls is required"}, indent=2
+            )
+        try:
+            urls = ensure_str_list(urls, "urls")
+        except TypeError as e:
+            # A non-list (dict, int, …) is a bad *call*, not a failed
+            # batch: one JSON error instead of an escaped exception (A.4).
+            # A bare string is wrapped to a one-element list (A.3).
+            return json.dumps({"error": f"Batch inspection failed: {e}"}, indent=2)
         for raw in urls:
             # A URL the policy refuses (SSRF, bad scheme, local path) is one
             # bad *entry*, not a failed batch: record it and keep going, so a
@@ -1112,14 +1131,18 @@ class FetchService:
             if url_error is not None:
                 rejected[raw] = url_error
                 continue
-            if url in seen:
+            # Canonical identity (B.1): www/case/slash/tracking variants of
+            # one resource collapse here, so they are fetched at most once.
+            ckey = self._tb._identity_key(url)
+            if ckey in seen:
                 continue
-            seen.add(url)
+            seen.add(ckey)
+            echo.setdefault(ckey, url)
             cached = self._page_cache_get(url)
             if cached is not None:
-                cached_entries[url] = cached
+                cached_entries[ckey] = cached
                 continue
-            if url in self._tb.visited_urls:
+            if ckey in self._tb.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
             # S4: robots.txt says no -- skip without claiming so the URL
@@ -1133,12 +1156,12 @@ class FetchService:
                 # double-fetch.
                 logger.warning("URL already in flight: %s", url)
                 continue
-            pending.append(url)
+            pending.append((ckey, url))
 
         try:
             fetched: dict[str, dict] = {}
             if self._tb.fetch_mode == "browser":
-                for url in pending:
+                for ckey, url in pending:
                     try:
                         # Sequential stealth-browser fetches honor the same
                         # per-domain politeness gap as single fetches.
@@ -1147,18 +1170,18 @@ class FetchService:
                         self._tb._mark_visited(url)  # success only (C3)
                         self._page_cache_put(url, *entry)  # C6
                         self._tb._release_in_flight(url)  # S5
-                        fetched[url] = self._batch_result(
-                            url, *entry, cache_hit=False
+                        fetched[ckey] = self._batch_result(
+                            echo[ckey], *entry, cache_hit=False
                         )
                     except Exception as e:
                         self._tb._release_in_flight(url)  # S5: stays retryable
-                        fetched[url] = {"url": url, "error": str(e)}
+                        fetched[ckey] = {"url": echo[ckey], "error": str(e)}
             else:
                 results = []
                 if pending:
                     try:
                         results = batch_research(
-                            pending,
+                            [u for _, u in pending],
                             max_links=self._tb.link_cap,
                             max_concurrency=self._tb.max_concurrency,
                             # Same-domain staggering inside the batch engine (0 disables).
@@ -1169,10 +1192,18 @@ class FetchService:
                         # The engine call failed wholesale (e.g. every URL
                         # rejected at validation); release every claim so
                         # the URLs remain retryable (S5).
-                        for claimed in pending:
+                        for _, claimed in pending:
                             self._tb._release_in_flight(claimed)
                         raise
+                # The engine echoes our fetch URLs; map them back to the
+                # canonical keys (an engine-normalized spelling still lands
+                # on the same entry via the identity fallback).
+                key_by_url = {u: k for k, u in pending}
                 for entry in _normalize_batch_results(results):
+                    ckey = key_by_url.get(
+                        entry.url, self._tb._identity_key(entry.url)
+                    )
+                    out_url = echo.get(ckey, entry.url)
                     if entry.ok:
                         # M12: the Rust batch engine returns raw markdown
                         # with relative hrefs; make the body self-contained.
@@ -1186,6 +1217,17 @@ class FetchService:
                         # a single read of the same URL carry identical
                         # metadata instead of the batch shipping {}.
                         meta = self._tb._extract_html_metadata(entry.html, entry.url)
+                        # B.6: the engine now returns HTTP provenance per URL;
+                        # attach it so batch entries match single-page reads.
+                        if entry.prov is not None:
+                            try:
+                                meta["provenance"] = _provenance_from_fetch_meta(
+                                    entry.prov, entry.url
+                                )
+                            except (TypeError, ValueError):
+                                logger.debug(
+                                    "batch provenance malformed for %s", entry.url
+                                )
                         # M17: batch "auto" mirrors inspect_html_page / crawl --
                         # the static Rust engine has no browser fallback, so a
                         # page it couldn't render (empty, binary-garbage, or a
@@ -1218,14 +1260,16 @@ class FetchService:
                         # returns the method that actually served it.
                         self._page_cache_put(entry.url, md, links, meta, method)
                         self._tb._release_in_flight(entry.url)  # S5
-                        fetched[entry.url] = self._batch_result(
-                            entry.url, md, links, meta, method, cache_hit=False
+                        fetched[ckey] = self._batch_result(
+                            out_url, md, links, meta, method, cache_hit=False
                         )
                     else:
                         self._tb._release_in_flight(entry.url)  # S5: stays retryable
-                        fetched[entry.url] = {"url": entry.url, "error": entry.error}
+                        fetched[ckey] = {"url": out_url, "error": entry.error}
 
             # Merge cached + fetched entries back in input order (C6).
+            # Emission is keyed canonically, so spelling variants of one
+            # resource produce a single entry (the first spelling echoed).
             output = []
             emitted = set()
             for raw in urls:
@@ -1234,19 +1278,20 @@ class FetchService:
                         emitted.add(raw)
                         output.append(rejected[raw])
                     continue
-                url = normalize_url(raw)
-                if url in emitted:
+                ckey = self._tb._identity_key(raw)
+                if ckey in emitted:
                     continue
-                emitted.add(url)
-                if url in cached_entries:
-                    md, links, meta, method = cached_entries[url]
+                emitted.add(ckey)
+                url = echo.get(ckey, raw)
+                if ckey in cached_entries:
+                    md, links, meta, method = cached_entries[ckey]
                     output.append(
                         self._batch_result(
                             url, md, links, meta, method, cache_hit=True
                         )
                     )
-                elif url in fetched:
-                    output.append(fetched[url])
+                elif ckey in fetched:
+                    output.append(fetched[ckey])
             return json.dumps(output, ensure_ascii=False)
         except Exception as e:
             logger.error("Batch inspection failed: %s", e)
@@ -1277,4 +1322,15 @@ class FetchService:
         )
         if cache_hit:
             result.cache_hit = True
+        # B.6: batch entries carry the same read-time resume fields as
+        # single-page reads (Tier 1.2): the delivered slice starts at 0 of
+        # the full page, so a truncated entry reports where to resume.
+        result.offset = 0
+        result.chars_total = len(md)
+        if truncated_md != md:
+            result.next_offset = len(truncated_md)
+            result.has_more = True
+        else:
+            result.next_offset = len(md)
+            result.has_more = False
         return json.loads(result.model_dump_json())

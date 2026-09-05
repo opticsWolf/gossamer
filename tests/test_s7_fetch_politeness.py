@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 
 def _toolbox(**overrides) -> WebResearcherToolbox:
@@ -37,7 +37,7 @@ def _sleeps(tb):
     Returns the patch handle; the caller inspects ``.call_args_list``.
     """
     return patch(
-        "stitch_web_researcher.agent_tools.time.sleep",
+        "gossamer.agent_tools.time.sleep",
         side_effect=lambda s: None,
     )
 
@@ -70,7 +70,7 @@ class TestFetchJitterConfig:
     def test_nonzero_jitter_expands_the_sleep(self):
         tb = _toolbox(fetch_delay=0.3, fetch_jitter=0.5)
         with _sleeps(tb) as sleep, patch(
-            "stitch_web_researcher.agent_tools.random.uniform",
+            "gossamer.agent_tools.random.uniform",
             return_value=0.5,  # max jitter
         ):
             tb._rate_limit_domain("http://a.com/x")  # first visit: unseen

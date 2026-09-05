@@ -22,8 +22,8 @@ import types
 
 import pytest
 
-from stitch_web_researcher import guard
-from stitch_web_researcher.agent_tools import (
+from gossamer import guard
+from gossamer.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
 )

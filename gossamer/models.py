@@ -21,7 +21,7 @@ from urllib.parse import urlparse, urljoin
 
 from pydantic import BaseModel, Field
 
-from stitch_web_researcher.structured_parser import FollowUpCandidate
+from gossamer.structured_parser import FollowUpCandidate
 # ── Fetch observability (Tier 2.6) ─────────────────────────────
 class FetchStats:
     """Lightweight, thread-safe fetch observability (Tier 2.6).
@@ -30,6 +30,10 @@ class FetchStats:
     downloaded, per-domain request counts, and error counts by exception
     class. Exposed via ``get_stats()["fetches"]``.
     """
+
+    # Bound on distinct-domain / error-class keys: a broad cross-domain
+    # crawl must not grow these maps without limit in a long-lived server.
+    MAX_KEYS = 1024
 
     def __init__(self, latency_window: int = 1024) -> None:
         self._lock = threading.Lock()
@@ -40,21 +44,27 @@ class FetchStats:
         self._by_domain: dict = {}
         self._by_error: dict = {}
 
+    def _bump(self, bucket: dict, key: str) -> None:
+        # FIFO eviction by first-insertion order once over budget; the pop
+        # only triggers while a *new* key arrives past the cap (amortized).
+        if key not in bucket and len(bucket) >= self.MAX_KEYS:
+            del bucket[next(iter(bucket))]
+        bucket[key] = bucket.get(key, 0) + 1
+
     def record_success(self, domain: str, latency_s: float, nbytes: int) -> None:
         with self._lock:
             self._latencies.append(latency_s)
             self._bytes += max(0, int(nbytes))
             self._fetches += 1
-            self._by_domain[domain] = self._by_domain.get(domain, 0) + 1
+            self._bump(self._by_domain, domain)
 
     def record_error(self, domain: str, latency_s: float, exc: BaseException) -> None:
         with self._lock:
             self._latencies.append(latency_s)
             self._fetches += 1
             self._errors += 1
-            self._by_domain[domain] = self._by_domain.get(domain, 0) + 1
-            cls = type(exc).__name__
-            self._by_error[cls] = self._by_error.get(cls, 0) + 1
+            self._bump(self._by_domain, domain)
+            self._bump(self._by_error, type(exc).__name__)
 
     @staticmethod
     def _percentile(sorted_vals, p: float) -> float:
@@ -98,7 +108,7 @@ def _domain_of(url: str) -> str:
 
 
 # Tier 2.6: Rust `tracing` -> Python `logging` bridge (opt-in via
-# STITCH_RUST_LOG). Initialised once per process; no-op when unset.
+# GOSSAMER_RUST_LOG). Initialised once per process; no-op when unset.
 # ── Inspection / extraction output models ──────────────────────
 
 class ExtractionResult(BaseModel):
@@ -182,6 +192,23 @@ class InspectionResult(BaseModel):
     next_offset: Optional[int] = None
     has_more: bool = False
     chars_total: int = 0
+    # Set when the request was unsatisfiable but not an error — currently
+    # an ``offset`` past the end of the content (review C.5). Lets the
+    # caller distinguish "empty page" from "read past the end". A null
+    # warning is dropped from the serialized payload so the
+    # ``"warning" in payload`` contract keeps meaning "a warning was
+    # issued" (consumers branch on key presence).
+    warning: Optional[str] = None
+
+    def model_dump_json(self, *args, **kwargs) -> str:
+        import json as _json
+
+        payload = _json.loads(super().model_dump_json(*args, **kwargs))
+        if payload.get("warning") is None:
+            payload.pop("warning", None)
+        return _json.dumps(
+            payload, indent=kwargs.get("indent"), ensure_ascii=False
+        )
     # Tier 1.3: provenance — which fetch this read was served from.
     # fetched_at is the original fetch time (the page cache preserves it
     # across chunked reads and cache hits); final_url is the URL after
@@ -280,6 +307,11 @@ class BatchEntry:
     # Raw HTML of a successful fetch, so batch entries can run the same
     # meta-oxide extraction single-page reads do (bugfix 5).
     html: Optional[str] = None
+    # HTTP provenance tuple (status, final_url, content_type) of a
+    # successful fetch, so batch entries carry Tier 1.3 provenance like
+    # single-page reads (review B.6). None for failures and for callers
+    # still returning the legacy 4-tuples.
+    prov: Optional[tuple] = None
 
     @property
     def ok(self) -> bool:
@@ -289,15 +321,23 @@ class BatchEntry:
 def _normalize_batch_results(results) -> List[BatchEntry]:
     """Convert raw engine tuples into tagged ``BatchEntry`` records (M10).
 
-    Success: ``(url, html, markdown, links)`` with all three slots non-None.
-    Failure: ``(url, None, error_message, None)`` (the message may be empty).
+    Success: ``(url, html, markdown, links[, provenance])`` with the content
+    slots non-None (the trailing provenance tuple is new in the B.6 fix;
+    legacy 4-tuples are still accepted with ``prov=None``). Failure:
+    ``(url, None, error_message, None[, None])`` (the message may be empty).
     """
     entries: List[BatchEntry] = []
-    for url, html_opt, md_opt, links_opt in results:
+    for item in results:
+        url, html_opt, md_opt, links_opt = item[:4]
+        prov = item[4] if len(item) > 4 else None
         if md_opt is not None and links_opt is not None:
             entries.append(
                 BatchEntry(
-                    url=url, markdown=md_opt, links=links_opt, html=html_opt
+                    url=url,
+                    markdown=md_opt,
+                    links=links_opt,
+                    html=html_opt,
+                    prov=prov,
                 )
             )
         else:

@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from stitch_web_researcher.citations import (
+from gossamer.citations import (
     BibliographicRecord,
     format_citations,
     dedupe_records,

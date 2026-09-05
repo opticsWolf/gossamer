@@ -30,6 +30,7 @@ venv/
 env/
 
 # Runtime caches
+.gossamer_cache/
 .web_research_cache/
 stored_documents/
 

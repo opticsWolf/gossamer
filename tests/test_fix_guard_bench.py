@@ -3,7 +3,7 @@
 
 Making the guard optional and configurable was only half the Prio-2
 requirement; the other half was being able to *check its impact*. Every
-control existed — ``GuardConfig``, the five scopes, the ``STITCH_GUARD_*``
+control existed — ``GuardConfig``, the five scopes, the ``GOSSAMER_GUARD_*``
 passthrough, ``get_stats()["guard"]`` — but ``benchmarks.py`` had no guard
 scenario and there was no labelled corpus, so the overhead had never been
 measured and nothing decided whether ``redact`` mode is safe to default to.
@@ -18,7 +18,7 @@ need the extra installed.
 import benchmarks
 import pytest
 
-from stitch_web_researcher import guard as guard_mod
+from gossamer import guard as guard_mod
 
 
 class TestCorpus:

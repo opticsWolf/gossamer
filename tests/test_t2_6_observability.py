@@ -9,7 +9,7 @@ Two complementary surfaces:
   dispatch choke point, so every ``inspect_html_page`` / batch fetch is
   accounted for without touching the Rust ABI.
 
-* ``STITCH_RUST_LOG``: an opt-in bridge that forwards Rust ``tracing``
+* ``GOSSAMER_RUST_LOG``: an opt-in bridge that forwards Rust ``tracing``
   events to Python ``logging``. Default-off; when set, the Rust HTTP path
   (per-hop status, 304 revalidations, errors, byte counts) appears in the
   Python log stream. ``init_rust_logging`` is idempotent and emits a single
@@ -26,8 +26,8 @@ import logging
 
 import pytest
 
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import (
+from gossamer import agent_tools
+from gossamer.agent_tools import (
     FetchStats,
     ToolboxConfig,
     WebResearcherToolbox,
@@ -208,7 +208,7 @@ class TestConfig:
 # ────────────────────────────────────────────────────────────────
 class TestRustLoggingBridge:
     def test_init_emits_marker_record(self):
-        from stitch_web_researcher._core import init_rust_logging
+        from gossamer._core import init_rust_logging
 
         records = []
         handler = logging.Handler()
@@ -226,15 +226,15 @@ class TestRustLoggingBridge:
         assert any("rust logging bridge initialized" in m for m in msgs)
 
     def test_init_is_idempotent(self):
-        from stitch_web_researcher._core import init_rust_logging
+        from gossamer._core import init_rust_logging
 
         assert init_rust_logging("debug") is True
         assert init_rust_logging("warn") is True  # second call only re-levels
 
     def test_bridge_off_by_default(self, monkeypatch):
-        # When STITCH_RUST_LOG is unset the toolbox must not initialise the
+        # When GOSSAMER_RUST_LOG is unset the toolbox must not initialise the
         # bridge (keeps the default logging path clean).
-        monkeypatch.delenv("STITCH_RUST_LOG", raising=False)
+        monkeypatch.delenv("GOSSAMER_RUST_LOG", raising=False)
         calls = []
         monkeypatch.setattr(
             agent_tools,
@@ -244,3 +244,32 @@ class TestRustLoggingBridge:
         agent_tools._rust_log_initialized = False
         agent_tools._maybe_init_rust_logging()
         assert calls == []
+
+
+class TestBoundedGrowth:
+    def test_fetch_stats_maps_stay_bounded(self):
+        from gossamer.models import FetchStats
+
+        stats = FetchStats()
+        for i in range(FetchStats.MAX_KEYS + 100):
+            stats.record_success(f"d{i}.example.com", 0.01, 10)
+        assert len(stats._by_domain) <= FetchStats.MAX_KEYS
+        # Totals are unaffected by eviction.
+        assert stats.to_dict()["fetches"] == FetchStats.MAX_KEYS + 100
+
+    def test_guard_verdict_cache_stays_bounded(self):
+        from gossamer.guard import GuardConfig, JailGuardGuard
+
+        class _StubDetector:
+            def detect(self, chunk):
+                return {"score": 0.1, "risk": "Low", "is_injection": False}
+
+        guard = JailGuardGuard(GuardConfig(enabled=True))
+        guard._jg = _StubDetector()  # skip model download; exercise insert path
+        total = JailGuardGuard.MAX_VERDICTS + 50
+        for i in range(total):
+            guard._score_chunk(f"distinct chunk payload {i}")
+        assert len(guard._verdicts) <= JailGuardGuard.MAX_VERDICTS
+        # Fresh chunks still score (no crash, no unbounded growth).
+        score, _risk, _inj, hit = guard._score_chunk("distinct chunk payload 0")
+        assert score == 0.1

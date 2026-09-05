@@ -11,7 +11,7 @@ cached were re-fetched by a batch, URLs skipped ``normalize_url()``
 import json
 from unittest.mock import patch
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer.agent_tools import WebResearcherToolbox
 
 FAKE_MD = "# Batch content"
 # Bugfix 5: the engine now returns the raw HTML so batch entries can run
@@ -41,7 +41,7 @@ class TestBatchSharesPageCache:
         single-page inspection — no second fetch."""
         tb = _toolbox(tmp_path)
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[("https://example.com/a", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ):
             first = json.loads(tb.batch_inspect_pages(["https://example.com/a"]))
@@ -65,7 +65,7 @@ class TestBatchSharesPageCache:
         assert single["cache_hit"] is False
 
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             side_effect=AssertionError("re-fetch of cached page"),
         ) as mock_batch:
             out = json.loads(tb.batch_inspect_pages(["https://example.com/b"]))
@@ -82,7 +82,7 @@ class TestBatchSharesPageCache:
             ("https://example.com/2", FAKE_HTML, FAKE_MD, FAKE_LINKS),
         ]
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=fake,
         ) as mock_batch:
             tb.batch_inspect_pages(urls)
@@ -96,7 +96,7 @@ class TestBatchSharesPageCache:
         visited/cache entry for the same page."""
         tb = _toolbox(tmp_path)
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[("https://example.com/c", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ) as mock_batch:
             tb.batch_inspect_pages(["example.com/c"])
@@ -105,7 +105,7 @@ class TestBatchSharesPageCache:
         assert "https://example.com/c" in tb.visited_urls
 
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             side_effect=AssertionError("re-fetch despite normalization"),
         ):
             out = json.loads(tb.batch_inspect_pages(["https://example.com/c"]))
@@ -117,7 +117,7 @@ class TestBatchShape:
         """Every batch entry carries the single-page result shape."""
         tb = _toolbox(tmp_path)
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[("https://example.com/s", FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ):
             out = json.loads(tb.batch_inspect_pages(["https://example.com/s"]))
@@ -137,7 +137,7 @@ class TestBatchShape:
         ]
         fake = [(u, FAKE_HTML, FAKE_MD, FAKE_LINKS) for u in urls]
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=fake,
         ):
             out = json.loads(tb.batch_inspect_pages(urls))
@@ -148,7 +148,7 @@ class TestBatchShape:
         ok, bad = "https://example.com/ok", "https://example.com/bad"
         fake = [(ok, FAKE_HTML, FAKE_MD, FAKE_LINKS), (bad, None, "boom", None)]
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=fake,
         ):
             out = json.loads(tb.batch_inspect_pages([ok, bad]))
@@ -158,7 +158,7 @@ class TestBatchShape:
 
         # Retry: only the failed URL is fetched again; the ok one is cached.
         with patch(
-            "stitch_web_researcher.fetch.batch_research",
+            "gossamer.fetch.batch_research",
             return_value=[(bad, FAKE_HTML, FAKE_MD, FAKE_LINKS)],
         ) as mock_batch:
             retry = json.loads(tb.batch_inspect_pages([ok, bad]))

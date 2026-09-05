@@ -16,8 +16,8 @@ because the failure mode of an over-eager fix is refusing real hosts.
 
 import pytest
 
-from stitch_web_researcher.agent_tools import normalize_url
-from stitch_web_researcher.structured_parser import DOCUMENT_EXTENSIONS
+from gossamer.agent_tools import normalize_url
+from gossamer.structured_parser import DOCUMENT_EXTENSIONS
 
 
 class TestBareFilenamesAreRejected:

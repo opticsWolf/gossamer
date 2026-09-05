@@ -9,7 +9,7 @@ and excluded from the default run; opt in with:
 
 import pytest
 
-from stitch_web_researcher.search_providers import BrowserOxideSearchProvider
+from gossamer.search_providers import BrowserOxideSearchProvider
 
 pytestmark = pytest.mark.slow
 

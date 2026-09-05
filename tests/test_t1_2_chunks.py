@@ -12,7 +12,7 @@ holds when no token budget is set.
 
 import json
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 
 def _toolbox(tmp_path, **config_kwargs):
@@ -227,7 +227,7 @@ class TestInspectHtmlPageChunked:
 
 class TestToolRegistryAdvertisesPaging:
     def test_spec_includes_offset_and_max_chunks(self):
-        from stitch_web_researcher.agent_tools import TOOL_REGISTRY
+        from gossamer.agent_tools import TOOL_REGISTRY
 
         spec = next(s for s in TOOL_REGISTRY if s.name == "inspect_html_page")
         names = [p.name for p in spec.params]
@@ -243,3 +243,21 @@ class TestToolRegistryAdvertisesPaging:
         assert "offset" not in schema["required"]
         assert "max_chunks" not in schema["required"]
         assert "url" in schema["required"]
+
+
+class TestOffsetPastEndWarning:
+    def test_offset_past_end_warns(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        url = "https://example.com/long-page"
+        tb._fetch._page_cache_put(url, PAGE, [], {"title": "t"}, "static")
+        data = json.loads(tb.inspect_html_page(url, offset=10**6))
+        assert data["markdown"] == ""
+        assert data["has_more"] is False
+        assert data["warning"] and "past the end" in data["warning"]
+
+    def test_normal_read_has_no_warning(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        url = "https://example.com/long-page"
+        tb._fetch._page_cache_put(url, PAGE, [], {"title": "t"}, "static")
+        data = json.loads(tb.inspect_html_page(url))
+        assert data.get("warning") is None

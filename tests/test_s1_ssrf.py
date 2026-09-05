@@ -16,9 +16,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher import _core
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
+from gossamer import _core
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.ssrf import SsrfBlockedError, validate_public_url
 
 
 class TestPythonGuard:
@@ -81,7 +81,7 @@ class TestPythonGuard:
         validate_public_url("http://93.184.215.9/x")
 
     def test_bypass_env_var(self, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "true")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "true")
         validate_public_url("http://127.0.0.1/")  # operator opt-in
 
 
@@ -102,7 +102,7 @@ class TestRustGuard:
             _core.fetch_and_extract("http://192.168.1.1/x")
 
     def test_bypass_env_var(self, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         with pytest.raises(RuntimeError) as exc_info:
             _core.fetch_and_extract("http://127.0.0.1:1/x")
         # Bypass disables the guard; the fetch still fails (port 1), but
@@ -114,7 +114,7 @@ class TestRustGuard:
 
         SSRF is bypassed here; the redirect logic itself is under test.
         """
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -152,7 +152,7 @@ class TestToolboxIntegration:
 
     @pytest.fixture()
     def toolbox(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", raising=False)
+        monkeypatch.delenv("GOSSAMER_ALLOW_PRIVATE", raising=False)
         # respect_robots=False: batch tests use a fake example.com URL and a
         # private IP; the SSRF guard is what's under test (S4 opt-out).
         return WebResearcherToolbox(
@@ -204,7 +204,7 @@ class TestToolboxIntegration:
 
     def test_local_server_works_with_bypass(self, tmp_path, monkeypatch):
         # The operator bypass restores local dev/test servers.
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):

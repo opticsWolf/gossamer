@@ -12,9 +12,9 @@ import json
 import logging
 from typing import Optional
 
-from stitch_web_researcher.models import _JSON_FIT_FLOOR
-from stitch_web_researcher.structured_parser import ParsedDocumentPayload
-from stitch_web_researcher.token_budget import count_tokens, truncate_to_tokens
+from gossamer.models import _JSON_FIT_FLOOR
+from gossamer.structured_parser import ParsedDocumentPayload
+from gossamer.token_budget import count_tokens, truncate_to_tokens
 
 logger = logging.getLogger(__name__)
 

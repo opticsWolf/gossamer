@@ -1,4 +1,4 @@
-# stitch_web_researcher/sections.py
+# gossamer/sections.py
 """Query-relevant section selection (Tier 1.1, CODE_REVIEW_2026-08-27).
 
 A page that does not fit the output budget used to be truncated

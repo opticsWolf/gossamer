@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     TOOL_REGISTRY,
     ToolboxConfig,
     WebResearcherToolbox,

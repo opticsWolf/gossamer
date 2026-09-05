@@ -27,12 +27,12 @@ import tempfile
 import threading
 
 import pytest
-import stitch_web_researcher.agent_tools as at
-import stitch_web_researcher.fetch as fetch
+import gossamer.agent_tools as at
+import gossamer.fetch as fetch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from stitch_web_researcher.agent_tools import WebResearcherToolbox, ToolboxConfig
+from gossamer.agent_tools import WebResearcherToolbox, ToolboxConfig
 
-_ALLOW = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+_ALLOW = "GOSSAMER_ALLOW_PRIVATE"
 
 
 # ───────────────────────────── fixtures ──────────────────────────────

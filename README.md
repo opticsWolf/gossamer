@@ -1,11 +1,11 @@
-# stitch_web_researcher — High-Performance LLM Web Researcher
+# gossamer — High-Performance LLM Web Researcher
 
 > A hybrid LLM web researcher combining a **Rust async core** (PyO3) for fetching, the **Oxide SDK family** for document extraction, and a **Python orchestration layer** for caching, rate limiting, structured parsing, token-aware budgeting, LLM tool routing, and multi-provider search.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-1194%20passing%2C%2011%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1282%20passing%2C%2028%20skipped-brightgreen)](tests/)
 
 ---
 
@@ -34,6 +34,17 @@
      │  │ Exa   │  │  │ tokio  │  │ meta_ox   │
      │  └───────┘  │  └────────┘  └───────────┘
      └─────────────┘
+                │
+     ┌──────────┴──┐
+     │  Domain     │
+     │  Adapters   │
+     │  ┌───────┐  │
+     │  │Scholar│  │  OpenAlex, Crossref, arXiv, Zenodo
+     │  │Legal  │  │  CourtListener, eCFR, FedReg, OLDP, HUDOC, GovInfo
+     │  │Finance│  │  Yahoo, Frankfurter, Eurostat, Bundesbank, BIS, CoinGecko
+     │  │Geo    │  │  Open-Meteo, Overpass
+     │  └───────┘  │
+     └─────────────┘
 ```
 
 ### Layer Breakdown
@@ -43,6 +54,8 @@
 | **Rust Core** | `_core` (PyO3) | Async HTTP fetching (`reqwest`), HTML parsing (`scraper`), markdown conversion (`html2md`), shared Tokio runtime |
 | **Python Orchestration** | `agent_tools.py` | LLM toolbox, caching, rate limiting, retry logic, smart/fallback routing |
 | **Search** | `search_providers.py` | Multi-provider search abstraction (DDG, Google, Bing, Exa) with fallback chaining |
+| **Domain data** | `research_providers.py` | 30+ scholarly/legal/financial/geo adapters (OpenAlex, CourtListener, FRED, …) on one politeness/quota contract |
+| **Category routing** | `research_categories.py` | Keyword classifier mapping free-form queries to the right domain category |
 | **Document Parsing** | `structured_parser.py` | Pydantic v2 schemas, PDF/DOCX/XLSX/PPTX extraction via `pdf_oxide` + `office_oxide` |
 | **Token Budgeting** | `token_budget.py` | Token-aware truncation via `tiktoken` for GPT-4, Claude, and other models |
 | **HTML Metadata** | `meta_extractor.py` | Open Graph, Twitter Cards, JSON-LD, Microdata, Dublin Core via `meta-oxide` |
@@ -52,8 +65,11 @@
 
 ## Features
 
-- **Zero API Keys**: DuckDuckGo search requires no registration or configuration
+- **Zero API Keys**: DuckDuckGo search requires no registration or configuration — and so do 20+ domain adapters (OpenAlex, CourtListener, FRED, Eurostat, Bundesbank, HUDOC, …)
 - **Multi-Provider Search**: Plug in Google, Bing, Exa alongside DuckDuckGo with automatic fallback chaining
+- **Domain Providers**: `research_by_category` classifies any query (incl. German/EU terms like *Leitzins*, *BVerfG*, *HICP*) into scholarly / legal / financial / geo and queries the right source — keyless-first, no fallback guessing
+- **Citation Export**: Reconstruct BibTeX / CSL-JSON / APA / MLA citations from search results with no extra network calls
+- **Source Liveness**: `check_sources` probes URL reachability (SSRF-safe, polite) before you spend budget fetching
 - **Async Rust Core**: Tokio-based concurrent fetching with browser impersonation, brotli decompression, and exponential backoff retries
 - **Smart/Fallback Routing**: `use_smart` is a tri-state render strategy — `"auto"` (default, follows `fetch_mode`, static-first with stealth-browser fallback on failure/non-text), `"browser"` (headless `browser_oxide` first, static on failure), or `"static"` (static-only)
 - **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx)
@@ -89,7 +105,7 @@
 ### Build & Install
 
 ```bash
-cd stitch-web-researcher
+cd gossamer
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -101,9 +117,9 @@ maturin develop --release
 ### Basic Usage
 
 ```python
-from stitch_web_researcher import WebResearcherToolbox
+from gossamer import ToolboxConfig, WebResearcherToolbox
 
-tools = WebResearcherToolbox(
+tools = WebResearcherToolbox(ToolboxConfig(
     cache_dir="./cache",
     cache_ttl_seconds=3600,
     cache_max_bytes=0,       # disk cache byte cap (0 = unlimited; LRU eviction)
@@ -112,7 +128,7 @@ tools = WebResearcherToolbox(
     domain_delay=0.5,
     max_tokens=4000,          # token-aware truncation
     model_name="gpt-4o",     # tiktoken encoding
-)
+))
 
 # Search the web (pure provider search)
 results = tools.web_search("latest AI research papers", max_results=5, search_only=True)
@@ -178,9 +194,10 @@ asyncio.run(research())
 tools = WebResearcherToolbox()
 llm_tools = tools.get_llm_definitions()
 
-# Returns OpenAI-compatible function definitions for all seven tools:
+# Returns OpenAI-compatible function definitions for all ten tools:
 # web_search, inspect_html_page, batch_inspect_pages, extract_document,
-# discover_resources, focused_discovery, manage_cache.
+# discover_resources, focused_discovery, manage_cache, research_by_category,
+# export_citations, check_sources.
 
 for tool in llm_tools:
     print(tool["function"]["name"], "—", tool["function"]["description"])
@@ -193,7 +210,7 @@ result = tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 ### Multi-Provider Search
 
 ```python
-from stitch_web_researcher import GoogleProvider, BingProvider, DuckDuckGoProvider
+from gossamer import GoogleProvider, BingProvider, DuckDuckGoProvider
 
 # Configure providers (auto-detects API keys from environment)
 providers = [
@@ -208,10 +225,35 @@ tools = WebResearcherToolbox(search_providers=providers)
 results = tools.web_search("quantum computing", provider="google", search_only=True)
 ```
 
+### Domain Providers (`research_by_category`)
+
+Free-form queries are classified into a domain category and served by that
+category's providers — no API keys needed unless marked 🔑. Call with no query
+to get the live taxonomy as JSON.
+
+```python
+report = tools.research_by_category("EZB Leitzins", max_results=5)
+report = tools.research_by_category("EGMR Urteil", category="legal")
+report = tools.research_by_category("AAPL", category="financial", provider="yahoo")
+```
+
+| Category | Providers (first = default) |
+|----------|------------------------------|
+| scholarly | OpenAlex, Crossref, arXiv, Zenodo |
+| legal | CourtListener, eCFR, Federal Register, Open Legal Data, HUDOC (ECtHR), GovInfo |
+| financial | Yahoo, Frankfurter (FX), Eurostat (EU macro), Bundesbank, BIS, CoinGecko, AlphaVantage 🔑 |
+| geo | Open-Meteo, Overpass |
+| general | DuckDuckGo (fallback; Google/Bing/Exa 🔑 opt-in via `search_providers=`) |
+
+Euro-centric queries route here automatically (`EZB`, `Leitzins`, `Eurostat`,
+`HICP`, `BIP`, `EGMR`, `EuGH`, `CELEX`, `BVerfG`, `BGH`, `DSGVO`, …). Full
+endpoint notes and the providers that were retired for fictional endpoints
+live in `docs/PROVIDER_ALTERNATIVES_2026-09-05.md`.
+
 ### Token Budgeting
 
 ```python
-from stitch_web_researcher import count_tokens, truncate_to_tokens, fit_context_window
+from gossamer import count_tokens, truncate_to_tokens, fit_context_window
 
 tokens = count_tokens("Hello world", model_name="gpt-4o")
 print(f"Tokens: {tokens}")
@@ -234,36 +276,39 @@ Expose the toolbox as [Model Context Protocol](https://modelcontextprotocol.io) 
 uv pip install "mcp>=2.0"
 
 # run over stdio
-python -m stitch_web_researcher.mcp_server
+python -m gossamer.mcp_server
+# …or via the installed entry point (plus a legacy alias)
+gossamer-mcp
 ```
 
 Exposed tools: `web_search`, `inspect_html_page`, `batch_inspect_pages`,
-`extract_document`, `discover_resources`, `focused_discovery`, `manage_cache`.
+`extract_document`, `discover_resources`, `focused_discovery`, `manage_cache`,
+`research_by_category`, `export_citations`, `check_sources`.
 
 Example client config (Claude Desktop / generic MCP JSON):
 
 ```json
 {
   "mcpServers": {
-    "stitch-web-researcher": {
+    "gossamer": {
       "command": "python",
-      "args": ["-m", "stitch_web_researcher.mcp_server"],
+      "args": ["-m", "gossamer.mcp_server"],
       "env": {
-        "STITCH_MAX_TOKENS": "4000",
-        "STITCH_MODEL_NAME": "gpt-4o"
+        "GOSSAMER_MAX_TOKENS": "4000",
+        "GOSSAMER_MODEL_NAME": "gpt-4o"
       }
     }
   }
 }
 ```
 
-All toolbox options are configurable via `STITCH_*` environment variables —
-see the module docstring in `stitch_web_researcher/mcp_server.py`.
+All toolbox options are configurable via `GOSSAMER_*` environment variables —
+see the module docstring in `gossamer/mcp_server.py`.
 
 ### HTML Metadata Extraction
 
 ```python
-from stitch_web_researcher import extract_all, merge_into_document_metadata
+from gossamer import extract_all, merge_into_document_metadata
 
 html = "<html><head><title>My Page</title>...</head>...</html>"
 
@@ -301,12 +346,12 @@ Latency percentiles are computed over a bounded sliding window
 constant regardless of session length.
 
 Rust-side HTTP logging is **off by default** and carries zero cost until
-enabled. Set `STITCH_RUST_LOG` to bridge Rust `log` events (per-hop HTTP
+enabled. Set `GOSSAMER_RUST_LOG` to bridge Rust `log` events (per-hop HTTP
 status, 304 revalidations, errors, fetched byte counts) into Python
 `logging`:
 
 ```
-STITCH_RUST_LOG=debug   # error | warn | info | debug
+GOSSAMER_RUST_LOG=debug   # error | warn | info | debug
 ```
 
 The bridge initialises once (idempotent) and emits a single
@@ -320,13 +365,13 @@ at first use (last non-empty value wins):
 
 | Knob | Type | Example |
 |------|------|---------|
-| `http_proxy` / `STITCH_HTTP_PROXY` | string | `http://proxy:8080` |
-| `user_agent` / `STITCH_USER_AGENT` | string | `ResearchBot/1.0` |
-| `custom_headers` / `STITCH_CUSTOM_HEADERS` | JSON object | `{"Authorization": "Bearer ..."}` |
-| `cookies` / `STITCH_COOKIES` | JSON object | `{"session": "abc123"}` |
+| `http_proxy` / `GOSSAMER_HTTP_PROXY` | string | `http://proxy:8080` |
+| `user_agent` / `GOSSAMER_USER_AGENT` | string | `ResearchBot/1.0` |
+| `custom_headers` / `GOSSAMER_CUSTOM_HEADERS` | JSON object | `{"Authorization": "Bearer ..."}` |
+| `cookies` / `GOSSAMER_COOKIES` | JSON object | `{"session": "abc123"}` |
 
 ```python
-from stitch_web_researcher import ToolboxConfig, WebResearcherToolbox
+from gossamer import ToolboxConfig, WebResearcherToolbox
 
 tb = WebResearcherToolbox(ToolboxConfig(
     http_proxy="http://proxy:8080",
@@ -356,12 +401,12 @@ optionally merge across providers:
   case, default ports, fragments, trailing slash) are collapsed in the
   first successful provider's result list.
 - **Cross-provider merge (opt-in):** set `search_merge=True` (or
-  `STITCH_SEARCH_MERGE=1`) to query *every* provider in priority order and
+  `GOSSAMER_SEARCH_MERGE=1`) to query *every* provider in priority order and
   merge + dedup their results up to `max_results`, instead of the default
   strict failover (first success wins).
 
 ```python
-from stitch_web_researcher import ToolboxConfig, WebResearcherToolbox
+from gossamer import ToolboxConfig, WebResearcherToolbox
 
 tb = WebResearcherToolbox(ToolboxConfig(search_merge=True))
 results = tb.search_web("quantum computing", max_results=10)
@@ -468,12 +513,13 @@ print(result["urls"][:5]) # sitemap page URLs
 
 ### Research Orchestration (Tier 3.13)
 
-`research(topic, depth=5, max_tokens=0)` chains the toolbox verbs into
-one orchestrated research pass — plan, fan out, dedupe — so an agent
-can run a multi-source research task with a single call:
+`research(topic, depth=5, max_tokens=0, provider=None, max_results=None)`
+chains the toolbox verbs into one orchestrated research pass — plan, fan out,
+dedupe — so an agent can run a multi-source research task with a single call:
 
-- **Plan** — the topic is searched through the configured providers
-  (up to `depth * 2` candidates, hard cap 20 results).
+- **Plan** — the topic is searched through the configured providers (or the
+  named `provider` when given) — up to `depth * 2` candidates (or `max_results`,
+  hard cap 20 results).
 - **Dedupe** — result URLs are normalized, deduped (trailing slashes,
   scheme), validated through the SSRF guard, and capped at *depth*
   pages (hard cap 10).
@@ -502,8 +548,9 @@ for s in report["sources"]:
 ### Focused Discovery (v0.4.6)
 
 `focused_discovery(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
-min_score=0.05, excerpts=False, search_prior=False, seed_urls=[])`
-answers "what does this site contain?" with one bounded run. It is BFS over the link graph, but the frontier is a priority
+min_score=0.05, excerpts=False, search_prior=False, seed_urls=[], use_smart="auto")`
+answers "what does this site contain?" with one bounded run. `use_smart`
+(`auto`/`browser`/`static`) sets the render strategy for crawled pages. It is BFS over the link graph, but the frontier is a priority
 queue, so hop 1 cannot exhaust the budget before relevant depth-2/3
 pages are seen:
 
@@ -635,24 +682,24 @@ untrusted scopes of each payload and attaches an additive `guard` block. It is
 **off by default** (no import, no latency) and only activates when enabled.
 
 ```bash
-pip install "stitch-web-researcher[guard]"   # pulls the jailguard model
+pip install "gossamer[guard]"   # pulls the jailguard model
 ```
 
 Enable via environment (MCP server):
 
 ```
-STITCH_GUARD_ENABLED=1
-STITCH_GUARD_MODE=annotate    # annotate (default) | redact | block
-STITCH_GUARD_SCOPES=page_markdown,document_text   # or: all / none
-STITCH_GUARD_THRESHOLD=0.7
-STITCH_GUARD_MAX_CHUNKS=40
+GOSSAMER_GUARD_ENABLED=1
+GOSSAMER_GUARD_MODE=annotate    # annotate (default) | redact | block
+GOSSAMER_GUARD_SCOPES=page_markdown,document_text   # or: all / none
+GOSSAMER_GUARD_THRESHOLD=0.7
+GOSSAMER_GUARD_MAX_CHUNKS=40
 ```
 
 …or programmatically:
 
 ```python
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.guard import GuardConfig
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.guard import GuardConfig
 
 tb = WebResearcherToolbox(ToolboxConfig(guard=GuardConfig(enabled=True, mode="annotate")))
 ```
@@ -673,27 +720,40 @@ open (content passes through; `guard.risk` is `None`). `get_stats()` exposes a
 ## Project Structure
 
 ```
-stitch-web-researcher/
+gossamer/
 ├── Cargo.toml                        # Rust manifest (PyO3, reqwest, scraper, html2md)
 ├── pyproject.toml                    # Build config (maturin) + dependency metadata
 ├── requirements.txt                  # Dev/test dependencies (runtime deps live in pyproject)
 ├── README.md                         # This file
-├── docs/                             # Planning & audit docs (CODE_REVIEW, *_PLAN.md, SPEC_AUDIT.md)
+├── docs/                             # Audits, provider research & plans (REVIEW, LIVE_PROVIDER_TEST, PROVIDER_ALTERNATIVES, *_PLAN.md, SPEC_AUDIT.md)
 ├── src/
 │   └── lib.rs                        # Rust async fetcher (shared Tokio runtime)
-├── stitch_web_researcher/
+├── gossamer/
 │   ├── __init__.py                   # Package exports
-│   ├── agent_tools.py                # WebResearcherToolbox, smart fetch, robots, rate limiting
+│   ├── agent_tools.py                # WebResearcherToolbox facade (delegates to collaborators)
+│   ├── config.py                     # ToolboxConfig, tool registry, URL canonicalization
+│   ├── models.py                     # Pydantic result models, provenance, fetch stats
+│   ├── fetch.py                      # Page-fetch collaborator (static/browser dispatch)
+│   ├── search.py                     # Search collaborator (failover/merge/result cache)
+│   ├── crawl.py                      # Focused-crawl collaborator (relevance-ranked BFS)
+│   ├── document.py                   # Document-extraction collaborator (+ HTML structured)
+│   ├── budget.py                     # Output-budget enforcement
+│   ├── discovery.py                  # Sitemap/feed resource discovery
 │   ├── cache.py                      # Two-tier cache: TTL + size-cap LRU eviction, scoped clears
 │   ├── guard.py                      # Optional prompt-injection guard (§7, JailGuard)
 │   ├── mcp_server.py                 # MCP server (stdio) exposing the toolbox
 │   ├── robots.py                     # robots.txt compliance (per-host cache, UA groups)
 │   ├── search_providers.py           # SearchProvider ABC + DuckDuckGo/Google/Bing/Exa
+│   ├── research_providers.py         # 30+ domain adapters (scholarly/legal/financial/geo)
+│   ├── research_categories.py        # Category routing for research_by_category
+│   ├── citations.py                  # Citation reconstruction + export (BibTeX/CSL/APA/MLA)
+│   ├── dedup.py / liveness.py        # Shared result dedup + source-liveness probing
+│   ├── env.py                        # GOSSAMER_* env access with STITCH_* fallback
 │   ├── ssrf.py                       # SSRF guard (blocks private/loopback targets)
 │   ├── structured_parser.py          # Pydantic v2 schemas + StructuredOxideParser
 │   ├── token_budget.py               # tiktoken-based token counting & truncation
 │   └── meta_extractor.py             # meta-oxide wrapper for HTML metadata
-└── tests/                            # 25+ modules (unit + integration)
+└── tests/                            # 80+ modules (unit + integration + live smoke)
 ```
 
 ## Dependencies
@@ -747,7 +807,12 @@ work. Areas: `search`, `fetch`, `crawl`, `storage`, `citations`, `phase3`,
 additive — they never change which tests run under the default `pytest`.
 
 > `pytest-xdist` (`-n auto`) is a dev/test dependency, not a runtime one.
-> Install with `uv pip install pytest-xdist`.
+> It ships in `requirements.txt`, so a normal dev install already has it.
+>
+> Live provider tests are opt-in and key-optional:
+> `GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py` runs one real search per
+> keyless adapter to catch endpoint drift (see
+> `docs/LIVE_PROVIDER_TEST_2026-09-05.md`).
 
 ## License
 

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stitch_web_researcher.research_providers import (
+from gossamer.research_providers import (
     CensusAdapter,
     CongressAdapter,
     NASAAdapter,
@@ -37,7 +37,7 @@ class TestNASAAdapter:
         assert a.domain == "geo"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses_neo(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -70,16 +70,18 @@ class TestNASAAdapter:
         assert out[0]["fields"]["nasa"]["is_hazardous"] is True
         # DEMO_KEY is the default key when none is supplied.
         assert mock_get.call_args.kwargs["params"]["api_key"] == "DEMO_KEY"
+        assert mock_get.call_args.args[0].endswith("/neo/rest/v1/feed")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_single_neo(self, mock_get):
+        # The single-object endpoint returns the object directly.
         mock_get.return_value = _resp(
-            {"near_earth_objects": {"_single": [{"neo_reference_id": "2235437", "object_name": "X"}]}}
+            {"neo_reference_id": "2235437", "object_name": "X"}
         )
         a = NASAAdapter(delay=0.0)
         out = a.fetch("2235437")
         assert out[0]["id"] == "2235437"
-        assert mock_get.call_args.args[0].endswith("/neo/ws/neo/2235437")
+        assert mock_get.call_args.args[0].endswith("/neo/rest/v1/neo/2235437")
 
     def test_inject_auth_uses_stored_key(self):
         a = NASAAdapter(delay=0.0, api_key="REALKEY")
@@ -95,16 +97,27 @@ class TestNvdAdapter:
         assert a.domain == "tech"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_cve_id_shaped_uses_cveid(self, mock_get):
         mock_get.return_value = _resp(
             {
-                "vulnerabilityJsonDocument": [
+                "vulnerabilities": [
                     {
                         "cve": {
                             "id": "CVE-2021-44228",
+                            "published": "2021-12-10T10:15:09.143",
                             "descriptions": [{"lang": "en", "value": "Log4Shell"}],
-                            "cveMetadata": {"cvssData": {"baseScore": 10.0, "vectorString": "CVSS:3.1/AV:N"}},
+                            "metrics": {
+                                "cvssMetricV31": [
+                                    {
+                                        "cvssData": {
+                                            "baseScore": 10.0,
+                                            "baseSeverity": "CRITICAL",
+                                            "vectorString": "CVSS:3.1/AV:N",
+                                        }
+                                    }
+                                ]
+                            },
                         }
                     }
                 ]
@@ -114,31 +127,33 @@ class TestNvdAdapter:
         out = a.search("CVE-2021-44228", max_results=5)
         assert out[0]["id"] == "CVE-2021-44228"
         assert out[0]["fields"]["nvd"]["base_score"] == 10.0
+        assert out[0]["fields"]["nvd"]["severity"] == "CRITICAL"
         assert mock_get.call_args.kwargs["params"]["cveId"] == "CVE-2021-44228"
-        # v2 JSON endpoints require a jsonp callback.
-        assert "jsonp" in mock_get.call_args.kwargs["params"]
+        assert mock_get.call_args.args[0].startswith(
+            "https://services.nvd.nist.gov/rest/json/cves/2.0"
+        )
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_text_uses_searchquery(self, mock_get):
-        mock_get.return_value = _resp({"vulnerabilityJsonDocument": []})
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_text_uses_keyword_search(self, mock_get):
+        mock_get.return_value = _resp({"vulnerabilities": []})
         a = NvdAdapter(delay=0.0)
         a.search("log4j", max_results=5)
-        assert mock_get.call_args.kwargs["params"]["searchQuery"] == "log4j"
+        assert mock_get.call_args.kwargs["params"]["keywordSearch"] == "log4j"
         assert "cveId" not in mock_get.call_args.kwargs["params"]
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_uses_apikey_when_set(self, mock_get):
         mock_get.return_value = _resp(
-            {"vulnerabilityJsonDocument": [{"cve": {"id": "CVE-2021-44228"}}]}
+            {"vulnerabilities": [{"cve": {"id": "CVE-2021-44228"}}]}
         )
         a = NvdAdapter(delay=0.0, api_key="MYKEY")
         out = a.fetch("CVE-2021-44228")
         assert out[0]["id"] == "CVE-2021-44228"
-        assert mock_get.call_args.kwargs["params"]["apikey"] == "MYKEY"
+        assert mock_get.call_args.kwargs["params"]["apiKey"] == "MYKEY"
 
     def test_fetch_empty_returns_empty_list(self,):
-        with patch("stitch_web_researcher.research_providers.httpx.get") as mock_get:
-            mock_get.return_value = _resp({"vulnerabilityJsonDocument": []})
+        with patch("gossamer.research_providers.httpx.get") as mock_get:
+            mock_get.return_value = _resp({"vulnerabilities": []})
             a = NvdAdapter(delay=0.0)
             assert a.fetch("CVE-0000-0000") == []
 
@@ -151,20 +166,23 @@ class TestZenodoAdapter:
         assert a.domain == "scholarly"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
+        # InvenioRDM shape (live-verified): creators with person_or_org.
         mock_get.return_value = _resp(
             {
                 "hits": {
                     "hits": [
                         {
-                            "_id": "1234567",
+                            "id": 1234567,
+                            "links": {"html": "https://zenodo.org/records/1234567"},
                             "metadata": {
                                 "title": "A Dataset",
                                 "publication_date": "2021-01-01",
-                                "authors": [{"name": "Doe, Jane"}],
-                                "resource_type": "softwareapplication",
-                                "open_access": {"status": "t"},
+                                "creators": [
+                                    {"person_or_org": {"name": "Doe, Jane"}}
+                                ],
+                                "resource_type": {"id": "dataset"},
                                 "description": "<p>Hello world</p>",
                             },
                         }
@@ -177,14 +195,16 @@ class TestZenodoAdapter:
         assert out[0]["id"] == "1234567"
         assert out[0]["title"] == "A Dataset"
         assert out[0]["authors"] == "Doe, Jane"
-        assert out[0]["fields"]["zenodo"]["open_access"] is True
+        assert out[0]["url"] == "https://zenodo.org/records/1234567"
         assert "<p>" not in out[0]["snippet"]  # tags stripped
+        assert mock_get.call_args.args[0].endswith("/api/records")
+        assert mock_get.call_args.kwargs["params"]["q"] == "machine learning"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
         mock_get.return_value = _resp(
             {
-                "_id": "1234567",
+                "id": 1234567,
                 "metadata": {"title": "A Dataset", "authors": ["Jane", {"name": "John"}]},
             }
         )
@@ -192,11 +212,11 @@ class TestZenodoAdapter:
         out = a.fetch("1234567")
         assert out[0]["title"] == "A Dataset"
         assert out[0]["authors"] == "Jane, John"
-        assert mock_get.call_args.args[0].endswith("/record/1234567")
+        assert mock_get.call_args.args[0].endswith("/records/1234567")
 
     def test_inject_auth_access_token(self):
         a = ZenodoAdapter(delay=0.0, api_key="TOK")
-        _, params, _ = a.inject_auth("https://zenodo.org/api/records/search", {}, {})
+        _, params, _ = a.inject_auth("https://zenodo.org/api/records", {}, {})
         assert params["access_token"] == "TOK"
 
 
@@ -208,27 +228,23 @@ class TestSoftwareHeritageAdapter:
         assert a.domain == "tech"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_search_parses(self, mock_get):
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_resolves_origin(self, mock_get):
+        # No public REST code search: search() is an origin lookup.
         mock_get.return_value = _resp(
             {
-                "matches": [
-                    {
-                        "id": "p:github.com/user/repo",
-                        "type": "project",
-                        "label": "user/repo",
-                        "url": "https://archive.softwareheritage.org/s/p:github.com/user/repo/",
-                    }
-                ]
+                "url": "https://github.com/python/cpython",
+                "visit_types": ["git"],
+                "origin_visits_url": "https://archive.softwareheritage.org/api/1/origin/https://github.com/python/cpython/get/",
             }
         )
         a = SoftwareHeritageAdapter(delay=0.0)
-        out = a.search("myrepo", max_results=5)
-        assert out[0]["id"] == "p:github.com/user/repo"
-        assert out[0]["title"] == "user/repo"
-        assert out[0]["fields"]["softwareheritage"]["type"] == "project"
+        out = a.search("https://github.com/python/cpython", max_results=5)
+        assert out[0]["id"] == "https://github.com/python/cpython"
+        assert "git" in out[0]["fields"]["softwareheritage"]["visit_types"]
+        assert "/origin/https://github.com/python/cpython/get/" in mock_get.call_args.args[0]
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_accepts_url_and_id(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -242,7 +258,7 @@ class TestSoftwareHeritageAdapter:
         assert out[0]["id"] == "s:abc123def"
         assert mock_get.call_args.args[0].endswith("/source/sid/s:abc123def")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_accepts_bare_sid(self, mock_get):
         mock_get.return_value = _resp({"id": "d:deadbeef", "type": "directory"})
         a = SoftwareHeritageAdapter(delay=0.0)
@@ -263,7 +279,7 @@ class TestCongressAdapter:
         _, params, _ = a.inject_auth("https://api.data.gov/congress/v1/members/search", {}, {})
         assert params["api_key"] == "DATAKEY"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -287,7 +303,7 @@ class TestCongressAdapter:
         assert out[0]["fields"]["congress"]["party"] == "Democratic"
         assert mock_get.call_args.kwargs["params"]["api_key"] == "DATAKEY"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
         mock_get.return_value = _resp(
             {"cgi_id": "A000370", "display_name": "Adam Schiff", "party": "Democratic"}
@@ -306,21 +322,19 @@ class TestYahooFinanceAdapter:
         assert a.domain == "financial"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
+        # Live shape: top-level "quotes" with lowercase "shortname".
         mock_get.return_value = _resp(
             {
-                "quoteCollection": {
-                    "quotes": [
-                        {
-                            "symbol": "AAPL",
-                            "shortName": "Apple Inc.",
-                            "exchange": "NMS",
-                            "quoteType": "EQUITY",
-                            "marketCap": 3_000_000_000_000,
-                        }
-                    ]
-                }
+                "quotes": [
+                    {
+                        "symbol": "AAPL",
+                        "shortname": "Apple Inc.",
+                        "exchange": "NMS",
+                        "quoteType": "EQUITY",
+                    }
+                ]
             }
         )
         a = YahooFinanceAdapter(delay=0.0)
@@ -329,7 +343,7 @@ class TestYahooFinanceAdapter:
         assert out[0]["title"] == "Apple Inc."
         assert out[0]["fields"]["yahoo"]["exchange"] == "NMS"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -363,7 +377,7 @@ class TestOverpassAdapter:
         assert a.domain == "geo"
         assert a.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses_elements(self, mock_get):
         mock_get.return_value = _resp(
             {
@@ -406,7 +420,7 @@ class TestCensusAdapter:
         _, params, _ = a.inject_auth("https://api.census.gov/data/2019/acs/acs1", {}, {})
         assert params["key"] == "CKEY"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_dict_spec(self, mock_get):
         mock_get.return_value = _resp(
             [["b01003_001e", "state"], ["331210334", "04"], ["2180366", "01"]]
@@ -422,7 +436,7 @@ class TestCensusAdapter:
         assert mock_get.call_args.args[0].endswith("/data/2019/acs/acs1")
         assert mock_get.call_args.kwargs["params"]["key"] == "CKEY"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_string_spec(self, mock_get):
         mock_get.return_value = _resp([["POP", "state"], ["100", "04"]])
         a = CensusAdapter(delay=0.0, api_key="CKEY")
@@ -430,7 +444,7 @@ class TestCensusAdapter:
         assert out[0]["id"] == "04"
         assert mock_get.call_args.args[0].endswith("/data/2019/pep/natstprc")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_by_state_id(self, mock_get):
         mock_get.return_value = _resp([["POP", "state"], ["100", "04"], ["200", "06"]])
         a = CensusAdapter(delay=0.0, api_key="CKEY")

@@ -22,7 +22,7 @@ from urllib.parse import urlparse, urljoin, urlunparse
 import httpx
 from pydantic import BaseModel, Field
 
-from stitch_web_researcher._core import (
+from gossamer._core import (
     batch_research,
     fetch_html_full,
     fetch_html_conditional,
@@ -33,8 +33,8 @@ from stitch_web_researcher._core import (
     init_rust_logging as _init_rust_logging,
     configure_http as _configure_http,
 )
-from stitch_web_researcher.token_budget import truncate_to_tokens, count_tokens
-from stitch_web_researcher.structured_parser import (
+from gossamer.token_budget import truncate_to_tokens, count_tokens
+from gossamer.structured_parser import (
     StructuredOxideParser,
     DOCUMENT_EXTENSIONS,
     FollowUpCandidate,
@@ -43,18 +43,18 @@ from stitch_web_researcher.structured_parser import (
     require_office_oxide,
     require_pdf_oxide,
 )
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     DuckDuckGoProvider,
     RateLimit,
     resolve_provider_name,
 )
-from stitch_web_researcher.text_links import extract_links
-from stitch_web_researcher import meta_extractor
-from stitch_web_researcher.cache import Cache
-from stitch_web_researcher.robots import RobotsChecker
-from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
-from stitch_web_researcher.sections import select_relevant_sections
-from stitch_web_researcher.guard import (
+from gossamer.text_links import extract_links
+from gossamer import meta_extractor
+from gossamer.cache import Cache
+from gossamer.robots import RobotsChecker
+from gossamer.ssrf import SsrfBlockedError, validate_public_url
+from gossamer.sections import select_relevant_sections
+from gossamer.guard import (
     GuardConfig,
     JailGuardGuard,
     build_guard,
@@ -69,11 +69,11 @@ logger = logging.getLogger(__name__)
 #
 # The names below moved to dedicated submodules during the composition
 # split (config.py / models.py / fetch.py / crawl.py). They are re-imported
-# here so existing ``from stitch_web_researcher.agent_tools import <name>``
+# here so existing ``from gossamer.agent_tools import <name>``
 # usages keep working, and so the WebResearcherToolbox body below can keep
 # referencing them unchanged. New code should import from the submodules.
 # ────────────────────────────────────────────────────────────────────────
-from stitch_web_researcher.config import (  # noqa: F401
+from gossamer.config import (  # noqa: F401
     _MISSING,
     _coerce_fetch_mode,
     _resolve_fetch_strategy,
@@ -83,9 +83,11 @@ from stitch_web_researcher.config import (  # noqa: F401
     ToolParam,
     ToolSpec,
     ToolboxConfig,
+    canonical_url,
+    ensure_str_list,
     normalize_url,
 )
-from stitch_web_researcher.models import (  # noqa: F401
+from gossamer.models import (  # noqa: F401
     _JSON_FIT_FLOOR,
     _MD_INLINE_LINK_RE,
     _MD_NON_LINK_PREFIXES,
@@ -101,26 +103,26 @@ from stitch_web_researcher.models import (  # noqa: F401
     FetchStats,
     InspectionResult,
 )
-from stitch_web_researcher.fetch import (  # noqa: F401
+from gossamer.fetch import (  # noqa: F401
     _browser_oxide_available,
     _fetch_with_browser_oxide,
     _maybe_init_rust_logging,
     fetch_smart_page,
 )
-from stitch_web_researcher.crawl import (  # noqa: F401
+from gossamer.crawl import (  # noqa: F401
     _CrawlCorpus,
     _load_thesaurus,
     Crawler,
 )
-from stitch_web_researcher.search import SearchService  # noqa: F401
-from stitch_web_researcher.dedup import dedupe  # noqa: F401  # Workstream 2
-from stitch_web_researcher.liveness import check_liveness, LIVENESS_TIMEOUT  # noqa: F401  # Workstream 2
-from stitch_web_researcher.fetch import FetchService  # noqa: F401
-from stitch_web_researcher.document import DocumentExtractor  # noqa: F401
-from stitch_web_researcher.budget import ContentBudget  # noqa: F401
-from stitch_web_researcher.discovery import ResourceDiscovery  # noqa: F401
-from stitch_web_researcher.research_categories import CATEGORIES, search_category  # noqa: F401
-from stitch_web_researcher.citations import format_citations  # noqa: F401
+from gossamer.search import SearchService  # noqa: F401
+from gossamer.dedup import dedupe  # noqa: F401  # Workstream 2
+from gossamer.liveness import check_liveness, LIVENESS_TIMEOUT  # noqa: F401  # Workstream 2
+from gossamer.fetch import FetchService  # noqa: F401
+from gossamer.document import DocumentExtractor  # noqa: F401
+from gossamer.budget import ContentBudget  # noqa: F401
+from gossamer.discovery import ResourceDiscovery  # noqa: F401
+from gossamer.research_categories import CATEGORIES, search_category  # noqa: F401
+from gossamer.citations import format_citations  # noqa: F401
 
 
 class WebResearcherToolbox:
@@ -169,6 +171,7 @@ class WebResearcherToolbox:
         self.cache = Cache(
             cache_dir=config.cache_dir,
             ttl_seconds=config.cache_ttl_seconds,
+            max_memory_entries=config.cache_memory_entries,
             max_disk_bytes=config.cache_max_bytes,
         )
         self.fetch_mode = config.fetch_mode
@@ -451,6 +454,20 @@ class WebResearcherToolbox:
             while len(self._domain_last_seen) > self.DOMAIN_TS_CAP:
                 self._domain_last_seen.popitem(last=False)
 
+    @staticmethod
+    def _identity_key(url: str) -> str:
+        """Canonical identity for visited/in-flight bookkeeping (B.1).
+
+        One resource = one entry, regardless of ``www.``/case/port/slash/
+        tracking-param spelling. Falls back to the raw URL when it cannot
+        be canonicalized (callers only pass prepared URLs, so this is a
+        seatbelt, not a path).
+        """
+        try:
+            return canonical_url(url, query="drop-tracking")
+        except ValueError:
+            return url
+
     def _claim_in_flight(self, url: str) -> bool:
         """Atomically claim a URL for fetching (S5).
 
@@ -460,16 +477,17 @@ class WebResearcherToolbox:
         ``visited_urls`` still only gains a URL after a successful fetch;
         the in-flight set covers the fetch window itself.
         """
+        key = self._identity_key(url)
         with self._visit_lock:
-            if url in self.visited_urls or url in self._in_flight:
+            if key in self.visited_urls or key in self._in_flight:
                 return False
-            self._in_flight.add(url)
+            self._in_flight.add(key)
             return True
 
     def _release_in_flight(self, url: str) -> None:
         """Release an in-flight claim (idempotent, always safe)."""
         with self._visit_lock:
-            self._in_flight.discard(url)
+            self._in_flight.discard(self._identity_key(url))
 
     def _mark_visited(self, url: str) -> None:
         """Record a successful fetch (C3: success only, S5: locked).
@@ -477,7 +495,11 @@ class WebResearcherToolbox:
         M7: visited_urls is a bounded FIFO — once it exceeds the cap the
         oldest entries are evicted down to half the cap (amortized
         O(1) per insert). Eviction only affects future re-fetch dedup:
-        evicted URLs can still be served from the page cache."""
+        evicted URLs can still be served from the page cache.
+
+        Keys are canonical identities (see :meth:`_identity_key`), so
+        spelling variants of one resource share a single entry."""
+        url = self._identity_key(url)
         with self._visit_lock:
             self.visited_urls[url] = None
             if len(self.visited_urls) > self.VISITED_URL_CAP:
@@ -486,45 +508,14 @@ class WebResearcherToolbox:
 
     # Query parameters that never change page content -- stripped so that
     # campaign-tagged variants of one document share a single cache entry.
-    _TRACKING_PARAM_PREFIXES = ("utm_", "fbclid", "gclid", "mc_", "ref_")
-
     def _cache_key(self, url: str) -> str:
-        """Canonical cache key for a URL, so variant spellings of the same
-        resource cannot produce 'double-tracked' cache entries:
-
-          https://WWW.Example.com:443/docs/report.pdf?x=1&utm_source=x#top
-          http-->https kept | host lowercased | default port dropped |
-          path de-slashes   | fragment dropped | utm_* etc. dropped
+        """Canonical cache key for a URL (delegates to
+        :func:`gossamer.config.canonical_url`, ``drop-tracking`` mode).
 
         Two URLs mapping to the same key share one cache entry; different
         resources still always map to different keys.
         """
-        from urllib.parse import parse_qsl, urlencode, urlunparse
-
-        normalized = normalize_url(url)
-        parts = urlparse(normalized)
-
-        host = (parts.hostname or "").lower()
-        if host.startswith("www."):
-            host = host[len("www."):]
-        port = parts.port
-        default_port = {"http": 80, "https": 443}.get(parts.scheme)
-        netloc = host if (port is None or port == default_port) else f"{host}:{port}"
-
-        path = parts.path.rstrip("/") or "/"
-
-        query_items = sorted(
-            (k.lower(), v)
-            for k, v in parse_qsl(parts.query, keep_blank_values=True)
-            if not k.lower().startswith(self._TRACKING_PARAM_PREFIXES)
-        )
-        # Key names are lowercased: servers treat them case-sensitively,
-        # but for caching purposes ?ID=7 and ?id=7 are the same document.
-        query = urlencode(query_items)
-
-        # scheme preserved (http/https may genuinely serve different content),
-        # fragment dropped (never part of the fetched resource).
-        return urlunparse((parts.scheme, netloc, path, "", query, ""))
+        return canonical_url(url, query="drop-tracking")
 
     # ───────────────────────────────
     # LLM Tool Definitions
@@ -676,8 +667,25 @@ class WebResearcherToolbox:
         JSON error dict so callers never branch on an empty string). Never
         raises: a bad *style* or *results* yields a JSON error dict.
         """
+        # Input shape (A.3): None → [], a bare string → [string] (it would
+        # otherwise iterate character-by-character), anything non-list → a
+        # JSON error. Item types stay tolerant (str or dict both accepted).
+        if results is None:
+            results = []
+        elif isinstance(results, str):
+            results = [results]
+        elif isinstance(results, tuple):
+            results = list(results)
+        elif not isinstance(results, list):
+            return json.dumps(
+                {
+                    "error": "results must be a list of DOIs, URLs, or "
+                    f"result dicts, got {type(results).__name__}"
+                },
+                indent=2,
+            )
         parsed = []
-        for item in (results or []):
+        for item in results:
             if isinstance(item, str):
                 try:
                     loaded = json.loads(item)
@@ -712,16 +720,40 @@ class WebResearcherToolbox:
         throttle). Each probe is a lightweight status check (HEAD/
         minimal GET) -- never a full page load -- so a batch of hundreds
         of URLs stays cheap. Returns a JSON envelope with per-URL status
-        plus a summary. ``mode=\"status\"`` (default) is the current probe;
-        ``\"content\"`` is reserved for a future full-fetch variant.
+        plus a summary. ``mode=\"status\"`` (default) is a HEAD probe;
+        ``mode=\"content\"`` performs a GET (same status contract, for hosts
+        that reject HEAD). Any other mode is a JSON error, never a silent
+        downgrade (review A.10).
         """
         try:
             if mode not in ("status", "content"):
-                mode = "status"
+                return json.dumps(
+                    {
+                        "error": f"Unknown check_sources mode: {mode!r}; "
+                        'expected "status" or "content"',
+                        "results": [],
+                    },
+                    indent=2,
+                )
             # Normalise to a clean list of URLs (accept plain strings or
-            # {url}/{href}/{link} dicts).
+            # {url}/{href}/{link} dicts). A bare string is wrapped (A.3);
+            # anything else non-list is one JSON error, while bad *items*
+            # stay per-item skips so one poisoned entry cannot kill a batch.
+            if urls is None:
+                urls = []
+            elif isinstance(urls, str):
+                urls = [urls]
+            elif not isinstance(urls, (list, tuple)):
+                return json.dumps(
+                    {
+                        "error": "urls must be a list of URLs (or {url} dicts), "
+                        f"got {type(urls).__name__}",
+                        "results": [],
+                    },
+                    indent=2,
+                )
             raw = []
-            for u in urls or []:
+            for u in urls:
                 if isinstance(u, dict):
                     url = u.get("url") or u.get("href") or u.get("link")
                 else:
@@ -738,12 +770,14 @@ class WebResearcherToolbox:
             urls_to_probe = [d["url"] for d in kept]
 
             results = []
+            probe = "head" if mode == "status" else "get"
             for url in urls_to_probe:
                 results.append(
                     check_liveness(
                         url,
                         timeout=self._liveness_timeout,
                         throttle=self._rate_limit_domain,
+                        method=probe,
                     )
                 )
 
@@ -968,11 +1002,13 @@ class WebResearcherToolbox:
         excerpts: bool = False,
         search_prior: bool = False,
         seed_urls: Optional[list] = None,
+        use_smart: str = FetchMode.AUTO.value,
     ) -> str:
         """Focused, relevance-ranked traversal of a URL's link graph to
         find the pages most relevant to a query (thin delegation to
         ``Crawler`` in crawl.py; see that method for the full algorithm).
-        Follows cross-domain links unless same_host=True.
+        Follows cross-domain links unless same_host=True. ``use_smart`` is
+        the per-fetch render strategy (``auto``/``browser``/``static``).
         """
         return self._crawler.crawl(
             root_url,
@@ -984,6 +1020,7 @@ class WebResearcherToolbox:
             excerpts=excerpts,
             search_prior=search_prior,
             seed_urls=seed_urls,
+            use_smart=use_smart,
         )
 
     def discover_resources(self, url: str) -> str:
@@ -1001,13 +1038,19 @@ class WebResearcherToolbox:
     _RESEARCH_MAX_PAGES = 10
 
     def research(
-        self, topic: str, depth: int = 5, max_tokens: int = 0
+        self,
+        topic: str,
+        depth: int = 5,
+        max_tokens: int = 0,
+        provider: Optional[str] = None,
+        max_results: Optional[int] = None,
     ) -> str:
         """Run a small orchestrated research pass (Tier 3.13).
 
         Plan -> fan out -> dedupe, on top of the existing pipeline:
 
-        1. Search *topic* through the configured providers.
+        1. Search *topic* through the configured providers (or *provider*
+           when given — previously the parameter was silently ignored, A.8).
         2. Dedupe and validate the result URLs, keeping the top
            *depth* (hard cap ``_RESEARCH_MAX_PAGES``).
         3. Fetch each through the normal page pipeline
@@ -1022,9 +1065,9 @@ class WebResearcherToolbox:
         Returns
         -------
         str
-            JSON: ``topic``, ``depth``, ``sources`` (list of
-            ``{url, title, snippet, status, result?|error?}``), and
-            ``count`` (successful fetches).
+            JSON: ``topic``, ``depth``, ``provider`` (as requested),
+            ``sources`` (list of ``{url, title, snippet, status,
+            result?|error?}``), and ``count`` (successful fetches).
         """
         topic = (topic or "").strip()
         if not topic:
@@ -1036,12 +1079,19 @@ class WebResearcherToolbox:
         except (TypeError, ValueError):
             depth = 5
         depth = max(1, min(depth, self._RESEARCH_MAX_PAGES))
+        try:
+            plan_results = int(max_results) if max_results else min(depth * 2, 20)
+        except (TypeError, ValueError):
+            plan_results = min(depth * 2, 20)
+        plan_results = max(1, min(plan_results, 20))
 
         # 1) Plan: search the topic (search_web degrades to an error
         # dict instead of raising when every provider fails).
         try:
             results = json.loads(
-                self.search_web(topic, max_results=min(depth * 2, 20))
+                self.search_web(
+                    topic, max_results=plan_results, provider=provider
+                )
             )
         except (json.JSONDecodeError, TypeError):
             results = []
@@ -1115,6 +1165,7 @@ class WebResearcherToolbox:
         result = {
             "topic": topic,
             "depth": depth,
+            "provider": provider,
             "sources": sources,
             "count": sum(1 for s in sources if s["status"] == "ok"),
             # Workstream 2: how many candidate URLs were collapsed as

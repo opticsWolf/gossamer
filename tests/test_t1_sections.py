@@ -11,8 +11,8 @@ returned (in document order) with provenance fields
 
 import json
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.sections import (
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.sections import (
     bm25_scores,
     select_relevant_sections,
     split_sections,
@@ -273,7 +273,7 @@ class TestInspectHtmlPageWithQuery:
 
 class TestToolRegistryAdvertisesQuery:
     def test_inspect_html_page_spec_includes_query_param(self):
-        from stitch_web_researcher.agent_tools import TOOL_REGISTRY
+        from gossamer.agent_tools import TOOL_REGISTRY
 
         spec = next(s for s in TOOL_REGISTRY if s.name == "inspect_html_page")
         names = [p.name for p in spec.params]

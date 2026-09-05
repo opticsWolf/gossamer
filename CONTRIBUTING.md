@@ -26,7 +26,7 @@ After touching `Cargo.toml` or `src/*.rs`:
 
 ```powershell
 pytest                          # slow live tests are deselected by default
-uv tool run ruff@0.16.4 check stitch_web_researcher/   # package dir only
+uv tool run ruff@0.16.4 check gossamer/   # package dir only
 cargo clippy --all-targets -- -D warnings
 ```
 

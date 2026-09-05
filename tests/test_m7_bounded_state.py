@@ -9,7 +9,7 @@ entries. All tests run offline (respect_robots=False, zero delays).
 
 import time
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer.agent_tools import WebResearcherToolbox
 
 
 def _toolbox() -> WebResearcherToolbox:

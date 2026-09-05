@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     TOOL_REGISTRY,
     ToolboxConfig,
     WebResearcherToolbox,
@@ -292,3 +292,33 @@ class TestDispatch:
         assert "query" in by_name and by_name["query"].required
         assert by_name["depth"].default == 5
         assert by_name["max_tokens"].default == 0
+
+
+class TestResearchProviderPassthrough:
+    def test_research_uses_requested_provider(self, tmp_path):
+        """web_search provider/max_results reach the research plan (A.8)."""
+        tb = _toolbox(tmp_path)
+        first = FakeProvider("duckduckgo", results=_results(("A", "https://example.com/a")))
+        second = FakeProvider("bing", results=_results(("B", "https://example.com/b")))
+        tb.providers = [first, second]
+        tb._fetch._fetch_html = _fake_fetch()
+
+        result = json.loads(tb.research("topic", depth=2, provider="bing", max_results=4))
+
+        assert result["provider"] == "bing"
+        assert second.calls == [("topic", 4)]
+        assert first.calls == []
+        assert [s["url"] for s in result["sources"]] == ["https://example.com/b"]
+
+    def test_web_search_research_mode_forwards_provider(self, tmp_path):
+        tb = _toolbox(tmp_path)
+        prov = FakeProvider("duckduckgo", results=_results(("A", "https://example.com/a")))
+        tb.providers = [prov]
+        tb._fetch._fetch_html = _fake_fetch()
+
+        result = json.loads(
+            tb.web_search("topic", search_only=False, depth=2, provider="duckduckgo")
+        )
+        assert result["provider"] == "duckduckgo"
+        # Explicit max_results (tool default 5) wins over depth*2.
+        assert prov.calls == [("topic", 5)]

@@ -6,8 +6,8 @@ string for a 2-token budget. The cut is now clamped at 0, so a budget
 smaller than the ellipsis returns just the truncation marker.
 """
 
-import stitch_web_researcher.token_budget as token_budget
-from stitch_web_researcher.token_budget import truncate_to_tokens
+import gossamer.token_budget as token_budget
+from gossamer.token_budget import truncate_to_tokens
 
 ELLIPSIS = "\n\n... [truncated for token budget]"
 
@@ -59,7 +59,7 @@ class TestTiktokenPath:
         result = truncate_to_tokens(text, 50)
         assert result.endswith(ELLIPSIS)
         assert len(result) < len(text)
-        from stitch_web_researcher.token_budget import count_tokens
+        from gossamer.token_budget import count_tokens
 
         # content (<= 50 - ellipsis_tokens) + ellipsis, with a small
         # margin for BPE re-tokenization at the cut boundary

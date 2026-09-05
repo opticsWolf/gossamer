@@ -15,8 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher import _core
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer import _core
+from gossamer.agent_tools import WebResearcherToolbox
 
 HIDDEN_PAGE = """<!DOCTYPE html>
 <html>
@@ -63,7 +63,7 @@ class _Handler(BaseHTTPRequestHandler):
 def http_server(monkeypatch):
     # S1 blocks 127.0.0.1 targets; use the operator bypass for the
     # local test server.
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

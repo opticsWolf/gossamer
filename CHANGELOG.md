@@ -4,6 +4,86 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.6.0] — gossamer rename + review implementation
+
+### Rename: `stitch-web-researcher` → `gossamer`
+
+- Distribution, import package, Rust core module (`gossamer._core`), CLI
+  (`gossamer-mcp`, with a `stitch-web-researcher-mcp` alias kept), MCP server
+  name, and default cache dir (`.gossamer_cache/`) all renamed.
+- Env config moved `STITCH_*` → `GOSSAMER_*`. Every reader honors the legacy
+  spelling as a fallback (incl. the Rust core's `ALLOW_PRIVATE` /
+  `MAX_RESPONSE_BYTES` and the SSRF escape hatch, now `GOSSAMER_ALLOW_PRIVATE`);
+  new code must use `GOSSAMER_*`. Central helper: `gossamer.env.getenv`.
+- Cargo version re-synced with pyproject (both 0.6.0); the provider
+  `User-Agent` now derives from the installed dist version instead of a
+  hardcoded string.
+
+### Review fixes (`docs/REVIEW_2026-09-05.md` §H)
+
+- **A.1** `float` params render as `{"type": "number"}` (was array-of-string).
+- **A.2** document downloads stream under `max_response_bytes` (Content-Length
+  early-reject + chunk cap); local files pre-checked via `stat()`.
+- **A.3/A.4** shared `ensure_str_list` input guard: bare strings wrap, `None`
+  and wrong types become one JSON error (check_sources, batch, export,
+  crawl seeds).
+- **A.5** registry `kwargs()` deep-copies mutable defaults per call.
+- **A.6** malformed `GOSSAMER_*` numerics warn + fall back (no startup crash).
+- **A.7** `pytest-xdist` added to requirements (mandated by `addopts`).
+- **A.8** `research()`/`web_search(search_only=False)` honor `provider=` +
+  `max_results=`; result envelope gains `provider`.
+- **A.9** search-cache hits reset the `dropped_dupes` counter.
+- **A.10** `check_sources(mode="content")` is a real GET probe; unknown modes error.
+- **B.1** one `canonical_url()` identity for cache/dedup/visited/batch/crawl
+  (www/case/port/slash/fragment/tracking-param variants collapse; query
+  handling per call site: keep/drop/drop-tracking).
+- **B.3** `focused_discovery(..., use_smart=)` (registry + MCP included).
+- **B.4** domain adapters are process-wide singletons: politeness/quota state
+  persists across calls.
+- **B.5** sitemap probes validate (SSRF) + throttle per-domain.
+- **B.6** batch engine returns per-URL HTTP provenance (Rust `BatchPage` +
+  `FetchMeta`; wire ABI is now 5-tuples, old 4-tuples still accepted); batch
+  entries carry real `fetched_at/http_status/final_url/content_type` plus
+  Tier-1.2 resume fields.
+- **C.1** bounded guard-verdict LRU (4096) and fetch-stat key maps (1024).
+- **C.3** classifier is count-based with table-order tie-break (was first-hit).
+- **C.4** new knobs: `cache_memory_entries`, `GOSSAMER_MAX_RESPONSE_BYTES`,
+  `GOSSAMER_LIVENESS_TIMEOUT`, `GOSSAMER_LOG_LEVEL` (documented).
+- **C.5** `offset`-past-EOF returns a `warning` (absent when unset, so the
+  `"warning" in payload` contract still means "warned").
+- **C.7** lint: zero *new* ruff findings vs 0.5.7 (baseline was already red;
+  not yet cleaned).
+- **F.1/F.3/F.5** versions re-synced; README tool count + test badge fixed;
+  package exports now include `search_category`, `CATEGORIES`, `classify`,
+  `check_liveness`, `dedupe`, `content_hash`, `format_citations` and the
+  wave-3 adapters.
+
+### Providers: fixes (`docs/LIVE_PROVIDER_TEST_2026-09-05.md` §3)
+
+- FRED (official API + keyless CSV fallback), NASA (`rest/v1` paths),
+  NVD (real CVE API 2.0 host/params/parse), Zenodo (InvenioRDM paths),
+  Yahoo search (`quotes`/`shortname`), AlphaVantage (`bestMatches`),
+  BioRxiv (free text raises an actionable error), CourtListener fetch
+  (`/clusters/` + token auth + actionable 401), eCFR (versioner-API rewrite),
+  Federal Register (keyless `www.` host, `conditions[term]`, `results` envelope),
+  Overpass (kumi.systems mirror), Software Heritage (origin lookup),
+  Census (no empty `key=`).
+- **Removed:** `EurlexAdapter`, `GermanGovAdapter` (endpoints do not exist).
+- `financial` default provider is now keyless-first (`yahoo`).
+
+### Providers: new (`docs/PROVIDER_ALTERNATIVES_2026-09-05.md`)
+
+All verified live before implementation, with mocked-shape regression tests:
+`oldp` (Open Legal Data, German/EU case law + statutes), `hudoc` (ECtHR),
+`govinfo` (US gov publications, DEMO_KEY), `frankfurter` (FX, v2),
+`eurostat` (EU macro, JSON-stat), `bundesbank` (DE/Eurozone SDMX),
+`bis` (central-bank SDMX), `coingecko` (crypto). Wired into
+`research_by_category` (`legal`: +oldp/hudoc/govinfo; `financial`:
++yahoo/frankfurter/eurostat/bundesbank/bis/coingecko/alphavantage;
+`scholarly`: +zenodo; `geo`: +overpass). Euro-centric classifier keywords
+folded in (no new top-level category).
+- Live smoke suite extended to every keyless adapter (29 tests).
+
 ## [Unreleased]
 
 - **`research_by_category`: taxonomy on demand, single tool.** The separate

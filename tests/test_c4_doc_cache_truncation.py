@@ -9,7 +9,7 @@ configured max_markdown_chars / max_tokens.
 import json
 from unittest.mock import patch
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer.agent_tools import WebResearcherToolbox
 
 BIG = "report body " * 6000  # ~72k chars, well above the 8000-char default
 

@@ -193,6 +193,14 @@ class ResourceDiscovery:
             if sm_url in seen:
                 continue
             seen.add(sm_url)
+            # Sitemap entries are site-supplied URLs: validate (SSRF) and
+            # throttle (politeness) like any other fetch (review B.7).
+            try:
+                self._tb._validate_url(sm_url)
+            except Exception:
+                logger.info("Sitemap URL rejected by policy: %s", sm_url)
+                continue
+            self._tb._rate_limit_domain(sm_url)
             fetched += 1
 
             try:

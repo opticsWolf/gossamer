@@ -12,9 +12,9 @@ import json
 
 import pytest
 
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.crawl import Crawler
-from stitch_web_researcher.agent_tools import (
+from gossamer import agent_tools
+from gossamer.crawl import Crawler
+from gossamer.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
     _CrawlCorpus,
@@ -575,7 +575,7 @@ class TestSeedUrls:
         assert GOOD in _fetched_urls(parsed)
 
     def test_seed_ssrf_blocked(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", raising=False)
+        monkeypatch.delenv("GOSSAMER_ALLOW_PRIVATE", raising=False)
         META = "http://169.254.169.254/latest/meta-data"
         tb = _toolbox(tmp_path)
         tb._fetch._fetch_html = _fake_fetch({ROOT: _page("deep learning platform")})

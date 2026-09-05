@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     DuckDuckGoProvider,
     QuotaExhaustedError,
     RateLimit,
@@ -18,7 +18,7 @@ from stitch_web_researcher.search_providers import (
     ResourceAdapter,
     SearchProvider,
 )
-from stitch_web_researcher.research_providers import (
+from gossamer.research_providers import (
     ArxivAdapter,
     CrossrefAdapter,
     DoajAdapter,
@@ -68,15 +68,15 @@ class TestResourceAdapterContract:
     def test_no_delay_no_sleep(self):
         prov = _ProbeAdapter(RateLimit(search_interval=0.0))
         prov._last_search = 0.0
-        with patch("stitch_web_researcher.search_providers.time.sleep") as sleep:
+        with patch("gossamer.search_providers.time.sleep") as sleep:
             prov._enforce_delay()
             sleep.assert_not_called()
 
     def test_jitter_added_to_gap(self):
         prov = _ProbeAdapter(RateLimit(search_interval=0.1, jitter=0.5, quota=None))
         prov._last_search = 0.0
-        with patch("stitch_web_researcher.search_providers.time") as t, patch(
-            "stitch_web_researcher.search_providers.random"
+        with patch("gossamer.search_providers.time") as t, patch(
+            "gossamer.search_providers.random"
         ) as rnd:
             t.time.return_value = 0.0
             rnd.uniform.return_value = 0.5  # max jitter
@@ -159,7 +159,7 @@ class TestOpenAlexAdapter:
         assert prov.domain == "scholarly"
         assert prov.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -198,7 +198,7 @@ class TestOpenAlexAdapter:
         _, params, _ = prov.inject_auth("https://x", {}, {})
         assert params["api_key"] == "secret"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": "W999", "title": "Single", "doi": "doi:10/y"}
@@ -228,7 +228,7 @@ class TestOpenMeteoAdapter:
         assert prov.rate_limit.search_interval == 1.0
         assert prov.rate_limit.jitter == 0.5
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_geocodes(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -245,7 +245,7 @@ class TestOpenMeteoAdapter:
         assert out[0]["id"] == "52.5,13.4"
         assert out[0]["url"] == "https://example.com/berlin"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_forecast(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"current": {"temperature_2m": 12.3}}
@@ -278,7 +278,7 @@ class TestCrossrefAdapter:
         assert prov.domain == "scholarly"
         assert prov.requires_key is False
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -311,7 +311,7 @@ class TestCrossrefAdapter:
         assert "email=me@example.org" in headers["User-Agent"]
         assert headers["Accept"] == "application/json"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -379,7 +379,7 @@ class TestArxivAdapter:
         # Responsible-use ceiling: 1 req / 3 s.
         assert prov.rate_limit.search_interval == 3.0
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.text = ATOM_FEED
@@ -400,7 +400,7 @@ class TestArxivAdapter:
         assert mock_get.call_args[1]["params"]["search_query"] == "quantum"
         assert mock_get.call_args[1]["headers"]["User-Agent"] == ArxivAdapter._ARXIV_UA
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_accepts_abs_url(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.text = ATOM_FEED
@@ -413,7 +413,7 @@ class TestArxivAdapter:
         # fetch uses id_list (the version-safe documented form), not search_query.
         assert mock_get.call_args[1]["params"]["id_list"] == "1234.5678v1"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_accepts_bare_id(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.text = ATOM_FEED
@@ -425,7 +425,7 @@ class TestArxivAdapter:
         assert mock_get.call_args[1]["params"]["id_list"] == "1707.06376"
         assert out[0]["title"] == "arXiv Paper"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_bad_id_returns_note(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.text = ERROR_FEED
@@ -454,7 +454,7 @@ class TestPubmedAdapter:
         assert params["api_key"] == "secret"
         assert params["email"]  # email always present
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_returns_ids(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -467,7 +467,7 @@ class TestPubmedAdapter:
         assert [o["id"] for o in out] == ["111", "222"]
         assert out[0]["url"].endswith("/111/")
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.text = (
@@ -499,7 +499,7 @@ class TestDoajAdapter:
         assert prov.name == "doaj"
         assert prov.domain == "scholarly"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -537,7 +537,7 @@ class TestOpenLibraryAdapter:
         assert prov.name == "openlibrary"
         assert prov.domain == "library"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -558,7 +558,7 @@ class TestOpenLibraryAdapter:
         assert out[0]["url"] == "https://openlibrary.org/books/OL1"
         assert out[0]["authors"] == "Author One"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_normalises_id(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -595,7 +595,7 @@ class TestWorldBankAdapter:
         assert out[0]["source"] == "worldbank"
         assert "unavailable" in out[0]["title"].lower()
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_fetch_uses_data_endpoint(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = [
@@ -635,18 +635,33 @@ class TestFredAdapter:
         _, params, _ = prov.inject_auth("https://x", {}, {})
         assert params["api_key"] == "k"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
-    def test_fetch_parses_observations(self, mock_get):
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_keyless_csv(self, mock_get):
+        # No key -> fredgraph.csv fallback (official API needs a key).
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "observation": [{"date": "2020-01-01", "value": "42"}]
-        }
+        mock_resp.text = "observation_date,GDP\n2020-01-01,42\n"
         mock_resp.raise_for_status.return_value = None
         mock_get.return_value = mock_resp
 
         out = FredAdapter(delay=0.0).fetch("GDP")
         assert out[0]["id"] == "GDP"
         assert "2020-01-01=42" in out[0]["snippet"]
+        assert mock_get.call_args.args[0].startswith("https://fred.stlouisfed.org/")
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_official_api_with_key(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "observations": [{"date": "2020-01-01", "value": "42"}]
+        }
+        mock_resp.raise_for_status.return_value = None
+        mock_get.return_value = mock_resp
+
+        out = FredAdapter(delay=0.0, api_key="k").fetch("GDP")
+        assert out[0]["id"] == "GDP"
+        assert "2020-01-01=42" in out[0]["snippet"]
+        called_url = mock_get.call_args.args[0]
+        assert called_url.startswith("https://api.stlouisfed.org/fred/")
 
 
 # ────────────────────────────────────────────────────────────────
@@ -666,7 +681,7 @@ class TestGitHubAdapter:
         assert headers["Authorization"] == "Bearer tok"
         assert headers["Accept"] == "application/vnd.github+json"
 
-    @patch("stitch_web_researcher.research_providers.httpx.get")
+    @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {

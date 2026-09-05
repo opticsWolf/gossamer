@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import json
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.search import SearchService
-from stitch_web_researcher.mcp_server import _config_from_env
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.search import SearchService
+from gossamer.mcp_server import _config_from_env
 
 
 class FakeProvider:
@@ -230,9 +230,9 @@ class TestMergeMode:
 
 class TestEnvKnob:
     def test_search_merge_env(self, monkeypatch):
-        monkeypatch.delenv("STITCH_SEARCH_MERGE", raising=False)
+        monkeypatch.delenv("GOSSAMER_SEARCH_MERGE", raising=False)
         assert _config_from_env().search_merge is False
-        monkeypatch.setenv("STITCH_SEARCH_MERGE", "1")
+        monkeypatch.setenv("GOSSAMER_SEARCH_MERGE", "1")
         assert _config_from_env().search_merge is True
-        monkeypatch.setenv("STITCH_SEARCH_MERGE", "false")
+        monkeypatch.setenv("GOSSAMER_SEARCH_MERGE", "false")
         assert _config_from_env().search_merge is False

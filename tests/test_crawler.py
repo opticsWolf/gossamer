@@ -5,8 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from stitch_web_researcher.token_budget import count_tokens
-from stitch_web_researcher import (
+from gossamer.token_budget import count_tokens
+from gossamer import (
     fetch_and_extract,
     batch_research,
     fetch_smart_page,
@@ -30,7 +30,7 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-_ALLOW_PRIVATE_ENV = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+_ALLOW_PRIVATE_ENV = "GOSSAMER_ALLOW_PRIVATE"
 
 
 def _page_html(slug: str, port: int) -> str:
@@ -128,7 +128,7 @@ class TestRustCore:
         results = batch_research(urls)
         assert len(results) == 2
 
-        for url, html_opt, md_opt, links_opt in results:
+        for url, html_opt, md_opt, links_opt, _prov in results:
             assert isinstance(url, str)
             if md_opt is not None and links_opt is not None:
                 assert isinstance(md_opt, str)
@@ -515,7 +515,7 @@ class TestXmpDatetimeParser:
     """Test the _parse_xmp_datetime helper."""
 
     def test_iso_8601_zulu(self):
-        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
+        from gossamer.structured_parser import _parse_xmp_datetime
 
         dt = _parse_xmp_datetime("2024-01-15T10:30:00Z")
         assert dt is not None
@@ -524,21 +524,21 @@ class TestXmpDatetimeParser:
         assert dt.day == 15
 
     def test_iso_8601_with_tz(self):
-        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
+        from gossamer.structured_parser import _parse_xmp_datetime
 
         dt = _parse_xmp_datetime("2024-01-15T10:30:00+05:00")
         assert dt is not None
         assert dt.year == 2024
 
     def test_date_only(self):
-        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
+        from gossamer.structured_parser import _parse_xmp_datetime
 
         dt = _parse_xmp_datetime("2024-01-15")
         assert dt is not None
         assert dt.day == 15
 
     def test_garbage_returns_none(self):
-        from stitch_web_researcher.structured_parser import _parse_xmp_datetime
+        from gossamer.structured_parser import _parse_xmp_datetime
 
         assert _parse_xmp_datetime("not-a-date") is None
         assert _parse_xmp_datetime("") is None
@@ -553,7 +553,7 @@ class TestTokenBudget:
     """Verify token counting, truncation, and context window packing."""
 
     def test_count_tokens_basic(self):
-        from stitch_web_researcher.token_budget import count_tokens
+        from gossamer.token_budget import count_tokens
 
         n = count_tokens("Hello world")
         assert n >= 1
@@ -561,12 +561,12 @@ class TestTokenBudget:
         assert n <= 5
 
     def test_count_tokens_empty(self):
-        from stitch_web_researcher.token_budget import count_tokens
+        from gossamer.token_budget import count_tokens
 
         assert count_tokens("") == 0
 
     def test_count_tokens_long_text(self):
-        from stitch_web_researcher.token_budget import count_tokens
+        from gossamer.token_budget import count_tokens
 
         long_text = "The quick brown fox jumps over the lazy dog. " * 100
         n = count_tokens(long_text)
@@ -574,7 +574,7 @@ class TestTokenBudget:
         assert 800 < n < 1500
 
     def test_count_tokens_different_models(self):
-        from stitch_web_researcher.token_budget import count_tokens
+        from gossamer.token_budget import count_tokens
 
         text = "Token counting test across models."
         # Different models may give slightly different counts
@@ -587,14 +587,14 @@ class TestTokenBudget:
         assert 3 <= claude <= 10
 
     def test_truncate_to_tokens_no_truncation(self):
-        from stitch_web_researcher.token_budget import truncate_to_tokens
+        from gossamer.token_budget import truncate_to_tokens
 
         short = "Hello world"
         result = truncate_to_tokens(short, 100)
         assert result == short  # no truncation needed
 
     def test_truncate_to_tokens_truncates(self):
-        from stitch_web_researcher.token_budget import truncate_to_tokens
+        from gossamer.token_budget import truncate_to_tokens
 
         long_text = "The quick brown fox jumps over the lazy dog. " * 50
         result = truncate_to_tokens(long_text, 20)
@@ -602,38 +602,38 @@ class TestTokenBudget:
         assert "[truncated" in result
 
     def test_truncate_to_tokens_empty(self):
-        from stitch_web_researcher.token_budget import truncate_to_tokens
+        from gossamer.token_budget import truncate_to_tokens
 
         assert truncate_to_tokens("", 10) == ""
 
     def test_truncate_to_tokens_custom_ellipsis(self):
-        from stitch_web_researcher.token_budget import truncate_to_tokens
+        from gossamer.token_budget import truncate_to_tokens
 
         long_text = "The quick brown fox jumps over the lazy dog. " * 50
         result = truncate_to_tokens(long_text, 15, ellipsis="\n---END---")
         assert "---END---" in result
 
     def test_fit_context_window(self):
-        from stitch_web_researcher.token_budget import fit_context_window
+        from gossamer.token_budget import fit_context_window
 
         pieces = ["Hello", "world", "this", "is", "a", "test"]
         result = fit_context_window(pieces, 100)
         assert len(result) == 6  # all fit
 
     def test_fit_context_window_budget_limited(self):
-        from stitch_web_researcher.token_budget import fit_context_window
+        from gossamer.token_budget import fit_context_window
 
         pieces = ["The quick brown fox jumps over the lazy dog. " * 10] * 5
         result = fit_context_window(pieces, 50)
         assert len(result) < 5  # budget forces some pieces out
 
     def test_fit_context_window_empty(self):
-        from stitch_web_researcher.token_budget import fit_context_window
+        from gossamer.token_budget import fit_context_window
 
         assert fit_context_window([], 100) == []
 
     def test_resolve_encoding_known(self):
-        from stitch_web_researcher.token_budget import resolve_encoding
+        from gossamer.token_budget import resolve_encoding
 
         # M5: gpt-4o is o200k_base — tiktoken's map is now authoritative
         assert resolve_encoding("gpt-4o") == "o200k_base"
@@ -642,13 +642,13 @@ class TestTokenBudget:
         assert resolve_encoding("claude-3-sonnet") == "cl100k_base"
 
     def test_resolve_encoding_unknown(self):
-        from stitch_web_researcher.token_budget import resolve_encoding
+        from gossamer.token_budget import resolve_encoding
 
         # Unknown models default to cl100k_base
         assert resolve_encoding("unknown-model-xyz") == "cl100k_base"
 
     def test_resolve_encoding_prefix_match(self):
-        from stitch_web_researcher.token_budget import resolve_encoding
+        from gossamer.token_budget import resolve_encoding
 
         # Date-suffixed variants: tiktoken maps gpt-4o-* to o200k_base
         # and gpt-4-1106-preview to cl100k_base (M5)
@@ -656,7 +656,7 @@ class TestTokenBudget:
         assert resolve_encoding("gpt-4-1106-preview") == "cl100k_base"
 
     def test_estimate_markdown_tokens(self):
-        from stitch_web_researcher.token_budget import estimate_markdown_tokens
+        from gossamer.token_budget import estimate_markdown_tokens
 
         md = "# Hello\n\nThis is **bold** and *italic*."
         n = estimate_markdown_tokens(md)
@@ -825,7 +825,9 @@ class TestHTMLStructuredParsing:
     def test_inspect_html_structured_already_visited(self, tmp_path):
         """inspect_html_structured warns on already-visited URL."""
         tb = WebResearcherToolbox(domain_delay=0.1, cache_dir=str(tmp_path / "cache"))
-        tb.visited_urls["https://example.com"] = None  # M7: bounded FIFO
-        result = tb.inspect_html_structured("https://example.com")
+        # Via the canonicalizing method (B.1): visited_urls holds identity
+        # keys, so spelling variants share the entry.
+        tb._mark_visited("https://example.com")
+        result = tb.inspect_html_structured("https://example.com/")
         data = json.loads(result)
         assert "warning" in data

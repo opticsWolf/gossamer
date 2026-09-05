@@ -27,7 +27,7 @@ from typing import Callable, Optional
 
 import httpx
 
-from stitch_web_researcher.ssrf import SsrfBlockedError, validate_public_url
+from gossamer.ssrf import SsrfBlockedError, validate_public_url
 
 __all__ = ["check_liveness", "LIVENESS_TIMEOUT"]
 
@@ -38,8 +38,8 @@ LIVENESS_TIMEOUT: float = 10.0
 # A permissive UA so status probes are not rejected by bot filters.
 _UA = {
     "User-Agent": (
-        "stitch-web-researcher-liveness/0.1 "
-        "(+https://github.com/opticsWolf/stitch-web-researcher)"
+        "gossamer-liveness/0.1 "
+        "(+https://github.com/opticsWolf/gossamer)"
     )
 }
 
@@ -47,14 +47,21 @@ _UA = {
 RequestFn = Callable[[str, float], "tuple[Optional[int], Optional[str]]"]
 
 
-def _http_probe(url: str, timeout: float) -> "tuple[Optional[int], Optional[str]]":
-    """HEAD with a GET fallback (some hosts reject HEAD) over httpx."""
+def _http_probe(
+    url: str, timeout: float, method: str = "head"
+) -> "tuple[Optional[int], Optional[str]]":
+    """Probe *url* over httpx: HEAD (default) with a GET fallback, or GET
+    outright when *method* is ``"get"`` (``check_sources(mode="content")``
+    — same status contract, for hosts that reject HEAD)."""
     try:
         with httpx.Client(follow_redirects=True, timeout=timeout) as client:
-            try:
-                resp = client.head(url, headers=_UA)
-            except httpx.NotSupportedError:
+            if method == "get":
                 resp = client.get(url, headers=_UA)
+            else:
+                try:
+                    resp = client.head(url, headers=_UA)
+                except httpx.NotSupportedError:
+                    resp = client.get(url, headers=_UA)
             return resp.status_code, None
     except httpx.HTTPError as exc:
         return None, f"{type(exc).__name__}: {exc}"
@@ -66,6 +73,7 @@ def check_liveness(
     *,
     validator: Optional[Callable[[str], None]] = None,
     throttle: Optional[Callable[[str], None]] = None,
+    method: str = "head",
     request_fn: Optional[RequestFn] = None,
 ) -> dict:
     """Probe *url* for reachability. Returns a status dict, never raises.
@@ -78,12 +86,15 @@ def check_liveness(
         Per-probe timeout in seconds.
     validator:
         Optional ``validator(url) -> None`` that raises on a non-public
-        destination. Defaults to :func:`stitch_web_researcher.ssrf.
+        destination. Defaults to :func:`gossamer.ssrf.
         validate_public_url`.
     throttle:
         Optional ``throttle(url) -> None`` politeness hook (e.g. the
         toolbox's per-domain rate limiter). Called before the probe; a
         failure here is swallowed so politeness never aborts a probe.
+    method:
+        ``"head"`` (default) or ``"get"``. Only affects the default
+        ``request_fn``; an injected probe decides for itself.
     request_fn:
         Optional ``(url, timeout) -> (http_status|None, error|None)``.
         Defaults to an ``httpx`` HEAD/GET probe; inject a fake in tests.
@@ -116,7 +127,14 @@ def check_liveness(
             pass
 
     # 3) Probe.
-    fn: RequestFn = request_fn if request_fn is not None else _http_probe
+    if request_fn is not None:
+        fn: RequestFn = request_fn
+    else:
+        probe_method = method if method == "get" else "head"
+
+        def fn(u: str, t: float):
+            return _http_probe(u, t, method=probe_method)
+
     http_status, error = fn(url, timeout)
     if error is not None:
         return {

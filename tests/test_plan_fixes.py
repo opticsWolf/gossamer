@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
-from stitch_web_researcher.search_providers import ResourceAdapter
+from gossamer.agent_tools import WebResearcherToolbox
+from gossamer.search_providers import ResourceAdapter
 
 
 def _toolbox(tmp_path):
@@ -35,7 +35,7 @@ class TestBatchVisitedSkip:
         tb.visited_urls[url] = None  # M7: bounded FIFO
 
         with patch(
-            "stitch_web_researcher.fetch.batch_research"
+            "gossamer.fetch.batch_research"
         ) as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages([url])
@@ -50,7 +50,7 @@ class TestBatchVisitedSkip:
         urls = ["https://example.com/a", "https://example.com/b"]
 
         with patch(
-            "stitch_web_researcher.fetch.batch_research"
+            "gossamer.fetch.batch_research"
         ) as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages(urls)
@@ -115,7 +115,7 @@ class TestInspectionCache:
 
 class TestMainContentBinding:
     def test_prefers_article_over_body(self):
-        from stitch_web_researcher._core import extract_main_content_markdown
+        from gossamer._core import extract_main_content_markdown
 
         html = (
             "<html><body><nav>menu junk</nav>"
@@ -128,7 +128,7 @@ class TestMainContentBinding:
         assert "menu junk" not in md
 
     def test_body_fallback_reports_label(self):
-        from stitch_web_researcher._core import extract_main_content_markdown
+        from gossamer._core import extract_main_content_markdown
 
         html = "<html><body><p>plain</p></body></html>"
         label, md = extract_main_content_markdown(html)
@@ -139,7 +139,7 @@ class TestMainContentBinding:
 
 class TestBatchConcurrencyParam:
     def test_batch_research_accepts_max_concurrency(self):
-        from stitch_web_researcher._core import batch_research
+        from gossamer._core import batch_research
 
         out = batch_research(
             ["https://example.com/plan-fixes-smoke"],
@@ -147,7 +147,7 @@ class TestBatchConcurrencyParam:
             max_concurrency=2,
         )
         assert len(out) == 1
-        url, _html_opt, md_opt, links_opt = out[0]
+        url, _html_opt, md_opt, links_opt, _prov = out[0]
         # Either success (md+links) or a clean error string — never a crash.
         assert md_opt is not None
 
@@ -156,7 +156,7 @@ class TestBatchConcurrencyParam:
         tb.max_concurrency = 3
 
         with patch(
-            "stitch_web_researcher.fetch.batch_research"
+            "gossamer.fetch.batch_research"
         ) as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages(["https://example.com/x"])
@@ -169,7 +169,7 @@ class TestToolboxConfig:
     """P2-#10: config-object construction with legacy kwargs passthrough."""
 
     def test_config_object_style(self, tmp_path):
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
             ToolboxConfig(cache_dir=str(tmp_path / "c"), domain_delay=0.0)
@@ -184,20 +184,20 @@ class TestToolboxConfig:
         assert tb.domain_delay == 0.25
 
     def test_config_and_kwargs_rejected_together(self):
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         with pytest.raises(TypeError):
             WebResearcherToolbox(ToolboxConfig(), max_tokens=5)
 
     def test_invalid_fetch_mode_rejected_in_config(self):
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         with pytest.raises(ValueError, match="fetch_mode"):
             ToolboxConfig(fetch_mode="nope")
 
     def test_provider_rate_limit_drives_fetch_interval(self, tmp_path):
-        from stitch_web_researcher.agent_tools import ToolboxConfig
-        from stitch_web_researcher.search_providers import RateLimit
+        from gossamer.agent_tools import ToolboxConfig
+        from gossamer.search_providers import RateLimit
 
         prov = _FakeProvider(RateLimit(search_interval=0.0, fetch_interval=2.5))
         tb = WebResearcherToolbox(
@@ -239,7 +239,7 @@ class TestFetchSpacingJitter:
     """Page fetch spacing = base interval + random 0-1s jitter."""
 
     def _toolbox(self, tmp_path, **cfg):
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         return WebResearcherToolbox(
             ToolboxConfig(
@@ -248,7 +248,7 @@ class TestFetchSpacingJitter:
         )
 
     def test_gap_is_base_plus_jitter(self, tmp_path, monkeypatch):
-        from stitch_web_researcher import agent_tools
+        from gossamer import agent_tools
 
         tb = self._toolbox(tmp_path, fetch_delay=0.5)
         sleeps = []
@@ -266,7 +266,7 @@ class TestFetchSpacingJitter:
         assert sleeps[0] == pytest.approx(1.2, abs=0.05)
 
     def test_no_sleep_when_gap_already_elapsed(self, tmp_path, monkeypatch):
-        from stitch_web_researcher import agent_tools
+        from gossamer import agent_tools
 
         tb = self._toolbox(tmp_path, fetch_delay=0.5)
         sleeps = []
@@ -279,7 +279,7 @@ class TestFetchSpacingJitter:
         assert sleeps == []
 
     def test_zero_interval_disables_jitter(self, tmp_path, monkeypatch):
-        from stitch_web_researcher import agent_tools
+        from gossamer import agent_tools
 
         tb = self._toolbox(tmp_path, fetch_delay=0.0)
         called = []
@@ -301,7 +301,7 @@ class TestSearchSpacingJitter:
     """Search call spacing = search_interval + random 0-1s jitter."""
 
     def test_gap_is_interval_plus_jitter(self, monkeypatch):
-        from stitch_web_researcher import agent_tools, search_providers
+        from gossamer import agent_tools, search_providers
 
         prov = _FakeProvider()
         prov._last_search = 0.0
@@ -320,7 +320,7 @@ class TestSearchSpacingJitter:
         del agent_tools  # imported only to mirror module layout
 
     def test_no_sleep_when_gap_elapsed(self, monkeypatch):
-        from stitch_web_researcher import search_providers
+        from gossamer import search_providers
 
         prov = _FakeProvider()
         prov._delay = 1.0
@@ -332,7 +332,7 @@ class TestSearchSpacingJitter:
         assert sleeps == []
 
     def test_zero_delay_disables_jitter(self, monkeypatch):
-        from stitch_web_researcher import search_providers
+        from gossamer import search_providers
 
         prov = _FakeProvider()
         prov._delay = 0.0
@@ -356,9 +356,9 @@ class TestPerDomainDelayIsolation:
     _rate_limit_domain runs before _fetch_html regardless of mode)."""
 
     def test_cross_domain_fetches_are_never_delayed(self, tmp_path, monkeypatch):
-        from stitch_web_researcher import agent_tools
+        from gossamer import agent_tools
 
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
             ToolboxConfig(
@@ -375,9 +375,9 @@ class TestPerDomainDelayIsolation:
         assert sleeps == [], "different domains must not wait on each other"
 
     def test_same_domain_repeat_is_delayed(self, tmp_path, monkeypatch):
-        from stitch_web_researcher import agent_tools
+        from gossamer import agent_tools
 
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
             ToolboxConfig(
@@ -398,9 +398,9 @@ class TestPerDomainDelayIsolation:
     def test_smart_and_static_fetches_share_one_delay_budget(self, tmp_path, monkeypatch):
         """A smart (browser) fetch followed by a static fetch of the same
         domain is still rate-limited as one domain."""
-        from stitch_web_researcher import agent_tools
+        from gossamer import agent_tools
 
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
             ToolboxConfig(
@@ -422,7 +422,7 @@ class TestBatchSameDomainStaggering:
 
     def test_same_domain_batch_is_staggered(self, tmp_path, monkeypatch):
         # SSRF guard (S1) blocks 127.0.0.1; this test only checks stagger.
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         import threading
         import time as time_mod
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -442,7 +442,7 @@ class TestBatchSameDomainStaggering:
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            from stitch_web_researcher.agent_tools import ToolboxConfig
+            from gossamer.agent_tools import ToolboxConfig
 
             tb = WebResearcherToolbox(
                 ToolboxConfig(
@@ -470,14 +470,14 @@ class TestBatchSameDomainStaggering:
             server.shutdown()
 
     def test_domain_gap_passed_to_engine(self, tmp_path):
-        from stitch_web_researcher.agent_tools import ToolboxConfig
+        from gossamer.agent_tools import ToolboxConfig
 
         tb = WebResearcherToolbox(
             ToolboxConfig(
                 cache_dir=str(tmp_path / "c"), fetch_delay=0.75, respect_robots=False
             )
         )
-        with patch("stitch_web_researcher.fetch.batch_research") as mock_batch:
+        with patch("gossamer.fetch.batch_research") as mock_batch:
             mock_batch.return_value = []
             tb.batch_inspect_pages(["https://example.com/x"])
 

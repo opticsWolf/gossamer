@@ -12,9 +12,9 @@ import json
 
 import pytest
 
-import stitch_web_researcher.agent_tools as agent_tools
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.structured_parser import parse_page_range
+import gossamer.agent_tools as agent_tools
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.structured_parser import parse_page_range
 
 
 def _build_pdf(pages):
@@ -224,6 +224,17 @@ class TestPageRangeOverUrl:
             def raise_for_status(self):
                 return None
 
+            def iter_bytes(self, chunk_size=None):
+                for i in range(0, len(self.content), 16):
+                    yield self.content[i : i + 16]
+
+        class _FakeStream(_FakeResponse):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
         class _FakeClient:
             def __init__(self, **kwargs):
                 pass
@@ -237,6 +248,10 @@ class TestPageRangeOverUrl:
             def get(self, url, headers=None):
                 calls.append(url)
                 return _FakeResponse()
+
+            def stream(self, method, url, headers=None):
+                calls.append(url)
+                return _FakeStream()
 
         monkeypatch.setattr(agent_tools.httpx, "Client", _FakeClient)
         tb = _toolbox(tmp_path)
@@ -258,6 +273,17 @@ class TestPageRangeOverUrl:
             def raise_for_status(self):
                 return None
 
+            def iter_bytes(self, chunk_size=None):
+                for i in range(0, len(self.content), 16):
+                    yield self.content[i : i + 16]
+
+        class _FakeStream(_FakeResponse):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
         class _FakeClient:
             def __init__(self, **kwargs):
                 pass
@@ -271,6 +297,9 @@ class TestPageRangeOverUrl:
             def get(self, url, headers=None):
                 return _FakeResponse()
 
+            def stream(self, method, url, headers=None):
+                return _FakeStream()
+
         monkeypatch.setattr(agent_tools.httpx, "Client", _FakeClient)
         tb = _toolbox(tmp_path)
         data = json.loads(
@@ -282,7 +311,7 @@ class TestPageRangeOverUrl:
 
 class TestToolRegistryAdvertisesPages:
     def test_extract_document_spec_includes_pages_param(self):
-        from stitch_web_researcher.agent_tools import TOOL_REGISTRY
+        from gossamer.agent_tools import TOOL_REGISTRY
 
         spec = next(s for s in TOOL_REGISTRY if s.name == "extract_document")
         param = next(p for p in spec.params if p.name == "pages")

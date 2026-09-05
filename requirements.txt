@@ -8,3 +8,6 @@
 
 pytest>=7.0
 pytest-asyncio>=0.21
+# Required by pyproject.toml addopts ("-n auto"); without it every pytest
+# invocation fails with "unrecognized arguments: -n" (review A.7).
+pytest-xdist>=3.0

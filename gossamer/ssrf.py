@@ -19,7 +19,7 @@ client; a hostile DNS server could rebind between the two lookups. The
 practical SSRF vectors (direct metadata URLs, CNAME chains, redirects)
 are all caught.
 
-Escape hatch: set ``STITCH_WEB_RESEARCHER_ALLOW_PRIVATE`` to a truthy
+Escape hatch: set ``GOSSAMER_WEB_RESEARCHER_ALLOW_PRIVATE`` to a truthy
 value to skip validation entirely. The environment is under operator
 control, not the LLM's — intended for developers and tests that need to
 hit local servers.
@@ -28,12 +28,13 @@ hit local servers.
 from __future__ import annotations
 
 import ipaddress
-import os
 import socket
 from urllib.parse import urlparse
 
-# Operator-controlled bypass (see module docstring).
-_ENV_ALLOW_PRIVATE = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+# Operator-controlled bypass (see module docstring). Renamed with the package;
+# the legacy STITCH_* spelling still works.
+_ENV_ALLOW_PRIVATE = "GOSSAMER_ALLOW_PRIVATE"
+_ENV_ALLOW_PRIVATE_LEGACY = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
 
 # Hostnames that are never public, regardless of what DNS says.
 _INTERNAL_SUFFIXES = (".local", ".internal", ".localhost")
@@ -44,9 +45,10 @@ class SsrfBlockedError(ValueError):
 
 
 def _allow_private() -> bool:
-    return (
-        os.environ.get(_ENV_ALLOW_PRIVATE, "").strip().lower()
-        in ("1", "true", "yes", "on")
+    from gossamer.env import getenv_bool
+
+    return getenv_bool(
+        _ENV_ALLOW_PRIVATE, False, legacy=_ENV_ALLOW_PRIVATE_LEGACY
     )
 
 

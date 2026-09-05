@@ -4,8 +4,8 @@ first 2000 chars. A payload that starts clean and degenerates later (e.g.
 a partially decoded gzip) used to pass the gate and poison LLM context.
 """
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
-from stitch_web_researcher.fetch import FetchService
+from gossamer.agent_tools import WebResearcherToolbox
+from gossamer.fetch import FetchService
 
 _looks = FetchService._looks_like_text
 

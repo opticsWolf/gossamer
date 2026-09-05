@@ -15,9 +15,9 @@ import json
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 from tests.test_t1_2_pages import PDF_BYTES  # a minimal valid multi-page PDF
-from stitch_web_researcher.structured_parser import (
+from gossamer.structured_parser import (
     DOCUMENT_EXTENSIONS,
     classify_link,
 )

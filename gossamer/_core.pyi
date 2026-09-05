@@ -21,13 +21,15 @@ def batch_research(
     max_concurrency: int = 8,
     domain_gap_ms: int = 0,
     max_bytes: Optional[int] = None,
-) -> List[Tuple[str, Optional[str], Optional[str], Optional[List[str]]]]:
+) -> List[Tuple[str, Optional[str], Optional[str], Optional[List[str]], Optional[Tuple[int, str, Optional[str]]]]]:
     """Fetch *urls* concurrently on the shared runtime.
 
-    Returns one ``(url, html, markdown_or_error, links)`` tuple per URL.
-    The raw HTML lets the Python layer run the same metadata extraction
-    single-page reads use. On failure ``html`` and ``links`` are ``None``
-    and the markdown slot carries the error string.
+    Returns one ``(url, html, markdown_or_error, links, provenance)`` tuple
+    per URL. The raw HTML lets the Python layer run the same metadata
+    extraction single-page reads use; ``provenance`` is the
+    ``(http_status, final_url, content_type)`` tuple so batch entries carry
+    Tier 1.3 provenance. On failure ``html``, ``links`` and ``provenance``
+    are ``None`` and the markdown slot carries the error string.
     """
     ...
 

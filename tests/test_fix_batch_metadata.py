@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 PAGE = (
     "<html><head>"
@@ -66,28 +66,34 @@ def _toolbox(tmp_path, name):
 
 @pytest.fixture
 def single(tmp_path, server, monkeypatch):
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     tb = _toolbox(tmp_path, "single")
     return json.loads(tb.inspect_html_page(f"{server}/p"))
 
 
 @pytest.fixture
 def batched(tmp_path, server, monkeypatch):
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     tb = _toolbox(tmp_path, "batch")
     return json.loads(tb.batch_inspect_pages([f"{server}/p"]))[0]
 
 
 class TestEngineAbi:
     def test_batch_research_returns_html(self, server, monkeypatch):
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
-        from stitch_web_researcher._core import batch_research
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
+        from gossamer._core import batch_research
 
-        (url, html, markdown, links) = batch_research([f"{server}/p"])[0]
+        (url, html, markdown, links, prov) = batch_research([f"{server}/p"])[0]
         assert url.startswith(server)
         assert html and "<title>Tomato blight</title>" in html
         assert markdown and "Copper fungicide" in markdown
         assert isinstance(links, list)
+        # B.6: the engine carries HTTP provenance per URL.
+        assert prov is not None
+        status, final_url, content_type = prov
+        assert status == 200
+        assert final_url.startswith(server)
+        assert content_type and "text/html" in content_type
 
 
 class TestMetadataParity:
@@ -109,7 +115,7 @@ class TestFailuresAreUnaffected:
     def test_error_entry_has_no_metadata_claim(self, tmp_path, monkeypatch):
         # A failed URL carries no HTML; it must still produce a clean error
         # record rather than tripping the extractor.
-        monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+        monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
         tb = _toolbox(tmp_path, "fail")
         # Port 1 on loopback refuses connections.
         out = json.loads(tb.batch_inspect_pages(["http://127.0.0.1:1/x"]))

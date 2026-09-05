@@ -1,4 +1,4 @@
-# stitch_web_researcher/text_links.py
+# gossamer/text_links.py
 """Text-level link detection for document content.
 
 The HTML pipeline gets its links from the extractor (``<a href>`` pairs

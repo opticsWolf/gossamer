@@ -1,11 +1,11 @@
-"""Tests for :mod:`stitch_web_researcher.resource_store` (offline)."""
+"""Tests for :mod:`gossamer.resource_store` (offline)."""
 
 import hashlib
 import re
 
 import pytest
 
-from stitch_web_researcher.resource_store import ResourceStore
+from gossamer.resource_store import ResourceStore
 
 
 class FakeResp:
@@ -28,7 +28,7 @@ class FakeClient:
     def get(self, url, headers=None, timeout=None, follow_redirects=False):
         self.calls.append(url)
         if url in self.blocked:
-            from stitch_web_researcher.ssrf import SsrfBlockedError
+            from gossamer.ssrf import SsrfBlockedError
             raise SsrfBlockedError("blocked")
         if url in self.miss:
             return FakeResp(b"", self.miss[url])

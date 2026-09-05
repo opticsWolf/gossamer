@@ -11,11 +11,11 @@ extra isn't installed.
 
 import pytest
 
-from stitch_web_researcher import structured_parser
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
-from stitch_web_researcher.token_budget import count_tokens
+from gossamer import structured_parser
+from gossamer.agent_tools import WebResearcherToolbox
+from gossamer.token_budget import count_tokens
 
-EXTRA_RE = r"stitch-web-researcher\[documents\]"
+EXTRA_RE = r"gossamer\[documents\]"
 
 
 def _toolbox(tmp_path) -> WebResearcherToolbox:

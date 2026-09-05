@@ -17,12 +17,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     ExaProvider,
     QuotaExhaustedError,
 )
 
-POST_TARGET = "stitch_web_researcher.search_providers.httpx.post"
+POST_TARGET = "gossamer.search_providers.httpx.post"
 
 RESULT_1 = {
     "title": "T1",
@@ -235,6 +235,6 @@ class TestQuotaAndRetry:
         assert out[0]["url"] == "https://example.com/1"
 
     def test_default_rate_limit_unchanged(self):
-        from stitch_web_researcher.search_providers import _EXA_RATE_LIMIT
+        from gossamer.search_providers import _EXA_RATE_LIMIT
 
         assert ExaProvider(api_key="k").rate_limit == _EXA_RATE_LIMIT

@@ -8,8 +8,8 @@ S7 switches the digest to blake2b with the same 16-byte length.
 import hashlib
 import inspect
 
-import stitch_web_researcher.cache as cache_module
-from stitch_web_researcher.cache import Cache
+import gossamer.cache as cache_module
+from gossamer.cache import Cache
 
 
 class TestDiskKeyHash:

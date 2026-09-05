@@ -12,7 +12,7 @@ only partly rescued by ``_looks_like_text`` downstream. The core now:
   * streams the body chunk-by-chunk and aborts past the cap;
   * exposes the cap via the fetch bindings' ``max_bytes`` keyword,
     ``ToolboxConfig.max_response_bytes``, and
-    ``STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES``.
+    ``GOSSAMER_MAX_RESPONSE_BYTES``.
 """
 
 import json
@@ -21,8 +21,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher import _core
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer import _core
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
 
 SMALL_HTML = "<html><body><main><p>small page</p></main></body></html>"
 # ~7 KB — over the small test caps, far under the 5 MiB default.
@@ -80,7 +80,7 @@ class _Handler(BaseHTTPRequestHandler):
 def server(monkeypatch):
     # S1 blocks 127.0.0.1 targets; use the operator bypass for the
     # local test server.
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -101,14 +101,14 @@ def test_default_cap_allows_large_text_page(server):
 
 
 def test_content_length_early_reject(server, monkeypatch):
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES", "1000")
+    monkeypatch.setenv("GOSSAMER_MAX_RESPONSE_BYTES", "1000")
     with pytest.raises(RuntimeError, match="Response too large: declared"):
         _core.fetch_html_full(server + "/big", 10)
 
 
 def test_streaming_cap_chunked(server, monkeypatch):
     # No Content-Length header: the chunk-level cap must trip.
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES", "1000")
+    monkeypatch.setenv("GOSSAMER_MAX_RESPONSE_BYTES", "1000")
     with pytest.raises(RuntimeError, match="exceeds size cap"):
         _core.fetch_html_full(server + "/chunked", 10)
 
@@ -136,7 +136,7 @@ def test_missing_content_type_allowed(server):
 def test_batch_respects_cap(server):
     results = _core.batch_research([server + "/big"], max_bytes=1000)
     assert len(results) == 1
-    url, _html, md, links = results[0]
+    url, _html, md, links, _prov = results[0]
     assert url.startswith(server)
     assert md is not None and "too large" in md
     assert links is None
@@ -169,3 +169,10 @@ def test_toolbox_config_default_cap_allows_normal_page(server, tmp_path):
     result = json.loads(tb.inspect_html_page(server + "/big"))
     assert "error" not in result
     assert "lorem ipsum" in result["markdown"]
+
+
+def test_legacy_env_spelling_still_honored(server, monkeypatch):
+    monkeypatch.delenv("GOSSAMER_MAX_RESPONSE_BYTES", raising=False)
+    monkeypatch.setenv("STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES", "1000")
+    with pytest.raises(RuntimeError, match="Response too large: declared"):
+        _core.fetch_html_full(server + "/big", 10)

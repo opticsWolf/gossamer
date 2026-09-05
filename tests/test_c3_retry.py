@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer.agent_tools import WebResearcherToolbox
 
 
 def _toolbox(tmp_path) -> WebResearcherToolbox:
@@ -76,7 +76,7 @@ class TestRetryAfterFailure:
                 for u in urls
             ]
 
-        with patch("stitch_web_researcher.fetch.batch_research", side_effect=fake_batch):
+        with patch("gossamer.fetch.batch_research", side_effect=fake_batch):
             first = json.loads(tb.batch_inspect_pages([ok, bad]))
         assert bad not in tb.visited_urls
         assert ok in tb.visited_urls
@@ -85,7 +85,7 @@ class TestRetryAfterFailure:
 
         # Retry the batch: only the previously-failed URL should go to the
         # engine; the visited (successful) one is skipped.
-        with patch("stitch_web_researcher.fetch.batch_research", side_effect=fake_batch) as mock_batch:
+        with patch("gossamer.fetch.batch_research", side_effect=fake_batch) as mock_batch:
             json.loads(tb.batch_inspect_pages([ok, bad]))
         assert mock_batch.call_args[0][0] == [bad]
 
@@ -143,7 +143,7 @@ class TestRecoveryViaMCP:
         import asyncio
 
         try:
-            from stitch_web_researcher.mcp_server import build_server
+            from gossamer.mcp_server import build_server
         except ImportError:
             pytest.skip("mcp not installed")
         server = build_server()

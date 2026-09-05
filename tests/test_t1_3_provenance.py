@@ -21,9 +21,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from stitch_web_researcher import fetch
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import (
+from gossamer import fetch
+from gossamer import agent_tools
+from gossamer.agent_tools import (
     TOOL_REGISTRY,
     ToolboxConfig,
     WebResearcherToolbox,
@@ -227,10 +227,24 @@ class _FakeDocumentClient:
             self.content = outer.content
             self.url = outer.final_url
             self.status_code = outer.status
-            self.headers = {"content-type": outer.content_type}
+            self.headers = {
+                "content-type": outer.content_type,
+                "content-length": str(len(outer.content)),
+            }
 
         def raise_for_status(self):
             return None
+
+        def iter_bytes(self, chunk_size=None):
+            for i in range(0, len(self.content), 16):
+                yield self.content[i : i + 16]
+
+    class _StreamResponse(_Response):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
 
     def __init__(self, *args, **kwargs):
         pass
@@ -243,6 +257,9 @@ class _FakeDocumentClient:
 
     def get(self, url, headers=None):
         return self._Response(self)
+
+    def stream(self, method, url, headers=None):
+        return self._StreamResponse(self)
 
 
 class TestDocumentProvenance:

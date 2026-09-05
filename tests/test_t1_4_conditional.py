@@ -14,7 +14,7 @@ re-downloading the whole page:
   failure -> fall back to a full fetch.
 
 Revalidation is opt-out via ``ToolboxConfig.conditional_revalidation``
-(wired to ``STITCH_CONDITIONAL_REVALIDATE`` in the MCP server).
+(wired to ``GOSSAMER_CONDITIONAL_REVALIDATE`` in the MCP server).
 
 All tests are deterministic: the network is a fake
 ``fetch_html_conditional`` and cache expiry is forced by ageing the
@@ -24,13 +24,13 @@ on-disk TTL metadata, so no live HTTP and no sleeps are involved.
 import json
 import time
 
-from stitch_web_researcher import fetch
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import (
+from gossamer import fetch
+from gossamer import agent_tools
+from gossamer.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
 )
-from stitch_web_researcher.cache import Cache
+from gossamer.cache import Cache
 
 PAGE = "Original page body that outlives a 304 round trip."
 PROV_200 = (200, "https://example.com/a", "text/html; charset=utf-8")

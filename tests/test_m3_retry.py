@@ -14,8 +14,8 @@ import time
 
 import pytest
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
-from stitch_web_researcher.search_providers import SearchProvider, retry
+from gossamer.agent_tools import WebResearcherToolbox
+from gossamer.search_providers import SearchProvider, retry
 
 
 class _FlakyProvider(SearchProvider):

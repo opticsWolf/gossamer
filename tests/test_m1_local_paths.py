@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from stitch_web_researcher.agent_tools import WebResearcherToolbox, normalize_url
+from gossamer.agent_tools import WebResearcherToolbox, normalize_url
 
 
 class TestNormalizeLocalPaths:

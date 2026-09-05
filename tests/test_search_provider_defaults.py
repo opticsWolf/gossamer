@@ -9,7 +9,7 @@ are never mutated by construction.
 
 import pytest
 
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     _BING_RATE_LIMIT,
     _DUCKDUCKGO_RATE_LIMIT,
     _EXA_RATE_LIMIT,

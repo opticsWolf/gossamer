@@ -19,10 +19,10 @@ the tool wiring is tested with fetches spied.
 
 import json
 
-from stitch_web_researcher._core import extract_tables_from_html
-from stitch_web_researcher import fetch
-from stitch_web_researcher.agent_tools import ToolboxConfig, WebResearcherToolbox
-from stitch_web_researcher.structured_parser import (
+from gossamer._core import extract_tables_from_html
+from gossamer import fetch
+from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+from gossamer.structured_parser import (
     ExtractedTable,
     StructuredOxideParser,
 )
@@ -285,7 +285,7 @@ class TestStructuredToolWiring:
         """A broken Rust extractor must not break the structured fetch —
         the page still ships, just without tables."""
         tb = _toolbox(tmp_path)
-        import stitch_web_researcher.document as document
+        import gossamer.document as document
 
         def boom(html, max_tables=20, max_rows=500):
             raise RuntimeError("extractor exploded")
@@ -311,7 +311,7 @@ class TestStructuredToolWiring:
         """fetch_mode=browser: the real dispatch runs, the browser fake
         serves the page, and html stays None -> empty tables."""
         tb = _toolbox(tmp_path, fetch_mode="browser")
-        import stitch_web_researcher.agent_tools as agent_tools
+        import gossamer.agent_tools as agent_tools
 
         monkeypatch.setattr(fetch, "_browser_oxide_available", True)
         monkeypatch.setattr(

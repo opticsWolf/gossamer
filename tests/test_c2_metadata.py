@@ -15,8 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
-from stitch_web_researcher import agent_tools
-from stitch_web_researcher.agent_tools import WebResearcherToolbox
+from gossamer import agent_tools
+from gossamer.agent_tools import WebResearcherToolbox
 
 PAGE_HTML = """<!DOCTYPE html>
 <html>
@@ -58,7 +58,7 @@ class _Handler(BaseHTTPRequestHandler):
 def http_server(monkeypatch):
     # The SSRF guard (S1) blocks 127.0.0.1 targets; these tests exercise
     # metadata extraction on a local server, so use the operator bypass.
-    monkeypatch.setenv("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE", "1")
+    monkeypatch.setenv("GOSSAMER_ALLOW_PRIVATE", "1")
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -124,7 +124,7 @@ class TestFetchSmartPageFallback:
     def test_fallback_extracts_metadata(self, tmp_path, http_server, monkeypatch):
         """With browser_oxide 'unavailable', fetch_smart_page falls back to
         the static path and must still return metadata (C2)."""
-        monkeypatch.setattr("stitch_web_researcher.fetch._browser_oxide_available", False)
+        monkeypatch.setattr("gossamer.fetch._browser_oxide_available", False)
         md, links, meta = agent_tools.fetch_smart_page(http_server + "/page")
 
         assert "Hello C2" in md
@@ -139,12 +139,12 @@ class TestFetchSmartPageFallback:
         # historically agent_tools module globals, moved to fetch.py during
         # the agent_tools composition split.)
         with patch(
-            "stitch_web_researcher.fetch._fetch_with_browser_oxide",
+            "gossamer.fetch._fetch_with_browser_oxide",
             return_value=("md", [], {"meta": {"title": "browser title"}}),
         ), patch(
             # Dispatch consults the availability flag; browser-oxide is an
             # optional [browser] extra and may be absent in this environment.
-            "stitch_web_researcher.fetch._browser_oxide_available",
+            "gossamer.fetch._browser_oxide_available",
             True,
         ):
             md, links, meta = agent_tools.fetch_smart_page("https://example.com")

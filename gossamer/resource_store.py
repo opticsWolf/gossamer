@@ -36,7 +36,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from stitch_web_researcher.ssrf import validate_public_url, SsrfBlockedError
+from gossamer.ssrf import validate_public_url, SsrfBlockedError
 
 logger = logging.getLogger(__name__)
 

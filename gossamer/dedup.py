@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import hashlib
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
-from urllib.parse import urlparse, urlunparse
+
+from gossamer.config import canonical_url
 
 __all__ = ["content_hash", "dedupe"]
 
@@ -62,27 +63,18 @@ def _doi_key(item: Any) -> Optional[str]:
 
 def _url_key(item: Any) -> Optional[str]:
     """Canonical URL key: same resource regardless of scheme/host case,
-    default port, trailing slash, query string, or fragment."""
+    ``www.``, default port, trailing slash, query string, or fragment.
+
+    Delegates to :func:`gossamer.config.canonical_url` (``drop`` mode) so
+    the shared dedup agrees with the cache and search identities (B.1).
+    """
     url = _scalar(item, _URL_KEYS)
     if not url:
         return None
     try:
-        parts = urlparse(url.strip())
+        return canonical_url(url, query="drop")
     except ValueError:
         return None
-    scheme = (parts.scheme or "").lower()
-    host = (parts.hostname or "").lower()
-    if not host:
-        return None
-    default_port = 443 if scheme == "https" else 80
-    port = parts.port
-    netloc = host if port in (None, default_port) else f"{host}:{port}"
-    path = parts.path or ""
-    if path.endswith("/"):
-        path = path[:-1]
-    # Drop query + fragment: two pages that differ only in query params or
-    # an anchor are the same resource for dedup purposes.
-    return urlunparse((scheme, netloc, path, parts.params, "", ""))
 
 
 def _hash_key(item: Any) -> Optional[str]:

@@ -15,11 +15,11 @@ import json
 
 import pytest
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     ToolboxConfig,
     WebResearcherToolbox,
 )
-from stitch_web_researcher.structured_parser import (
+from gossamer.structured_parser import (
     DOCUMENT_EXTENSIONS,
     classify_link,
 )

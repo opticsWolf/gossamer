@@ -13,10 +13,9 @@ import json
 import logging
 import time
 from typing import List, Optional
-from urllib.parse import urlparse, urlunparse
-
-from stitch_web_researcher.search_providers import resolve_provider_name
-from stitch_web_researcher.guard import evaluate
+from gossamer.config import canonical_url
+from gossamer.search_providers import resolve_provider_name
+from gossamer.guard import evaluate
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +111,13 @@ class SearchService:
             return self.search_web(
                 query, max_results=max_results, provider=provider
             )
-        return self._tb.research(topic=query, depth=depth, max_tokens=max_tokens)
+        return self._tb.research(
+            topic=query,
+            depth=depth,
+            max_tokens=max_tokens,
+            provider=provider,
+            max_results=max_results,
+        )
 
     def search_web(
         self,
@@ -149,6 +154,10 @@ class SearchService:
         cache_key = self._search_cache_key(query, max_results, provider)
         cached = self._search_cache_get(cache_key)
         if cached is not None:
+            # A hit re-serves stored results without re-deduping, so the
+            # drop counter must reset here too — otherwise research()
+            # reports a stale dropped_dupes from an earlier query (A.9).
+            self._last_search_dropped = 0
             logger.debug("search cache hit for %r", query)
             # The guard is a live policy, so it is re-evaluated on every
             # call even when the underlying results came from the cache.
@@ -254,26 +263,18 @@ class SearchService:
     def _result_url_key(result: dict) -> str:
         """Normalised URL key used to dedup search results.
 
-        Scheme/host lowercased, default port dropped, trailing slash removed,
-        fragment dropped. Returns '' when the result has no usable URL (such
-        results are never deduped).
+        Delegates to :func:`gossamer.config.canonical_url` (``keep`` mode:
+        the query string still distinguishes results, but ``www.``/case/
+        port/slash variants collapse). Returns '' when the result has no
+        usable URL (such results are never deduped).
         """
         url = result.get("url")
         if not url or not isinstance(url, str):
             return ""
-        parts = urlparse(url.strip())
-        scheme = (parts.scheme or "").lower()
-        host = (parts.hostname or "").lower()
-        if scheme in ("http", "https") and parts.port in (None, 80, 443):
-            netloc = host
-        elif parts.port:
-            netloc = f"{host}:{parts.port}"
-        else:
-            netloc = host
-        path = parts.path or ""
-        if path.endswith("/"):
-            path = path[:-1]
-        return urlunparse((scheme, netloc, path, "", parts.query, ""))
+        try:
+            return canonical_url(url, query="keep")
+        except ValueError:
+            return ""
 
     def _dedup_results(self, results: list) -> list:
         """Remove duplicate results by normalised URL, preserving order.

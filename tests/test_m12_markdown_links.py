@@ -10,7 +10,7 @@ is made self-contained via urljoin on the Python side.
 import json
 from unittest import mock
 
-from stitch_web_researcher.agent_tools import (
+from gossamer.agent_tools import (
     WebResearcherToolbox,
     _absolutize_markdown_links,
 )
@@ -114,7 +114,7 @@ class TestAbsolutizationInTools:
         url = "https://example.com/dir/page"
         fake = [(url, "<html><body><p>T</p></body></html>", "# T\n[A](/a)\n", [])]
         with mock.patch(
-            "stitch_web_researcher.fetch.batch_research", return_value=fake
+            "gossamer.fetch.batch_research", return_value=fake
         ):
             raw = tb.batch_inspect_pages([url])
 

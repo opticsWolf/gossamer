@@ -1450,7 +1450,7 @@ wheels = [
 ]
 
 [[package]]
-name = "stitch-web-researcher"
+name = "gossamer"
 version = "0.5.0"
 source = { editable = "." }
 dependencies = [

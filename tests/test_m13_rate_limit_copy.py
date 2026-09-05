@@ -8,7 +8,7 @@ object directly and then wrote ``fetch_interval`` into it (when
 was modified in place by the first construction.
 """
 
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     _DUCKDUCKGO_RATE_LIMIT,
     DuckDuckGoProvider,
     RateLimit,

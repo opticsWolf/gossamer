@@ -15,9 +15,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from stitch_web_researcher._core import fetch_html_full
+from gossamer._core import fetch_html_full
 
-_ALLOW_PRIVATE_ENV = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
+_ALLOW_PRIVATE_ENV = "GOSSAMER_ALLOW_PRIVATE"
 
 _RECOVERED = (
     b"<!DOCTYPE html><html><head><title>Recovered</title></head>"

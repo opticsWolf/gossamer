@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stitch_web_researcher.search_providers import (
+from gossamer.search_providers import (
     SearchProvider,
     DuckDuckGoProvider,
     GoogleProvider,
@@ -78,7 +78,7 @@ class TestGoogleProvider:
         with pytest.raises(RuntimeError, match="requires GOOGLE_API_KEY"):
             prov.search("test")
 
-    @patch("stitch_web_researcher.search_providers.httpx.get")
+    @patch("gossamer.search_providers.httpx.get")
     def test_search_maps_fields(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -97,7 +97,7 @@ class TestGoogleProvider:
         assert results[0]["url"] == "https://google.com"
         assert results[0]["snippet"] == "Snippet text"
 
-    @patch("stitch_web_researcher.search_providers.httpx.get")
+    @patch("gossamer.search_providers.httpx.get")
     def test_search_caps_at_10(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"items": []}
@@ -126,7 +126,7 @@ class TestBingProvider:
         with pytest.raises(RuntimeError, match="requires BING_API_KEY"):
             prov.search("test")
 
-    @patch("stitch_web_researcher.search_providers.httpx.get")
+    @patch("gossamer.search_providers.httpx.get")
     def test_search_maps_fields(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -188,20 +188,20 @@ class TestGetDefaultProviders:
 
 class TestToolboxProviders:
     def test_default_provider_is_ddg(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         toolbox = WebResearcherToolbox()
         assert isinstance(toolbox.default_provider, DuckDuckGoProvider)
         assert len(toolbox.providers) == 1
 
     def test_custom_providers(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         prov = DuckDuckGoProvider(delay=0.5)
         toolbox = WebResearcherToolbox(search_providers=[prov])
         assert toolbox.providers == [prov]
         assert toolbox.default_provider is prov
 
     def test_resolve_providers_no_name(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         prov1 = DuckDuckGoProvider()
         prov2 = DuckDuckGoProvider()
         toolbox = WebResearcherToolbox(search_providers=[prov1, prov2])
@@ -209,7 +209,7 @@ class TestToolboxProviders:
         assert resolved == [prov1, prov2]
 
     def test_resolve_providers_named(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         prov1 = DuckDuckGoProvider()
         prov2 = DuckDuckGoProvider()
         toolbox = WebResearcherToolbox(search_providers=[prov1, prov2])
@@ -218,7 +218,7 @@ class TestToolboxProviders:
         assert len(resolved) == 2
 
     def test_search_web_uses_provider(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         mock_prov = MagicMock()
         mock_prov.search.return_value = [
             {"title": "Mock Result", "url": "https://mock.com", "snippet": "Mock snippet"},
@@ -233,7 +233,7 @@ class TestToolboxProviders:
         assert parsed[0]["title"] == "Mock Result"
 
     def test_search_web_fallback(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         prov1 = MagicMock()
         prov1.search.side_effect = Exception("Provider 1 down")
         prov1.__class__.__name__ = "FailingProvider"
@@ -253,7 +253,7 @@ class TestToolboxProviders:
         prov2.search.assert_called_once()
 
     def test_search_web_all_fail(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         prov1 = MagicMock()
         prov1.search.side_effect = Exception("Error 1")
         prov1.__class__.__name__ = "Fail1"
@@ -269,7 +269,7 @@ class TestToolboxProviders:
         assert "error" in parsed
 
     def test_llm_definitions_include_provider(self):
-        from stitch_web_researcher.agent_tools import WebResearcherToolbox
+        from gossamer.agent_tools import WebResearcherToolbox
         toolbox = WebResearcherToolbox()
         defs = toolbox.get_llm_definitions()
         search_def = [d for d in defs if d["function"]["name"] == "web_search"][0]
