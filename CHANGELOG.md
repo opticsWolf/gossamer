@@ -4,6 +4,16 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.3] — Rust port M3: sections + BM25
+
+- `src/sections.rs`: heading splitting (ATX + Setext, lookaheads as
+  proven-equivalent post-filters), tokenization, BM25 (bit-identical
+  f64), budget selection with char-based slicing and tuple `anchors`.
+- `gossamer/sections.py` is now re-exports of the PyO3 classes/functions.
+- Parity proof: `tests/test_rust_parity_sections.py` (vendored v0.8.2
+  original + seeded markdown fuzz, 477 checks incl. exact float
+  equality) + 4 Rust unit tests.
+
 ## [0.8.2] — Rust port M2: dedupe matching core
 
 - `src/dedupe.rs`: `dedupe_plan` (DOI/URL/hash key computation +

@@ -1,4 +1,5 @@
 mod dedupe;
+mod sections;
 mod textlinks;
 mod urls;
 
@@ -1508,5 +1509,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(urls::content_hash, m)?)?;
     m.add_function(wrap_pyfunction!(textlinks::text_links_scan, m)?)?;
     m.add_function(wrap_pyfunction!(dedupe::dedupe_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
+    m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
+    m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;
+    m.add_function(wrap_pyfunction!(sections::select_relevant_sections, m)?)?;
+    m.add_class::<sections::Section>()?;
+    m.add_class::<sections::SectionSelection>()?;
     Ok(())
 }

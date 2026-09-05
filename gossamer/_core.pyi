@@ -165,3 +165,40 @@ def dedupe_plan(
     dropped entries as ``(index, reason, match)`` tuples.
     """
     ...
+
+class Section:
+    anchor: str
+    text: str
+    offset: int
+
+class SectionSelection:
+    markdown: str
+    total_sections: int
+    selected_count: int
+    @property
+    def anchors(self) -> tuple: ...
+
+def split_sections(markdown: str) -> List[Section]:
+    """Port of ``gossamer.sections.split_sections`` (src/sections.rs)."""
+    ...
+
+def tokenize_text(text: str) -> List[str]:
+    """Port of ``gossamer.sections.tokenize_text`` (src/sections.rs)."""
+    ...
+
+def bm25_scores(
+    query_tokens: List[str],
+    docs: List[str],
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> List[float]:
+    """Port of ``gossamer.sections.bm25_scores`` (src/sections.rs)."""
+    ...
+
+def select_relevant_sections(
+    markdown: str,
+    query: str,
+    max_chars: int,
+) -> Optional[SectionSelection]:
+    """Port of ``gossamer.sections.select_relevant_sections``."""
+    ...
