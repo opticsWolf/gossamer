@@ -22,9 +22,9 @@ or log exactly why an entry was removed.
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
+from gossamer import _core as _rust
 from gossamer.config import canonical_url
 
 __all__ = ["content_hash", "dedupe"]
@@ -41,7 +41,8 @@ _SNIPPET_KEYS = ("snippet", "summary", "description")
 
 def content_hash(text: str) -> str:
     """SHA-256 hex digest of *text* (content identity for weak dedup)."""
-    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+    # Implemented in Rust (src/urls.rs).
+    return _rust.content_hash(text)
 
 
 def _scalar(item: Any, keys: Sequence[str]) -> Optional[str]:

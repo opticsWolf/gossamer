@@ -1,6 +1,6 @@
 [package]
 name = "gossamer-core"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 
 [lib]
@@ -9,6 +9,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.27", features = ["extension-module", "abi3-py38"] }
+sha2 = "0.10"
+regex = "1"
+unicode-normalization = "0.1"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream", "brotli", "gzip", "deflate"] }
 scraper = "0.22"

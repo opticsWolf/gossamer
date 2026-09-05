@@ -126,3 +126,30 @@ def configure_http(
     shared client at first use. No-op when every argument is empty/None.
     """
     ...
+
+def normalize_url(raw: Optional[str], base: Optional[str] = None) -> str:
+    """Port of ``gossamer.config.normalize_url`` (src/urls.rs).
+
+    Raises ``ValueError`` with identical messages for non-URL input.
+    """
+    ...
+
+def canonical_url(url: str, query: str = "keep") -> str:
+    """Port of ``gossamer.config.canonical_url`` (src/urls.rs).
+
+    ``query`` is ``keep``/``drop``/``drop-tracking`` (unknown falls
+    through to ``keep``). Raises ``ValueError`` like the original.
+    """
+    ...
+
+def content_hash(text: Optional[str] = None) -> str:
+    """SHA-256 hex digest (port of ``gossamer.dedup.content_hash``)."""
+    ...
+
+def text_links_scan(text: str, max_links: int = 50) -> List[str]:
+    """URL scan core (port of ``gossamer.text_links`` matching).
+
+    Input validation (non-string/empty/non-positive cap) stays on the
+    Python side; this never returns ``[]``-by-contract violations.
+    """
+    ...

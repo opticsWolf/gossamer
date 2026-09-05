@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gossamer"
-version = "0.8.0"
+version = "0.8.1"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"

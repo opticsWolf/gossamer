@@ -12,12 +12,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import List, Optional
-from urllib.parse import parse_qsl, urlencode, urlparse, urljoin, urlunparse
+from typing import Optional
 
 from gossamer.guard import GuardConfig
-from gossamer.structured_parser import DOCUMENT_EXTENSIONS
+from gossamer import _core as _rust
 from gossamer.research_categories import describe_categories
 # ── Fetch strategy: FetchMode enum + per-call resolution ─────────
 class FetchMode(str, Enum):
@@ -491,63 +489,9 @@ def normalize_url(raw: str, base: Optional[str] = None) -> str:
     that cannot be interpreted as one — including explicit relative paths
     and existing local files, which are paths on disk, not URLs (M1).
     """
-    s = (raw or '').strip().strip('"\'').strip("<>").strip()
-    if not s:
-        raise ValueError("Empty URL")
-
-    # Page-relative or root-relative path: resolve against base first.
-    if base and not urlparse(s).scheme and not s.startswith("//"):
-        s = urljoin(base, s)
-
-    # Protocol-relative //host/path
-    if s.startswith("//"):
-        s = "https:" + s
-
-    parsed = urlparse(s)
-    if " " in s:
-        raise ValueError(f"Cannot interpret {raw!r} as a URL (contains spaces)")
-
-    if not parsed.scheme:
-        # M1: an explicit relative path ("./report.pdf", "../a/b") or an
-        # existing local file ("report.pdf") must never be promoted to a
-        # URL — "report.pdf" is a path on disk, not the domain "report.pdf".
-        # Callers (e.g. extract_document) catch ValueError and fall back
-        # to disk.
-        if s.startswith(("./", "../", ".\\", "..\\")) or Path(s).exists():
-            raise ValueError(
-                f"{raw!r} looks like a local file path, not a URL"
-            )
-        # Bare domain like "example.com/a" or "www.example.com".
-        # Only auto-prefix when the host looks domain-like; a bare word
-        # is more likely a mistake than an intranet hostname.
-        candidate_host = parsed.path.split("/")[0]
-        if "." not in candidate_host and candidate_host != "localhost":
-            raise ValueError(f"{raw!r} does not look like a URL")
-        # A single segment ending in a document extension is a filename,
-        # not a host: "report.pdf" is a path on disk even when the file is
-        # not in the current directory, so the Path.exists() check above
-        # cannot catch it. ".pdf" is not a TLD.
-        if "/" not in s and any(
-            candidate_host.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS
-        ):
-            raise ValueError(
-                f"{raw!r} looks like a local file path, not a URL"
-            )
-        s = "https://" + s
-        parsed = urlparse(s)
-
-    if parsed.scheme not in ("http", "https"):
-        raise ValueError(f"Unsupported URL scheme in {raw!r}")
-    host = parsed.hostname or ""
-    if not host:
-        raise ValueError(f"Cannot parse {raw!r} as a URL (no host)")
-    return s
-
-
-# Query parameters that never change page content -- stripped so that
-# campaign-tagged variants of one document share a single cache entry.
-_TRACKING_PARAM_PREFIXES = ("utm_", "fbclid", "gclid", "mc_", "ref_")
-
+    # Implemented in Rust (src/urls.rs); parity-pinned by
+    # tests/test_rust_parity_urls.py (vendored original + seeded fuzz).
+    return _rust.normalize_url(raw, base)
 
 def canonical_url(url: str, *, query: str = "keep") -> str:
     """One canonical identity for a URL, shared by every dedup/cache/visited
@@ -567,30 +511,9 @@ def canonical_url(url: str, *, query: str = "keep") -> str:
       are removed (cache/visited identity: campaign tags never change the
       resource, other params might).
     """
-    normalized = normalize_url(url)
-    parts = urlparse(normalized)
-    host = (parts.hostname or "").lower()
-    if host.startswith("www."):
-        host = host[len("www."):]
-    port = parts.port
-    default_port = {"http": 80, "https": 443}.get(parts.scheme)
-    netloc = host if (port is None or port == default_port) else f"{host}:{port}"
-    path = parts.path.rstrip("/") or "/"
-    if query == "drop":
-        query_str = ""
-    else:
-        items = parse_qsl(parts.query, keep_blank_values=True)
-        if query == "drop-tracking":
-            items = [
-                (k, v) for k, v in items
-                if not k.lower().startswith(_TRACKING_PARAM_PREFIXES)
-            ]
-        # Key names are lowercased and items sorted: ?ID=7 and ?id=7 hit
-        # the same entry, and ?b=1&a=2 matches ?a=2&b=1.
-        query_str = urlencode(sorted((k.lower(), v) for k, v in items))
-    # Scheme preserved (http/https may genuinely serve different content).
-    return urlunparse((parts.scheme, netloc, path, "", query_str, ""))
-
+    # Implemented in Rust (src/urls.rs); parity-pinned by
+    # tests/test_rust_parity_urls.py (vendored original + seeded fuzz).
+    return _rust.canonical_url(url, query)
 
 def ensure_str_list(value, name: str) -> list:
     """Coerce a ``list[str]`` tool argument into a clean list (review A.3).

@@ -4,6 +4,18 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.1] — Rust port M1: URL identity + text-link primitives
+
+- `src/urls.rs`: `normalize_url` / `canonical_url` / `content_hash`
+  (operation-for-operation `urllib.parse` parity incl. `;params` drop,
+  bracket/NFKC validation, `parse_qsl`/`urlencode` query semantics).
+- `src/textlinks.rs`: `text_links_scan` (Unicode-aware stop class,
+  trailing-punct strip, `www.` promotion, ordered dedup).
+- Python `config` / `dedup` / `text_links` delegate to `_core`.
+- Parity proof: `tests/test_rust_parity_urls.py` (vendored v0.8.0
+  originals + seeded fuzz, 276 checks) + 8 Rust unit tests + full
+  suite green (1599 passed).
+
 ## [0.8.0] — direct harness integration
 
 - `gossamer` CLI (`python -m gossamer.cli`, `gossamer` console script):

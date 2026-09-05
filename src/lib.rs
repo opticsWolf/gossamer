@@ -1,3 +1,6 @@
+mod textlinks;
+mod urls;
+
 use pyo3::prelude::*;
 use scraper::{node::Element, ElementRef, Html, Selector};
 use url::{Host, Url};
@@ -1499,5 +1502,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(init_rust_logging, m)?)?;
     m.add_function(wrap_pyfunction!(configure_http, m)?)?;
     m.add_function(wrap_pyfunction!(extract_tables_from_html, m)?)?;
+    m.add_function(wrap_pyfunction!(urls::normalize_url, m)?)?;
+    m.add_function(wrap_pyfunction!(urls::canonical_url, m)?)?;
+    m.add_function(wrap_pyfunction!(urls::content_hash, m)?)?;
+    m.add_function(wrap_pyfunction!(textlinks::text_links_scan, m)?)?;
     Ok(())
 }
