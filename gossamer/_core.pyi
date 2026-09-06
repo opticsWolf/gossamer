@@ -330,3 +330,30 @@ def robots_parse(text: str, user_agent: str) -> tuple:
 def robots_match_url(rules: list, url_path: str) -> bool:
     """Longest-match-wins evaluation (src/robots.rs)."""
     ...
+
+def budget_truncate(
+    text: str,
+    char_limit: int,
+    token_limit: int = 0,
+    model_name: str = "gpt-4o",
+) -> str:
+    """Two-pass truncation (src/budget.rs)."""
+    ...
+
+def budget_json_fits(
+    text: str, char_limit: int, token_limit: int, model_name: str
+) -> bool:
+    """Budget membership test (src/budget.rs)."""
+    ...
+
+def budget_content_split(chars: int, tokens: int, link_ratio: float) -> tuple:
+    """(chars, tokens) after the links reserve (src/budget.rs)."""
+    ...
+
+def shrink_research_json(result_json: str, budget: int | None = None) -> str:
+    """Research-result shrinking (src/budget.rs)."""
+    ...
+
+def shrink_payload_json(payload_json: str, budget: int | None = None) -> str:
+    """Parsed-payload shrinking (src/budget.rs)."""
+    ...

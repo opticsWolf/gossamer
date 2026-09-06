@@ -4,6 +4,17 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.10] — Rust port M10: budget kernels
+
+- `src/budget.rs`: two-pass truncation, JSON-fit testing, links
+  reserve split, research shrinking (incl. crash paths + tail drop),
+  payload shrinking — with `json.dumps(indent=2, ensure_ascii=True)`
+  vs pydantic raw-UTF-8 serialization kept distinct per path.
+- `ContentBudget` keeps `_fit_json` (Python build-callback) and
+  delegates the rest.
+- Parity proof: `tests/test_rust_parity_budget.py` (210 checks incl.
+  seeded fuzz) + 4 Rust unit tests.
+
 ## [0.8.9] — Rust port M9: robots.txt
 
 - `src/robots.rs`: path extraction, rule compilation (wildcards,

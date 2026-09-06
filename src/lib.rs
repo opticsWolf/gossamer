@@ -1,3 +1,4 @@
+mod budget;
 mod categories;
 mod cite;
 mod dedupe;
@@ -1540,6 +1541,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(robots::robots_url_path, m)?)?;
     m.add_function(wrap_pyfunction!(robots::robots_parse, m)?)?;
     m.add_function(wrap_pyfunction!(robots::robots_match_url, m)?)?;
+    m.add_function(wrap_pyfunction!(budget::budget_truncate, m)?)?;
+    m.add_function(wrap_pyfunction!(budget::budget_json_fits, m)?)?;
+    m.add_function(wrap_pyfunction!(budget::budget_content_split, m)?)?;
+    m.add_function(wrap_pyfunction!(budget::shrink_research_json, m)?)?;
+    m.add_function(wrap_pyfunction!(budget::shrink_payload_json, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

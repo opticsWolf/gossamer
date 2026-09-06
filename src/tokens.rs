@@ -50,6 +50,10 @@ static MODEL_ENCODING: &[(&str, &str)] = &[
 const DEFAULT_ENCODING: &str = "cl100k_base";
 const DEFAULT_ELLIPSIS: &str = "\n\n... [truncated for token budget]";
 
+pub(crate) fn default_ellipsis() -> &'static str {
+    DEFAULT_ELLIPSIS
+}
+
 fn tokenizer_name(t: Tokenizer) -> &'static str {
     match t {
         Tokenizer::O200kHarmony => "o200k_harmony",
