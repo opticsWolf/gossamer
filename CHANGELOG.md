@@ -4,6 +4,17 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.6] — Rust port M6: token budgets (tiktoken-rs)
+
+- `src/tokens.rs`: model→encoding resolution (vendored registry +
+  local table + prefix + default), BPE counting/truncation/packing
+  over six embedded encodings, byte-exact special-token errors.
+  `gpt2` resolves by name but counts via the Python fallback
+  (`embedded_encodings()` draws the line); char fallback stays Python.
+- Parity proof: `tests/test_rust_parity_tokens.py` (live-map
+  resolution battery, exact counts/truncations, error messages,
+  fallback contract) + 4 Rust unit tests.
+
 ## [0.8.5] — Rust port M5: category routing
 
 - `src/categories.rs`: `classify_query` (verbatim keyword tables,

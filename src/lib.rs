@@ -1,6 +1,7 @@
 mod categories;
 mod dedupe;
 mod guard;
+mod tokens;
 mod pycompat;
 mod sections;
 mod textlinks;
@@ -1519,6 +1520,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(guard::redact_spans, m)?)?;
     m.add_function(wrap_pyfunction!(guard::wrap_untrusted, m)?)?;
     m.add_function(wrap_pyfunction!(categories::classify_query, m)?)?;
+    m.add_function(wrap_pyfunction!(tokens::resolve_encoding, m)?)?;
+    m.add_function(wrap_pyfunction!(tokens::embedded_encodings, m)?)?;
+    m.add_function(wrap_pyfunction!(tokens::count_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(tokens::truncate_to_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(tokens::fit_context_window, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

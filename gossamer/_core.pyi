@@ -242,3 +242,32 @@ def wrap_untrusted(markdown: str, source_url: str) -> str:
 def classify_query(query: str | None = None) -> str:
     """Category name for *query* (port of the ``classify`` kernel)."""
     ...
+
+def resolve_encoding(model_name: str) -> str:
+    """Model → encoding name (port of ``token_budget`` resolution)."""
+    ...
+
+def embedded_encodings() -> List[str]:
+    """Encoding names with embedded BPE ranks (Rust-side)."""
+    ...
+
+def count_tokens(text: str, model_name: str = "gpt-4o") -> int:
+    """BPE token count (src/tokens.rs; ValueError on special tokens)."""
+    ...
+
+def truncate_to_tokens(
+    text: str,
+    max_tokens: int,
+    model_name: str = "gpt-4o",
+    ellipsis: Optional[str] = None,
+) -> str:
+    """Token-boundary truncation (src/tokens.rs)."""
+    ...
+
+def fit_context_window(
+    pieces: List[str],
+    max_tokens: int,
+    model_name: str = "gpt-4o",
+) -> List[str]:
+    """Greedy budget packing (src/tokens.rs)."""
+    ...
