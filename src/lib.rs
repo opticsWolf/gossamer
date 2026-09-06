@@ -1,3 +1,4 @@
+mod adapters;
 mod budget;
 mod categories;
 mod cite;
@@ -1546,6 +1547,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(budget::budget_content_split, m)?)?;
     m.add_function(wrap_pyfunction!(budget::shrink_research_json, m)?)?;
     m.add_function(wrap_pyfunction!(budget::shrink_payload_json, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::openmeteo_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::openmeteo_parse_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::frankfurter_split_pair, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::frankfurter_parse_rates, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

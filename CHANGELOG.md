@@ -4,6 +4,18 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.11] — Rust port M11: adapter pilot (parse kernels)
+
+- `src/adapters.rs`: Open-Meteo geocoding/forecast parsing and
+  Frankfurter pair-splitting/rate parsing (v2 + map shapes) with
+  exact values, defaults, and error paths (incl. `KeyError(slice)`
+  and the id/url `0` vs `None` default asymmetry).
+- Deliberate split: URL/params/HTTP/keys/rate/retry stay Python, so
+  all existing httpx-mock tests pass unchanged; parsing (where the
+  historical bugs lived) is Rust. Records cross minus `raw`.
+- Parity proof: `tests/test_rust_parity_adapters.py` (136 checks) +
+  3 Rust unit tests.
+
 ## [0.8.10] — Rust port M10: budget kernels
 
 - `src/budget.rs`: two-pass truncation, JSON-fit testing, links

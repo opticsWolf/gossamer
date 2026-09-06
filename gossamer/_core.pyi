@@ -357,3 +357,30 @@ def shrink_research_json(result_json: str, budget: int | None = None) -> str:
 def shrink_payload_json(payload_json: str, budget: int | None = None) -> str:
     """Parsed-payload shrinking (src/budget.rs)."""
     ...
+
+def openmeteo_parse_search(
+    response_json: str,
+    max_results: int = 5,
+    base_url: str = "https://api.open-meteo.com/v1/forecast",
+) -> str:
+    """Geocoding records minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def openmeteo_parse_forecast(
+    data_json: str, lat_s: str, lon_s: str, base_url: str
+) -> str:
+    """Forecast record minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def frankfurter_split_pair(spec: str | None = None) -> tuple:
+    """(base, quote|None) with exact errors (src/adapters.rs)."""
+    ...
+
+def frankfurter_parse_rates(
+    body_json: str,
+    base: str,
+    date_fallback: str | None = None,
+    max_results: int = 5,
+) -> str:
+    """Rate rows minus raw, as JSON (src/adapters.rs)."""
+    ...

@@ -49,6 +49,7 @@ from urllib.parse import parse_qs
 
 import httpx
 
+from gossamer import _core as _rust
 from gossamer.env import getenv as _env_get
 from gossamer.search_providers import RateLimit, RateState, ResourceAdapter
 
@@ -204,24 +205,18 @@ class OpenMeteoAdapter(ResourceAdapter):
             timeout=15.0,
         )
         resp.raise_for_status()
-        hits = resp.json().get("results", [])
-        out: List[Dict[str, str]] = []
-        for h in hits[:max_results]:
-            title = ", ".join(
-                part for part in (h.get("name"), h.get("admin1"), h.get("country")) if part
+        # Response parsing in Rust (src/adapters.rs); `raw` re-attached
+        # here so it stays byte-identical `json.dumps` of each hit.
+        body = resp.json()
+        hits = body.get("results", [])
+        records = json.loads(
+            _rust.openmeteo_parse_search(
+                json.dumps(body), max_results, self.BASE
             )
-            out.append(
-                {
-                    "source": "open-meteo",
-                    "id": f"{h.get('latitude', 0)},{h.get('longitude', 0)}",
-                    "title": title,
-                    "url": h.get("url")
-                    or f"{self.BASE}?latitude={h.get('latitude')}&longitude={h.get('longitude')}",
-                    "snippet": h.get("country", ""),
-                    "raw": json.dumps(h),
-                }
-            )
-        return out
+        )
+        for rec, h in zip(records, hits[:max_results]):
+            rec["raw"] = json.dumps(h)
+        return records
 
     def fetch(self, lat_lon, params=None):
         self._enforce_delay()
@@ -232,17 +227,15 @@ class OpenMeteoAdapter(ResourceAdapter):
         resp = httpx.get(self.BASE, params=p, timeout=15.0)
         resp.raise_for_status()
         data = resp.json()
-        current = data.get("current", {})
-        return [
-            {
-                "source": "open-meteo",
-                "id": f"{lat},{lon}",
-                "title": "Open-Meteo forecast",
-                "url": f"{self.BASE}?latitude={lat}&longitude={lon}",
-                "snippet": ", ".join(f"{k}={v}" for k, v in current.items()),
-                "raw": json.dumps(data),
-            }
-        ]
+        # Parsing in Rust (src/adapters.rs); lat/lon pre-rendered so float
+        # spellings stay exactly Python's; `raw` re-attached verbatim.
+        rec = json.loads(
+            _rust.openmeteo_parse_forecast(
+                json.dumps(data), f"{lat}", f"{lon}", self.BASE
+            )
+        )
+        rec["raw"] = json.dumps(data)
+        return [rec]
 
 # ────────────────────────────────────────────────────────────────
 # Phase 2 adapters (scholarly / library / financial / tech)
@@ -2822,32 +2815,8 @@ class FrankfurterAdapter(ResourceAdapter):
     @staticmethod
     def _split_pair(spec: str):
         """``"USD/EUR"`` / ``"USD EUR"`` -> ``(base, quote|None)``."""
-        parts = re.split(r"[\s/]+", (spec or "").strip().upper())
-        parts = [p for p in parts if p]
-        if not parts:
-            raise ValueError(
-                "FrankfurterAdapter needs a currency (USD) or pair (USD/EUR)."
-            )
-        base = parts[0]
-        if not re.fullmatch(r"[A-Z]{3}", base):
-            raise ValueError(f"Not a currency code: {parts[0]!r}")
-        quote = parts[1] if len(parts) > 1 else None
-        if quote is not None and not re.fullmatch(r"[A-Z]{3}", quote):
-            raise ValueError(f"Not a currency code: {parts[1]!r}")
-        return base, quote
-
-    @staticmethod
-    def _row(base: str, quote: str, rate, date: str) -> Dict[str, str]:
-        return {
-            "source": "frankfurter",
-            "id": f"{base}/{quote}",
-            "title": f"{base}/{quote} = {rate} ({date})",
-            "url": "",
-            "published": date,
-            "snippet": f"1 {base} = {rate} {quote} on {date} (central-bank reference rates)",
-            "fields": {"base": base, "quote": quote, "rate": rate, "date": date},
-            "raw": json.dumps({"base": base, "quote": quote, "rate": rate, "date": date}),
-        }
+        # Implemented in Rust (src/adapters.rs).
+        return _rust.frankfurter_split_pair(spec)
 
     def _query_rates(self, base, quote, date=None, start=None, end=None, max_results=5):
         params: dict = {"base": base}
@@ -2862,27 +2831,20 @@ class FrankfurterAdapter(ResourceAdapter):
         resp = httpx.get(f"{self.BASE}/rates", params=params, timeout=20.0)
         resp.raise_for_status()
         body = resp.json()
-        rows = body if isinstance(body, list) else [body]
-        out = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            day = str(row.get("date", date or ""))
-            b = row.get("base", base)
-            # v2 shape: one object per quote ({base, quote, rate, date});
-            # map shape ({base, quotes: {EUR: …}}): accept both.
-            pairs = []
-            if "quote" in row:
-                pairs = [(row.get("quote"), row.get("rate"))]
-            for q, rate in (row.get("quotes", {}) or {}).items():
-                pairs.append((q, rate))
-            for q, rate in pairs:
-                if not q:
-                    continue
-                out.append(self._row(b, q, rate, day))
-                if len(out) >= max_results:
-                    return out
-        return out
+        # Row parsing in Rust (src/adapters.rs); `raw` re-attached per row
+        # from the record fields, exactly as `_row` built it.
+        records = json.loads(
+            _rust.frankfurter_parse_rates(
+                json.dumps(body), base, date, max_results
+            )
+        )
+        for rec in records:
+            fields = rec["fields"]
+            rec["raw"] = json.dumps({
+                "base": fields["base"], "quote": fields["quote"],
+                "rate": fields["rate"], "date": fields["date"],
+            })
+        return records
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()

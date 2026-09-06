@@ -214,7 +214,7 @@ fn first_value<'a>(d: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Opti
 /// `None` spellings). Used where the original stringifies containers
 /// (`str(parts[i])`, `str(authors-dict)`); direct strings keep identity
 /// via the caller (see `py_scalar_str`).
-fn py_value_repr(v: &Value) -> String {
+pub(crate) fn py_value_repr(v: &Value) -> String {
     match v {
         Value::Null => "None".to_string(),
         Value::Bool(true) => "True".to_string(),
