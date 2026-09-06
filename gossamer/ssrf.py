@@ -27,16 +27,16 @@ hit local servers.
 
 from __future__ import annotations
 
-import ipaddress
-import socket
-from urllib.parse import urlparse
+
+from gossamer import _core as _rust
 
 # Operator-controlled bypass (see module docstring). Renamed with the package;
 # the legacy STITCH_* spelling still works.
 _ENV_ALLOW_PRIVATE = "GOSSAMER_ALLOW_PRIVATE"
 _ENV_ALLOW_PRIVATE_LEGACY = "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE"
 
-# Hostnames that are never public, regardless of what DNS says.
+# Hostname suffixes that are never public — documented here because the
+# policy lives in Rust now (src/ssrf.rs keeps its own copy).
 _INTERNAL_SUFFIXES = (".local", ".internal", ".localhost")
 
 
@@ -52,24 +52,6 @@ def _allow_private() -> bool:
     )
 
 
-def _ip_disallowed(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """True for any address that must never be fetched."""
-    return (
-        ip.is_unspecified      # 0.0.0.0 / ::
-        or ip.is_loopback      # 127.0.0.0/8 / ::1
-        or ip.is_link_local    # 169.254.0.0/16 (cloud metadata) / fe80::/10
-        or ip.is_private       # RFC1918 / ULA fc00::/7 (incl. fd00:ec2::254)
-        or ip.is_reserved      # 240.0.0.0/4 and friends
-    )
-
-
-def _check_ip(host: str, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
-    if _ip_disallowed(ip):
-        raise SsrfBlockedError(
-            f"Host {host!r} ({ip}) is not a public address"
-        )
-
-
 def validate_public_url(url: str) -> None:
     """Raise ``SsrfBlockedError`` if ``url`` would reach a non-public host.
 
@@ -79,56 +61,15 @@ def validate_public_url(url: str) -> None:
 
     This is a policy check, not a full validation — callers keep their
     own scheme/format checks where they have stricter requirements.
+
+    The check itself runs in Rust (``src/ssrf.rs`` — IANA tables probed
+    from CPython's ``ipaddress``; parity pinned by
+    ``tests/test_rust_parity_ssrf.py``); this wrapper only maps the
+    error into :class:`SsrfBlockedError`.
     """
     if _allow_private():
         return
-
-    parsed = urlparse(url)
-    scheme = (parsed.scheme or "").lower()
-    if scheme not in ("http", "https"):
-        raise SsrfBlockedError(
-            f"URL scheme {scheme!r} is not allowed for fetching"
-        )
-
-    host = parsed.hostname
-    if not host:
-        raise SsrfBlockedError(f"URL has no host: {url}")
-
-    host_l = host.lower().rstrip(".")
-
-    if host_l == "localhost" or host_l.endswith(_INTERNAL_SUFFIXES):
-        raise SsrfBlockedError(f"Host {host!r} is an internal name")
-
     try:
-        port = parsed.port or (443 if scheme == "https" else 80)
+        _rust.ssrf_check_url(url, False)
     except ValueError as e:
-        raise SsrfBlockedError(f"URL has an invalid port: {url}") from e
-
-    # IP literal — check directly, no DNS involved.
-    try:
-        literal = ipaddress.ip_address(host_l)
-    except ValueError:
-        literal = None
-
-    if literal is not None:
-        _check_ip(host, literal)
-        return
-
-    # Domain — resolve and check every address the name points at.
-    try:
-        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror as e:
-        raise SsrfBlockedError(
-            f"DNS resolution failed for {host!r}: {e}"
-        ) from None
-
-    if not infos:
-        raise SsrfBlockedError(f"DNS returned no addresses for {host!r}")
-
-    for info in infos:
-        addr = info[4][0]
-        try:
-            ip = ipaddress.ip_address(addr)
-        except ValueError:
-            continue
-        _check_ip(host, ip)
+        raise SsrfBlockedError(str(e)) from None

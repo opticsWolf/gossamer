@@ -25,6 +25,21 @@ const DOCUMENT_EXTENSIONS: &[&str] = &[
 const TRACKING_PARAM_PREFIXES: &[&str] = &["utm_", "fbclid", "gclid", "mc_", "ref_"];
 
 
+pub(crate) fn has_scheme_pub(s: &str) -> bool {
+    has_scheme(s)
+}
+
+pub(crate) fn sanitize_pub(s: &str) -> String {
+    sanitize_for_split(s)
+}
+
+/// `urlsplit` netloc validation (bracket matching, bracketed-host
+/// rules, NFKC) for callers that parse URLs themselves (SSRF guard).
+/// Raises propagate exactly where `urlparse` would raise them.
+pub(crate) fn validate_netloc_pub(netloc: &str) -> Result<(), String> {
+    validate_netloc(netloc)
+}
+
 /// Python `urlparse` scheme detection: leading ASCII letter, then scheme
 /// chars, before the first ':'.
 fn has_scheme(s: &str) -> bool {
@@ -102,7 +117,28 @@ fn check_bracketed_netloc(netloc: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn not_ip_addr(hostname: &str) -> String {
+    format!(
+        "{} does not appear to be an IPv4 or IPv6 address",
+        py_repr(hostname)
+    )
+}
+
 fn check_bracketed_host(hostname: &str) -> Result<(), String> {
+    // Zone IDs: only `addr%zone` with a bare-IPv6 addr part and a
+    // non-empty `%`-free zone parses (mirrors `ipaddress`, which fails
+    // v4+zone and empty/multi `%` wholes with "does not appear").
+    if hostname.contains('%') {
+        let i = hostname.find('%').unwrap_or(hostname.len());
+        let (addr, zone) = (&hostname[..i], &hostname[i + 1..]);
+        if !zone.is_empty()
+            && !zone.contains('%')
+            && addr.parse::<std::net::Ipv6Addr>().is_ok()
+        {
+            return Ok(());
+        }
+        return Err(not_ip_addr(hostname));
+    }
     if let Some(rest) = hostname.strip_prefix('v') {
         let valid = match rest.find('.') {
             Some(i) if i > 0 => {
@@ -119,20 +155,8 @@ fn check_bracketed_host(hostname: &str) -> Result<(), String> {
     if hostname.parse::<std::net::Ipv4Addr>().is_ok() {
         return Err("An IPv4 address cannot be in brackets".to_string());
     }
-    // Scoped addresses: ipaddress accepts any non-empty zone (`%eth0`,
-    // `%25eth0`, even `%_w!`), so split at the first '%' and require a
-    // valid address part plus a non-empty zone.
-    if let Some(i) = hostname.find('%') {
-        let (addr, zone) = (&hostname[..i], &hostname[i + 1..]);
-        if !zone.is_empty() && addr.parse::<std::net::Ipv6Addr>().is_ok() {
-            return Ok(());
-        }
-    }
     if hostname.parse::<std::net::Ipv6Addr>().is_err() {
-        return Err(format!(
-            "{} does not appear to be an IPv4 or IPv6 address",
-            py_repr(hostname)
-        ));
+        return Err(not_ip_addr(hostname));
     }
     Ok(())
 }

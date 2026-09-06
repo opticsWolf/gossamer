@@ -2,6 +2,7 @@ mod categories;
 mod cite;
 mod dedupe;
 mod guard;
+mod ssrf;
 mod tokens;
 mod pycompat;
 mod sections;
@@ -1534,6 +1535,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cite::cite_mla_approx, m)?)?;
     m.add_function(wrap_pyfunction!(cite::cite_venue_from_raw, m)?)?;
     m.add_function(wrap_pyfunction!(cite::cite_abstract_from_raw, m)?)?;
+    m.add_function(wrap_pyfunction!(ssrf::ssrf_check_url, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

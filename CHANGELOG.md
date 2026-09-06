@@ -4,6 +4,18 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.8] — Rust port M8: SSRF guard
+
+- `src/ssrf.rs`: `ssrf_check_url` replicating CPython `ipaddress`
+  tables exactly (v4/v6 private lists minus exceptions, v6 reserved
+  list, mapped-unwrap delegation, `%zone` scoping, bracket/NFKC
+  validation, port-0 defaulting) with identical messages.
+- `gossamer/ssrf.py` keeps `SsrfBlockedError`, the env bypass, and
+  the wrapper (−100 lines).
+- Parity proof: `tests/test_rust_parity_ssrf.py` (every probed IANA
+  boundary × schemes/ports/userinfo, exact messages, DNS shapes,
+  wrapper type) + 4 Rust unit tests.
+
 ## [0.8.7] — Rust port M7: citations
 
 - `src/cite.rs`: `BibliographicRecord` PyO3 class (get/set, kwarg
