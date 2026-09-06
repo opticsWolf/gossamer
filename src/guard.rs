@@ -14,7 +14,7 @@ use pyo3::prelude::*;
 use unic_ucd_category::GeneralCategory;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::pycompat::{char_count, char_head, char_slice, py_list_repr, py_repr, py_strip};
+use crate::pycompat::{char_count, char_slice, py_list_repr, py_repr};
 
 pub const KNOWN_SCOPES: &[&str] = &[
     "page_markdown",

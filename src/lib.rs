@@ -1,4 +1,5 @@
 mod categories;
+mod cite;
 mod dedupe;
 mod guard;
 mod tokens;
@@ -832,7 +833,7 @@ async fn fetch_pairs_inner(
     cap: usize,
     max_bytes: usize,
 ) -> Result<(String, Vec<(String, String)>), String> {
-    let (html, meta) = http_fetch_html(shared_client(), url, max_bytes).await?;
+    let (html, _meta) = http_fetch_html(shared_client(), url, max_bytes).await?;
     let (md, pairs, _removed) = process_html_anchored(&html, url, cap)?;
     Ok((md, pairs))
 }
@@ -1525,6 +1526,14 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tokens::count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(tokens::truncate_to_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(tokens::fit_context_window, m)?)?;
+    m.add_class::<cite::BibliographicRecord>()?;
+    m.add_function(wrap_pyfunction!(cite::citation_record_from_json, m)?)?;
+    m.add_function(wrap_pyfunction!(cite::cite_bibtex, m)?)?;
+    m.add_function(wrap_pyfunction!(cite::cite_csl_json, m)?)?;
+    m.add_function(wrap_pyfunction!(cite::cite_apa_approx, m)?)?;
+    m.add_function(wrap_pyfunction!(cite::cite_mla_approx, m)?)?;
+    m.add_function(wrap_pyfunction!(cite::cite_venue_from_raw, m)?)?;
+    m.add_function(wrap_pyfunction!(cite::cite_abstract_from_raw, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

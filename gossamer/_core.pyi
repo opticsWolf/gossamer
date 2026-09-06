@@ -271,3 +271,45 @@ def fit_context_window(
 ) -> List[str]:
     """Greedy budget packing (src/tokens.rs)."""
     ...
+
+class BibliographicRecord:
+    def __init__(
+        self,
+        title: Optional[str] = None,
+        authors: Optional[List[str]] = None,
+        year: Optional[str] = None,
+        month: Optional[str] = None,
+        day: Optional[str] = None,
+        doi: Optional[str] = None,
+        url: Optional[str] = None,
+        venue: Optional[str] = None,
+        publisher: Optional[str] = None,
+        abstract: Optional[str] = None,
+        extra: Optional[object] = None,
+        id: Optional[str] = None,
+        kind: Optional[str] = None,
+    ) -> None: ...
+    title: Optional[str]
+    authors: List[str]
+    year: Optional[str]
+    month: Optional[str]
+    day: Optional[str]
+    doi: Optional[str]
+    url: Optional[str]
+    venue: Optional[str]
+    publisher: Optional[str]
+    abstract: Optional[str]
+    extra: object
+    id: Optional[str]
+    kind: Optional[str]
+
+def citation_record_from_json(result_json: str) -> BibliographicRecord:
+    """Build a record from a result dict snapshot (src/cite.rs)."""
+    ...
+
+def cite_bibtex(records: list) -> str: ...
+def cite_csl_json(records: list) -> str: ...
+def cite_apa_approx(records: list) -> str: ...
+def cite_mla_approx(records: list) -> str: ...
+def cite_venue_from_raw(raw: Optional[str]) -> Optional[str]: ...
+def cite_abstract_from_raw(raw: Optional[str]) -> Optional[str]: ...

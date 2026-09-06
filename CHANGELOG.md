@@ -4,6 +4,21 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.7] — Rust port M7: citations
+
+- `src/cite.rs`: `BibliographicRecord` PyO3 class (get/set, kwarg
+  constructor), record building over JSON snapshots (incl. the
+  propagating AttributeError/TypeError/IndexError/KeyError paths and
+  the string-indexed `date-parts` quirks), BibTeX/CSL-JSON(order-
+  preserving)/APA/MLA formatters, raw venue/abstract extractors.
+  `enrich_with_doi`, `dedupe_records`, `format_citations` and the
+  citeproc branch stay Python.
+- `gossamer/citations.py` keeps the public surface (incl. private
+  `_apa_approx`/`_mla_approx` aliases used by tests).
+- Parity proof: `tests/test_rust_parity_citations.py` (vendored v0.8.6
+  originals, exact-format strings, error paths, 150-round fuzz) +
+  4 Rust unit tests.
+
 ## [0.8.6] — Rust port M6: token budgets (tiktoken-rs)
 
 - `src/tokens.rs`: model→encoding resolution (vendored registry +
