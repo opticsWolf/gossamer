@@ -33,21 +33,14 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from gossamer import _core as _rust
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_SECONDS = 24 * 3600
 FAILURE_TTL_SECONDS = 5 * 60
 DEFAULT_TIMEOUT_SECONDS = 5.0
 MAX_ROBOTS_BYTES = 512 * 1024
-
-
-@dataclass
-class _Rule:
-    """One ``Allow``/``Disallow`` line from the applicable UA group."""
-
-    path: str  # raw path as written in robots.txt
-    regex: "re.Pattern[str]"
-    allow: bool  # True = Allow, False = Disallow
 
 
 @dataclass
@@ -67,109 +60,34 @@ _UNKNOWN_ALLOWED = _HostState(fetched_at=0.0, ttl=0.0)
 
 def _url_path(url: str) -> str:
     """Path (+ query string) that robots.txt rules are matched against."""
-    parts = urlsplit(url)
-    path = parts.path or "/"
-    if parts.query:
-        path += "?" + parts.query
-    return path
+    # Implemented in Rust (src/robots.rs).
+    return _rust.robots_url_path(url)
 
 
-def _path_regex(path: str) -> "re.Pattern[str]":
-    """Compile a robots.txt path rule.
+def _path_regex(path: str):
+    """Compile one robots path rule (kept for import compat).
 
-    Supports the two spec extensions: ``*`` matches any run of characters
-    and a trailing ``$`` anchors the end of the path.
+    Matching itself runs in Rust (``src/robots.rs``); this returns the
+    pattern source the Rust side builds, for inspection only.
     """
     anchored = path.endswith("$")
-    if anchored:
-        path = path[:-1]
-    pattern = "".join(".*" if ch == "*" else re.escape(ch) for ch in path)
-    if anchored:
-        return re.compile(f"^{pattern}$")
-    return re.compile(f"^{pattern}")
+    body = path[:-1] if anchored else path
+    pattern = "".join(".*" if ch == "*" else re.escape(ch) for ch in body)
+    return re.compile(f"^{pattern}" + ("$" if anchored else ""))
 
 
 def _parse_robots(
     text: str, user_agent: str
 ) -> tuple[list, Optional[float]]:
-    """Parse robots.txt into ``(rules, crawl_delay)`` for one UA.
+    """Parse robots.txt into ``([(allow, path)], crawl_delay)``.
 
-    Group selection follows the common convention: an exact user-agent
-    match beats a substring match, which beats the ``*`` group. Within
-    the chosen group, the *longest* matching path wins and a tie goes to
-    ``Allow`` (per the Google robots.txt specification). ``Crawl-delay``
-    falls back to the ``*`` group when the chosen group has none.
+    Rule compilation and matching live in Rust (``src/robots.rs``), so
+    rules cross the boundary as plain ``(allow, path)`` tuples.
+    Group-selection semantics are unchanged — see the Rust docs and
+    ``tests/test_rust_parity_robots.py``.
     """
-    groups: list[dict] = []
-    current: Optional[dict] = None
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        directive, _, value = line.partition(":")
-        directive = directive.strip().lower()
-        value = value.strip()
-        if directive == "user-agent":
-            current = {"agents": [value], "rules": [], "crawl_delay": None}
-            groups.append(current)
-            continue
-        if current is None:
-            # Rules before any User-agent line: implicit * group.
-            current = {"agents": ["*"], "rules": [], "crawl_delay": None}
-            groups.append(current)
-        if directive in ("disallow", "allow"):
-            if value:  # an empty "Disallow:" is a no-op
-                current["rules"].append((directive == "allow", value))
-        elif directive in ("crawl-delay", "crawl delay", "crawler-delay"):
-            try:
-                current["crawl_delay"] = max(0.0, float(value))
-            except ValueError:
-                pass
-
-    if not groups:
-        return [], None
-
-    ua = user_agent.lower()
-
-    def _score(group: dict) -> int:
-        for agent in group["agents"]:
-            a = agent.strip().lower()
-            if a == ua:
-                return 3
-            if a in ua:
-                return 2
-        return 0
-
-    best_score = 0
-    chosen: Optional[dict] = None
-    for group in groups:
-        score = _score(group)
-        if score > best_score:
-            best_score, chosen = score, group
-    if chosen is None:
-        for group in groups:
-            if any(a.strip().lower() == "*" for a in group["agents"]):
-                chosen = group
-                break
-    if chosen is None:
-        return [], None
-
-    rules = [
-        _Rule(path=path, regex=_path_regex(path), allow=allow)
-        for allow, path in chosen["rules"]
-    ]
-    delay = chosen["crawl_delay"]
-    if delay is None:
-        for group in groups:
-            if (
-                group["crawl_delay"] is not None
-                and any(a.strip().lower() == "*" for a in group["agents"])
-            ):
-                delay = group["crawl_delay"]
-                break
-    return rules, delay
+    rules, delay = _rust.robots_parse(text, user_agent)
+    return [(allow, rule_path) for allow, rule_path in rules], delay
 
 
 class RobotsChecker:
@@ -218,16 +136,8 @@ class RobotsChecker:
         if state.disallow_all:
             return False
         path = _url_path(url)
-        best: Optional[_Rule] = None
-        for rule in state.rules:
-            if rule.regex.match(path):
-                if best is None:
-                    best = rule
-                elif len(rule.path) > len(best.path):
-                    best = rule
-                elif len(rule.path) == len(best.path) and rule.allow and not best.allow:
-                    best = rule  # tie -> Allow wins
-        return best is None or best.allow
+        # Longest-match-wins evaluation in Rust (src/robots.rs).
+        return _rust.robots_match_url(list(state.rules), path)
 
     def crawl_delay(self, url: str) -> Optional[float]:
         """The host's requested Crawl-delay (seconds), or None."""

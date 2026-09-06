@@ -318,3 +318,15 @@ def ssrf_check_url(url: str, allow_private: bool = False) -> None:
     """SSRF policy check (src/ssrf.rs). Raises ValueError; the
     ``gossamer.ssrf`` wrapper maps it to ``SsrfBlockedError``."""
     ...
+
+def robots_url_path(url: str) -> str:
+    """Path+query for robots matching (src/robots.rs)."""
+    ...
+
+def robots_parse(text: str, user_agent: str) -> tuple:
+    """Parse robots.txt → ([(allow, path)], delay|None) (src/robots.rs)."""
+    ...
+
+def robots_match_url(rules: list, url_path: str) -> bool:
+    """Longest-match-wins evaluation (src/robots.rs)."""
+    ...

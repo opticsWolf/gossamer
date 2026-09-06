@@ -4,6 +4,17 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.9] — Rust port M9: robots.txt
+
+- `src/robots.rs`: path extraction, rule compilation (wildcards,
+  anchors), group parsing/selection (exact/substring/star, delay
+  fallback), longest-match-wins evaluation with faithful
+  `splitlines` semantics.
+- `RobotsChecker` keeps cache/TTL/threading/fetch; rules cross as
+  plain tuples.
+- Parity proof: `tests/test_rust_parity_robots.py` (594 checks incl.
+  seeded fuzz) + 4 Rust unit tests.
+
 ## [0.8.8] — Rust port M8: SSRF guard
 
 - `src/ssrf.rs`: `ssrf_check_url` replicating CPython `ipaddress`
