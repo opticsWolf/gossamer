@@ -4,6 +4,28 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.14] — Rust port M14: German-legal / register / preprint kernels
+
+- `src/adapters.rs`: OLDP case rows (court-name rendering, `…`
+  snippet join with per-snippet `[:200]`, statute fetch branch),
+  Federal Register documents (agency lazy to fields time,
+  results/documents envelope fallback), BioRxiv papers (server
+  threaded into flat fields, DOI/interval shapes share one
+  collection kernel), ChemRxiv items (truthiness-filtered author
+  join vs unfiltered topics join, dict-key/char iteration,
+  data-or-body fetch shapes).
+- Caught by parity: OLDP string snippets slice to chars (the shared
+  `subscript_hits` helper was wrong there), `agency.get` must not
+  raise before the snippet, and non-list ChemRxiv authors render
+  whole via `str()` (no `name` lookup).
+- `OldpAdapter`/`FederalRegisterAdapter`/`BioRxivAdapter`/
+  `ChemRxivAdapter` search/fetch delegate to Rust and re-attach
+  `raw`; retired `_court_name`/`_case_row`/`_doc`/`_paper`/`_item`.
+  eCFR's multi-HTTP orchestration stays Python for a later pass.
+- Parity proof: `tests/test_rust_parity_adapters.py` (~3900 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 10 Rust
+  unit tests.
+
 ## [0.8.13] — Rust port M13: legal/patent JSON kernels
 
 - `src/adapters.rs`: CourtListener opinion/cluster rows (tag-strip

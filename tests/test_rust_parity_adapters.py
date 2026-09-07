@@ -1493,3 +1493,592 @@ def test_e2e_patentsview(mock_get):
     mock_get.return_value = _stub({"patents": [PV_PATENT]})
     (rec,) = _PV(delay=0.0, api_key="K").fetch("10000000")
     assert rec["raw"] == json.dumps(PV_PATENT)
+
+
+# --- batch 4: OLDP / Federal Register / preprints (v0.8.13) ---------
+# Vendored originals are verbatim copies of the retired
+# `OldpAdapter._court_name/_case_row` (+ law branch),
+# `FederalRegisterAdapter._doc`, `BioRxivAdapter._paper` and
+# `ChemRxivAdapter._item` plus the search/fetch parse logic
+# (minus `raw`, which crosses the boundary separately).
+
+OLDP_CASE = {
+    "id": 98765,
+    "slug": "bverfg-1-bvr-1234-20",
+    "court": {"name": "BVerfG"},
+    "file_number": "1 BvR 1234/20",
+    "date": "2021-03-24",
+    "ecli": "ECLI:DE:BVerfG:2021:rs20210324.1bvr123420",
+    "decision_type": "Beschluss",
+    "snippets": ["Klima <b>Schutz</b> ist wichtig", "zweiter Treffer"],
+}
+
+
+def _v_oldp_court(court):
+    if isinstance(court, dict):
+        return court.get("name", "")
+    return str(court or "")
+
+
+def _v_oldp_case(c):
+    court = _v_oldp_court(c.get("court"))
+    file_no = c.get("file_number", "")
+    title = f"{court} {file_no}".strip() or c.get("slug", "")
+    snippets = c.get("snippets") or []
+    snippet = " \u2026 ".join(str(s)[:200] for s in snippets[:3])
+    return {
+        "source": "oldp",
+        "id": str(c.get("id", "")),
+        "title": title,
+        "url": f"https://de.openlegaldata.io/case/{c.get('slug', '')}",
+        "published": str(c.get("date", "")),
+        "snippet": snippet,
+        "fields": {
+            "court": court,
+            "file_number": file_no,
+            "ecli": c.get("ecli", ""),
+            "decision_type": c.get("decision_type", ""),
+        },
+    }
+
+
+def _v_oldp_law(body, rid=""):
+    return {
+        "source": "oldp",
+        "id": rid,
+        "title": body.get("title", rid),
+        "url": f"https://de.openlegaldata.io/law/{body.get('slug', '')}",
+        "snippet": str(body.get("text", ""))[:400],
+        "fields": {"book": body.get("book", ""),
+                   "section": body.get("section", "")},
+    }
+
+
+def _v_oldp_search(body, max_results=5):
+    hits = body.get("results", [])
+    return [_v_oldp_case(c) for c in hits[:max_results]]
+
+
+def _rs_oldp_search(body, max_results=5):
+    return json.loads(_core.oldp_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_oldp_case(body):
+    return json.loads(_core.oldp_parse_case(json.dumps(body)))
+
+
+def _rs_oldp_law(body, rid=""):
+    return json.loads(_core.oldp_parse_law(json.dumps(body), rid))
+
+
+OLDP_SEARCH_BODIES = [
+    {"results": [OLDP_CASE]},
+    {"results": [OLDP_CASE, {"id": 1}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"id": None, "court": None, "snippets": None}]},
+    {"results": [{"court": "BGH", "file_number": 0, "slug": "s"}]},
+    {"results": [{"court": 5, "file_number": ["1"], "id": ["i"]}]},
+    {"results": [{"court": {}, "file_number": "", "slug": ""}]},
+    {"results": [{"court": {"other": 1}, "snippets": "abcdef"}]},
+    {"results": [{"snippets": ["a", None, 5, ["x"], {"s": 1}]}]},
+    {"results": [{"snippets": {"a": 1}}]},
+    {"results": [{"snippets": 5}]},
+    {"results": [{"snippets": ["x" * 300]}]},
+    {"results": [{"court": ["BVerfG"], "date": 20210324}]},
+]
+
+
+@pytest.mark.parametrize("body", OLDP_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_oldp_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_oldp_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_oldp_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+OLDP_CASE_BODIES = [
+    OLDP_CASE,
+    {},
+    {"court": "BGH"},
+    {"snippets": ["a", "b", "c", "d"]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", OLDP_CASE_BODIES)
+def test_oldp_case_parity(body):
+    py_raised, py_val = _outcome(_v_oldp_case, body)
+    rs_raised, rs_val = _outcome(_rs_oldp_case, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+OLDP_LAW_BODIES = [
+    {"title": "GG", "slug": "gg", "text": "Die W\u00fcrde " * 200,
+     "book": "Grundgesetz", "section": "Art 1"},
+    {},
+    {"title": None, "text": None},
+    {"text": 5, "book": ["B"]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", OLDP_LAW_BODIES)
+@pytest.mark.parametrize("rid", ["law:gg", ""])
+def test_oldp_law_parity(body, rid):
+    py_raised, py_val = _outcome(_v_oldp_law, body, rid)
+    rs_raised, rs_val = _outcome(_rs_oldp_law, body, rid)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, rid)
+    assert rs_val == py_val, (body, rid)
+
+
+FED_DOC = {
+    "document_number": "2024-12345",
+    "title": "Air Quality Standards",
+    "html_url": "https://www.federalregister.gov/documents/2024/12345",
+    "doc_date": "2024-06-01",
+    "abstract": "<p>EPA proposes <b>new</b> standards.</p>",
+    "document_type": "Proposed Rule",
+    "type": "Rule",
+    "agency": {"name": "Environmental Protection Agency"},
+}
+
+
+def _v_fed_doc(d):
+    agency = d.get("agency", {}) or {}
+    return {
+        "source": "federalregister",
+        "id": d.get("document_number", ""),
+        "title": d.get("title", ""),
+        "url": d.get("html_url", d.get("text_url", "")),
+        "published": d.get("doc_date", ""),
+        "snippet": _v_strip_tags(d.get("abstract", d.get("excerpt", "")))[:240],
+        "fields": {
+            "document_type": d.get("document_type", ""),
+            "type": d.get("type", ""),
+            "agency": agency.get("name", ""),
+            "document_number": d.get("document_number", ""),
+        },
+    }
+
+
+def _v_fed_search(body, max_results=5):
+    docs = body.get("results", body.get("documents", [])) or []
+    return [_v_fed_doc(d) for d in docs[:max_results]]
+
+
+def _v_fed_fetch(body):
+    return _v_fed_doc(body)
+
+
+def _rs_fed_search(body, max_results=5):
+    return json.loads(_core.fed_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_fed_fetch(body):
+    return json.loads(_core.fed_parse_fetch(json.dumps(body)))
+
+
+FED_SEARCH_BODIES = [
+    {"results": [FED_DOC]},
+    {"documents": [FED_DOC]},
+    {"results": [FED_DOC], "documents": [{"document_number": "other"}]},
+    {"documents": [{"document_number": "D"}]},
+    {},
+    {"results": None},
+    {"results": None, "documents": [FED_DOC]},
+    {"results": [], "documents": [FED_DOC]},
+    {"results": "", "documents": [FED_DOC]},
+    {"results": 0},
+    {"results": False},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"agency": None, "html_url": None}]},
+    {"results": [{"agency": "EPA", "text_url": "https://text"}]},
+    {"results": [{"agency": 5, "abstract": 7, "excerpt": "E"}]},
+    {"results": [{"agency": {"other": 1}, "abstract": ["A"]}]},
+    {"results": [{"document_number": 0, "doc_date": 20240601}]},
+]
+
+
+@pytest.mark.parametrize("body", FED_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_fed_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_fed_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_fed_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+FED_FETCH_BODIES = [
+    FED_DOC,
+    {},
+    {"agency": "EPA"},
+    {"abstract": {"a": 1}},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", FED_FETCH_BODIES)
+def test_fed_fetch_parity(body):
+    py_raised, py_val = _outcome(_v_fed_fetch, body)
+    rs_raised, rs_val = _outcome(_rs_fed_fetch, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+BIO_PAPER = {
+    "doi": "10.1101/2024.01.01.123456",
+    "title": "Something about proteins",
+    "date": "2024-01-02",
+    "abstract": "<p>We show <i>things</i>.</p>",
+    "authors": "Doe, J.; Smith, K.",
+    "category": "biochemistry",
+    "version": "1",
+    "type": "New Results",
+    "license": "cc-by",
+}
+
+
+def _v_bio_paper(p, server="biorxiv"):
+    doi = p.get("doi", "")
+    return {
+        "source": "biorxiv",
+        "id": doi,
+        "title": p.get("title", ""),
+        "url": f"https://www.biorxiv.org/content/{doi}" if doi else "",
+        "published": p.get("date", ""),
+        "snippet": _v_strip_tags(p.get("abstract", ""))[:240],
+        "authors": p.get("authors", ""),
+        "fields": {
+            "server": server,
+            "category": p.get("category", ""),
+            "version": p.get("version", ""),
+            "type": p.get("type", ""),
+            "license": p.get("license", ""),
+        },
+    }
+
+
+def _v_bio_search(body, max_results=5, server="biorxiv"):
+    papers = body.get("collection", [])
+    return [_v_bio_paper(p, server) for p in papers[:max_results]]
+
+
+def _v_bio_fetch(body, server="biorxiv"):
+    papers = body.get("collection", [])
+    if not papers:
+        return []
+    return [_v_bio_paper(papers[0], server)]
+
+
+def _rs_bio_search(body, max_results=5, server="biorxiv"):
+    return json.loads(_core.biorxiv_parse_collection(
+        json.dumps(body), max_results, server))
+
+
+def _rs_bio_fetch(body, server="biorxiv"):
+    return json.loads(_core.biorxiv_parse_fetch(json.dumps(body), server))
+
+
+BIO_SEARCH_BODIES = [
+    {"collection": [BIO_PAPER]},
+    {"collection": [BIO_PAPER, {"doi": "10.1/x"}]},
+    {},
+    {"collection": None},
+    {"collection": []},
+    {"collection": ""},
+    {"collection": 0},
+    {"collection": {}},
+    {"collection": "ab"},
+    {"collection": 5},
+    {"collection": [None]},
+    {"collection": ["x"]},
+    {"collection": [5]},
+    {"collection": [{}]},
+    {"collection": [{"doi": 0, "abstract": 5, "authors": ["A"]}]},
+    {"collection": [{"doi": ["10.1/x"], "title": {"t": 1}}]},
+]
+
+
+@pytest.mark.parametrize("body", BIO_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+@pytest.mark.parametrize("server", ["biorxiv", "medrxiv"])
+def test_bio_search_parity(body, max_results, server):
+    py_raised, py_val = _outcome(_v_bio_search, body, max_results, server)
+    rs_raised, rs_val = _outcome(_rs_bio_search, body, max_results, server)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+BIO_FETCH_BODIES = [
+    {"collection": [BIO_PAPER]},
+    {"collection": [BIO_PAPER, {"doi": "10.1/y"}]},
+    {},
+    {"collection": None},
+    {"collection": []},
+    {"collection": ""},
+    {"collection": 0},
+    {"collection": {}},
+    {"collection": "ab"},
+    {"collection": 5},
+    {"collection": [{"doi": "10.1/z"}]},
+]
+
+
+@pytest.mark.parametrize("body", BIO_FETCH_BODIES)
+@pytest.mark.parametrize("server", ["biorxiv", "medrxiv"])
+def test_bio_fetch_parity(body, server):
+    py_raised, py_val = _outcome(_v_bio_fetch, body, server)
+    rs_raised, rs_val = _outcome(_rs_bio_fetch, body, server)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, server)
+    assert rs_val == py_val, (body, server)
+
+
+CHEM_ITEM = {
+    "id": "chemrxiv-123",
+    "title": "A catalyst for things",
+    "url": "https://chemrxiv.org/item/123",
+    "published_on": "2024-02-01",
+    "abstract": "<p>We catalyze <b>stuff</b>.</p>",
+    "authors": [{"name": "Doe, J."}, "Smith, K.", {"name": ""}, None, 0],
+    "doi": "10.26434/chemrxiv-123",
+    "topics": [{"name": "Catalysis"}, "Organic", {"name": 5}],
+}
+
+
+def _v_chem_item(it):
+    authors = it.get("authors", [])
+    if isinstance(authors, list):
+        names = [a.get("name", "") if isinstance(a, dict) else str(a)
+                 for a in authors]
+    else:
+        names = [str(authors)]
+    return {
+        "source": "chemrxiv",
+        "id": str(it.get("id", "")),
+        "title": it.get("title", ""),
+        "url": it.get("url", f"https://chemrxiv.org/engage/chemrxiv/public-article-details/{it.get('id', '')}"),
+        "published": it.get("published_on", ""),
+        "snippet": _v_strip_tags(it.get("abstract", ""))[:240],
+        "authors": ", ".join(n for n in names if n),
+        "fields": {
+            "doi": it.get("doi", ""),
+            "topics": ", ".join(t.get("name", "") if isinstance(t, dict) else str(t) for t in it.get("topics", []) or []),
+        },
+    }
+
+
+def _v_chem_search(body, max_results=5):
+    items = body.get("data", []) if isinstance(body, dict) else body
+    return [_v_chem_item(i) for i in items[:max_results]]
+
+
+def _v_chem_fetch(body):
+    item = body.get("data", body) if isinstance(body, dict) else body
+    if not item:
+        return []
+    if isinstance(item, list):
+        return [_v_chem_item(item[0])]
+    return [_v_chem_item(item)]
+
+
+def _rs_chem_search(body, max_results=5):
+    return json.loads(_core.chemrxiv_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_chem_fetch(body):
+    return json.loads(_core.chemrxiv_parse_fetch(json.dumps(body)))
+
+
+CHEM_SEARCH_BODIES = [
+    {"data": [CHEM_ITEM]},
+    {"data": [CHEM_ITEM, {"id": "c2"}]},
+    {},
+    {"data": None},
+    {"data": []},
+    {"data": ""},
+    {"data": 0},
+    {"data": {}},
+    {"data": "ab"},
+    {"data": 5},
+    {"data": [None]},
+    {"data": ["x"]},
+    {"data": [5]},
+    {"data": [{}]},
+    {"data": [{"authors": None, "topics": None}]},
+    {"data": [{"authors": 0, "topics": 0}]},
+    {"data": [{"authors": "ab", "topics": "ab"}]},
+    {"data": [{"authors": {"a": "Doe"}, "topics": {"t": "Cat"}}]},
+    {"data": [{"authors": [None, False, 0, "", [], {}]}]},
+    {"data": [{"authors": [{"name": 5}]}]},
+    {"data": [{"authors": [{"name": 5}, "ok"]}]},
+    {"data": [{"authors": ["ok", {"name": 5}]}]},
+    {"data": [{"authors": [[1]], "topics": [[1]]}]},
+    {"data": [{"authors": [{"name": None}], "topics": [{}]}]},
+    {"data": [{"topics": [{"name": 5}]}]},
+    {"data": [{"topics": ["ok", {"name": 5}]}]},
+    {"data": [{"topics": [{}, {}]}]},
+    {"data": [{"id": None, "url": None, "abstract": None}]},
+    [],
+    "x",
+    5,
+    None,
+    True,
+]
+
+
+@pytest.mark.parametrize("body", CHEM_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_chem_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_chem_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_chem_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CHEM_FETCH_BODIES = [
+    {"data": [CHEM_ITEM]},
+    {"data": CHEM_ITEM},
+    CHEM_ITEM,
+    {},
+    {"data": None},
+    {"data": []},
+    {"data": ""},
+    {"data": 0},
+    {"data": {}},
+    {"data": "ab"},
+    {"data": 5},
+    {"data": [None]},
+    {"data": [{"authors": [{"name": 5}]}]},
+    {"other": 1},
+    [],
+    "",
+    0,
+    "ab",
+    5,
+    None,
+    [CHEM_ITEM],
+    [None],
+]
+
+
+@pytest.mark.parametrize("body", CHEM_FETCH_BODIES)
+def test_chem_fetch_parity(body):
+    py_raised, py_val = _outcome(_v_chem_fetch, body)
+    rs_raised, rs_val = _outcome(_rs_chem_fetch, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+@pytest.mark.parametrize("body", _fuzz_bodies(20260907, 150))
+@pytest.mark.parametrize("max_results", [3, -1])
+def test_fuzz_oldp_fed_preprint_kernels(body, max_results):
+    assert _outcome(_v_oldp_search, body, max_results) == \
+        _outcome(_rs_oldp_search, body, max_results), body
+    assert _outcome(_v_fed_search, body, max_results) == \
+        _outcome(_rs_fed_search, body, max_results), body
+    assert _outcome(_v_bio_search, body, max_results) == \
+        _outcome(_rs_bio_search, body, max_results), body
+    assert _outcome(_v_chem_search, body, max_results) == \
+        _outcome(_rs_chem_search, body, max_results), body
+
+
+# --- end-to-end seam: real adapters, stubbed HTTP ---------------------
+
+from gossamer.research_providers import (
+    BioRxivAdapter as _BIO,
+    ChemRxivAdapter as _CHEM,
+    FederalRegisterAdapter as _FED,
+    OldpAdapter as _OLDP,
+)
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_oldp(mock_get):
+    mock_get.return_value = _stub({"results": [OLDP_CASE]})
+    out = _OLDP(delay=0.0).search({"text": "klima"}, max_results=5)
+    assert out[0]["id"] == "98765"
+    assert out[0]["title"] == "BVerfG 1 BvR 1234/20"
+    assert "Klima" in out[0]["snippet"]
+    assert out[0]["raw"] == json.dumps(OLDP_CASE)
+
+    mock_get.return_value = _stub(OLDP_CASE)
+    (rec,) = _OLDP(delay=0.0).fetch(98765)
+    assert rec["fields"]["court"] == "BVerfG"
+
+    law = {"title": "GG", "slug": "gg", "text": "Artikel 1.",
+           "book": "Buch", "section": "Art 1"}
+    mock_get.return_value = _stub(law)
+    (rec,) = _OLDP(delay=0.0).fetch("law:gg")
+    assert rec["id"] == "law:gg"
+    assert rec["title"] == "GG"
+    assert rec["raw"] == json.dumps(law)
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_fed_biorxiv(mock_get):
+    mock_get.return_value = _stub({"results": [FED_DOC]})
+    out = _FED(delay=0.0).search("air quality", max_results=5)
+    assert out[0]["id"] == "2024-12345"
+    assert out[0]["fields"]["agency"] == "Environmental Protection Agency"
+    assert out[0]["raw"] == json.dumps(FED_DOC)
+
+    mock_get.return_value = _stub(FED_DOC)
+    (rec,) = _FED(delay=0.0).fetch("2024-12345")
+    assert rec["title"] == "Air Quality Standards"
+
+    mock_get.return_value = _stub({"collection": [BIO_PAPER]})
+    out = _BIO(delay=0.0).search("10.1101/2024.01.01.123456", max_results=5)
+    assert out[0]["id"] == "10.1101/2024.01.01.123456"
+    assert out[0]["authors"] == "Doe, J.; Smith, K."
+    assert out[0]["raw"] == json.dumps(BIO_PAPER)
+
+    (rec,) = _BIO(delay=0.0).fetch("10.1101/2024.01.01.123456")
+    assert rec["fields"]["server"] == "biorxiv"
+    assert _BIO(delay=0.0, server="medrxiv").server == "medrxiv"
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_chemrxiv(mock_get):
+    item = {"id": "c1", "title": "T", "authors": [{"name": "A. Uthor"}],
+            "topics": [{"name": "Cat"}]}
+    mock_get.return_value = _stub({"data": [item]})
+    out = _CHEM(delay=0.0, api_key="K").search("catalyst", max_results=5)
+    assert out[0]["authors"] == "A. Uthor"
+    assert out[0]["fields"]["topics"] == "Cat"
+    assert out[0]["raw"] == json.dumps(item)
+
+    mock_get.return_value = _stub({"data": item})
+    (rec,) = _CHEM(delay=0.0, api_key="K").fetch("c1")
+    assert rec["id"] == "c1"
+    assert rec["raw"] == json.dumps(item)

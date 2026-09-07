@@ -1566,6 +1566,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::hudoc_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::patentsview_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::patentsview_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::oldp_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::oldp_parse_case, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::oldp_parse_law, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::fed_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::fed_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::biorxiv_parse_collection, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::biorxiv_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::chemrxiv_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::chemrxiv_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

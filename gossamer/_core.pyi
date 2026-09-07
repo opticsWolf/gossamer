@@ -470,3 +470,55 @@ def patentsview_parse_search(
 def patentsview_parse_fetch(response_json: str) -> str:
     """Patent row(s) minus raw, as JSON (src/adapters.rs)."""
     ...
+
+def oldp_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Case rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def oldp_parse_case(response_json: str) -> str:
+    """One case row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def oldp_parse_law(response_json: str, rid: str) -> str:
+    """One statute row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def fed_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Document rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def fed_parse_fetch(response_json: str) -> str:
+    """One document row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def biorxiv_parse_collection(
+    response_json: str,
+    max_results: int = 5,
+    server: str = "biorxiv",
+) -> str:
+    """Preprint rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def biorxiv_parse_fetch(
+    response_json: str,
+    server: str = "biorxiv",
+) -> str:
+    """First-preprint rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def chemrxiv_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Item rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def chemrxiv_parse_fetch(response_json: str) -> str:
+    """Item row(s) minus raw, as JSON (src/adapters.rs)."""
+    ...

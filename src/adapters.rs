@@ -1,7 +1,9 @@
 //! Domain-adapter build/parse kernels: the pure parts of
 //! `OpenMeteoAdapter`, `FrankfurterAdapter`, `YahooFinanceAdapter`,
 //! `NvdAdapter`, `ZenodoAdapter`, `CourtListenerAdapter`,
-//! `GovInfoAdapter`, `HudocAdapter` and `PatentsViewAdapter`.
+//! `GovInfoAdapter`, `HudocAdapter`, `PatentsViewAdapter`,
+//! `OldpAdapter`, `FederalRegisterAdapter`, `BioRxivAdapter` and
+//! `ChemRxivAdapter`.
 //!
 //! Deliberate split: URL/param building, HTTP, keys, rate limiting and
 //! retry stay Python (the existing httpx-mock tests keep working
@@ -607,6 +609,51 @@ mod tests {
         assert_eq!(out[0]["id"], "3");
         let out = patentsview_parse_fetch_impl(r#"{"other": 1}"#).unwrap();
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn oldp_fed_preprint_shapes() {
+        // OLDP string snippets slice to chars, dicts raise KeyError.
+        assert_eq!(
+            oldp_snippet(Some(
+                &serde_json::from_str(r#""abcdef""#).unwrap()
+            ))
+            .unwrap(),
+            "a … b … c".to_string()
+        );
+        let d: Value = serde_json::from_str(r#"{"a": 1}"#).unwrap();
+        assert_eq!(
+            oldp_snippet(Some(&d)).unwrap_err(),
+            "KeyError: slice(None, 3, None)"
+        );
+        // FederalRegister prefers html_url, then text_url; a truthy
+        // non-dict agency raises at fields time (after the snippet).
+        let d: Value =
+            serde_json::from_str(r#"{"text_url": "https://text"}"#).unwrap();
+        let row = fed_doc_impl(&d).unwrap();
+        assert_eq!(row["url"], "https://text");
+        assert_eq!(row["fields"]["agency"], "");
+        let d: Value =
+            serde_json::from_str(r#"{"agency": "EPA"}"#).unwrap();
+        assert_eq!(
+            fed_doc_impl(&d).unwrap_err(),
+            "AttributeError: 'str' object has no attribute 'get'"
+        );
+        // ChemRxiv join reports the surviving (filtered) index.
+        let items: Value =
+            serde_json::from_str(r#"[{"name": ""}, {"name": 5}]"#).unwrap();
+        let arr = items.as_array().unwrap();
+        assert_eq!(
+            chemrxiv_join(arr.iter().map(chemrxiv_part).collect(), true)
+                .unwrap_err(),
+            "TypeError: sequence item 0: expected str instance, int found"
+        );
+        // BioRxiv threads the server into flat fields.
+        let p: Value =
+            serde_json::from_str(r#"{"doi": "10.1/x"}"#).unwrap();
+        let row = biorxiv_paper_impl(&p, "medrxiv").unwrap();
+        assert_eq!(row["fields"]["server"], "medrxiv");
+        assert_eq!(row["url"], "https://www.biorxiv.org/content/10.1/x");
     }
 
     #[test]
@@ -2113,6 +2160,714 @@ pub fn patentsview_parse_search(
 #[pyfunction]
 pub fn patentsview_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
     patentsview_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ── OLDP ────────────────────────────────────────────────────────
+
+fn oldp_court_name(court: Option<&Value>) -> String {
+    match court {
+        // Dicts read `name` (missing → ""); anything else renders
+        // `str(court or "")` — falsy → "", truthy → Python-`str()`.
+        Some(Value::Object(m)) => match m.get("name") {
+            None => String::new(),
+            Some(v) => py_value_repr(v),
+        },
+        Some(v) if is_truthy(v) => py_value_repr(v),
+        _ => String::new(),
+    }
+}
+
+fn oldp_snippet(snippets: Option<&Value>) -> Result<String, String> {
+    // `(c.get("snippets") or [])[:3]`, each `str(s)[:200]`, joined with
+    // " … ". Unlike the row-list helpers, iterating here cannot fail
+    // (`str(s)` accepts chars), so strings slice to chars; dicts raise
+    // KeyError on slicing, anything else TypeError.
+    let render = |s: &Value| char_head(py_value_repr(s).as_str(), 200).to_string();
+    let parts: Vec<String> = match snippets {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => slice_refs(a, 3).iter().map(|s| render(s)).collect(),
+        Some(Value::String(s)) => {
+            // `str(char)` is the char itself; `[:200]` is a no-op.
+            let chars: Vec<char> = s.chars().collect();
+            let n = chars.len();
+            chars[..3.min(n)].iter().map(|c| c.to_string()).collect()
+        }
+        Some(Value::Object(_)) => return Err(subscript_keyerror(3)),
+        Some(other) => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    Ok(parts.join(" … "))
+}
+
+fn oldp_case_row_impl(c: &Value) -> Result<Value, String> {
+    let m = match c {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(c))),
+    };
+    let court = oldp_court_name(m.get("court"));
+    let file_no = m
+        .get("file_number")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    // `f"{court} {file_no}".strip() or c.get("slug", "")`.
+    let headed = py_strip(
+        format!("{court} {0}", py_value_repr(&file_no)).as_str(),
+    )
+    .to_string();
+    let title = if headed.is_empty() {
+        m.get("slug")
+            .cloned()
+            .unwrap_or(Value::String(String::new()))
+    } else {
+        Value::String(headed)
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("oldp".to_string()));
+    rec.insert(
+        "id".to_string(),
+        Value::String(py_value_repr(
+            m.get("id").unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert("title".to_string(), title);
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://de.openlegaldata.io/case/{0}",
+            py_value_repr(m.get("slug").unwrap_or(&Value::String(String::new())))
+        )),
+    );
+    rec.insert(
+        "published".to_string(),
+        Value::String(py_value_repr(
+            m.get("date").unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(oldp_snippet(m.get("snippets"))?),
+    );
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert("court".to_string(), Value::String(court));
+    fields.insert("file_number".to_string(), file_no);
+    fields.insert(
+        "ecli".to_string(),
+        m.get("ecli")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert(
+        "decision_type".to_string(),
+        m.get("decision_type")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn oldp_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("results", [])`, then `hits[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for c in hits {
+        out.push(oldp_case_row_impl(c)?);
+    }
+    Ok(out)
+}
+
+pub fn oldp_parse_law_impl(response_json: &str, rid: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let m = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("oldp".to_string()));
+    rec.insert("id".to_string(), Value::String(rid.to_string()));
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(rid.to_string())),
+    );
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://de.openlegaldata.io/law/{0}",
+            py_value_repr(m.get("slug").unwrap_or(&Value::String(String::new())))
+        )),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            char_head(
+                py_value_repr(m.get("text").unwrap_or(&Value::String(String::new())))
+                    .as_str(),
+                400,
+            )
+            .to_string(),
+        ),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "book".to_string(),
+        m.get("book")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert(
+        "section".to_string(),
+        m.get("section")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+// ── Federal Register ────────────────────────────────────────────
+
+fn fed_doc_impl(d: &Value) -> Result<Value, String> {
+    let m = match d {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(d))),
+    };
+    // `d.get("agency", {}) or {}`: missing/falsy → none. The dict
+    // check stays lazy: `agency.get("name", "")` runs at fields time
+    // (after the snippet), so a truthy non-dict must not raise here.
+    let agency: Option<&Value> = match m.get("agency") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(v) => Some(v),
+    };
+    // `d.get("html_url", d.get("text_url", ""))`: the inner default
+    // applies only when the outer key is missing.
+    let url = match m.get("html_url") {
+        Some(v) => v.clone(),
+        None => m
+            .get("text_url")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("federalregister".to_string()),
+    );
+    rec.insert(
+        "id".to_string(),
+        m.get("document_number")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        m.get("doc_date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    // `_strip_tags(d.get("abstract", d.get("excerpt", "")))[:240]`.
+    let abstract_raw = match m.get("abstract") {
+        Some(v) => v.clone(),
+        None => m
+            .get("excerpt")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    let stripped = strip_tags_impl(&abstract_raw)?;
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(stripped.as_str(), 240).to_string()),
+    );
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "document_type".to_string(),
+        m.get("document_type")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert(
+        "type".to_string(),
+        m.get("type")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert(
+        "agency".to_string(),
+        match agency {
+            None => Value::String(String::new()),
+            Some(Value::Object(am)) => am
+                .get("name")
+                .cloned()
+                .unwrap_or(Value::String(String::new())),
+            Some(other) => return Err(attr_error(json_type(other))),
+        },
+    );
+    fields.insert(
+        "document_number".to_string(),
+        m.get("document_number")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn fed_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `body.get("results", body.get("documents", [])) or []`: both
+    // `.get`s always run; missing results → documents (missing → []);
+    // present values (even falsy) pass through the `or []` fold.
+    let raw: Value = match obj.get("results") {
+        None => obj
+            .get("documents")
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new())),
+        Some(v) => v.clone(),
+    };
+    let folded: Value = if is_truthy(&raw) {
+        raw
+    } else {
+        Value::Array(Vec::new())
+    };
+    let hits: Vec<&Value> = subscript_hits(Some(&folded), max_results)?;
+    let mut out = Vec::new();
+    for d in hits {
+        out.push(fed_doc_impl(d)?);
+    }
+    Ok(out)
+}
+
+pub fn fed_parse_fetch_impl(response_json: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    fed_doc_impl(&body)
+}
+
+// ── BioRxiv ────────────────────────────────────────────────────
+
+fn biorxiv_paper_impl(p: &Value, server: &str) -> Result<Value, String> {
+    let m = match p {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(p))),
+    };
+    let doi = m
+        .get("doi")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let url = if is_truthy(&doi) {
+        Value::String(format!(
+            "https://www.biorxiv.org/content/{0}",
+            py_value_repr(&doi)
+        ))
+    } else {
+        Value::String(String::new())
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("biorxiv".to_string()));
+    rec.insert("id".to_string(), doi);
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        m.get("date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    let abstract_raw = m
+        .get("abstract")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let stripped = strip_tags_impl(&abstract_raw)?;
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(stripped.as_str(), 240).to_string()),
+    );
+    rec.insert(
+        "authors".to_string(),
+        m.get("authors")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    // NB: flat `fields`, with the instance's server threaded through.
+    let mut fields = serde_json::Map::new();
+    fields.insert("server".to_string(), Value::String(server.to_string()));
+    for key in ["category", "version", "type", "license"] {
+        fields.insert(
+            key.to_string(),
+            m.get(key)
+                .cloned()
+                .unwrap_or(Value::String(String::new())),
+        );
+    }
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn biorxiv_parse_collection_impl(
+    response_json: &str,
+    max_results: i64,
+    server: &str,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("collection", [])`, then `papers[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("collection") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for p in hits {
+        out.push(biorxiv_paper_impl(p, server)?);
+    }
+    Ok(out)
+}
+
+pub fn biorxiv_parse_fetch_impl(
+    response_json: &str,
+    server: &str,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `papers = ...get("collection", [])`; `if not papers: return []`.
+    let papers = match obj.get("collection") {
+        None => return Ok(Vec::new()),
+        Some(v) if !is_truthy(v) => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+    // `papers[0]`: list (non-empty — falsy caught above), str (char),
+    // dict (KeyError 0), anything else TypeError.
+    let first = match papers {
+        Value::Array(a) => match a.first() {
+            Some(v) => v,
+            None => return Ok(Vec::new()),
+        },
+        Value::String(s) => match s.chars().next() {
+            Some(_) => return Err(attr_error("str")),
+            None => return Ok(Vec::new()),
+        },
+        Value::Object(_) => return Err("KeyError: 0".to_string()),
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    Ok(vec![biorxiv_paper_impl(first, server)?])
+}
+
+// ── ChemRxiv ───────────────────────────────────────────────────
+
+// ── ChemRxiv ───────────────────────────────────────────────────
+
+/// One `", ".join` element: whether it survives an `if n` truthiness
+/// filter, its rendered text, and its original type for the join
+/// `TypeError` (which reports the *surviving* index).
+/// Dicts read raw `name` (missing → ""); anything else renders via
+/// `str()` — always a string, whose truthiness is the text's.
+fn chemrxiv_part(v: &Value) -> (bool, String, &'static str) {
+    match v {
+        Value::Object(m) => match m.get("name") {
+            None => (false, String::new(), "str"),
+            Some(n) => (is_truthy(n), py_value_repr(n), json_type(n)),
+        },
+        _ => {
+            let s = py_value_repr(v);
+            (!s.is_empty(), s, "str")
+        }
+    }
+}
+
+fn chemrxiv_join(parts: Vec<(bool, String, &'static str)>, filter: bool) -> Result<String, String> {
+    let kept: Vec<(String, &'static str)> = parts
+        .into_iter()
+        .filter(|(keep, _, _)| !filter || *keep)
+        .map(|(_, text, t)| (text, t))
+        .collect();
+    let mut out: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(sequence_item_error(i, t));
+        }
+        out.push(text.clone());
+    }
+    Ok(out.join(", "))
+}
+
+/// `", ".join(...)` over authors (truthiness-filtered) or topics
+/// (unfiltered) list elements: lists item-wise, dicts key-wise
+/// (keys render as themselves), strings char-wise, anything else
+/// raises TypeError (not iterable).
+fn chemrxiv_names_impl(items: &Value, filter: bool) -> Result<String, String> {
+    match items {
+        Value::Array(a) => chemrxiv_join(a.iter().map(chemrxiv_part).collect(), filter),
+        Value::Object(m) => chemrxiv_join(
+            m.keys()
+                .map(|k| {
+                    let s = k.clone();
+                    (!s.is_empty(), s, "str")
+                })
+                .collect(),
+            filter,
+        ),
+        Value::String(s) => chemrxiv_join(
+            s.chars()
+                .map(|c| {
+                    let t = c.to_string();
+                    (true, t, "str")
+                })
+                .collect(),
+            filter,
+        ),
+        other => Err(type_error_not_iterable(json_type(other))),
+    }
+}
+
+fn chemrxiv_item_impl(it: &Value) -> Result<Value, String> {
+    let m = match it {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(it))),
+    };
+    // `authors = it.get("authors", [])`: missing → []; lists render
+    // per item (dicts read `name`); anything else — even a dict or a
+    // falsy value — renders whole as one `str()`.
+    let authors = match m.get("authors") {
+        None => String::new(),
+        Some(Value::Array(a)) => {
+            chemrxiv_join(a.iter().map(chemrxiv_part).collect(), true)?
+        }
+        Some(v) => py_value_repr(v),
+    };
+    // `it.get("url", f"...{it.get('id', '')}")`.
+    let url = match m.get("url") {
+        Some(v) => v.clone(),
+        None => Value::String(format!(
+            "https://chemrxiv.org/engage/chemrxiv/public-article-details/{0}",
+            py_value_repr(m.get("id").unwrap_or(&Value::String(String::new())))
+        )),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("chemrxiv".to_string()));
+    rec.insert(
+        "id".to_string(),
+        Value::String(py_value_repr(
+            m.get("id").unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        m.get("published_on")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    let abstract_raw = m
+        .get("abstract")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let stripped = strip_tags_impl(&abstract_raw)?;
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(stripped.as_str(), 240).to_string()),
+    );
+    rec.insert("authors".to_string(), Value::String(authors));
+    // `"topics": ", ".join(... for t in it.get("topics", []) or [])`.
+    let topics = match m.get("topics") {
+        None => String::new(),
+        Some(v) if !is_truthy(v) => String::new(),
+        Some(v) => chemrxiv_names_impl(v, false)?,
+    };
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "doi".to_string(),
+        m.get("doi")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert("topics".to_string(), Value::String(topics));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn chemrxiv_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `body.get("data", []) if isinstance(body, dict) else body`,
+    // then `items[:max_results]`.
+    let hits: Vec<&Value> = match &body {
+        Value::Object(m) => match m.get("data") {
+            None => Vec::new(),
+            Some(v) => subscript_hits(Some(v), max_results)?,
+        },
+        other => subscript_hits(Some(other), max_results)?,
+    };
+    let mut out = Vec::new();
+    for it in hits {
+        out.push(chemrxiv_item_impl(it)?);
+    }
+    Ok(out)
+}
+
+pub fn chemrxiv_parse_fetch_impl(response_json: &str) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `item = body.get("data", body) if isinstance(body, dict) else
+    // body`; falsy → []; lists index [0]; anything else rows as-is.
+    let item: &Value = match &body {
+        Value::Object(m) => m.get("data").unwrap_or(&body),
+        _ => &body,
+    };
+    if !is_truthy(item) {
+        return Ok(Vec::new());
+    }
+    match item {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(vec![chemrxiv_item_impl(v)?]),
+            None => Ok(Vec::new()),
+        },
+        _ => Ok(vec![chemrxiv_item_impl(item)?]),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn oldp_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    oldp_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+pub fn oldp_parse_case_impl(response_json: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    oldp_case_row_impl(&body)
+}
+
+#[pyfunction]
+pub fn oldp_parse_case(py: Python, response_json: &str) -> PyResult<String> {
+    oldp_parse_case_impl(response_json)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn oldp_parse_law(py: Python, response_json: &str, rid: &str) -> PyResult<String> {
+    oldp_parse_law_impl(response_json, rid)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn fed_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    fed_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn fed_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    fed_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5, server = "biorxiv"))]
+pub fn biorxiv_parse_collection(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+    server: &str,
+) -> PyResult<String> {
+    biorxiv_parse_collection_impl(response_json, max_results, server)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, server = "biorxiv"))]
+pub fn biorxiv_parse_fetch(py: Python, response_json: &str, server: &str) -> PyResult<String> {
+    biorxiv_parse_fetch_impl(response_json, server)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn chemrxiv_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    chemrxiv_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn chemrxiv_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    chemrxiv_parse_fetch_impl(response_json)
         .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }

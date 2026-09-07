@@ -2092,24 +2092,6 @@ class FederalRegisterAdapter(ResourceAdapter):
     def inject_auth(self, url, params=None, headers=None):
         return url, dict(params or {}), dict(headers or {})
 
-    def _doc(self, d):
-        agency = d.get("agency", {}) or {}
-        return {
-            "source": "federalregister",
-            "id": d.get("document_number", ""),
-            "title": d.get("title", ""),
-            "url": d.get("html_url", d.get("text_url", "")),
-            "published": d.get("doc_date", ""),
-            "snippet": _strip_tags(d.get("abstract", d.get("excerpt", "")))[:240],
-            "fields": {
-                "document_type": d.get("document_type", ""),
-                "type": d.get("type", ""),
-                "agency": agency.get("name", ""),
-                "document_number": d.get("document_number", ""),
-            },
-            "raw": json.dumps(d),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         url, params, headers = self.inject_auth(
@@ -2123,9 +2105,16 @@ class FederalRegisterAdapter(ResourceAdapter):
         resp.raise_for_status()
         # The search envelope nests hits under ``results`` (``documents``
         # is only the fetch path's shape); be lenient to both.
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each document.
         body = resp.json()
         docs = body.get("results", body.get("documents", [])) or []
-        return [self._doc(d) for d in docs[:max_results]]
+        records = json.loads(
+            _rust.fed_parse_search(json.dumps(body), max_results)
+        )
+        for rec, d in zip(records, docs[:max_results]):
+            rec["raw"] = json.dumps(d)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2134,7 +2123,11 @@ class FederalRegisterAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        return [self._doc(resp.json())]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = resp.json()
+        rec = json.loads(_rust.fed_parse_fetch(json.dumps(body)))
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 class BioRxivAdapter(ResourceAdapter):
     """bioRxiv / medRxiv preprint lookup — https://api.biorxiv.org.
@@ -2165,26 +2158,6 @@ class BioRxivAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
         )
-
-    def _paper(self, p):
-        doi = p.get("doi", "")
-        return {
-            "source": "biorxiv",
-            "id": doi,
-            "title": p.get("title", ""),
-            "url": f"https://www.biorxiv.org/content/{doi}" if doi else "",
-            "published": p.get("date", ""),
-            "snippet": _strip_tags(p.get("abstract", ""))[:240],
-            "authors": p.get("authors", ""),
-            "fields": {
-                "server": self.server,
-                "category": p.get("category", ""),
-                "version": p.get("version", ""),
-                "type": p.get("type", ""),
-                "license": p.get("license", ""),
-            },
-            "raw": json.dumps(p),
-        }
 
     def _lookup(self, interval, server=None):
         server = server or self.server
@@ -2220,10 +2193,26 @@ class BioRxivAdapter(ResourceAdapter):
             url = f"{self.BASE}/{self.server}/{q}/na/json"
             resp = httpx.get(url, timeout=20.0)
             resp.raise_for_status()
-            papers = resp.json().get("collection", [])
-            return [self._paper(p) for p in papers[:max_results]]
+            # Row building in Rust (src/adapters.rs); `raw` re-attached
+            # here so it stays byte-identical `json.dumps` of each paper.
+            body = resp.json()
+            papers = body.get("collection", [])
+            records = json.loads(
+                _rust.biorxiv_parse_collection(
+                    json.dumps(body), max_results, self.server)
+            )
+            for rec, p in zip(records, papers[:max_results]):
+                rec["raw"] = json.dumps(p)
+            return records
         papers = self._lookup(q)
-        return [self._paper(p) for p in papers[:max_results]]
+        body = {"collection": papers}
+        records = json.loads(
+            _rust.biorxiv_parse_collection(
+                json.dumps(body), max_results, self.server)
+        )
+        for rec, p in zip(records, papers[:max_results]):
+            rec["raw"] = json.dumps(p)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2232,7 +2221,13 @@ class BioRxivAdapter(ResourceAdapter):
         papers = self._lookup_doi(str(record_id))
         if not papers:
             return []
-        return [self._paper(papers[0])]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = {"collection": papers}
+        records = json.loads(
+            _rust.biorxiv_parse_fetch(json.dumps(body), self.server)
+        )
+        records[0]["raw"] = json.dumps(papers[0])
+        return records
 
     def _lookup_doi(self, doi):
         url = f"{self.BASE}/{self.server}/{doi}/na/json"
@@ -2273,27 +2268,6 @@ class ChemRxivAdapter(ResourceAdapter):
             h["Authorization"] = f"Bearer {self.api_key}"
         return url, dict(params or {}), h
 
-    def _item(self, it):
-        authors = it.get("authors", [])
-        if isinstance(authors, list):
-            names = [a.get("name", "") if isinstance(a, dict) else str(a) for a in authors]
-        else:
-            names = [str(authors)]
-        return {
-            "source": "chemrxiv",
-            "id": str(it.get("id", "")),
-            "title": it.get("title", ""),
-            "url": it.get("url", f"https://chemrxiv.org/engage/chemrxiv/public-article-details/{it.get('id', '')}"),
-            "published": it.get("published_on", ""),
-            "snippet": _strip_tags(it.get("abstract", ""))[:240],
-            "authors": ", ".join(n for n in names if n),
-            "fields": {
-                "doi": it.get("doi", ""),
-                "topics": ", ".join(t.get("name", "") if isinstance(t, dict) else str(t) for t in it.get("topics", []) or []),
-            },
-            "raw": json.dumps(it),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         url, params, headers = self.inject_auth(
@@ -2303,9 +2277,16 @@ class ChemRxivAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each item.
         body = resp.json()
         items = body.get("data", []) if isinstance(body, dict) else body
-        return [self._item(i) for i in items[:max_results]]
+        records = json.loads(
+            _rust.chemrxiv_parse_search(json.dumps(body), max_results)
+        )
+        for rec, i in zip(records, items[:max_results]):
+            rec["raw"] = json.dumps(i)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2314,13 +2295,17 @@ class ChemRxivAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
         body = resp.json()
         item = body.get("data", body) if isinstance(body, dict) else body
         if not item:
             return []
+        records = json.loads(_rust.chemrxiv_parse_fetch(json.dumps(body)))
         if isinstance(item, list):
-            return [self._item(item[0])]
-        return [self._item(item)]
+            records[0]["raw"] = json.dumps(item[0])
+        else:
+            records[0]["raw"] = json.dumps(item)
+        return records
 
 class AlphaVantageAdapter(ResourceAdapter):
     """Alpha Vantage market data — https://www.alphavantage.co.
@@ -2467,34 +2452,6 @@ class OldpAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
         )
 
-    @staticmethod
-    def _court_name(court) -> str:
-        if isinstance(court, dict):
-            return court.get("name", "")
-        return str(court or "")
-
-    def _case_row(self, c: dict) -> Dict[str, str]:
-        court = self._court_name(c.get("court"))
-        file_no = c.get("file_number", "")
-        title = f"{court} {file_no}".strip() or c.get("slug", "")
-        snippets = c.get("snippets") or []
-        snippet = " … ".join(str(s)[:200] for s in snippets[:3])
-        return {
-            "source": "oldp",
-            "id": str(c.get("id", "")),
-            "title": title,
-            "url": f"https://de.openlegaldata.io/case/{c.get('slug', '')}",
-            "published": str(c.get("date", "")),
-            "snippet": snippet,
-            "fields": {
-                "court": court,
-                "file_number": file_no,
-                "ecli": c.get("ecli", ""),
-                "decision_type": c.get("decision_type", ""),
-            },
-            "raw": json.dumps(c),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         q = query if isinstance(query, dict) else {"text": query}
@@ -2515,8 +2472,16 @@ class OldpAdapter(ResourceAdapter):
             params["text"] = text
         resp = httpx.get(f"{self.BASE}/cases/search/", params=params, timeout=20.0)
         resp.raise_for_status()
-        hits = resp.json().get("results", [])
-        return [self._case_row(c) for c in hits[:max_results]]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each hit.
+        body = resp.json()
+        hits = body.get("results", [])
+        records = json.loads(
+            _rust.oldp_parse_search(json.dumps(body), max_results)
+        )
+        for rec, c in zip(records, hits[:max_results]):
+            rec["raw"] = json.dumps(c)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2527,18 +2492,14 @@ class OldpAdapter(ResourceAdapter):
             url = f"{self.BASE}/cases/{rid}/"
         resp = httpx.get(url, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
         body = resp.json()
         if rid.startswith("law:"):
-            return [{
-                "source": "oldp",
-                "id": rid,
-                "title": body.get("title", rid),
-                "url": f"https://de.openlegaldata.io/law/{body.get('slug', '')}",
-                "snippet": str(body.get("text", ""))[:400],
-                "fields": {"book": body.get("book", ""), "section": body.get("section", "")},
-                "raw": json.dumps(body),
-            }]
-        return [self._case_row(body)]
+            rec = json.loads(_rust.oldp_parse_law(json.dumps(body), rid))
+        else:
+            rec = json.loads(_rust.oldp_parse_case(json.dumps(body)))
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 
 class HudocAdapter(ResourceAdapter):
