@@ -522,3 +522,34 @@ def chemrxiv_parse_search(
 def chemrxiv_parse_fetch(response_json: str) -> str:
     """Item row(s) minus raw, as JSON (src/adapters.rs)."""
     ...
+
+def eurostat_parse_cells(
+    response_json: str,
+    code: str,
+    max_results: int = 5,
+) -> str:
+    """(record, dims, payload) triples as JSON (src/adapters.rs)."""
+    ...
+
+def coingecko_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Coin rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def coingecko_parse_markets(response_json: str, cid: str) -> str:
+    """Market row as JSON, or 'null' when empty (src/adapters.rs)."""
+    ...
+
+def alphavantage_parse_search(
+    response_json: str,
+    query_json: str = "null",
+    max_results: int = 5,
+) -> str:
+    """Match rows (or the note row) minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def alphavantage_parse_fetch(response_json: str, rid: str) -> str:
+    """`{"record", "meta"}` as JSON; Python attaches raw (src/adapters.rs)."""
+    ...

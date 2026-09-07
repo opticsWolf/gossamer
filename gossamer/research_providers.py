@@ -2352,29 +2352,19 @@ class AlphaVantageAdapter(ResourceAdapter):
         body = resp.json()
         # SYMBOL_SEARCH nests matches under ``bestMatches`` (``1. symbol`` /
         # ``2. name`` / ``3. type`` / ``4. region`` / ``8. currency``).
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # (search note rows also take dumps of the whole body).
         rows = body.get("bestMatches", [])
+        records = json.loads(
+            _rust.alphavantage_parse_search(
+                json.dumps(body), json.dumps(query), max_results)
+        )
         if not rows:
-            # No data / rate-limit -> surface the note, no crash.
-            note = body.get("Note") or body.get("Information") or body.get("notes") or body.get("information") or ""
-            return [{"source": "alphavantage", "id": "", "title": note or query, "url": "", "snippet": note, "fields": {}, "raw": json.dumps(body)}]
-        out = []
-        for r in rows[:max_results]:
-            symbol = r.get("1. symbol", "")
-            out.append({
-                "source": "alphavantage",
-                "id": symbol,
-                "title": r.get("2. name", symbol),
-                "url": "",
-                "snippet": f"{r.get('2. name', '')} — {r.get('3. type', '')} {r.get('4. region', '')}",
-                "fields": {
-                    "instrument_type": r.get("3. type", ""),
-                    "ticker": symbol,
-                    "currency": r.get("8. currency", ""),
-                    "match_score": r.get("9. matchScore", ""),
-                },
-                "raw": json.dumps(r),
-            })
-        return out
+            records[0]["raw"] = json.dumps(body)
+            return records
+        for rec, r in zip(records, rows[:max_results]):
+            rec["raw"] = json.dumps(r)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2385,32 +2375,18 @@ class AlphaVantageAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs), including the empty
+        # note row; `raw` is dumps of the OHLCV object (note rows take
+        # dumps of the whole body — a JSON null meta marks them).
         body = resp.json()
-        ts = body.get("Time Series (Daily)")
-        if not ts:
-            note = body.get("notes") or body.get("information") or ""
-            return [{"source": "alphavantage", "id": str(record_id), "title": note or str(record_id), "url": "", "snippet": note, "fields": {}, "raw": json.dumps(body)}]
-        first_date, ohlcv = next(iter(ts.items()))
-        meta = body.get("Meta Data", {})
-        return [
-            {
-                "source": "alphavantage",
-                "id": meta.get("2. symbol", str(record_id)),
-                "title": f"{meta.get('1. symbol', str(record_id))} daily close",
-                "url": "",
-                "snippet": f"latest {first_date}: open {ohlcv.get('1. open', '')}, close {ohlcv.get('4. close', '')}",
-                "fields": {
-                    "symbol": meta.get("2. symbol", str(record_id)),
-                    "last_refreshed": meta.get("4. last refreshed", ""),
-                    "open": ohlcv.get("1. open", ""),
-                    "high": ohlcv.get("2. high", ""),
-                    "low": ohlcv.get("3. low", ""),
-                    "close": ohlcv.get("4. close", ""),
-                    "volume": ohlcv.get("5. volume", ""),
-                },
-                "raw": json.dumps(ohlcv),
-            }
-        ]
+        rid = str(record_id)
+        both = json.loads(_rust.alphavantage_parse_fetch(json.dumps(body), rid))
+        rec, meta = both["record"], both["meta"]
+        if meta is None:
+            rec["raw"] = json.dumps(body)
+        else:
+            rec["raw"] = json.dumps(meta)
+        return [rec]
 
 
 # ────────────────────────────────────────────────────────────────
@@ -2785,63 +2761,28 @@ class EurostatAdapter(ResourceAdapter):
         single = {k: (v[0] if len(v) == 1 else v) for k, v in filters.items()}
         return code.strip(), single
 
-    @staticmethod
-    def _unpack(data: dict, limit: int) -> list:
-        """Unpack a JSON-stat cube into ``[(coords, value)]`` (capped)."""
-        ids = data.get("id", [])
-        sizes = data.get("size", [])
-        dimensions = data.get("dimension", {}) or {}
-        # Invert each dimension's category index: position -> code + label.
-        table = {}
-        for dim in ids:
-            cat = (dimensions.get(dim, {}) or {}).get("category", {}) or {}
-            index = cat.get("index", {}) or {}
-            labels = cat.get("label", {}) or {}
-            table[dim] = [(code, labels.get(code, code)) for code in sorted(index, key=index.get)]
-        strides = []
-        acc = 1
-        for size in reversed(sizes):
-            strides.insert(0, acc)
-            acc *= max(1, size)
-        values = data.get("value", {}) or {}
-        out = []
-        for flat, val in values.items():
-            try:
-                pos = int(flat)
-            except (TypeError, ValueError):
-                continue
-            coords = []
-            for i, dim in enumerate(ids):
-                size = sizes[i] if i < len(sizes) else 1
-                idx = (pos // strides[i]) % max(1, size) if strides else 0
-                entries = table.get(dim, [])
-                code, label = entries[idx] if idx < len(entries) else ("", "")
-                coords.append((dim, code, label))
-            out.append((coords, val))
-            if len(out) >= limit:
-                break
-        return out
-
     def _run(self, code: str, filters: dict, max_results: int) -> list:
         params = {"format": "JSON", "lang": "EN"}
         params.update(filters)
         resp = httpx.get(f"{self.BASE}/data/{code}", params=params, timeout=30.0)
         resp.raise_for_status()
+        # Cell unpacking + row building in Rust (src/adapters.rs).
+        # The kernel returns (record, dims, payload) triples: `fields`
+        # dims are rebuilt here with native types (dims may be
+        # non-strings in hostile cubes) and `raw` stays byte-identical
+        # `json.dumps` of the payload.
         data = resp.json()
-        label = data.get("label", code)
+        triples = json.loads(
+            _rust.eurostat_parse_cells(json.dumps(data), code, max_results)
+        )
         out = []
-        for coords, val in self._unpack(data, max_results):
-            coord_txt = " · ".join(f"{c[2] or c[1]}" for c in coords)
-            dims = {dim: code_ for dim, code_, _label in coords}
-            out.append({
-                "source": "eurostat",
-                "id": f"{code}:" + "/".join(dims.get(d, "") for d in dims),
-                "title": f"{label}: {coord_txt} = {val}",
-                "url": "",
-                "snippet": f"{coord_txt} → {val}",
-                "fields": {"dataset": code, **dims, "value": val},
-                "raw": json.dumps({"dataset": code, "coords": coords, "value": val}),
-            })
+        for triple in triples:
+            rec = triple["record"]
+            dims = {d: c for d, c in triple["dims"]}
+            rec["fields"] = {"dataset": code, **dims,
+                               "value": triple["payload"]["value"]}
+            rec["raw"] = json.dumps(triple["payload"])
+            out.append(rec)
         return out
 
     def _search_impl(self, query, max_results=5):
@@ -3087,22 +3028,16 @@ class CoinGeckoAdapter(ResourceAdapter):
             raise ValueError("CoinGeckoAdapter search needs a coin name")
         resp = httpx.get(f"{self.BASE}/search", params={"query": q}, timeout=20.0)
         resp.raise_for_status()
-        out = []
-        for coin in resp.json().get("coins", [])[:max_results]:
-            cid = coin.get("id", "")
-            out.append({
-                "source": "coingecko",
-                "id": cid,
-                "title": f"{coin.get('name', '')} ({coin.get('symbol', '').upper()})",
-                "url": f"https://www.coingecko.com/en/coins/{cid}" if cid else "",
-                "snippet": f"market-cap rank {coin.get('market_cap_rank', '?')}",
-                "fields": {
-                    "symbol": coin.get("symbol", ""),
-                    "market_cap_rank": coin.get("market_cap_rank", ""),
-                },
-                "raw": json.dumps(coin),
-            })
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each coin.
+        body = resp.json()
+        coins = body.get("coins", [])
+        records = json.loads(
+            _rust.coingecko_parse_search(json.dumps(body), max_results)
+        )
+        for rec, coin in zip(records, coins[:max_results]):
+            rec["raw"] = json.dumps(coin)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -3119,24 +3054,14 @@ class CoinGeckoAdapter(ResourceAdapter):
         rows = resp.json()
         if not rows:
             return []
-        m = rows[0]
-        return [{
-            "source": "coingecko",
-            "id": m.get("id", cid),
-            "title": f"{m.get('name', cid)} ${m.get('current_price', '')}",
-            "url": f"https://www.coingecko.com/en/coins/{m.get('id', cid)}",
-            "snippet": (
-                f"${m.get('current_price', '')} (24h {m.get('price_change_percentage_24h', '')}%), "
-                f"mcap ${m.get('market_cap', '')}"
-            ),
-            "fields": {
-                "symbol": m.get("symbol", ""),
-                "current_price_usd": m.get("current_price", ""),
-                "market_cap_usd": m.get("market_cap", ""),
-                "change_24h_pct": m.get("price_change_percentage_24h", ""),
-            },
-            "raw": json.dumps(m),
-        }]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        # A JSON null marks the empty row list (falsy payloads).
+        rec_json = _rust.coingecko_parse_markets(json.dumps(rows), cid)
+        if rec_json == "null":
+            return []
+        rec = json.loads(rec_json)
+        rec["raw"] = json.dumps(rows[0])
+        return [rec]
 
 
 # ────────────────────────────────────────────────────────────────

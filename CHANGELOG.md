@@ -4,6 +4,29 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.15] — Rust port M15: financial JSON kernels
+
+- `src/adapters.rs`: Eurostat JSON-stat unpacking (dimension index
+  inversion with `sorted(index, key=index.get)` ordering incl.
+  TimSort-comparison simulation for mixed orders, stride/float-lane
+  indexing with the `idx < len` guard, `int()` flat-key parsing,
+  strict id joins) with `(record, dims, payload)` triples so the
+  wrapper rebuilds native-dim `fields` + `raw`; CoinGecko coin
+  search + market fetch (raw-`.upper()`, `?` vs `""` rank defaults,
+  top-level falsy → empty); AlphaVantage match search (4-key note
+  or-chain, `note or query` title) + OHLCV fetch (note rows marked
+  with Null meta).
+- Caught by parity: Eurostat id joins raise on non-string codes,
+  `.items()` errors name `items` (new `attr_error_attr` helper),
+  float indices raise only when the length guard passes, dict
+  `sizes` reverse fine, and single-element sorts never compare.
+- `EurostatAdapter`/`CoinGeckoAdapter`/`AlphaVantageAdapter`
+  search/fetch delegate to Rust and re-attach `raw`; retired
+  `_unpack`. Bundesbank/BIS SDMX-ML stays Python pending `quick-xml`.
+- Parity proof: `tests/test_rust_parity_adapters.py` (~5800 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 11 Rust
+  unit tests.
+
 ## [0.8.14] — Rust port M14: German-legal / register / preprint kernels
 
 - `src/adapters.rs`: OLDP case rows (court-name rendering, `…`

@@ -2082,3 +2082,505 @@ def test_e2e_chemrxiv(mock_get):
     (rec,) = _CHEM(delay=0.0, api_key="K").fetch("c1")
     assert rec["id"] == "c1"
     assert rec["raw"] == json.dumps(item)
+
+
+# --- batch 5: financial kernels (v0.8.14) ---------------------------
+# Vendored originals are verbatim copies of the retired
+# `EurostatAdapter._unpack` (+ `_run` row shaping),
+# `CoinGeckoAdapter` search/fetch rows and the AlphaVantage
+# search/fetch rows (minus `raw`, which crosses separately).
+
+EU_CUBE = {
+    "label": "GDP",
+    "id": ["geo", "time"],
+    "size": [2, 2],
+    "dimension": {
+        "geo": {"category": {"index": {"DE": 0, "FR": 1},
+                             "label": {"DE": "Germany", "FR": "France"}}},
+        "time": {"category": {"index": {"2022": 0, "2023": 1},
+                              "label": {"2022": "2022", "2023": "2023"}}},
+    },
+    "value": {"0": 100.0, "1": 101.5, "2": 200.0, "3": 202.5},
+}
+
+
+def _v_eu_unpack(data, limit):
+    ids = data.get("id", [])
+    sizes = data.get("size", [])
+    dimensions = data.get("dimension", {}) or {}
+    table = {}
+    for dim in ids:
+        cat = (dimensions.get(dim, {}) or {}).get("category", {}) or {}
+        index = cat.get("index", {}) or {}
+        labels = cat.get("label", {}) or {}
+        table[dim] = [(code, labels.get(code, code)) for code in sorted(index, key=index.get)]
+    strides = []
+    acc = 1
+    for size in reversed(sizes):
+        strides.insert(0, acc)
+        acc *= max(1, size)
+    values = data.get("value", {}) or {}
+    out = []
+    for flat, val in values.items():
+        try:
+            pos = int(flat)
+        except (TypeError, ValueError):
+            continue
+        coords = []
+        for i, dim in enumerate(ids):
+            size = sizes[i] if i < len(sizes) else 1
+            idx = (pos // strides[i]) % max(1, size) if strides else 0
+            entries = table.get(dim, [])
+            code, label = entries[idx] if idx < len(entries) else ("", "")
+            coords.append((dim, code, label))
+        out.append((coords, val))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _v_eu_cells(body, code, max_results=5):
+    data = body
+    label = data.get("label", code)
+    out = []
+    for coords, val in _v_eu_unpack(data, max_results):
+        coord_txt = " \u00b7 ".join(f"{c[2] or c[1]}" for c in coords)
+        dims = {dim: code_ for dim, code_, _label in coords}
+        out.append({
+            "record": {
+                "source": "eurostat",
+                "id": f"{code}:" + "/".join(dims.get(d, "") for d in dims),
+                "title": f"{label}: {coord_txt} = {val}",
+                "url": "",
+                "snippet": f"{coord_txt} \u2192 {val}",
+                # Placeholder fields (dataset + value); the wrapper
+                # rebuilds the full dict with native dims.
+                "fields": {"dataset": code, "value": val},
+            },
+            "dims": [[d, c] for d, c, _l in coords],
+            "payload": {"dataset": code,
+                        "coords": [list(t) for t in coords],
+                        "value": val},
+        })
+    return out
+
+
+def _rs_eu_cells(body, code, max_results=5):
+    return json.loads(_core.eurostat_parse_cells(
+        json.dumps(body), code, max_results))
+
+
+EU_CASES = [
+    EU_CUBE,
+    {"label": "X", "id": ["a"], "size": [1],
+     "dimension": {"a": {"category": {"index": {"x": 0}}}},
+     "value": {"0": 1}},
+    {},
+    {"id": None},
+    {"id": 5},
+    {"id": "ab"},
+    {"id": {"a": 1}},
+    {"id": []},
+    {"size": None},
+    {"size": 5},
+    {"size": "ab"},
+    {"size": {}},
+    {"size": [2, "x"]},
+    {"size": [2, None]},
+    {"size": [2.5]},
+    {"size": [2.0]},
+    {"size": [0.5]},
+    {"size": [0]},
+    {"size": [-3]},
+    {"size": [True]},
+    {"id": ["a", "b"], "size": [2]},
+    {"id": ["a"], "size": [2], "dimension": {"a": {"category": {}}},
+     "value": {"0": 1, "1": 2, "5": 3, "-1": 4, "x": 5, "1_0": 6,
+               " 2 ": 7, "+3": 8}},
+    {"id": ["a"], "size": [3],
+     "dimension": {"a": {"category": {"index": {"x": 0, "y": 1},
+                                      "label": "oops"}}},
+     "value": {"0": 1}},
+    {"id": ["a"], "size": [2],
+     "dimension": {"a": {"category": {"index": [1, 2]}}},
+     "value": {"0": 1}},
+    {"id": ["a"], "size": [2],
+     "dimension": {"a": [1, 2]},
+     "value": {"0": 1}},
+    {"id": ["a"], "size": [2], "dimension": "ab",
+     "value": {"0": 1}},
+    {"id": [["a"]], "size": [1], "value": {"0": 1}},
+    {"id": [{"a": 1}], "size": [1], "value": {"0": 1}},
+    {"id": [5], "size": [1],
+     "dimension": {"x": {"category": {"index": {"q": 0}}}},
+     "value": {"0": 7}},
+    {"id": ["a"], "size": [1],
+     "dimension": {"a": {"category": {"index": {"x": "o", "y": 1}}}},
+     "value": {"0": 1}},
+    {"id": ["a"], "size": [1],
+     "dimension": {"a": {"category": {"index": {"x": None}}}},
+     "value": {"0": 1}},
+    {"id": ["a", 5], "size": [1, 1],
+     "dimension": {"a": {"category": {"index": {"x": 0}}}},
+     "value": {"0": [1, 2], "1": {"v": 3}}},
+    {"value": None},
+    {"value": "ab"},
+    {"value": 5},
+    {"value": {"ok": 1}},
+    {"label": None, "value": {"0": 1}},
+    {"label": ["L"], "value": {"0": 1}},
+    {"id": ["a"], "size": [1], "value": {"0": 1},
+     "dimension": {"a": {"category": {"index": {"x": 0},
+                                      "label": {"x": None}}}}},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", EU_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+@pytest.mark.parametrize("code", ["nama_10_gdp", ""])
+def test_eurostat_parity(body, max_results, code):
+    py_raised, py_val = _outcome(_v_eu_cells, body, code, max_results)
+    rs_raised, rs_val = _outcome(_rs_eu_cells, body, code, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, code)
+    assert rs_val == py_val, (body, code)
+
+
+CG_COIN = {"id": "bitcoin", "name": "Bitcoin", "symbol": "btc",
+           "market_cap_rank": 1}
+CG_MKT = {"id": "bitcoin", "name": "Bitcoin", "symbol": "btc",
+          "current_price": 97000.5, "market_cap": 1900000000000,
+          "price_change_percentage_24h": 2.5}
+
+
+def _v_cg_search(body, max_results=5):
+    out = []
+    for coin in body.get("coins", [])[:max_results]:
+        cid = coin.get("id", "")
+        out.append({
+            "source": "coingecko",
+            "id": cid,
+            "title": f"{coin.get('name', '')} ({coin.get('symbol', '').upper()})",
+            "url": f"https://www.coingecko.com/en/coins/{cid}" if cid else "",
+            "snippet": f"market-cap rank {coin.get('market_cap_rank', '?')}",
+            "fields": {
+                "symbol": coin.get("symbol", ""),
+                "market_cap_rank": coin.get("market_cap_rank", ""),
+            },
+        })
+    return out
+
+
+def _v_cg_fetch(body, cid=""):
+    rows = body
+    if not rows:
+        return []
+    m = rows[0]
+    return {
+        "source": "coingecko",
+        "id": m.get("id", cid),
+        "title": f"{m.get('name', cid)} ${m.get('current_price', '')}",
+        "url": f"https://www.coingecko.com/en/coins/{m.get('id', cid)}",
+        "snippet": (
+            f"${m.get('current_price', '')} (24h {m.get('price_change_percentage_24h', '')}%), "
+            f"mcap ${m.get('market_cap', '')}"
+        ),
+        "fields": {
+            "symbol": m.get("symbol", ""),
+            "current_price_usd": m.get("current_price", ""),
+            "market_cap_usd": m.get("market_cap", ""),
+            "change_24h_pct": m.get("price_change_percentage_24h", ""),
+        },
+    }
+
+
+def _rs_cg_search(body, max_results=5):
+    return json.loads(_core.coingecko_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_cg_fetch(body, cid=""):
+    out = _core.coingecko_parse_markets(json.dumps(body), cid)
+    return [] if out == "null" else json.loads(out)
+
+
+CG_SEARCH_BODIES = [
+    {"coins": [CG_COIN]},
+    {"coins": [CG_COIN, {"id": "eth"}]},
+    {},
+    {"coins": None},
+    {"coins": []},
+    {"coins": ""},
+    {"coins": 0},
+    {"coins": {}},
+    {"coins": "ab"},
+    {"coins": 5},
+    {"coins": [None]},
+    {"coins": ["x"]},
+    {"coins": [5]},
+    {"coins": [{}]},
+    {"coins": [{"id": None, "symbol": None}]},
+    {"coins": [{"symbol": 5, "name": ["B"], "market_cap_rank": None}]},
+    {"coins": [{"id": 0, "symbol": "X", "market_cap_rank": 0}]},
+]
+
+
+@pytest.mark.parametrize("body", CG_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_cg_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_cg_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_cg_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CG_FETCH_BODIES = [
+    [CG_MKT],
+    [CG_MKT, {"id": "eth"}],
+    [],
+    "",
+    0,
+    {},
+    "ab",
+    5,
+    None,
+    [{"id": None, "current_price": "high"}],
+    {"a": 1},
+    ["x"],
+    [5],
+    [{}],
+]
+
+
+@pytest.mark.parametrize("body", CG_FETCH_BODIES)
+@pytest.mark.parametrize("cid", ["bitcoin", ""])
+def test_cg_fetch_parity(body, cid):
+    py_raised, py_val = _outcome(
+        lambda b, c: [_v_cg_fetch(b, c)] if _v_cg_fetch(b, c) else [], body, cid)
+    rs_raised, rs_val = _outcome(
+        lambda b, c: [_rs_cg_fetch(b, c)] if _rs_cg_fetch(b, c) != [] else [],
+        body, cid)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, cid)
+    assert rs_val == py_val, (body, cid)
+
+
+AV_MATCH = {"1. symbol": "IBM", "2. name": "International Business Machines",
+            "3. type": "Equity", "4. region": "United States",
+            "8. currency": "USD", "9. matchScore": "0.9"}
+AV_TS = {"Meta Data": {"1. symbol": "IBM", "2. symbol": "IBM",
+                       "4. last refreshed": "2024-06-01"},
+         "Time Series (Daily)": {"2024-06-01": {"1. open": "170.0",
+             "2. high": "172.0", "3. low": "169.0", "4. close": "171.5",
+             "5. volume": "4000000"}}}
+
+
+def _v_av_search(body, query="", max_results=5):
+    rows = body.get("bestMatches", [])
+    if not rows:
+        note = body.get("Note") or body.get("Information") or body.get("notes") or body.get("information") or ""
+        return [{"source": "alphavantage", "id": "", "title": note or query,
+                 "url": "", "snippet": note, "fields": {}}]
+    out = []
+    for r in rows[:max_results]:
+        symbol = r.get("1. symbol", "")
+        out.append({
+            "source": "alphavantage",
+            "id": symbol,
+            "title": r.get("2. name", symbol),
+            "url": "",
+            "snippet": f"{r.get('2. name', '')} \u2014 {r.get('3. type', '')} {r.get('4. region', '')}",
+            "fields": {
+                "instrument_type": r.get("3. type", ""),
+                "ticker": symbol,
+                "currency": r.get("8. currency", ""),
+                "match_score": r.get("9. matchScore", ""),
+            },
+        })
+    return out
+
+
+def _v_av_fetch(body, rid=""):
+    ts = body.get("Time Series (Daily)")
+    if not ts:
+        note = body.get("notes") or body.get("information") or ""
+        return [{"source": "alphavantage", "id": str(rid),
+                 "title": note or str(rid), "url": "", "snippet": note,
+                 "fields": {}}]
+    first_date, ohlcv = next(iter(ts.items()))
+    meta = body.get("Meta Data", {})
+    return [{
+        "source": "alphavantage",
+        "id": meta.get("2. symbol", str(rid)),
+        "title": f"{meta.get('1. symbol', str(rid))} daily close",
+        "url": "",
+        "snippet": f"latest {first_date}: open {ohlcv.get('1. open', '')}, close {ohlcv.get('4. close', '')}",
+        "fields": {
+            "symbol": meta.get("2. symbol", str(rid)),
+            "last_refreshed": meta.get("4. last refreshed", ""),
+            "open": ohlcv.get("1. open", ""),
+            "high": ohlcv.get("2. high", ""),
+            "low": ohlcv.get("3. low", ""),
+            "close": ohlcv.get("4. close", ""),
+            "volume": ohlcv.get("5. volume", ""),
+        },
+    }]
+
+
+def _rs_av_search(body, query="", max_results=5):
+    return json.loads(_core.alphavantage_parse_search(
+        json.dumps(body), json.dumps(query), max_results))
+
+
+def _rs_av_fetch(body, rid=""):
+    both = json.loads(_core.alphavantage_parse_fetch(
+        json.dumps(body), rid))
+    return [both["record"]]
+
+
+AV_SEARCH_BODIES = [
+    {"bestMatches": [AV_MATCH]},
+    {"bestMatches": [AV_MATCH, {"1. symbol": "IB"}]},
+    {"Note": "Rate limit"},
+    {"Information": "Info", "Note": ""},
+    {"notes": "n1", "information": "n2"},
+    {},
+    {"bestMatches": None},
+    {"bestMatches": []},
+    {"bestMatches": ""},
+    {"bestMatches": 0},
+    {"bestMatches": {}},
+    {"bestMatches": "ab"},
+    {"bestMatches": 5},
+    {"bestMatches": [None]},
+    {"bestMatches": ["x"]},
+    {"bestMatches": [5]},
+    {"bestMatches": [{}]},
+    {"bestMatches": [{"2. name": 7, "1. symbol": None}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", AV_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+@pytest.mark.parametrize("query", ["IBM", "", 5, None])
+def test_av_search_parity(body, max_results, query):
+    py_raised, py_val = _outcome(_v_av_search, body, query, max_results)
+    rs_raised, rs_val = _outcome(_rs_av_search, body, query, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, query)
+    assert rs_val == py_val, (body, query)
+
+
+AV_FETCH_BODIES = [
+    AV_TS,
+    {"Note": "limit", "Time Series (Daily)": {}},
+    {"notes": "n", "information": "i"},
+    {},
+    {"Time Series (Daily)": None},
+    {"Time Series (Daily)": []},
+    {"Time Series (Daily)": ""},
+    {"Time Series (Daily)": 0},
+    {"Time Series (Daily)": {}},
+    {"Time Series (Daily)": "ab"},
+    {"Time Series (Daily)": 5},
+    {"Time Series (Daily)": {"2024-01-01": None}},
+    {"Time Series (Daily)": {"2024-01-01": 5}},
+    {"Time Series (Daily)": {"2024-01-01": "x"}},
+    {"Time Series (Daily)": {"2024-01-01": {}}},
+    {"Time Series (Daily)": {"2024-01-01": {"1. open": 1}},
+     "Meta Data": None},
+    {"Time Series (Daily)": {"2024-01-01": {"1. open": 1}},
+     "Meta Data": "x"},
+    {"Time Series (Daily)": {"2024-01-01": {"1. open": 1}},
+     "Meta Data": {"2. symbol": None}},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", AV_FETCH_BODIES)
+@pytest.mark.parametrize("rid", ["IBM", ""])
+def test_av_fetch_parity(body, rid):
+    py_raised, py_val = _outcome(_v_av_fetch, body, rid)
+    rs_raised, rs_val = _outcome(_rs_av_fetch, body, rid)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, rid)
+    assert rs_val == py_val, (body, rid)
+
+
+@pytest.mark.parametrize("body", _fuzz_bodies(20260908, 150))
+@pytest.mark.parametrize("max_results", [3, -1])
+def test_fuzz_financial_kernels(body, max_results):
+    assert _outcome(_v_eu_cells, body, "CODE", max_results) == \
+        _outcome(_rs_eu_cells, body, "CODE", max_results), body
+    assert _outcome(_v_cg_search, body, max_results) == \
+        _outcome(_rs_cg_search, body, max_results), body
+    assert _outcome(_v_av_search, body, "q", max_results) == \
+        _outcome(_rs_av_search, body, "q", max_results), body
+
+
+# --- end-to-end seam: real adapters, stubbed HTTP ---------------------
+
+from gossamer.research_providers import (
+    AlphaVantageAdapter as _AV,
+    CoinGeckoAdapter as _CG,
+    EurostatAdapter as _EU,
+)
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_eurostat(mock_get):
+    mock_get.return_value = _stub(EU_CUBE)
+    out = _EU(delay=0.0).search("nama_10_gdp?geo=DE", max_results=5)
+    assert out[0]["id"] == "nama_10_gdp:DE/2022"
+    assert out[0]["title"] == "GDP: Germany \u00b7 2022 = 100.0"
+    assert out[0]["fields"] == {"dataset": "nama_10_gdp", "geo": "DE",
+                                "time": "2022", "value": 100.0}
+    assert json.loads(out[0]["raw"])["coords"][0] == ["geo", "DE", "Germany"]
+
+    out = _EU(delay=0.0).fetch("nama_10_gdp")
+    assert len(out) == 4 and out[0]["source"] == "eurostat"
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_coingecko(mock_get):
+    mock_get.return_value = _stub({"coins": [CG_COIN]})
+    out = _CG(delay=0.0).search("bitcoin", max_results=5)
+    assert out[0]["id"] == "bitcoin"
+    assert out[0]["title"] == "Bitcoin (BTC)"
+    assert out[0]["raw"] == json.dumps(CG_COIN)
+
+    mock_get.return_value = _stub([CG_MKT])
+    (rec,) = _CG(delay=0.0).fetch("Bitcoin")
+    assert rec["title"] == "Bitcoin $97000.5"
+    assert rec["fields"]["current_price_usd"] == 97000.5
+    assert rec["raw"] == json.dumps(CG_MKT)
+
+    mock_get.return_value = _stub([])
+    assert _CG(delay=0.0).fetch("nope") == []
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_alphavantage(mock_get):
+    mock_get.return_value = _stub({"bestMatches": [AV_MATCH]})
+    out = _AV(delay=0.0, api_key="K").search("IBM", max_results=5)
+    assert out[0]["id"] == "IBM"
+    assert out[0]["fields"]["ticker"] == "IBM"
+    assert out[0]["raw"] == json.dumps(AV_MATCH)
+
+    mock_get.return_value = _stub({"Note": "slow down"})
+    out = _AV(delay=0.0, api_key="K").search("IBM", max_results=5)
+    assert out[0]["id"] == "" and out[0]["title"] == "slow down"
+
+    mock_get.return_value = _stub(AV_TS)
+    (rec,) = _AV(delay=0.0, api_key="K").fetch("IBM")
+    assert rec["title"] == "IBM daily close"
+    assert rec["fields"]["close"] == "171.5"
+    assert rec["raw"] == json.dumps(
+        AV_TS["Time Series (Daily)"]["2024-06-01"])
