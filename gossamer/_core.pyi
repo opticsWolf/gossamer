@@ -384,3 +384,48 @@ def frankfurter_parse_rates(
 ) -> str:
     """Rate rows minus raw, as JSON (src/adapters.rs)."""
     ...
+
+def yahoo_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Quote rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def yahoo_parse_fetch(
+    response_json: str,
+    record_id: str | None = None,
+    fallback_json: str | None = None,
+) -> str:
+    """`{"record", "meta"}` as JSON; Python attaches raw (src/adapters.rs)."""
+    ...
+
+def nvd_route_query(query: str) -> tuple:
+    """(cveId|keywordSearch, value) routing (src/adapters.rs)."""
+    ...
+
+def nvd_parse_vulns(
+    response_json: str,
+    fallback_id: str = "",
+    max_results: int = 5,
+) -> str:
+    """CVE rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def nvd_parse_fetch(
+    response_json: str,
+    fallback_id: str = "",
+) -> str:
+    """First-vuln CVE row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def zenodo_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Record hits minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def zenodo_parse_fetch(response_json: str, record_id_s: str) -> str:
+    """One record hit minus raw, as JSON (src/adapters.rs)."""
+    ...

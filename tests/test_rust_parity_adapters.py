@@ -218,3 +218,728 @@ def test_frankfurter_rates_parity(body, max_results):
             json.dumps(b), "USD", None, m)), body, max_results)
     assert (py_raised, rs_raised) == (py_raised, py_raised), body
     assert rs_val == py_val, body
+
+
+# --- batch 2: Yahoo / NVD / Zenodo kernels (v0.8.11) ------------------
+# Vendored originals are verbatim copies of the retired
+# `NvdAdapter._row`, `ZenodoAdapter._names/_hit`, the Yahoo/NVD/Zenodo
+# `_search_impl`/`fetch` parse logic and the `_first_desc`/`_strip_tags`
+# helpers (minus `raw`, which crosses the boundary separately).
+
+import re as _re2
+
+
+def _v_first_desc(cve, limit=240):
+    for d in cve.get("descriptions", []) or []:
+        if d.get("lang") == "en" or not d.get("lang"):
+            return " ".join((d.get("value") or "").split())[:limit]
+    return ""
+
+
+def _v_strip_tags(text):
+    if not text:
+        return ""
+    return _re2.sub(r"<[^>]+>", " ", text)
+
+
+YAHOO_QUOTES = {
+    "quotes": [
+        {"symbol": "AAPL", "shortname": "Apple Inc.",
+         "exchange": "NMS", "quoteType": "EQUITY",
+         "marketCap": 3000000000000},
+        {"symbol": "SAP.DE", "shortName": "SAP SE",
+         "exchange": "GER", "quoteType": "EQUITY"},
+        {"symbol": "X"},
+    ]
+}
+
+
+def _v_yahoo_search(body, max_results=5):
+    quotes = body.get("quotes", []) or []
+    out = []
+    for q in quotes[:max_results]:
+        name = q.get("shortname") or q.get("shortName") or q.get("symbol", "")
+        out.append(
+            {
+                "source": "yahoo",
+                "id": q.get("symbol", ""),
+                "title": name,
+                "url": f"https://finance.yahoo.com/quote/{q.get('symbol', '')}",
+                "snippet": (
+                    f"{name} \u2014 {q.get('exchange', '')} "
+                    f"{q.get('quoteType', '')}"
+                ),
+                "fields": {
+                    "yahoo": {
+                        "exchange": q.get("exchange", ""),
+                        "quote_type": q.get("quoteType", ""),
+                        "market_cap": q.get("marketCap", ""),
+                    }
+                },
+            }
+        )
+    return out
+
+
+def _rs_yahoo_search(body, max_results=5):
+    return json.loads(_core.yahoo_parse_search(
+        json.dumps(body), max_results))
+
+
+YAHOO_SEARCH_CASES = [
+    YAHOO_QUOTES,
+    {},
+    {"quotes": None},
+    {"quotes": []},
+    {"quotes": ""},
+    {"quotes": 0},
+    {"quotes": {}},
+    {"quotes": "ab"},
+    {"quotes": 5},
+    {"quotes": True},
+    {"quotes": [None]},
+    {"quotes": ["x"]},
+    {"quotes": [""]},
+    {"quotes": [{}]},
+    {"quotes": [{"symbol": "A"}]},
+    {"quotes": [{"symbol": None, "shortname": None}]},
+    {"quotes": [{"symbol": 5, "shortname": 7, "exchange": ["N"],
+                 "quoteType": {"t": 1}, "marketCap": 1.5}]},
+    {"quotes": [{"shortname": "N", "exchange": 0, "quoteType": False}]},
+    {"quotes": [5]},
+    {"quotes": [[1]]},
+    {"quotes": [{"symbol": "A", "shortname": ""}]},
+    {"quotes": [{"symbol": ["A"], "shortname": ["N"]}]},
+]
+
+
+@pytest.mark.parametrize("body", YAHOO_SEARCH_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_yahoo_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_yahoo_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_yahoo_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+YAHOO_CHART = {
+    "chart": {
+        "result": [
+            {"meta": {
+                "symbol": "AAPL", "longName": "Apple Inc.",
+                "regularMarketPrice": 230.5, "currency": "USD",
+                "fullExchangeName": "NasdaqGS", "previousClose": 229.0,
+            }}
+        ]
+    }
+}
+
+
+def _v_yahoo_fetch(body, record_id):
+    meta = (
+        (body.get("chart", {}) or {}).get("result", [{}])[0]
+        .get("meta", {})
+    )
+    return {
+        "source": "yahoo",
+        "id": meta.get("symbol", record_id),
+        "title": meta.get("longName") or meta.get("shortName") or record_id,
+        "url": f"https://finance.yahoo.com/quote/{meta.get('symbol', record_id)}",
+        "snippet": (
+            f"{meta.get('regularMarketPrice', '')} {meta.get('currency', '')} "
+            f"({meta.get('fullExchangeName', '')})"
+        ),
+        "fields": {
+            "yahoo": {
+                "currency": meta.get("currency", ""),
+                "exchange": meta.get("fullExchangeName", ""),
+                "previous_close": meta.get("previousClose", ""),
+            }
+        },
+    }
+
+
+def _rs_yahoo_fetch(body, rid, fallback_json):
+    both = json.loads(_core.yahoo_parse_fetch(
+        json.dumps(body), rid, fallback_json))
+    return both["record"]
+
+
+YAHOO_FETCH_BODIES = [
+    YAHOO_CHART,
+    {},
+    {"chart": None},
+    {"chart": ""},
+    {"chart": 0},
+    {"chart": {}},
+    {"chart": "x"},
+    {"chart": 5},
+    {"chart": ["x"]},
+    {"chart": {"result": None}},
+    {"chart": {"result": [{}]}},
+    {"chart": {"result": []}},
+    {"chart": {"result": ["ab"]}},
+    {"chart": {"result": [""]}},
+    {"chart": {"result": [5]}},
+    {"chart": {"result": [None]}},
+    {"chart": {"result": "x"}},
+    {"chart": {"result": {}}},
+    {"chart": {"result": 0}},
+    {"chart": {"result": [{"meta": None}]}},
+    {"chart": {"result": [{"meta": 5}]}},
+    {"chart": {"result": [{"meta": "x"}]}},
+    {"chart": {"result": [{"meta": ["x"]}]}},
+    {"chart": {"result": [{"meta": {}}]}},
+    {"chart": {"result": [{"meta": {
+        "symbol": None, "longName": 0, "shortName": False,
+        "regularMarketPrice": None, "currency": ["USD"],
+        "fullExchangeName": {"e": 1}, "previousClose": 0}}]}},
+    {"chart": {"result": [{"meta": {"shortName": "Short Only"}}]}},
+    {"chart": {"result": [{"other": 1}], "error": None}},
+]
+
+# (record_id, rid, fallback_json): exact boundary spellings — every raw
+# `record_id` here round-trips identically, so kernel output must equal
+# the original's. Non-JSON-native ids (tuple/set/object) are documented
+# to arrive str()-rendered (see `test_yahoo_fallback_helper`); NaN
+# payloads cannot cross the JSON boundary at all.
+YAHOO_FALLBACKS = [
+    (None, None, None),
+    ("AAPL", "AAPL", None),
+    ("", "", None),
+    (5, "5", "5"),
+    (1.5, "1.5", "1.5"),
+    (True, "True", "true"),
+    ([1, 2], "[1, 2]", "[1, 2]"),
+    ({"a": 1}, "{'a': 1}", '{"a": 1}'),
+]
+
+
+@pytest.mark.parametrize("body", YAHOO_FETCH_BODIES)
+@pytest.mark.parametrize("fb", YAHOO_FALLBACKS)
+def test_yahoo_fetch_parity(body, fb):
+    record_id, rid, fallback_json = fb
+    py_raised, py_val = _outcome(_v_yahoo_fetch, body, record_id)
+    rs_raised, rs_val = _outcome(_rs_yahoo_fetch, body, rid, fallback_json)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fb)
+    assert rs_val == py_val, (body, fb)
+
+
+def test_yahoo_fallback_helper():
+    from gossamer.research_providers import _yahoo_fallback
+    assert _yahoo_fallback(None) == (None, None)
+    assert _yahoo_fallback("AAPL") == ("AAPL", None)
+    assert _yahoo_fallback(5) == ("5", "5")
+    assert _yahoo_fallback([1, 2]) == ("[1, 2]", "[1, 2]")
+    # Not expressible in JSON: str()-rendered (documented boundary).
+    assert _yahoo_fallback((1, 2)) == ("(1, 2)", None)
+    assert _yahoo_fallback({1, 2}) == (str({1, 2}), None)
+    assert _yahoo_fallback(float("nan")) == ("nan", None)
+
+
+def _v_nvd_route(q):
+    m = _re2.match(r"^CVE-\d{4}-\d{4,}$", q, _re2.IGNORECASE)
+    if m:
+        return "cveId", q.upper()
+    return "keywordSearch", q
+
+
+NVD_ROUTE_CASES = [
+    "CVE-2021-44228", "cve-2021-44228", "Cve-2021-44228",
+    "CVE-2021-44228123", "CVE-0000-0000", "CVE-12345-6789012345",
+    "CVE-21-44228", "CVE-2021-442", "CVE-2021-4422a8",
+    "XCVE-2021-44228", "CVE-2021-44228x", "CVE 2021-44228",
+    "keyword search", "", "  ",
+    "CVE-2021-44228\n", "CVE-2021-44228\r", "CVE-2021-44228\t",
+    "CVE-2021-44228 ", " CVE-2021-44228", "CVE-2021-44228\n\n",
+    "log4shell", "CVE-2021-44228/and/more",
+]
+
+
+@pytest.mark.parametrize("q", NVD_ROUTE_CASES)
+def test_nvd_route_parity(q):
+    py_raised, py_val = _outcome(_v_nvd_route, q)
+    rs_raised, rs_val = _outcome(lambda s: tuple(_core.nvd_route_query(s)), q)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), repr(q)
+    assert rs_val == py_val, repr(q)
+
+
+NVD_CVE = {
+    "id": "CVE-2021-44228",
+    "published": "2021-12-10T10:15Z",
+    "descriptions": [
+        {"lang": "en",
+         "value": "  Apache Log4j2  Remote code execution  "},
+        {"lang": "de", "value": "Deutsch"},
+    ],
+    "metrics": {
+        "cvssMetricV31": [
+            {"cvssData": {"baseSeverity": "CRITICAL", "baseScore": 10.0,
+                          "vectorString": "CVSS:3.1/AV:N/AC:L"}}],
+    },
+}
+
+
+def _v_nvd_row(cve, fallback_id=""):
+    metrics = cve.get("metrics", {}) or {}
+    cvss = {}
+    for bucket in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+        entries = metrics.get(bucket) or []
+        if entries:
+            cvss = entries[0].get("cvssData", {}) or {}
+            break
+    cve_id = cve.get("id", fallback_id)
+    published = cve.get("published", "")
+    return {
+        "source": "nvd",
+        "id": cve_id,
+        "title": cve_id,
+        "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
+        "published": published[:10],
+        "snippet": _v_first_desc(cve),
+        "fields": {
+            "nvd": {
+                "severity": cvss.get("baseSeverity", ""),
+                "base_score": cvss.get("baseScore", ""),
+                "vector": cvss.get("vectorString", ""),
+            }
+        },
+    }
+
+
+def _v_nvd_search(body, max_results=5):
+    items = body.get("vulnerabilities", [])
+    return [
+        _v_nvd_row(item.get("cve", {})) for item in items[:max_results]
+    ]
+
+
+def _v_nvd_fetch(body, fallback_id=""):
+    items = body.get("vulnerabilities", [])
+    if not items:
+        return []
+    return [_v_nvd_row(items[0].get("cve", {}), fallback_id)]
+
+
+def _rs_nvd_search(body, max_results=5):
+    return json.loads(_core.nvd_parse_vulns(
+        json.dumps(body), "", max_results))
+
+
+def _rs_nvd_fetch(body, fallback_id=""):
+    return json.loads(_core.nvd_parse_fetch(
+        json.dumps(body), fallback_id))
+
+
+NVD_SEARCH_BODIES = [
+    {"vulnerabilities": [{"cve": NVD_CVE}]},
+    {"vulnerabilities": [{"cve": NVD_CVE}, {"cve": {"id": "CVE-2"}}]},
+    {},
+    {"vulnerabilities": None},
+    {"vulnerabilities": []},
+    {"vulnerabilities": ""},
+    {"vulnerabilities": 0},
+    {"vulnerabilities": {}},
+    {"vulnerabilities": "ab"},
+    {"vulnerabilities": 5},
+    {"vulnerabilities": True},
+    {"vulnerabilities": [None]},
+    {"vulnerabilities": ["x"]},
+    {"vulnerabilities": [5]},
+    {"vulnerabilities": [{}]},
+    {"vulnerabilities": [{"cve": None}]},
+    {"vulnerabilities": [{"cve": 5}]},
+    {"vulnerabilities": [{"cve": "x"}]},
+    {"vulnerabilities": [{"other": 1}]},
+    {"vulnerabilities": [{"cve": {}}]},
+    {"vulnerabilities": [{"cve": {"id": None, "published": None}}]},
+    {"vulnerabilities": [{"cve": {"id": 5, "published": 20211210}}]},
+    {"vulnerabilities": [{"cve": {"id": ["CVE-1"],
+                                  "published": ["2021"]}}]},
+    {"vulnerabilities": [{"cve": {"id": {"i": 1},
+                                  "published": {"p": 1}}}]},
+    {"vulnerabilities": [{"cve": {"published": "2021"}}]},
+    {"vulnerabilities": [{"cve": {"id": "CVE-1", "published": ""}}]},
+    {"vulnerabilities": [{"cve": {"metrics": None}}]},
+    {"vulnerabilities": [{"cve": {"metrics": "x"}}]},
+    {"vulnerabilities": [{"cve": {"metrics": 5}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": None}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": []}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": "ab"}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": ""}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": 5}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": [None]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": ["ab"]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": [""]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": [5]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV31": [{}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV31": [{"cvssData": None}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV31": [{"cvssData": "x"}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV31": [{"cvssData": 0}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV31": [{"other": 1}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV31": [],
+        "cvssMetricV30": [{"cvssData": {"baseSeverity": "HIGH"}}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV2": [{"cvssData": {"baseScore": 7.5}}]}}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {
+        "cvssMetricV31": [{"cvssData": {
+            "baseSeverity": None, "baseScore": 0,
+            "vectorString": False}}]}}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": None}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": "x"}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": 5}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [None]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": ["x"]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [5]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "fr", "value": "Bonjour"}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "fr", "value": "Bonjour"},
+        {"value": "NoLang " * 100}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": None, "value": None}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "en", "value": 5}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "en", "value": ["a"]}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "en", "value": {"a": 1}}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "en", "value": ""}]}}]},
+    {"vulnerabilities": [{"cve": {"descriptions": [
+        {"lang": "en"}]}}]},
+]
+
+
+@pytest.mark.parametrize("body", NVD_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_nvd_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_nvd_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_nvd_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+NVD_FETCH_BODIES = [
+    {"vulnerabilities": [{"cve": NVD_CVE}]},
+    {"vulnerabilities": [{"cve": NVD_CVE}, {"cve": {"id": "CVE-2"}}]},
+    {},
+    {"vulnerabilities": None},
+    {"vulnerabilities": []},
+    {"vulnerabilities": ""},
+    {"vulnerabilities": 0},
+    {"vulnerabilities": {}},
+    {"vulnerabilities": "ab"},
+    {"vulnerabilities": 5},
+    {"vulnerabilities": [{"cve": 5}]},
+    {"vulnerabilities": [{"cve": "x"}]},
+    {"vulnerabilities": [{"other": 1}]},
+    {"vulnerabilities": [{"cve": {}}]},
+    {"vulnerabilities": [{"cve": {"metrics": {"cvssMetricV2": "x"}}}]},
+]
+
+
+@pytest.mark.parametrize("body", NVD_FETCH_BODIES)
+@pytest.mark.parametrize("fallback_id", ["CVE-2021-0001", ""])
+def test_nvd_fetch_parity(body, fallback_id):
+    py_raised, py_val = _outcome(_v_nvd_fetch, body, fallback_id)
+    rs_raised, rs_val = _outcome(_rs_nvd_fetch, body, fallback_id)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback_id)
+    assert rs_val == py_val, (body, fallback_id)
+
+
+ZENODO_HIT = {
+    "id": 123456,
+    "links": {"html": "https://zenodo.org/records/123456"},
+    "metadata": {
+        "title": "Some dataset",
+        "publication_date": "2024-05-01",
+        "creators": [{"name": "Doe, Jane"},
+                     {"person_or_org": {"name": "Smith, John"}}],
+        "description": "<p>Abstract with <b>markup</b>.</p>",
+        "resource_type": {"title": {"en": "Dataset"}, "id": "dataset"},
+    },
+}
+
+
+def _v_zenodo_names(people):
+    out = []
+    for a in people or []:
+        if isinstance(a, dict):
+            name = a.get("name") or (a.get("person_or_org") or {}).get("name", "")
+            if name:
+                out.append(name)
+        elif a:
+            out.append(str(a))
+    return ", ".join(out)
+
+
+def _v_zenodo_hit(h, fallback_id=""):
+    m = h.get("metadata", {}) or {}
+    links = h.get("links", {}) or {}
+    rec_id = str(h.get("id", fallback_id))
+    rtype = m.get("resource_type", {})
+    if isinstance(rtype, dict):
+        rtype = rtype.get("title", {}).get("en", "") if isinstance(
+            rtype.get("title"), dict) else rtype.get("id", "")
+    return {
+        "source": "zenodo",
+        "id": rec_id,
+        "title": m.get("title", ""),
+        "url": links.get("html")
+        or links.get("self_html")
+        or (f"https://zenodo.org/records/{rec_id}" if rec_id else ""),
+        "published": m.get("publication_date", ""),
+        "authors": _v_zenodo_names(
+            m.get("creators") or m.get("contributors") or m.get("authors")
+        ),
+        "snippet": _v_strip_tags(m.get("description", ""))[:240],
+        "fields": {"zenodo": {"resource_type": rtype or ""}},
+    }
+
+
+def _v_zenodo_search(body, max_results=5):
+    hits = body.get("hits", {}).get("hits", [])
+    return [_v_zenodo_hit(h) for h in hits[:max_results]]
+
+
+def _v_zenodo_fetch(body, record_id=""):
+    return _v_zenodo_hit(body, str(record_id))
+
+
+def _rs_zenodo_search(body, max_results=5):
+    return json.loads(_core.zenodo_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_zenodo_fetch(body, record_id=""):
+    return json.loads(_core.zenodo_parse_fetch(
+        json.dumps(body), str(record_id)))
+
+
+ZENODO_SEARCH_BODIES = [
+    {"hits": {"hits": [ZENODO_HIT]}},
+    {"hits": {"hits": [ZENODO_HIT, {"id": 7}]}},
+    {},
+    {"hits": None},
+    {"hits": ""},
+    {"hits": 0},
+    {"hits": 5},
+    {"hits": ["x"]},
+    {"hits": {"hits": None}},
+    {"hits": {"hits": []}},
+    {"hits": {"hits": ""}},
+    {"hits": {"hits": 0}},
+    {"hits": {"hits": {}}},
+    {"hits": {"hits": "ab"}},
+    {"hits": {"hits": 5}},
+    {"hits": {"hits": [None]}},
+    {"hits": {"hits": ["x"]}},
+    {"hits": {"hits": [5]}},
+    {"hits": {"hits": [{}]}},
+    {"hits": {"hits": [{"id": None}]}},
+    {"hits": {"hits": [{"id": 5, "metadata": None}]}},
+    {"hits": {"hits": [{"id": "r-1", "metadata": "x"}]}},
+    {"hits": {"hits": [{"id": ["r"], "links": 5}]}},
+    {"hits": {"hits": [{"metadata": {}, "links": {}}]}},
+    {"hits": {"hits": [{"id": 0, "metadata": {"title": None}}]}},
+    {"hits": {"hits": [{"id": "", "links": {"html": ""}}]}},
+    {"hits": {"hits": [{"id": 9,
+                        "links": {"html": "", "self_html": "https://s/9"}}]}},
+    {"hits": {"hits": [{"id": 9, "links": {"self_html": 0}}]}},
+    {"hits": {"hits": [{"id": 9, "links": {"html": 5}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": None}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": "x"}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": 5}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {}}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {"id": "ds"}}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {
+        "title": "Dataset"}}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {
+        "title": {"en": "Paper"}, "id": "publication"}}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {
+        "title": {}, "id": "x"}}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {
+        "title": {"en": None}}}}]}},
+    {"hits": {"hits": [{"metadata": {"resource_type": {
+        "title": {"en": 0}, "id": "x"}}}]}},
+    {"hits": {"hits": [{"metadata": {"title": 5, "publication_date": None,
+                                      "description": None}}]}},
+    {"hits": {"hits": [{"metadata": {"description": 5}}]}},
+    {"hits": {"hits": [{"metadata": {"description": "<a><b>x</b>"}}]}},
+    {"hits": {"hits": [{"metadata": {"description": "plain"}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": None,
+                                      "description": "d"}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": "ab"}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": 5}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": {"k": "v"}}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": ["x", "", None, 5]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [{"name": 5}]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [{"name": None,
+        "person_or_org": {"name": "P"}}]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [{"name": "",
+        "person_or_org": {"name": "P"}}]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [
+        {"person_or_org": "x"}]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [
+        {"person_or_org": None}]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [],
+        "contributors": [{"name": "C"}]}}]}},
+    {"hits": {"hits": [{"metadata": {"creators": [],
+        "contributors": [], "authors": "Au"}}]}},
+]
+
+
+@pytest.mark.parametrize("body", ZENODO_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_zenodo_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_zenodo_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_zenodo_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+ZENODO_FETCH_BODIES = [
+    ZENODO_HIT,
+    {},
+    {"id": 1},
+    {"metadata": "x"},
+    {"metadata": {"creators": [{"name": 5}]}},
+    {"metadata": {"description": 5}},
+    {"links": 5, "id": 1},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", ZENODO_FETCH_BODIES)
+@pytest.mark.parametrize("record_id", ["123", "", 5, None])
+def test_zenodo_fetch_parity(body, record_id):
+    py_raised, py_val = _outcome(_v_zenodo_fetch, body, record_id)
+    rs_raised, rs_val = _outcome(_rs_zenodo_fetch, body, record_id)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, record_id)
+    assert rs_val == py_val, (body, record_id)
+
+
+def _rand_value(rng, depth=0):
+    pick = rng.random()
+    if depth > 2 or pick < 0.30:
+        return rng.choice([None, True, False, 0, 1, -3, 2.5, "", "ab",
+                           "CVE-2021-44228", [], {}])
+    if pick < 0.55:
+        return [rng.choice(["a", "", 0, None, True, {"k": "v"}])
+                for _ in range(rng.randint(0, 3))]
+    if pick < 0.80:
+        return {rng.choice(["a", "id", "name", "title", "meta", "cve",
+                            "hits", "chart", "result", "metrics",
+                            "descriptions", "metadata"]):
+                _rand_value(rng, depth + 1)
+                for _ in range(rng.randint(0, 2))}
+    return rng.choice(["x y ", "2021-12-10T10:15Z", 7, 0.5])
+
+
+def _fuzz_bodies(seed, n):
+    rng = __import__("random").Random(seed)
+    return [_rand_value(rng) if rng.random() < 0.7 else {} for _ in range(n)]
+
+
+@pytest.mark.parametrize("body", _fuzz_bodies(20260905, 150))
+@pytest.mark.parametrize("max_results", [3, -1])
+def test_fuzz_search_kernels(body, max_results):
+    assert _outcome(_v_yahoo_search, body, max_results) == \
+        _outcome(_rs_yahoo_search, body, max_results), body
+    assert _outcome(_v_nvd_search, body, max_results) == \
+        _outcome(_rs_nvd_search, body, max_results), body
+    assert _outcome(_v_zenodo_search, body, max_results) == \
+        _outcome(_rs_zenodo_search, body, max_results), body
+
+
+# --- end-to-end seam: real adapters, stubbed HTTP ---------------------
+# Pins the Python wrapper side (raw re-attachment, fallback spelling)
+# against the vendored originals over realistic payloads.
+
+from unittest.mock import patch as _patch
+
+from gossamer.research_providers import (
+    NvdAdapter as _Nvd,
+    YahooFinanceAdapter as _Yahoo,
+    ZenodoAdapter as _Zenodo,
+)
+
+
+def _stub(body):
+    import unittest.mock as _m
+    r = _m.MagicMock()
+    r.json.return_value = body
+    r.raise_for_status.return_value = None
+    return r
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_yahoo(mock_get):
+    mock_get.return_value = _stub(YAHOO_QUOTES)
+    out = _Yahoo(delay=0.0).search("AAPL", max_results=5)
+    assert [r["id"] for r in out] == ["AAPL", "SAP.DE", "X"]
+    assert out[0]["title"] == "Apple Inc."
+    assert out[0]["raw"] == json.dumps(YAHOO_QUOTES["quotes"][0])
+    assert out[2]["title"] == "X"  # symbol fallback
+
+    mock_get.return_value = _stub(YAHOO_CHART)
+    (rec,) = _Yahoo(delay=0.0).fetch("AAPL")
+    assert rec["id"] == "AAPL"
+    assert rec["snippet"].startswith("230.5 USD (NasdaqGS)")
+    assert rec["raw"] == json.dumps(YAHOO_CHART["chart"]["result"][0]["meta"])
+
+    # Non-string record ids keep their spelling in id/title when the
+    # payload carries no symbol of its own ...
+    nosym = {"chart": {"result": [{"meta": {"currency": "USD"}}]}}
+    mock_get.return_value = _stub(nosym)
+    (rec5,) = _Yahoo(delay=0.0).fetch(5)
+    assert rec5["id"] == 5 and "quote/5" in rec5["url"]
+    assert rec5["title"] == 5
+    # ... except non-JSON-native ones, which arrive str()-rendered.
+    (rect,) = _Yahoo(delay=0.0).fetch((1, 2))
+    assert rect["id"] == "(1, 2)"
+    assert rect["title"] == "(1, 2)"
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_nvd(mock_get):
+    body = {"vulnerabilities": [{"cve": NVD_CVE}]}
+    mock_get.return_value = _stub(body)
+    out = _Nvd(delay=0.0).search("CVE-2021-44228", max_results=5)
+    assert out[0]["id"] == "CVE-2021-44228"
+    assert out[0]["published"] == "2021-12-10"
+    assert out[0]["fields"]["nvd"]["severity"] == "CRITICAL"
+    assert out[0]["snippet"] == "Apache Log4j2 Remote code execution"
+    assert out[0]["raw"] == json.dumps(NVD_CVE)
+    assert mock_get.call_args.kwargs["params"].get("cveId") == "CVE-2021-44228"
+
+    mock_get.return_value = _stub({"vulnerabilities": []})
+    assert _Nvd(delay=0.0).search("keyword", max_results=5) == []
+    mock_get.return_value = _stub(body)
+    (rec,) = _Nvd(delay=0.0).fetch("cve-2021-44228")
+    assert rec["id"] == "CVE-2021-44228"
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_zenodo(mock_get):
+    body = {"hits": {"hits": [ZENODO_HIT]}}
+    mock_get.return_value = _stub(body)
+    out = _Zenodo(delay=0.0).search("dataset", max_results=5)
+    assert out[0]["id"] == "123456"
+    assert out[0]["authors"] == "Doe, Jane, Smith, John"
+    assert out[0]["fields"]["zenodo"]["resource_type"] == "Dataset"
+    assert out[0]["raw"] == json.dumps(ZENODO_HIT)
+
+    mock_get.return_value = _stub(ZENODO_HIT)
+    (rec,) = _Zenodo(delay=0.0).fetch(123456)
+    assert rec["id"] == "123456"
+    assert rec["raw"] == json.dumps(ZENODO_HIT)

@@ -1275,43 +1275,11 @@ class NvdAdapter(ResourceAdapter):
     def parse_headers(self, status, headers):
         return _rate_state_from_headers(headers, default_rps=50.0)
 
-    @staticmethod
-    def _row(cve: dict, fallback_id: str = ""):
-        # CVSS v3.1 preferred, v3.0 / v2.0 as fallback — whichever metric
-        # the record carries.
-        metrics = cve.get("metrics", {}) or {}
-        cvss: dict = {}
-        for bucket in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
-            entries = metrics.get(bucket) or []
-            if entries:
-                cvss = entries[0].get("cvssData", {}) or {}
-                break
-        cve_id = cve.get("id", fallback_id)
-        published = cve.get("published", "")
-        return {
-            "source": "nvd",
-            "id": cve_id,
-            "title": cve_id,
-            "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
-            "published": published[:10],
-            "snippet": _first_desc(cve),
-            "fields": {
-                "nvd": {
-                    "severity": cvss.get("baseSeverity", ""),
-                    "base_score": cvss.get("baseScore", ""),
-                    "vector": cvss.get("vectorString", ""),
-                }
-            },
-            "raw": json.dumps(cve),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         q = (query or "").strip()
-        if re.match(r"^CVE-\d{4}-\d{4,}$", q, re.IGNORECASE):
-            key, val = "cveId", q.upper()
-        else:
-            key, val = "keywordSearch", q
+        # CVE-id routing in Rust (src/adapters.rs); results paging stays.
+        key, val = _rust.nvd_route_query(q)
         url, params, headers = self.inject_auth(
             self.BASE,
             {key: val, "resultsPerPage": min(max_results, 100)},
@@ -1319,10 +1287,16 @@ class NvdAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        items = resp.json().get("vulnerabilities", [])
-        return [
-            self._row(item.get("cve", {})) for item in items[:max_results]
-        ]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each CVE object.
+        body = resp.json()
+        items = body.get("vulnerabilities", [])
+        records = json.loads(
+            _rust.nvd_parse_vulns(json.dumps(body), "", max_results)
+        )
+        for rec, item in zip(records, items[:max_results]):
+            rec["raw"] = json.dumps(item.get("cve", {}))
+        return records
 
     def fetch(self, record_id, params=None):
         # record_id is a CVE id, e.g. CVE-2021-44228.
@@ -1332,10 +1306,16 @@ class NvdAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        items = resp.json().get("vulnerabilities", [])
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = resp.json()
+        items = body.get("vulnerabilities", [])
         if not items:
             return []
-        return [self._row(items[0].get("cve", {}), str(record_id))]
+        records = json.loads(
+            _rust.nvd_parse_fetch(json.dumps(body), str(record_id))
+        )
+        records[0]["raw"] = json.dumps(items[0].get("cve", {}))
+        return records
 
 class ZenodoAdapter(ResourceAdapter):
     """Zenodo research-records search / lookup — https://zenodo.org/api.
@@ -1370,43 +1350,6 @@ class ZenodoAdapter(ResourceAdapter):
             p["access_token"] = self.api_key
         return url, p, dict(headers or {})
 
-    @staticmethod
-    def _names(people) -> str:
-        """Creator/contributor list (InvenioRDM ``person_or_org`` or legacy
-        ``{name}`` dicts, or plain strings) -> ", "-joined names."""
-        out = []
-        for a in people or []:
-            if isinstance(a, dict):
-                name = a.get("name") or (a.get("person_or_org") or {}).get("name", "")
-                if name:
-                    out.append(name)
-            elif a:
-                out.append(str(a))
-        return ", ".join(out)
-
-    def _hit(self, h, fallback_id=""):
-        m = h.get("metadata", {}) or {}
-        links = h.get("links", {}) or {}
-        rec_id = str(h.get("id", fallback_id))
-        rtype = m.get("resource_type", {})
-        if isinstance(rtype, dict):
-            rtype = rtype.get("title", {}).get("en", "") if isinstance(rtype.get("title"), dict) else rtype.get("id", "")
-        return {
-            "source": "zenodo",
-            "id": rec_id,
-            "title": m.get("title", ""),
-            "url": links.get("html")
-            or links.get("self_html")
-            or (f"https://zenodo.org/records/{rec_id}" if rec_id else ""),
-            "published": m.get("publication_date", ""),
-            "authors": self._names(
-                m.get("creators") or m.get("contributors") or m.get("authors")
-            ),
-            "snippet": _strip_tags(m.get("description", ""))[:240],
-            "fields": {"zenodo": {"resource_type": rtype or ""}},
-            "raw": json.dumps(h),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         url, params, headers = self.inject_auth(
@@ -1416,8 +1359,16 @@ class ZenodoAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        hits = resp.json().get("hits", {}).get("hits", [])
-        return [self._hit(h) for h in hits[:max_results]]
+        # Hit building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each hit.
+        body = resp.json()
+        hits = body.get("hits", {}).get("hits", [])
+        records = json.loads(
+            _rust.zenodo_parse_search(json.dumps(body), max_results)
+        )
+        for rec, h in zip(records, hits[:max_results]):
+            rec["raw"] = json.dumps(h)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -1426,7 +1377,13 @@ class ZenodoAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        return [self._hit(resp.json(), str(record_id))]
+        # Hit building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = resp.json()
+        rec = json.loads(
+            _rust.zenodo_parse_fetch(json.dumps(body), str(record_id))
+        )
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 class SoftwareHeritageAdapter(ResourceAdapter):
     """Software Heritage source-archive lookup — https://archive.softwareheritage.org.
@@ -1609,6 +1566,31 @@ class CongressAdapter(ResourceAdapter):
             }
         ]
 
+def _yahoo_fallback(record_id):
+    """Resolve the ``record_id`` fallback for the Rust fetch kernel.
+
+    Returns ``(rid, fallback_json)``: None stays null, strings pass
+    through, JSON-native values (int/float/bool/list/dict) round-trip
+    exactly via ``fallback_json``, and anything else (tuples, sets,
+    objects — not expressible in JSON) arrives pre-rendered with
+    ``str()``. The last group renders identically in URLs/snippets
+    and differs from the original only in the ``id``/``title`` value
+    type (``str`` instead of the raw object) — the same JSON-string
+    boundary the whole port uses (cf. NaN payloads, lone surrogates).
+    """
+    if record_id is None:
+        return None, None
+    if isinstance(record_id, str):
+        return record_id, None
+    rid = str(record_id)
+    try:
+        probe = json.dumps(record_id, allow_nan=False)
+        fallback_json = None if isinstance(record_id, tuple) else probe
+    except (TypeError, ValueError):
+        fallback_json = None
+    return rid, fallback_json
+
+
 class YahooFinanceAdapter(ResourceAdapter):
     """Yahoo Finance quote / chart data via the unofficial v1 / v8 endpoints.
 
@@ -1648,31 +1630,16 @@ class YahooFinanceAdapter(ResourceAdapter):
         resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
         # Live shape: top-level ``quotes`` with lowercase ``shortname``.
-        quotes = resp.json().get("quotes", []) or []
-        out: List[Dict[str, str]] = []
-        for q in quotes[:max_results]:
-            name = q.get("shortname") or q.get("shortName") or q.get("symbol", "")
-            out.append(
-                {
-                    "source": "yahoo",
-                    "id": q.get("symbol", ""),
-                    "title": name,
-                    "url": f"https://finance.yahoo.com/quote/{q.get('symbol', '')}",
-                    "snippet": (
-                        f"{name} — {q.get('exchange', '')} "
-                        f"{q.get('quoteType', '')}"
-                    ),
-                    "fields": {
-                        "yahoo": {
-                            "exchange": q.get("exchange", ""),
-                            "quote_type": q.get("quoteType", ""),
-                            "market_cap": q.get("marketCap", ""),
-                        }
-                    },
-                    "raw": json.dumps(q),
-                }
-            )
-        return out
+        # Record building in Rust (src/adapters.rs); `raw` re-attached
+        # here so it stays byte-identical `json.dumps` of each quote.
+        body = resp.json()
+        quotes = body.get("quotes", []) or []
+        records = json.loads(
+            _rust.yahoo_parse_search(json.dumps(body), max_results)
+        )
+        for rec, q in zip(records, quotes[:max_results]):
+            rec["raw"] = json.dumps(q)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -1681,30 +1648,17 @@ class YahooFinanceAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
-        meta = (
-            (resp.json().get("chart", {}) or {}).get("result", [{}])[0]
-            .get("meta", {})
+        # Meta parsing in Rust (src/adapters.rs); `raw` re-attached here.
+        # `_yahoo_fallback` keeps the exact `record_id` spelling (see it
+        # for the tuple/set/object boundary note).
+        rid, fallback_json = _yahoo_fallback(record_id)
+        body = resp.json()
+        both = json.loads(
+            _rust.yahoo_parse_fetch(json.dumps(body), rid, fallback_json)
         )
-        return [
-            {
-                "source": "yahoo",
-                "id": meta.get("symbol", record_id),
-                "title": meta.get("longName") or meta.get("shortName") or record_id,
-                "url": f"https://finance.yahoo.com/quote/{meta.get('symbol', record_id)}",
-                "snippet": (
-                    f"{meta.get('regularMarketPrice', '')} {meta.get('currency', '')} "
-                    f"({meta.get('fullExchangeName', '')})"
-                ),
-                "fields": {
-                    "yahoo": {
-                        "currency": meta.get("currency", ""),
-                        "exchange": meta.get("fullExchangeName", ""),
-                        "previous_close": meta.get("previousClose", ""),
-                    }
-                },
-                "raw": json.dumps(meta),
-            }
-        ]
+        rec, meta = both["record"], both["meta"]
+        rec["raw"] = json.dumps(meta)
+        return [rec]
 
 class OverpassAdapter(ResourceAdapter):
     """Overpass API geo queries for OpenStreetMap data.

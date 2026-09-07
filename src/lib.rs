@@ -1551,6 +1551,13 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::openmeteo_parse_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::frankfurter_split_pair, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::frankfurter_parse_rates, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::yahoo_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::yahoo_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::nvd_route_query, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::nvd_parse_vulns, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::nvd_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::zenodo_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::zenodo_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

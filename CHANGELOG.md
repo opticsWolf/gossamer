@@ -4,6 +4,27 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.12] — Rust port M12: Yahoo / NVD / Zenodo parse kernels
+
+- `src/adapters.rs`: Yahoo quote-search + chart-meta fetch (incl. the
+  `record_id` fallback spelling protocol), NVD CVE-id routing +
+  vuln-search/fetch rows (CVSS bucket preference, raw-id/title kept
+  unrendered, `published` dict slices raise `KeyError`), Zenodo
+  hit building (`_names` join-`TypeError` index, `resource_type`
+  navigation, `_strip_tags`), plus an `IndexError` arm in `to_py_err`
+  and shared `subscript_hits`/`slice_refs` slice helpers.
+- Caught by parity: NVD routing must not strip (the wrapper strips),
+  Python `$` matches before trailing `\n`, dict `title`-missing
+  reads `id`, truthy non-dict `resource_type` is kept, and the pilot
+  Open-Meteo path must slice exactly once.
+- `NvdAdapter`/`ZenodoAdapter`/`YahooFinanceAdapter` search/fetch
+  delegate to Rust and re-attach `raw`; retired `_row`/`_hit`/`_names`.
+  Boundary note: non-JSON-native `record_id`s (tuples/sets/objects)
+  arrive `str()`-rendered (`_yahoo_fallback`).
+- Parity proof: `tests/test_rust_parity_adapters.py` (~1900 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 8 Rust
+  unit tests.
+
 ## [0.8.11] — Rust port M11: adapter pilot (parse kernels)
 
 - `src/adapters.rs`: Open-Meteo geocoding/forecast parsing and
