@@ -4,6 +4,26 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.13] — Rust port M13: legal/patent JSON kernels
+
+- `src/adapters.rs`: CourtListener opinion/cluster rows (tag-strip
+  *before* slicing the snippet), GovInfo package rows + summary
+  fetch (download-link preference, `str()` published), HUDOC ECtHR
+  rows (search applies no result cap), PatentsView rows (nested
+  patent_number/title/date defaults, `error` → `RuntimeError`);
+  new `RuntimeError` arm in `to_py_err`. All four keep flat `fields`
+  (no adapter-namespaced sub-object — unlike the M12 batch).
+- Caught by parity: the CL snippet slice sits outside `_strip_tags`,
+  HUDOC search iterates results with no truthiness check, and
+  `GovInfoAdapter.fetch` reads `.get("download", {})` (missing →
+  `{}`) while `_row` uses `or {}`.
+- `CourtListenerAdapter`/`GovInfoAdapter`/`HudocAdapter`/
+  `PatentsViewAdapter` search/fetch delegate to Rust and re-attach
+  `raw`; retired `_row` helpers (EPO/KIPRIS XML adapters untouched).
+- Parity proof: `tests/test_rust_parity_adapters.py` (~2900 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 9 Rust
+  unit tests.
+
 ## [0.8.12] — Rust port M12: Yahoo / NVD / Zenodo parse kernels
 
 - `src/adapters.rs`: Yahoo quote-search + chart-meta fetch (incl. the

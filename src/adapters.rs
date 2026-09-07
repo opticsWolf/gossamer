@@ -1,6 +1,7 @@
 //! Domain-adapter build/parse kernels: the pure parts of
 //! `OpenMeteoAdapter`, `FrankfurterAdapter`, `YahooFinanceAdapter`,
-//! `NvdAdapter` and `ZenodoAdapter`.
+//! `NvdAdapter`, `ZenodoAdapter`, `CourtListenerAdapter`,
+//! `GovInfoAdapter`, `HudocAdapter` and `PatentsViewAdapter`.
 //!
 //! Deliberate split: URL/param building, HTTP, keys, rate limiting and
 //! retry stay Python (the existing httpx-mock tests keep working
@@ -427,7 +428,8 @@ pub fn frankfurter_parse_rates(
 
 fn to_py_err(py: Python, e: String) -> pyo3::PyErr {
     use pyo3::exceptions::{
-        PyAttributeError, PyIndexError, PyKeyError, PyTypeError, PyValueError,
+        PyAttributeError, PyIndexError, PyKeyError, PyRuntimeError, PyTypeError,
+        PyValueError,
     };
     if let Some(msg) = e.strip_prefix("AttributeError: ") {
         PyAttributeError::new_err(msg.to_string())
@@ -437,6 +439,8 @@ fn to_py_err(py: Python, e: String) -> pyo3::PyErr {
         PyValueError::new_err(msg.to_string())
     } else if let Some(msg) = e.strip_prefix("IndexError: ") {
         PyIndexError::new_err(msg.to_string())
+    } else if let Some(msg) = e.strip_prefix("RuntimeError: ") {
+        PyRuntimeError::new_err(msg.to_string())
     } else if let Some(rest) = e.strip_prefix("KeyError: ") {
         // Integer keys (`dict[0]`) stay ints so `str()` matches CPython
         // (`0`, unquoted); slice keys rebuild a real slice object.
@@ -567,6 +571,42 @@ mod tests {
             zenodo_names_impl(Some(&people)).unwrap(),
             "A, B".to_string()
         );
+    }
+
+    #[test]
+    fn legal_patent_shapes() {
+        // CourtListener strips tags BEFORE slicing the snippet.
+        let r: Value = serde_json::from_str(
+            r#"{"caseName": 7, "cluster_id": 5}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            courtlistener_row_impl(&r).unwrap_err(),
+            "TypeError: expected string or bytes-like object, got 'int'"
+        );
+        // GovInfo download-link preference with package fallback.
+        let r: Value = serde_json::from_str(
+            r#"{"packageId": "P", "download": {"pdfLink": "https://pdf"}}"#,
+        )
+        .unwrap();
+        let row = govinfo_row_impl(&r).unwrap();
+        assert_eq!(row["url"], "https://pdf");
+        assert_eq!(row["id"], "P");
+        // PatentsView surfaces API errors as RuntimeError.
+        assert_eq!(
+            patentsview_parse_search_impl(r#"{"error": "bad key"}"#, 5)
+                .unwrap_err(),
+            "RuntimeError: PatentsView error: bad key"
+        );
+        // HUDOC search applies no result cap.
+        let body = r#"{"results": [{"columns": {}}, {"columns": {}}]}"#;
+        assert_eq!(hudoc_parse_search_impl(body).unwrap().len(), 2);
+        // PatentsView fetch reads patents[0], then patent_number.
+        let body = r#"{"patents": [{"patent_number": "3"}]}"#;
+        let out = patentsview_parse_fetch_impl(body).unwrap();
+        assert_eq!(out[0]["id"], "3");
+        let out = patentsview_parse_fetch_impl(r#"{"other": 1}"#).unwrap();
+        assert!(out.is_empty());
     }
 
     #[test]
@@ -1412,4 +1452,667 @@ pub fn yahoo_parse_search(
 pub fn nvd_route_query(py: Python, query: &str) -> PyResult<(String, String)> {
     let _ = py;
     Ok(nvd_route_query_impl(query))
+}
+
+// ── CourtListener ───────────────────────────────────────────────
+
+fn courtlistener_row_impl(r: &Value) -> Result<Value, String> {
+    let m = match r {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(r))),
+    };
+    // `r.get("caseName") or r.get("caseNameFull", "")`.
+    let title = match m.get("caseName") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ => m
+            .get("caseNameFull")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    // `_strip_tags(r.get("caseNameFull") or r.get("caseName") or "")[:240]`:
+    // the or-chain feeds tag-stripping first (falsy → "", truthy
+    // non-strings raise TypeError), and the slice applies to the
+    // stripped string (chars, never raises).
+    let raw_title = match m.get("caseNameFull") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ => match m.get("caseName") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => Value::String(String::new()),
+        },
+    };
+    let stripped_raw = strip_tags_impl(&raw_title)?;
+    let stripped = char_head(stripped_raw.as_str(), 240).to_string();
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("courtlistener".to_string()),
+    );
+    rec.insert(
+        "id".to_string(),
+        Value::String(py_value_repr(
+            m.get("cluster_id").unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert("title".to_string(), title);
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://www.courtlistener.com{0}",
+            py_value_repr(
+                m.get("absolute_url")
+                    .unwrap_or(&Value::String(String::new()))
+            )
+        )),
+    );
+    rec.insert(
+        "published".to_string(),
+        m.get("dateFiled")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("snippet".to_string(), Value::String(stripped));
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    for (key, field) in [
+        ("court", "court"),
+        ("court_citation", "court_citation_string"),
+        ("docket_number", "docketNumber"),
+        ("neutral_cite", "neutralCite"),
+        ("cite_count", "citeCount"),
+    ] {
+        fields.insert(
+            key.to_string(),
+            m.get(field)
+                .cloned()
+                .unwrap_or(Value::String(String::new())),
+        );
+    }
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn courtlistener_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("results", [])`, then `results[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for r in hits {
+        out.push(courtlistener_row_impl(r)?);
+    }
+    Ok(out)
+}
+
+pub fn courtlistener_parse_fetch_impl(response_json: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    courtlistener_row_impl(&body)
+}
+
+// ── GovInfo ─────────────────────────────────────────────────────
+
+fn govinfo_detail_url(pkg: &Value) -> Value {
+    // `f"...{pkg}" if pkg else ""`: falsy package ids yield no URL.
+    if is_truthy(pkg) {
+        Value::String(format!(
+            "https://www.govinfo.gov/app/details/{0}",
+            py_value_repr(pkg)
+        ))
+    } else {
+        Value::String(String::new())
+    }
+}
+
+fn govinfo_row_impl(r: &Value) -> Result<Value, String> {
+    let m = match r {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(r))),
+    };
+    let pkg = m
+        .get("packageId")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let granule = m
+        .get("granuleId")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    // `r.get("download", {}) or {}`: missing/falsy → none; truthy
+    // non-dicts raise on their first `.get` (txtLink read).
+    let dl: Option<&serde_json::Map<String, Value>> = match m.get("download") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(mm)) => Some(mm),
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    let txt = dl.and_then(|mm| mm.get("txtLink").filter(|v| is_truthy(v)));
+    let pdf = dl.and_then(|mm| mm.get("pdfLink").filter(|v| is_truthy(v)));
+    let url = match txt.or(pdf) {
+        Some(v) => v.clone(),
+        None => govinfo_detail_url(&pkg),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("govinfo".to_string()));
+    // `granule or pkg`: raw values, first truthy wins.
+    rec.insert(
+        "id".to_string(),
+        if is_truthy(&granule) {
+            granule.clone()
+        } else {
+            pkg.clone()
+        },
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        Value::String(py_value_repr(
+            m.get("dateIssued")
+                .unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            py_strip(
+                format!(
+                    "{0} {1}",
+                    py_value_repr(
+                        m.get("collectionCode")
+                            .unwrap_or(&Value::String(String::new()))
+                    ),
+                    py_value_repr(&pkg)
+                )
+                .as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "collection".to_string(),
+        m.get("collectionCode")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert("package_id".to_string(), pkg);
+    fields.insert("granule_id".to_string(), granule);
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn govinfo_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("results", [])[:max_results]` (no `or []`).
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for r in hits {
+        out.push(govinfo_row_impl(r)?);
+    }
+    Ok(out)
+}
+
+pub fn govinfo_parse_fetch_impl(
+    response_json: &str,
+    rid: &str,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let m = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `body.get("download", {}).get("txtLink", "")`: missing download
+    // → ""; present values (even falsy) read as-is; non-dicts raise.
+    let txt = match m.get("download") {
+        None => Value::String(String::new()),
+        Some(Value::Object(dm)) => dm
+            .get("txtLink")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    let url = if is_truthy(&txt) {
+        txt
+    } else {
+        Value::String(format!("https://www.govinfo.gov/app/details/{rid}"))
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("govinfo".to_string()));
+    rec.insert(
+        "id".to_string(),
+        m.get("packageId").cloned().unwrap_or(Value::String(
+            rid.to_string(),
+        )),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(rid.to_string())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        Value::String(py_value_repr(
+            m.get("dateIssued")
+                .unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(py_value_repr(
+            m.get("collectionCode")
+                .unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    // NB: flat `fields` here too (search rows carry package/granule).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "collection".to_string(),
+        m.get("collectionCode")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+// ── HUDOC ─────────────────────────────────────────────────────
+
+fn hudoc_row_impl(columns: &Value) -> Result<Value, String> {
+    let m = match columns {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(columns))),
+    };
+    let itemid = m
+        .get("itemid")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let url = if is_truthy(&itemid) {
+        Value::String(format!(
+            "https://hudoc.echr.coe.int/eng?i={0}",
+            py_value_repr(&itemid)
+        ))
+    } else {
+        Value::String(String::new())
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("hudoc".to_string()));
+    rec.insert("id".to_string(), itemid);
+    rec.insert(
+        "title".to_string(),
+        m.get("docname")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        Value::String(
+            char_head(
+                py_value_repr(
+                    m.get("kpdate").unwrap_or(&Value::String(String::new()))
+                )
+                .as_str(),
+                10,
+            )
+            .to_string(),
+        ),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            py_strip(
+                format!(
+                    "application no. {0}",
+                    py_value_repr(
+                        m.get("appno").unwrap_or(&Value::String(String::new()))
+                    )
+                )
+                .as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "appno".to_string(),
+        m.get("appno")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert(
+        "ecli".to_string(),
+        m.get("ecli")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn hudoc_parse_search_impl(response_json: &str) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // NB: no `[:max_results]` here — every result row is built.
+    // `body.get("results", [])`: missing → []; present values iterate
+    // (`for r in ...` — no truthiness check, so only ""/[]/{} iterate
+    // empty while None/0/False raise TypeError).
+    let results = match obj.get("results") {
+        None => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+    // Materialize iteration exactly like `for r in results`.
+    if !matches!(
+        results,
+        Value::Array(_) | Value::String(_) | Value::Object(_)
+    ) {
+        return Err(type_error_not_iterable(json_type(results)));
+    }
+    let items: Vec<&Value> = match results {
+        Value::Array(a) => a.iter().collect(),
+        _ => Vec::new(),
+    };
+    let mut out = Vec::new();
+    if matches!(results, Value::Array(_)) {
+        for r in items {
+            // `r.get("columns", {})`: missing → {}; non-dict rows raise.
+            let columns = match r {
+                Value::Object(rm) => rm
+                    .get("columns")
+                    .cloned()
+                    .unwrap_or(Value::Object(serde_json::Map::new())),
+                _ => return Err(attr_error(json_type(r))),
+            };
+            out.push(hudoc_row_impl(&columns)?);
+        }
+    } else if let Value::String(s) = results {
+        // Iterating a string yields chars; `.get` on a char raises.
+        if !s.is_empty() {
+            return Err(attr_error("str"));
+        }
+    } else if let Value::Object(m) = results {
+        // Iterating a dict yields keys; `.get` on a key raises.
+        if let Some(k) = m.keys().next() {
+            let _ = k;
+            return Err(attr_error("str"));
+        }
+    }
+    Ok(out)
+}
+
+pub fn hudoc_parse_fetch_impl(response_json: &str) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `results = ...get("results", [])`; `if not results: return []`.
+    let results = match obj.get("results") {
+        None => return Ok(Vec::new()),
+        Some(v) if !is_truthy(v) => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+    // `results[0]`: list (non-empty — falsy caught above), str (char),
+    // dict (KeyError 0), anything else TypeError.
+    let first = match results {
+        Value::Array(a) => match a.first() {
+            Some(v) => v,
+            None => return Ok(Vec::new()),
+        },
+        Value::String(s) => match s.chars().next() {
+            Some(_) => return Err(attr_error("str")),
+            None => return Ok(Vec::new()),
+        },
+        Value::Object(_) => return Err("KeyError: 0".to_string()),
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    // `.get("columns", {})` on the element (must be a dict).
+    let columns = match first {
+        Value::Object(m) => m
+            .get("columns")
+            .cloned()
+            .unwrap_or(Value::Object(serde_json::Map::new())),
+        _ => return Err(attr_error(json_type(first))),
+    };
+    Ok(vec![hudoc_row_impl(&columns)?])
+}
+
+// ── PatentsView ─────────────────────────────────────────────────
+
+fn patentsview_row_impl(p: &Value) -> Result<Value, String> {
+    let m = match p {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(p))),
+    };
+    // `str(p.get("patent_number", p.get("id", "")))`: the inner default
+    // applies only when the outer key is missing.
+    let number = match m.get("patent_number") {
+        Some(v) => py_value_repr(v),
+        None => match m.get("id") {
+            Some(v) => py_value_repr(v),
+            None => String::new(),
+        },
+    };
+    // `p.get("patent_title", p.get("title", number))`: raw values; the
+    // ultimate default is the rendered number string.
+    let title = match m.get("patent_title") {
+        Some(v) => v.clone(),
+        None => match m.get("title") {
+            Some(v) => v.clone(),
+            None => Value::String(number.clone()),
+        },
+    };
+    // `str(p.get("patent_date", p.get("date", "")))[:10]`.
+    let date_raw = match m.get("patent_date") {
+        Some(v) => py_value_repr(v),
+        None => match m.get("date") {
+            Some(v) => py_value_repr(v),
+            None => String::new(),
+        },
+    };
+    let date = char_head(date_raw.as_str(), 10).to_string();
+    let url = if number.is_empty() {
+        Value::String(String::new())
+    } else {
+        Value::String(format!("https://patents.google.com/patent/US{number}"))
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("patentsview".to_string()),
+    );
+    rec.insert("id".to_string(), Value::String(number.clone()));
+    rec.insert("title".to_string(), title.clone());
+    rec.insert("url".to_string(), url);
+    rec.insert("published".to_string(), Value::String(date.clone()));
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(format!("{0} ({date})", py_value_repr(&title))),
+    );
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "assignee".to_string(),
+        match m.get("assignee_organization") {
+            Some(v) => v.clone(),
+            None => m
+                .get("assignee")
+                .cloned()
+                .unwrap_or(Value::String(String::new())),
+        },
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn patentsview_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // API-level errors surface before row building.
+    if let Some(err) = obj.get("error") {
+        if is_truthy(err) {
+            return Err(format!(
+                "RuntimeError: PatentsView error: {0}",
+                py_value_repr(err)
+            ));
+        }
+    }
+    // `body.get("patents", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("patents") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for p in hits {
+        out.push(patentsview_row_impl(p)?);
+    }
+    Ok(out)
+}
+
+pub fn patentsview_parse_fetch_impl(response_json: &str) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // Non-dict bodies fall through both `isinstance` checks → [].
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Ok(Vec::new()),
+    };
+    // `body["patents"][0]`: truthy patents index; str → char (whose
+    // `.get` raises), dict → KeyError 0, anything else TypeError.
+    if let Some(patents) = obj.get("patents") {
+        if is_truthy(patents) {
+            let first = match patents {
+                Value::Array(a) => match a.first() {
+                    Some(v) => v,
+                    None => return Ok(Vec::new()),
+                },
+                Value::String(s) => match s.chars().next() {
+                    Some(_) => return Err(attr_error("str")),
+                    None => return Ok(Vec::new()),
+                },
+                Value::Object(_) => return Err("KeyError: 0".to_string()),
+                other => return Err(type_error_not_subscriptable(json_type(other))),
+            };
+            return Ok(vec![patentsview_row_impl(first)?]);
+        }
+    }
+    if let Some(v) = obj.get("patent_number") {
+        if is_truthy(v) {
+            return Ok(vec![patentsview_row_impl(&body)?]);
+        }
+    }
+    Ok(Vec::new())
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn courtlistener_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    courtlistener_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn courtlistener_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    courtlistener_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn govinfo_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    govinfo_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn govinfo_parse_fetch(py: Python, response_json: &str, rid: &str) -> PyResult<String> {
+    govinfo_parse_fetch_impl(response_json, rid)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json))]
+pub fn hudoc_parse_search(py: Python, response_json: &str) -> PyResult<String> {
+    hudoc_parse_search_impl(response_json)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn hudoc_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    hudoc_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn patentsview_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    patentsview_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn patentsview_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    patentsview_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
 }

@@ -1558,6 +1558,14 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::nvd_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::zenodo_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::zenodo_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::courtlistener_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::courtlistener_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::govinfo_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::govinfo_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::hudoc_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::hudoc_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::patentsview_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::patentsview_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

@@ -429,3 +429,44 @@ def zenodo_parse_search(
 def zenodo_parse_fetch(response_json: str, record_id_s: str) -> str:
     """One record hit minus raw, as JSON (src/adapters.rs)."""
     ...
+
+def courtlistener_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Opinion rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def courtlistener_parse_fetch(response_json: str) -> str:
+    """One cluster row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def govinfo_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Package rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def govinfo_parse_fetch(response_json: str, rid: str) -> str:
+    """One package summary minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def hudoc_parse_search(response_json: str) -> str:
+    """ECtHR rows minus raw, as JSON — no result cap (src/adapters.rs)."""
+    ...
+
+def hudoc_parse_fetch(response_json: str) -> str:
+    """First-result row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def patentsview_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Patent rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def patentsview_parse_fetch(response_json: str) -> str:
+    """Patent row(s) minus raw, as JSON (src/adapters.rs)."""
+    ...

@@ -1870,25 +1870,6 @@ class CourtListenerAdapter(ResourceAdapter):
             h["Authorization"] = f"Token {self.api_key}"
         return url, dict(params or {}), h
 
-    def _row(self, r):
-        return {
-            "source": "courtlistener",
-            "id": str(r.get("cluster_id", "")),
-            "title": r.get("caseName") or r.get("caseNameFull", ""),
-            "url": f"https://www.courtlistener.com{r.get('absolute_url', '')}",
-            "published": r.get("dateFiled", ""),
-            "snippet": _strip_tags(
-                (r.get("caseNameFull") or r.get("caseName") or ""))[:240],
-            "fields": {
-                "court": r.get("court", ""),
-                "court_citation": r.get("court_citation_string", ""),
-                "docket_number": r.get("docketNumber", ""),
-                "neutral_cite": r.get("neutralCite", ""),
-                "cite_count": r.get("citeCount", ""),
-            },
-            "raw": json.dumps(r),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         q = (query or "").strip()
@@ -1899,8 +1880,16 @@ class CourtListenerAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, headers=headers, params=params, timeout=20.0)
         resp.raise_for_status()
-        results = resp.json().get("results", [])
-        return [self._row(r) for r in results[:max_results]]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each result.
+        body = resp.json()
+        results = body.get("results", [])
+        records = json.loads(
+            _rust.courtlistener_parse_search(json.dumps(body), max_results)
+        )
+        for rec, r in zip(records, results[:max_results]):
+            rec["raw"] = json.dumps(r)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -1914,7 +1903,11 @@ class CourtListenerAdapter(ResourceAdapter):
                 "GOSSAMER_COURTLISTENER_KEY (search stays keyless)."
             )
         resp.raise_for_status()
-        return [self._row(resp.json())]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = resp.json()
+        rec = json.loads(_rust.courtlistener_parse_fetch(json.dumps(body)))
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 class EcfrAdapter(ResourceAdapter):
     """US Code of Federal Regulations (eCFR) lookup — https://www.ecfr.gov.
@@ -2588,23 +2581,6 @@ class HudocAdapter(ResourceAdapter):
             clauses.append(f"({text})")
         return " AND ".join(clauses)
 
-    @staticmethod
-    def _row(columns: dict) -> Dict[str, str]:
-        itemid = columns.get("itemid", "")
-        return {
-            "source": "hudoc",
-            "id": itemid,
-            "title": columns.get("docname", ""),
-            "url": f"https://hudoc.echr.coe.int/eng?i={itemid}" if itemid else "",
-            "published": str(columns.get("kpdate", ""))[:10],
-            "snippet": f"application no. {columns.get('appno', '')}".strip(),
-            "fields": {
-                "appno": columns.get("appno", ""),
-                "ecli": columns.get("ecli", ""),
-            },
-            "raw": json.dumps(columns),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         if not (query or "").strip():
@@ -2622,7 +2598,13 @@ class HudocAdapter(ResourceAdapter):
         )
         resp.raise_for_status()
         body = resp.json()
-        return [self._row(r.get("columns", {})) for r in body.get("results", [])]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each hit's columns.
+        results = body.get("results", [])
+        records = json.loads(_rust.hudoc_parse_search(json.dumps(body)))
+        for rec, r in zip(records, results):
+            rec["raw"] = json.dumps(r.get("columns", {}))
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2644,7 +2626,11 @@ class HudocAdapter(ResourceAdapter):
         results = resp.json().get("results", [])
         if not results:
             return []
-        return [self._row(results[0].get("columns", {}))]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = resp.json()
+        records = json.loads(_rust.hudoc_parse_fetch(json.dumps(body)))
+        records[0]["raw"] = json.dumps(results[0].get("columns", {}))
+        return records
 
 
 class GovInfoAdapter(ResourceAdapter):
@@ -2675,31 +2661,6 @@ class GovInfoAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.25)
         )
 
-    @staticmethod
-    def _row(r: dict) -> Dict[str, str]:
-        pkg = r.get("packageId", "")
-        granule = r.get("granuleId", "")
-        dl = r.get("download", {}) or {}
-        url = (
-            dl.get("txtLink")
-            or dl.get("pdfLink")
-            or (f"https://www.govinfo.gov/app/details/{pkg}" if pkg else "")
-        )
-        return {
-            "source": "govinfo",
-            "id": granule or pkg,
-            "title": r.get("title", ""),
-            "url": url,
-            "published": str(r.get("dateIssued", "")),
-            "snippet": f"{r.get('collectionCode', '')} {pkg}".strip(),
-            "fields": {
-                "collection": r.get("collectionCode", ""),
-                "package_id": pkg,
-                "granule_id": granule,
-            },
-            "raw": json.dumps(r),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         q = (query or "").strip()
@@ -2713,7 +2674,16 @@ class GovInfoAdapter(ResourceAdapter):
             timeout=25.0,
         )
         resp.raise_for_status()
-        return [self._row(r) for r in resp.json().get("results", [])[:max_results]]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each result.
+        body = resp.json()
+        results = body.get("results", [])
+        records = json.loads(
+            _rust.govinfo_parse_search(json.dumps(body), max_results)
+        )
+        for rec, r in zip(records, results[:max_results]):
+            rec["raw"] = json.dumps(r)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2726,18 +2696,11 @@ class GovInfoAdapter(ResourceAdapter):
             timeout=20.0,
         )
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
         body = resp.json()
-        return [{
-            "source": "govinfo",
-            "id": body.get("packageId", rid),
-            "title": body.get("title", rid),
-            "url": body.get("download", {}).get("txtLink", "")
-            or f"https://www.govinfo.gov/app/details/{rid}",
-            "published": str(body.get("dateIssued", "")),
-            "snippet": str(body.get("collectionCode", "")),
-            "fields": {"collection": body.get("collectionCode", "")},
-            "raw": json.dumps(body),
-        }]
+        rec = json.loads(_rust.govinfo_parse_fetch(json.dumps(body), rid))
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 
 class FrankfurterAdapter(ResourceAdapter):
@@ -3519,24 +3482,6 @@ class PatentsViewAdapter(ResourceAdapter):
             )
         return {"X-Api-Key": self.api_key, "Accept": "application/json"}
 
-    @staticmethod
-    def _row(p: dict) -> Dict[str, str]:
-        number = str(p.get("patent_number", p.get("id", "")))
-        title = p.get("patent_title", p.get("title", number))
-        date = str(p.get("patent_date", p.get("date", "")))[:10]
-        return {
-            "source": "patentsview",
-            "id": number,
-            "title": title,
-            "url": f"https://patents.google.com/patent/US{number}" if number else "",
-            "published": date,
-            "snippet": f"{title} ({date})",
-            "fields": {
-                "assignee": p.get("assignee_organization", p.get("assignee", "")),
-            },
-            "raw": json.dumps(p),
-        }
-
     def search(self, query, max_results=5):
         # Fail fast without credentials (see EpoOpsAdapter).
         self._headers()
@@ -3565,7 +3510,15 @@ class PatentsViewAdapter(ResourceAdapter):
         body = resp.json()
         if body.get("error"):
             raise RuntimeError(f"PatentsView error: {body.get('error')}")
-        return [self._row(p) for p in body.get("patents", [])[:max_results]]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each patent.
+        patents = body.get("patents", [])
+        records = json.loads(
+            _rust.patentsview_parse_search(json.dumps(body), max_results)
+        )
+        for rec, p in zip(records, patents[:max_results]):
+            rec["raw"] = json.dumps(p)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -3580,10 +3533,14 @@ class PatentsViewAdapter(ResourceAdapter):
         )
         resp.raise_for_status()
         body = resp.json()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        records = json.loads(_rust.patentsview_parse_fetch(json.dumps(body)))
+        if not records:
+            return []
         if isinstance(body, dict) and body.get("patents"):
-            return [self._row(body["patents"][0])]
-        if isinstance(body, dict) and body.get("patent_number"):
-            return [self._row(body)]
-        return []
+            records[0]["raw"] = json.dumps(body["patents"][0])
+        else:
+            records[0]["raw"] = json.dumps(body)
+        return records
 
 

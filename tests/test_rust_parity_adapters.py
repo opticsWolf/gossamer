@@ -943,3 +943,553 @@ def test_e2e_zenodo(mock_get):
     (rec,) = _Zenodo(delay=0.0).fetch(123456)
     assert rec["id"] == "123456"
     assert rec["raw"] == json.dumps(ZENODO_HIT)
+
+
+# --- batch 3: legal/patent JSON kernels (v0.8.12) --------------------
+# Vendored originals are verbatim copies of the retired
+# `CourtListenerAdapter._row`, `GovInfoAdapter._row`, `HudocAdapter._row`
+# and `PatentsViewAdapter._row` plus the search/fetch parse logic
+# (minus `raw`, which crosses the boundary separately).
+
+CL_ROW = {
+    "cluster_id": 12345,
+    "caseName": "Roe v. Wade",
+    "caseNameFull": "Roe et al. v. Wade, District Attorney",
+    "absolute_url": "/opinion/12345/roe-v-wade/",
+    "dateFiled": "1973-01-22",
+    "court": "scotus",
+    "court_citation_string": "410 U.S. 113",
+    "docketNumber": "70-18",
+    "neutralCite": "",
+    "citeCount": 25000,
+}
+
+
+def _v_cl_row(r):
+    return {
+        "source": "courtlistener",
+        "id": str(r.get("cluster_id", "")),
+        "title": r.get("caseName") or r.get("caseNameFull", ""),
+        "url": f"https://www.courtlistener.com{r.get('absolute_url', '')}",
+        "published": r.get("dateFiled", ""),
+        "snippet": _v_strip_tags(
+            (r.get("caseNameFull") or r.get("caseName") or ""))[:240],
+        "fields": {
+            "court": r.get("court", ""),
+            "court_citation": r.get("court_citation_string", ""),
+            "docket_number": r.get("docketNumber", ""),
+            "neutral_cite": r.get("neutralCite", ""),
+            "cite_count": r.get("citeCount", ""),
+        },
+    }
+
+
+def _v_cl_search(body, max_results=5):
+    results = body.get("results", [])
+    return [_v_cl_row(r) for r in results[:max_results]]
+
+
+def _v_cl_fetch(body):
+    return _v_cl_row(body)
+
+
+def _rs_cl_search(body, max_results=5):
+    return json.loads(_core.courtlistener_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_cl_fetch(body):
+    return json.loads(_core.courtlistener_parse_fetch(json.dumps(body)))
+
+
+CL_SEARCH_BODIES = [
+    {"results": [CL_ROW]},
+    {"results": [CL_ROW, {"cluster_id": 7}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"cluster_id": None, "caseName": None}]},
+    {"results": [{"cluster_id": 5, "caseName": 7, "absolute_url": ["u"]}]},
+    {"results": [{"caseNameFull": ["A"], "dateFiled": 19730122}]},
+    {"results": [{"caseName": "", "caseNameFull": 0}]},
+    {"results": [{"caseNameFull": {"t": 1}}]},
+    {"results": [{"caseName": {"t": 1}, "caseNameFull": "F"}]},
+    {"results": [{"caseNameFull": "n" * 300, "court": None}]},
+]
+
+
+@pytest.mark.parametrize("body", CL_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_cl_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_cl_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_cl_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CL_FETCH_BODIES = [
+    CL_ROW,
+    {},
+    {"cluster_id": 1},
+    {"caseName": 5, "caseNameFull": "F"},
+    {"caseNameFull": ["A"]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", CL_FETCH_BODIES)
+def test_cl_fetch_parity(body):
+    py_raised, py_val = _outcome(_v_cl_fetch, body)
+    rs_raised, rs_val = _outcome(_rs_cl_fetch, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+GI_ROW = {
+    "packageId": "BILLS-118hr1234",
+    "granuleId": "",
+    "title": "A Bill To Do Things",
+    "dateIssued": "2024-01-15",
+    "collectionCode": "BILLS",
+    "download": {"txtLink": "https://www.govinfo.gov/txt/bill.txt",
+                 "pdfLink": "https://www.govinfo.gov/pdf/bill.pdf"},
+}
+
+
+def _v_gi_row(r):
+    pkg = r.get("packageId", "")
+    granule = r.get("granuleId", "")
+    dl = r.get("download", {}) or {}
+    url = (
+        dl.get("txtLink")
+        or dl.get("pdfLink")
+        or (f"https://www.govinfo.gov/app/details/{pkg}" if pkg else "")
+    )
+    return {
+        "source": "govinfo",
+        "id": granule or pkg,
+        "title": r.get("title", ""),
+        "url": url,
+        "published": str(r.get("dateIssued", "")),
+        "snippet": f"{r.get('collectionCode', '')} {pkg}".strip(),
+        "fields": {
+            "collection": r.get("collectionCode", ""),
+            "package_id": pkg,
+            "granule_id": granule,
+        },
+    }
+
+
+def _v_gi_search(body, max_results=5):
+    return [_v_gi_row(r) for r in body.get("results", [])[:max_results]]
+
+
+def _v_gi_fetch(body, rid=""):
+    return {
+        "source": "govinfo",
+        "id": body.get("packageId", rid),
+        "title": body.get("title", rid),
+        "url": body.get("download", {}).get("txtLink", "")
+        or f"https://www.govinfo.gov/app/details/{rid}",
+        "published": str(body.get("dateIssued", "")),
+        "snippet": str(body.get("collectionCode", "")),
+        "fields": {"collection": body.get("collectionCode", "")},
+    }
+
+
+def _rs_gi_search(body, max_results=5):
+    return json.loads(_core.govinfo_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_gi_fetch(body, rid=""):
+    return json.loads(_core.govinfo_parse_fetch(json.dumps(body), rid))
+
+
+GI_SEARCH_BODIES = [
+    {"results": [GI_ROW]},
+    {"results": [GI_ROW, {"packageId": "P2"}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"packageId": None, "granuleId": None}]},
+    {"results": [{"packageId": 0, "granuleId": "", "download": None}]},
+    {"results": [{"packageId": "P", "granuleId": "G1",
+                  "download": {"pdfLink": "https://pdf"}}]},
+    {"results": [{"download": {"txtLink": "", "pdfLink": 0}}]},
+    {"results": [{"packageId": "P", "download": "x"}]},
+    {"results": [{"packageId": "P", "download": 5}]},
+    {"results": [{"packageId": ["P"], "title": ["T"],
+                  "dateIssued": 20240115, "collectionCode": None}]},
+    {"results": [{"packageId": "P", "granuleId": 0,
+                  "title": {"t": 1}}]},
+]
+
+
+@pytest.mark.parametrize("body", GI_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_gi_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_gi_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_gi_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+GI_FETCH_BODIES = [
+    GI_ROW,
+    {},
+    {"packageId": "P1"},
+    {"packageId": "P1", "download": None},
+    {"packageId": "P1", "download": "x"},
+    {"packageId": "P1", "download": {"txtLink": None}},
+    {"packageId": "P1", "download": {"txtLink": 0, "other": 1}},
+    {"packageId": "P1", "download": {"txtLink": 5}},
+    {"packageId": None, "title": None, "dateIssued": None},
+    {"download": {}},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", GI_FETCH_BODIES)
+@pytest.mark.parametrize("rid", ["BILLS-1", ""])
+def test_gi_fetch_parity(body, rid):
+    py_raised, py_val = _outcome(_v_gi_fetch, body, rid)
+    rs_raised, rs_val = _outcome(_rs_gi_fetch, body, rid)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, rid)
+    assert rs_val == py_val, (body, rid)
+
+
+HUDOC_COLS = {
+    "itemid": "001-123456",
+    "docname": "CASE OF DOE v. ROMANIA",
+    "kpdate": "20240115",
+    "appno": "12345/20",
+    "ecli": "ECLI:CE:ECHR:2024:0115JUD001234520",
+}
+
+
+def _v_hudoc_row(columns):
+    itemid = columns.get("itemid", "")
+    return {
+        "source": "hudoc",
+        "id": itemid,
+        "title": columns.get("docname", ""),
+        "url": f"https://hudoc.echr.coe.int/eng?i={itemid}" if itemid else "",
+        "published": str(columns.get("kpdate", ""))[:10],
+        "snippet": f"application no. {columns.get('appno', '')}".strip(),
+        "fields": {
+            "appno": columns.get("appno", ""),
+            "ecli": columns.get("ecli", ""),
+        },
+    }
+
+
+def _v_hudoc_search(body):
+    return [_v_hudoc_row(r.get("columns", {})) for r in body.get("results", [])]
+
+
+def _v_hudoc_fetch(body):
+    results = body.get("results", [])
+    if not results:
+        return []
+    return [_v_hudoc_row(results[0].get("columns", {}))]
+
+
+def _rs_hudoc_search(body):
+    return json.loads(_core.hudoc_parse_search(json.dumps(body)))
+
+
+def _rs_hudoc_fetch(body):
+    return json.loads(_core.hudoc_parse_fetch(json.dumps(body)))
+
+
+HUDOC_SEARCH_BODIES = [
+    {"results": [{"columns": HUDOC_COLS}]},
+    {"results": [{"columns": HUDOC_COLS}, {"columns": {}}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": False},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"columns": None}]},
+    {"results": [{"columns": 5}]},
+    {"results": [{"columns": "x"}]},
+    {"results": [{"other": 1}]},
+    {"results": [{}]},
+    {"results": [{"columns": {"itemid": 0, "docname": None,
+                              "kpdate": 20240115, "appno": ["a"]}}]},
+    {"results": [{"columns": {"itemid": "", "kpdate": None}}]},
+    {"results": [{"columns": HUDOC_COLS}, None]},
+]
+
+
+@pytest.mark.parametrize("body", HUDOC_SEARCH_BODIES)
+def test_hudoc_search_parity(body):
+    py_raised, py_val = _outcome(_v_hudoc_search, body)
+    rs_raised, rs_val = _outcome(_rs_hudoc_search, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+HUDOC_FETCH_BODIES = [
+    {"results": [{"columns": HUDOC_COLS}]},
+    {"results": [{"columns": HUDOC_COLS}, {"columns": {"itemid": "other"}}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [{"columns": 5}]},
+    {"results": [{"other": 1}]},
+    {"results": [{}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", HUDOC_FETCH_BODIES)
+def test_hudoc_fetch_parity(body):
+    py_raised, py_val = _outcome(_v_hudoc_fetch, body)
+    rs_raised, rs_val = _outcome(_rs_hudoc_fetch, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+PV_PATENT = {
+    "patent_number": "10000000",
+    "patent_title": "Coherent LADAR using intra-pixel quadrature detection",
+    "patent_date": "2018-06-19",
+    "assignee_organization": "ACME Corp",
+}
+
+
+def _v_pv_row(p):
+    number = str(p.get("patent_number", p.get("id", "")))
+    title = p.get("patent_title", p.get("title", number))
+    date = str(p.get("patent_date", p.get("date", "")))[:10]
+    return {
+        "source": "patentsview",
+        "id": number,
+        "title": title,
+        "url": f"https://patents.google.com/patent/US{number}" if number else "",
+        "published": date,
+        "snippet": f"{title} ({date})",
+        "fields": {
+            "assignee": p.get("assignee_organization", p.get("assignee", "")),
+        },
+    }
+
+
+def _v_pv_search(body, max_results=5):
+    if body.get("error"):
+        raise RuntimeError(f"PatentsView error: {body.get('error')}")
+    return [_v_pv_row(p) for p in body.get("patents", [])[:max_results]]
+
+
+def _v_pv_fetch(body):
+    if isinstance(body, dict) and body.get("patents"):
+        return [_v_pv_row(body["patents"][0])]
+    if isinstance(body, dict) and body.get("patent_number"):
+        return [_v_pv_row(body)]
+    return []
+
+
+def _rs_pv_search(body, max_results=5):
+    return json.loads(_core.patentsview_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_pv_fetch(body):
+    return json.loads(_core.patentsview_parse_fetch(json.dumps(body)))
+
+
+PV_SEARCH_BODIES = [
+    {"patents": [PV_PATENT]},
+    {"patents": [PV_PATENT, {"patent_number": "2"}]},
+    {"error": "bad key", "patents": [PV_PATENT]},
+    {"error": ""},
+    {"error": None},
+    {},
+    {"patents": None},
+    {"patents": []},
+    {"patents": ""},
+    {"patents": 0},
+    {"patents": {}},
+    {"patents": "ab"},
+    {"patents": 5},
+    {"patents": [None]},
+    {"patents": ["x"]},
+    {"patents": [5]},
+    {"patents": [{}]},
+    {"patents": [{"id": "9", "title": "T", "date": "2020-01-01",
+                  "assignee": "A2"}]},
+    {"patents": [{"patent_number": None, "patent_title": None,
+                  "patent_date": None, "assignee_organization": None}]},
+    {"patents": [{"patent_number": 7, "patent_title": 8,
+                  "patent_date": 20200101, "assignee": ["A"]}]},
+    {"patents": [{"id": ["1"], "title": {"t": 1}, "date": {"d": 1}}]},
+    {"patents": [{"patent_title": "Only Title"}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", PV_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_pv_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_pv_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_pv_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+PV_FETCH_BODIES = [
+    {"patents": [PV_PATENT]},
+    {"patents": [PV_PATENT, {"patent_number": "2"}]},
+    PV_PATENT,
+    {"patent_number": "3", "other": 1},
+    {},
+    {"patents": None},
+    {"patents": []},
+    {"patents": ""},
+    {"patents": "ab"},
+    {"patents": ["x"]},
+    {"patents": [5]},
+    {"patents": [{"x": 1}]},
+    {"patents": 5},
+    {"patents": {"p": 1}},
+    {"patent_number": ""},
+    {"patent_number": None},
+    {"other": 1},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", PV_FETCH_BODIES)
+def test_pv_fetch_parity(body):
+    py_raised, py_val = _outcome(_v_pv_fetch, body)
+    rs_raised, rs_val = _outcome(_rs_pv_fetch, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+@pytest.mark.parametrize("body", _fuzz_bodies(20260906, 150))
+@pytest.mark.parametrize("max_results", [3, -1])
+def test_fuzz_legal_patent_kernels(body, max_results):
+    assert _outcome(_v_cl_search, body, max_results) == \
+        _outcome(_rs_cl_search, body, max_results), body
+    assert _outcome(_v_gi_search, body, max_results) == \
+        _outcome(_rs_gi_search, body, max_results), body
+    assert _outcome(_v_hudoc_search, body) == \
+        _outcome(_rs_hudoc_search, body), body
+    assert _outcome(_v_pv_search, body, max_results) == \
+        _outcome(_rs_pv_search, body, max_results), body
+
+
+# --- end-to-end seam: real adapters, stubbed HTTP ---------------------
+
+from gossamer.research_providers import (
+    CourtListenerAdapter as _CL,
+    GovInfoAdapter as _GI,
+    HudocAdapter as _HUDOC,
+    PatentsViewAdapter as _PV,
+)
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_legal_patent(mock_get):
+    mock_get.return_value = _stub({"results": [CL_ROW]})
+    out = _CL(delay=0.0).search("roe", max_results=5)
+    assert out[0]["id"] == "12345"
+    assert out[0]["title"] == "Roe v. Wade"
+    assert out[0]["raw"] == json.dumps(CL_ROW)
+
+    mock_get.return_value = _stub(CL_ROW)
+    (rec,) = _CL(delay=0.0).fetch(12345)
+    assert rec["fields"]["court"] == "scotus"
+
+    mock_get.return_value = _stub({"results": [{"columns": HUDOC_COLS}]})
+    out = _HUDOC(delay=0.0).search("doe", max_results=5)
+    assert out[0]["id"] == "001-123456"
+    assert out[0]["published"] == "20240115"
+    # raw is the columns object (the original rows columns, not hits).
+    assert out[0]["raw"] == json.dumps(HUDOC_COLS)
+
+    mock_get.return_value = _stub({"results": [{"columns": HUDOC_COLS}]})
+    (rec,) = _HUDOC(delay=0.0).fetch("001-123456")
+    assert rec["fields"]["ecli"].startswith("ECLI:CE:ECHR")
+
+
+@_patch("gossamer.research_providers.httpx.post")
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_govinfo(mock_get, mock_post):
+    mock_post.return_value = _stub({"results": [GI_ROW]})
+    out = _GI(delay=0.0, api_key="K").search("bill", max_results=5)
+    assert out[0]["id"] == "BILLS-118hr1234"
+    assert out[0]["url"].endswith("bill.txt")
+    assert out[0]["raw"] == json.dumps(GI_ROW)
+
+    mock_get.return_value = _stub(GI_ROW)
+    (rec,) = _GI(delay=0.0, api_key="K").fetch("BILLS-118hr1234")
+    assert rec["title"] == "A Bill To Do Things"
+    assert rec["raw"] == json.dumps(GI_ROW)
+
+
+@_patch("gossamer.research_providers.httpx.get")
+def test_e2e_patentsview(mock_get):
+    mock_get.return_value = _stub({"patents": [PV_PATENT]})
+    out = _PV(delay=0.0, api_key="K").search("ladar", max_results=5)
+    assert out[0]["id"] == "10000000"
+    assert out[0]["fields"]["assignee"] == "ACME Corp"
+    assert out[0]["raw"] == json.dumps(PV_PATENT)
+
+    mock_get.return_value = _stub(PV_PATENT)
+    (rec,) = _PV(delay=0.0, api_key="K").fetch("10000000")
+    assert rec["published"] == "2018-06-19"
+    assert rec["raw"] == json.dumps(PV_PATENT)
+
+    mock_get.return_value = _stub({"patents": [PV_PATENT]})
+    (rec,) = _PV(delay=0.0, api_key="K").fetch("10000000")
+    assert rec["raw"] == json.dumps(PV_PATENT)
