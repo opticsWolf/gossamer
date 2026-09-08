@@ -20,6 +20,7 @@ Python, **65 passed** Rust lib. Every version bump committed and pushed.
 | M11–M19 (0.8.11–0.8.19) | `adapters.rs`, `xmlatom.rs` | all **35** response parsers; `quick-xml` 0.42 |
 | M20 (0.8.20) | `cacheutils.rs` | `disk_key` (blake2b-128), `human_size` (`nan` casing), content-type ext, `safe_name` |
 | M21 (0.8.21) | `miscutils.rs` | `domain_of`, `sha256_hex`, `classify_link`, `parse_page_range` |
+| M22 (0.8.22) | `metaextract.rs` | meta-oxide fork crate via C-ABI; sparse+normalizers; rdfa cycle guard |
 
 Shape throughout: JSON-string boundary, `shared_runtime().block_on`,
 `abi3`; HTTP/keys/rate/retry stay Python, row-building in Rust,
@@ -51,4 +52,8 @@ with vendored oracles + seeded fuzz + hostile wrapper tests.
   cannot cross the JSON boundary.
 - `parse_page_range` above `i128` range reports "not a page number"
   (page numbers never reach 39 digits).
-- PyPI publish orthogonal (blocked by `meta-oxide @ git+...`).
+- PyPI publishing UNBLOCKED in M22 (git bridge removed; meta-oxide
+  ships inside `_core`).
+- Upstream meta_oxide RDFa infinite recursion (`property`+`typeof` on
+  one element) crashes the old bridge identically — kernel skips the
+  section when `[typeof][property]` matches. Upstream fix wanted.
