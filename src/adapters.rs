@@ -703,6 +703,47 @@ mod tests {
     }
 
     #[test]
+    fn batch7_misc_shapes() {
+        // WorldBank: indicator fallback + recent join slice.
+        let body = r#"[{"page": 1}, [{"indicator": {"id": "X", "value": "V"}, "date": "2023", "value": 5}]]"#;
+        let out = worldbank_parse_fetch_impl(body, &Value::String("R".to_string()), "D/R").unwrap();
+        assert_eq!(out["id"], "X");
+        assert_eq!(out["snippet"], "1 observations; recent: 2023:5");
+        // FRED CSV: header skipped, raw window kept.
+        let out = fred_parse_csv_impl("DATE,VALUE\n2024-01-01,1.5\n", &Value::String("GDP".to_string())).unwrap();
+        assert_eq!(out["id"], "GDP");
+        assert_eq!(out["raw"], "DATE,VALUE\n2024-01-01,1.5");
+        // GitHub: str() id + url chain.
+        let body = r#"{"items": [{"id": 7, "html_url": null, "url": "U"}]}"#;
+        let out = github_parse_search_impl(body, 5).unwrap();
+        assert_eq!(out[0]["id"], "7");
+        assert_eq!(out[0]["url"], "U");
+        // Congress: em-dash snippet.
+        let body = r#"{"results": [{"cgi_id": "C", "title": "Sen", "party": "D", "state": "CA", "district": "1"}]}"#;
+        let out = congress_parse_search_impl(body, 5).unwrap();
+        assert_eq!(out[0]["snippet"], "Sen D \u{2014} CA1");
+        // NASA: fetch ignores hostile close_approach_data.
+        let body = r#"{"a": 1, "close_approach_data": 5, "estimated_diameter": {"meters": {"estimated_diameter_max": 2}}}"#;
+        assert!(nasa_parse_fetch_impl(body, &Value::String("R".to_string())).is_ok());
+        // SWH: falsy url falls back to visits; sid shape.
+        let out = swh_origin_row_impl(&serde_json::from_str(r#"{"visit_types": []}"#).unwrap(), "fb").unwrap();
+        assert_eq!(out["url"], "https://archive.softwareheritage.org/browse/origin/?origin_url=fb");
+        let out = swh_parse_fetch_sid_impl(r#"{"id": "s:1"}"#, "s:1").unwrap();
+        assert_eq!(out["url"], "https://archive.softwareheritage.org/s:1");
+        // Overpass: name-or-type:id title + 6-tag cap.
+        let body = r#"{"elements": [{"type": "node", "id": 3, "tags": {"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6", "g": "7"}}]}"#;
+        let out = overpass_parse_search_impl(body, 5).unwrap();
+        assert_eq!(out[0]["title"], "node:3");
+        assert_eq!(out[0]["snippet"], "a=1, b=2, c=3, d=4, e=5, f=6");
+        // Census: header lowering + raw payload shape ("06" sits
+        // under `st_ate`, so the state-keyed id folds to "").
+        let body = r#"[["ST ATE"], ["06"]]"#;
+        let out = census_parse_search_impl(body, "D", 5).unwrap();
+        assert_eq!(out[0]["id"], "");
+        assert!(out[0].get("raw").is_some());
+    }
+
+    #[test]
     fn batch6_scholarly_shapes() {
         // OpenAlex: author folding + url/doi asymmetry.
         let body = r#"{"results": [{"id": "W1", "title": "", "doi": null, "authorships": [{"author": {"display_name": "A."}}, {"author": {}}]}]}"#;
@@ -5774,25 +5815,35 @@ pub fn overpass_parse_search_impl(
 // ── Census ──────────────────────────────────────────────────────
 
 /// `[h.lower().replace(" ", "_") for h in rows[0]]`: `rows[0]`
-/// indexes directly (dicts → KeyError 0, others index); members must
-/// be strings (`.lower` raises otherwise — chars/keys included).
+/// indexes directly (anything but a list/dict/str raises TypeError);
+/// the row itself then iterates (non-iterables raise TypeError);
+/// dicts iterate their keys; members must be strings (`.lower`
+/// raises otherwise — chars/keys included).
 fn census_header(first: &Value) -> Result<Vec<String>, String> {
-    let items: Vec<&Value> = match first {
-        Value::Array(a) => a.iter().collect(),
+    match first {
+        Value::Array(a) => {
+            let owned: Vec<Value> = a.iter().cloned().collect();
+            census_header_owned(&owned)
+        }
+        // Dicts iterate keys (always strings in JSON).
+        Value::Object(mm) => {
+            let owned: Vec<Value> = mm
+                .keys()
+                .map(|k| Value::String(k.clone()))
+                .collect();
+            census_header_owned(&owned)
+        }
         Value::String(s) => {
             // Chars carry no owned storage; rebuild as owned Values.
             let chars: Vec<Value> = s
                 .chars()
                 .map(|c| Value::String(c.to_string()))
                 .collect();
-            // Validated below through the same path.
-            return census_header_owned(&chars);
+            census_header_owned(&chars)
         }
-        Value::Object(_) => return Err("KeyError: 0".to_string()),
-        other => return Err(type_error_not_subscriptable(json_type(other))),
-    };
-    let owned: Vec<Value> = items.into_iter().cloned().collect();
-    census_header_owned(&owned)
+        // Iterating the header row (not indexing it).
+        other => return Err(type_error_not_iterable(json_type(other))),
+    }
 }
 
 fn census_header_owned(items: &[Value]) -> Result<Vec<String>, String> {
@@ -5800,7 +5851,8 @@ fn census_header_owned(items: &[Value]) -> Result<Vec<String>, String> {
     for h in items.iter() {
         match h {
             Value::String(s) => out.push(s.to_lowercase().replace(' ', "_")),
-            _ => return Err(attr_error(json_type(h))),
+            // `.lower` names the method (not `.get`).
+            _ => return Err(attr_error_attr(json_type(h), "lower")),
         }
     }
     Ok(out)
@@ -5835,7 +5887,16 @@ fn census_record(header: &[String], row: &Value) -> Result<serde_json::Map<Strin
             }
             Ok(rec)
         }
-        Value::Object(_) => Err("KeyError: 0".to_string()),
+        // Dict rows raise KeyError on `row[0]` — but only when a slot
+        // passes the `i < len(row)` filter (non-empty row); empty dicts
+        // yield no pairs without ever indexing.
+        Value::Object(rm) => {
+            if rm.is_empty() {
+                Ok(serde_json::Map::new())
+            } else {
+                Err("KeyError: 0".to_string())
+            }
+        }
         other => Err(format!(
             "TypeError: object of type '{0}' has no len()",
             json_type(other)

@@ -601,3 +601,117 @@ def doaj_parse_search(
 ) -> str:
     """DOAJ article rows minus raw, as JSON (src/adapters.rs)."""
     ...
+
+def worldbank_note() -> str:
+    """Retired-search note minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def worldbank_parse_fetch(
+    response_json: str,
+    fallback_json: str = "null",
+    record_url: str = "",
+) -> str:
+    """World Bank indicator row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def fred_parse_official(
+    response_json: str,
+    fallback_json: str = "null",
+) -> str:
+    """FRED official-API row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def fred_parse_csv(
+    response_text: str,
+    fallback_json: str = "null",
+) -> str:
+    """FRED graph-CSV row incl. raw line window, as JSON (src/adapters.rs)."""
+    ...
+
+def github_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """GitHub repo rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def github_parse_fetch(
+    response_json: str,
+    fallback_json: str = "null",
+) -> str:
+    """GitHub repo row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def congress_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Congress member rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def congress_parse_fetch(
+    response_json: str,
+    fallback_json: str = "null",
+) -> str:
+    """Congress member row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def nasa_parse_search(
+    response_json: str,
+    start: str = "",
+    max_results: int = 5,
+) -> str:
+    """NeoWs object rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def nasa_parse_fetch(
+    response_json: str,
+    fallback_json: str = "null",
+) -> str:
+    """NeoWs object row (short shape) minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def swh_parse_search(
+    response_json: str,
+    fallback: str = "",
+    max_results: int = 5,
+) -> str:
+    """SWH origin row minus raw, as JSON list (src/adapters.rs)."""
+    ...
+
+def swh_parse_fetch_origin(
+    response_json: str,
+    fallback: str = "",
+) -> str:
+    """SWH origin row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def swh_parse_fetch_sid(
+    response_json: str,
+    sid: str = "",
+) -> str:
+    """SWH SWEET-id row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def overpass_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Overpass element rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def census_parse_search(
+    response_json: str,
+    dataset: str = "",
+    max_results: int = 5,
+) -> str:
+    """Census decoded rows (raw payloads embedded), as JSON (src/adapters.rs)."""
+    ...
+
+def census_parse_fetch(
+    response_json: str,
+    dataset: str = "",
+    rid: str = "",
+) -> str:
+    """Census matched row (raw payload embedded), as JSON (src/adapters.rs)."""
+    ...

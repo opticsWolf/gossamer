@@ -4,6 +4,30 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.17] — Rust port M17: misc/geo/financial kernels
+
+- `src/adapters.rs`: WorldBank retired-search note + indicator fetch
+  (list-shape protocol, `or record_id` fallbacks, dated-pair join);
+  FRED official observations + graph-CSV fallback (new
+  `py_splitlines` in `src/pycompat.rs` with exact splitlines
+  boundaries, shared `_record` builder with `[-10:]`/`[-50:]`
+  windows); GitHub repo search + fetch (`str()` ids, url chains);
+  Congress member search + fetch (dead `loc` skipped, em-dash
+  snippet); NASA NeoWs search + fetch (ca/diam protocols, exact
+  field evaluation order, fetch-ignores-ca); Software Heritage
+  origin + SWEET-id rows (retired `_origin_row`); Overpass elements
+  (6-tag cap, `name or type:id`); Census decoded rows (header
+  lowering, dict-key iteration, empty-dict folding, `str()` id
+  match, `raw` re-dumped from the rebuilt record).
+  New `py_str_value` helper (Python-`str()` rendering incl.
+  `1e+300`/`1.5e-07` float exponents); `_json_fallback` shared by
+  all fetch fallbacks (`_yahoo_fallback` kept as alias).
+- Caught by parity: container `str()` quoting (`['d']` not `[d]`),
+  float exponent style, dict `rows[0]` iterating keys, empty-dict
+  rows skipping the index filter, `.lower` (not `.get`) method
+  names, header iteration (not indexing) errors, NASA ca-before-diam
+  order, Census int `rows[0]` subscript errors.
+
 ## [0.8.16] — Rust port M16: scholarly JSON kernels
 
 - `src/adapters.rs`: OpenAlex work search + fetch (author-display-name

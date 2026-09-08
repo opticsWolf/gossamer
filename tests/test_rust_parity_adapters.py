@@ -3606,3 +3606,608 @@ def test_cgr_fetch_parity(body, fallback):
     rs_raised, rs_val = _outcome(_rs_cgr_fetch, body, fallback)
     assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback)
     assert rs_val == py_val, (body, fallback)
+
+
+NASA_NEO = {
+    "neo_reference_id": "123",
+    "object_name": "Test Rock",
+    "nasa_jpl_url": "https://ssd.jpl.nasa.gov/x",
+    "object_type": "Apollo",
+    "is_hazardous": False,
+    "absolute_magnitude": 22.1,
+    "close_approach_data": [
+        {"close_approach_date": "2024-05-01",
+         "closest_approach_distance": {"kilometers": "5000000"}}
+    ],
+    "estimated_diameter": {"meters": {"estimated_diameter_max": 150.0}},
+}
+
+
+def _v_nasa_row(neo, fallback="", is_fetch=False):
+    if not is_fetch:
+        ca = (neo.get("close_approach_data") or [{}])[0]
+    diam = (neo.get("estimated_diameter", {}) or {}).get("meters", {}) or {}
+    rec = {
+        "source": "nasa",
+        "id": neo.get("neo_reference_id", fallback),
+        "title": neo.get("object_name", fallback),
+        "url": neo.get("nasa_jpl_url", ""),
+    }
+    if not is_fetch:
+        rec["published"] = ca.get("close_approach_date", "")
+        rec["snippet"] = (
+            f"~{diam.get('estimated_diameter_max', '')} m diameter; "
+            f"{ca.get('closest_approach_distance', {}).get('kilometers', '')} km closest"
+        )
+        rec["fields"] = {
+            "nasa": {
+                "object_type": neo.get("object_type", ""),
+                "is_hazardous": neo.get("is_hazardous", ""),
+                "absolute_magnitude": neo.get("absolute_magnitude", ""),
+            }
+        }
+    else:
+        rec["snippet"] = f"~{diam.get('estimated_diameter_max', '')} m diameter"
+        rec["fields"] = {
+            "nasa": {
+                "object_type": neo.get("object_type", ""),
+                "is_hazardous": neo.get("is_hazardous", ""),
+            }
+        }
+    return rec
+
+
+def _v_nasa_search(body, start, max_results=5):
+    return [_v_nasa_row(neo)
+            for neo in body.get("near_earth_objects", {}).get(start, [])[:max_results]]
+
+
+def _rs_nasa_search(body, start, max_results=5):
+    return json.loads(_core.nasa_parse_search(
+        json.dumps(body), start, max_results))
+
+
+def _rs_nasa_fetch(body, fallback):
+    return json.loads(_core.nasa_parse_fetch(
+        json.dumps(body), json.dumps(fallback)))
+
+
+NASA_SEARCH_BODIES = [
+    ({"near_earth_objects": {"2024-05-01": [NASA_NEO]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [NASA_NEO, {"neo_reference_id": "9"}]}},
+     "2024-05-01"),
+    ({"near_earth_objects": {}}, "2024-05-01"),
+    ({"near_earth_objects": {"other": [NASA_NEO]}}, "2024-05-01"),
+    ({}, "2024-05-01"),
+    ({"near_earth_objects": None}, "2024-05-01"),
+    ({"near_earth_objects": []}, "2024-05-01"),
+    ({"near_earth_objects": ""}, "2024-05-01"),
+    ({"near_earth_objects": 0}, "2024-05-01"),
+    ({"near_earth_objects": 5}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": None}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": []}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": ""}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": {}}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": "ab"}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": 5}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [None]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": ["x"]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [5]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{}]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": None,
+        "estimated_diameter": None}]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": [],
+        "estimated_diameter": {"meters": None}}]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": [5],
+        "estimated_diameter": 5}]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": "xy",
+        "estimated_diameter": {"meters": 5}}]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": {"a": 1},
+        "estimated_diameter": ""}]}}, "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": [{"closest_approach_distance": None}]}]}},
+     "2024-05-01"),
+    ({"near_earth_objects": {"2024-05-01": [{**NASA_NEO,
+        "close_approach_data": [{"closest_approach_distance": 5}]}]}},
+     "2024-05-01"),
+    ([], "2024-05-01"),
+    ("x", "2024-05-01"),
+    (5, "2024-05-01"),
+    (None, "2024-05-01"),
+]
+
+
+@pytest.mark.parametrize("body,start", NASA_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_nasa_search_parity(body, start, max_results):
+    py_raised, py_val = _outcome(_v_nasa_search, body, start, max_results)
+    rs_raised, rs_val = _outcome(_rs_nasa_search, body, start, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, start)
+    assert rs_val == py_val, (body, start)
+
+
+NASA_FETCH_BODIES = [
+    NASA_NEO,
+    {},
+    {**NASA_NEO, "close_approach_data": 5},
+    {**NASA_NEO, "estimated_diameter": "x"},
+    {"estimated_diameter": {"meters": {"estimated_diameter_max": 1e300}}},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", NASA_FETCH_BODIES)
+@pytest.mark.parametrize("fallback", ["123", "", 5, None])
+def test_nasa_fetch_parity(body, fallback):
+    py_raised, py_val = _outcome(
+        lambda b, f: _v_nasa_row(b, f, True), body, fallback)
+    rs_raised, rs_val = _outcome(_rs_nasa_fetch, body, fallback)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback)
+    assert rs_val == py_val, (body, fallback)
+
+
+SWH_ORIGIN = {
+    "url": "https://github.com/o/r",
+    "visit_types": ["git", "hg"],
+    "origin_visits_url": "https://archive.softwareheritage.org/api/1/visits/",
+}
+
+
+def _v_swh_row(origin, fallback=""):
+    url = origin.get("url", fallback)
+    visits = origin.get("origin_visits_url", "")
+    types = ", ".join(origin.get("visit_types", []) or [])
+    return {
+        "source": "softwareheritage",
+        "id": url,
+        "title": url,
+        "url": f"https://archive.softwareheritage.org/browse/origin/?origin_url={url}" if url else visits,
+        "snippet": f"archived origin; visit types: {types}" if types else "archived origin",
+        "fields": {"softwareheritage": {"visit_types": types}},
+    }
+
+
+def _v_swh_sid(src, sid):
+    meta = src.get("meta", {}) or {}
+    return {
+        "source": "softwareheritage",
+        "id": src.get("id", sid),
+        "title": meta.get("name", src.get("id", sid)),
+        "url": f"https://archive.softwareheritage.org/{src.get('id', sid)}",
+        "published": meta.get("date", ""),
+        "snippet": meta.get("description", "")[:240],
+        "fields": {"softwareheritage": {"type": src.get("type", "")}},
+    }
+
+
+def _rs_swh_search(body, fallback, max_results=5):
+    return json.loads(_core.swh_parse_search(
+        json.dumps(body), fallback, max_results))
+
+
+def _rs_swh_origin(body, fallback):
+    return json.loads(_core.swh_parse_fetch_origin(
+        json.dumps(body), fallback))
+
+
+def _rs_swh_sid(body, sid):
+    return json.loads(_core.swh_parse_fetch_sid(
+        json.dumps(body), sid))
+
+
+SWH_ORIGIN_BODIES = [
+    SWH_ORIGIN,
+    {},
+    {"url": None, "visit_types": None},
+    {"url": "", "visit_types": ""},
+    {"url": 0, "visit_types": 0},
+    {"url": ["u"], "visit_types": "git"},
+    {"url": {"u": 1}, "visit_types": {"git": 1}},
+    {"visit_types": [None, 5, "git"]},
+    {"visit_types": [{"v": 1}]},
+    {"url": "https://x/y"},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", SWH_ORIGIN_BODIES)
+@pytest.mark.parametrize("fallback", ["https://github.com/o/r", ""])
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_swh_origin_parity(body, fallback, max_results):
+    py_raised, py_val = _outcome(
+        lambda b, f, m: [_v_swh_row(b, f)][:m], body, fallback, max_results)
+    rs_raised, rs_val = _outcome(_rs_swh_search, body, fallback, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback)
+    assert rs_val == py_val, (body, fallback)
+    # The origin-fetch path builds the same row without slicing.
+    py2_raised, py2_val = _outcome(_v_swh_row, body, fallback)
+    rs2_raised, rs2_val = _outcome(_rs_swh_origin, body, fallback)
+    assert (py2_raised, rs2_raised) == (py2_raised, py2_raised), body
+    assert rs2_val == py2_val, body
+
+
+SWH_SID_BODIES = [
+    ({"id": "s:abc", "type": "commit",
+      "meta": {"name": "n", "date": "2021-01-01",
+               "description": "d" * 300}}, "s:abc"),
+    ({"id": "d:dead", "type": "directory"}, "d:dead"),
+    ({}, "s:x"),
+    ({"id": None, "meta": None}, "s:x"),
+    ({"id": 0, "meta": ""}, "s:x"),
+    ({"id": ["i"], "meta": "m"}, "s:x"),
+    ({"id": {"i": 1}, "meta": 5}, "s:x"),
+    ({"meta": {"name": ["n"], "description": ["d"]}}, "s:x"),
+    ({"meta": {"description": {"d": 1}}}, "s:x"),
+    ({"meta": {"description": 5}}, "s:x"),
+    ([], "s:x"),
+    ("x", "s:x"),
+    (5, "s:x"),
+    (None, "s:x"),
+]
+
+
+@pytest.mark.parametrize("body,sid", SWH_SID_BODIES)
+def test_swh_sid_parity(body, sid):
+    py_raised, py_val = _outcome(_v_swh_sid, body, sid)
+    rs_raised, rs_val = _outcome(_rs_swh_sid, body, sid)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, sid)
+    assert rs_val == py_val, (body, sid)
+
+
+OP_EL = {
+    "type": "node",
+    "id": 123,
+    "lat": 52.5,
+    "lon": 13.4,
+    "tags": {"name": "Platz", "amenity": "cafe", "a3": "x",
+             "a4": "y", "a5": "z", "a6": "w", "a7": "dropped"},
+}
+
+
+def _v_op_row(el):
+    tags = el.get("tags", {}) or {}
+    name = tags.get("name", "")
+    return {
+        "source": "overpass",
+        "id": str(el.get("id", "")),
+        "title": name or f"{el.get('type', '')}:{el.get('id', '')}",
+        "url": (
+            f"https://www.openstreetmap.org/{el.get('type', '')}/"
+            f"{el.get('id', '')}"
+        ),
+        "snippet": ", ".join(
+            f"{k}={v}" for k, v in list(tags.items())[:6]
+        ),
+        "fields": {
+            "overpass": {
+                "type": el.get("type", ""),
+                "lat": el.get("lat", ""),
+                "lon": el.get("lon", ""),
+            }
+        },
+    }
+
+
+def _v_op_search(body, max_results=5):
+    return [_v_op_row(el) for el in body.get("elements", [])[:max_results]]
+
+
+def _rs_op_search(body, max_results=5):
+    return json.loads(_core.overpass_parse_search(
+        json.dumps(body), max_results))
+
+
+OP_BODIES = [
+    {"elements": [OP_EL]},
+    {"elements": [OP_EL, {"id": 9}]},
+    {},
+    {"elements": None},
+    {"elements": []},
+    {"elements": ""},
+    {"elements": 0},
+    {"elements": {}},
+    {"elements": "ab"},
+    {"elements": 5},
+    {"elements": [None]},
+    {"elements": ["x"]},
+    {"elements": [5]},
+    {"elements": [{}]},
+    {"elements": [{"tags": None, "id": None, "type": None}]},
+    {"elements": [{"tags": "", "id": True, "lat": 1e300}]},
+    {"elements": [{"tags": "ab", "id": ["i"]}]},
+    {"elements": [{"tags": {"name": ["N"], 5: 5}, "id": {"i": 1}}]},
+    {"elements": [{"tags": {"a": None, "b": 5}}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", OP_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_op_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_op_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_op_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CENSUS_ROWS = [
+    ["NAME", "B01003_001E", "state"],
+    ["Alameda County", "1000000", "06"],
+    ["Alpine County", "1100", "06"],
+]
+
+
+def _v_census_search(rows, dataset, max_results=5):
+    if not rows:
+        return []
+    header = [h.lower().replace(" ", "_") for h in rows[0]]
+    out = []
+    for row in rows[1:][:max_results]:
+        rec = {header[i]: row[i] for i in range(len(header)) if i < len(row)}
+        key = rec.get("state", rec.get("geographic_unit", ""))
+        out.append(
+            {
+                "source": "census",
+                "id": str(key),
+                "title": ", ".join(f"{k}={v}" for k, v in list(rec.items())[:3]),
+                "url": f"https://data.census.gov/?g={dataset}",
+                "snippet": ", ".join(
+                    f"{header[i]}={row[i]}" for i in range(1, len(header)) if i < len(row)
+                ),
+                "fields": {"census": {"dataset": dataset}},
+                "raw": json.dumps(rec),
+            }
+        )
+    return out
+
+
+def _v_census_fetch(rows, dataset, record_id):
+    if not rows:
+        return []
+    header = [h.lower().replace(" ", "_") for h in rows[0]]
+    for row in rows[1:]:
+        rec = {header[i]: row[i] for i in range(len(header)) if i < len(row)}
+        if str(rec.get("state", rec.get("geographic_unit", ""))) == str(record_id):
+            return [
+                {
+                    "source": "census",
+                    "id": str(record_id),
+                    "title": ", ".join(
+                        f"{header[i]}={row[i]}" for i in range(1, len(header)) if i < len(row)
+                    ),
+                    "url": f"https://data.census.gov/?g={dataset}",
+                    "snippet": rec.get("state", ""),
+                    "fields": {"census": {"dataset": dataset}},
+                    "raw": json.dumps(rec),
+                }
+            ]
+    return []
+
+
+def _rs_census_search(rows, dataset, max_results=5):
+    recs = json.loads(_core.census_parse_search(
+        json.dumps(rows), dataset, max_results))
+    for rec in recs:
+        rec["raw"] = json.dumps(rec.pop("raw"))
+    return recs
+
+
+def _rs_census_fetch(rows, dataset, record_id):
+    recs = json.loads(_core.census_parse_fetch(
+        json.dumps(rows), dataset, str(record_id)))
+    for rec in recs:
+        rec["raw"] = json.dumps(rec.pop("raw"))
+    return recs
+
+
+CENSUS_BODIES = [
+    CENSUS_ROWS,
+    [["A B", "C"], ["1", "2"], ["3"]],
+    [[], ["1"]],
+    [[None]],
+    [[5, 1.5, True]],
+    [[["h"]], [["v"]]],
+    [["a", "a"], ["1", "2"]],
+    [["state"], ["06"], ["07"]],
+    [["geographic_unit"], ["g1"]],
+    [["state", "geographic_unit"], ["s1", "g1"]],
+    [["NAME"], "notalist"],
+    [["NAME"], ["a", "b"], "xy"],
+    [["NAME"], {"r": 1}],
+    [["NAME"], 5],
+    [["NAME"], None],
+    ["ab"],
+    [""],
+    [["a"], ["b"]],
+    [],
+    [[]],
+    [None],
+    [""],
+    [{}, ["a"]],
+    [{"r": 1}],
+    "",
+    0,
+    5,
+    None,
+    {"a": 1},
+    {},
+]
+
+
+@pytest.mark.parametrize("body", CENSUS_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_census_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_census_search, body, "D", max_results)
+    rs_raised, rs_val = _outcome(_rs_census_search, body, "D", max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+@pytest.mark.parametrize("body", CENSUS_BODIES)
+@pytest.mark.parametrize("record_id", ["06", "g1", "missing", "", 6, None])
+def test_census_fetch_parity(body, record_id):
+    py_raised, py_val = _outcome(_v_census_fetch, body, "D", record_id)
+    rs_raised, rs_val = _outcome(_rs_census_fetch, body, "D", record_id)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, record_id)
+    assert rs_val == py_val, (body, record_id)
+
+
+def _fuzz_json7(rng, depth=0):
+    r = rng.random()
+    if depth > 2 or r < 0.30:
+        return rng.choice(
+            [None, True, False, 0, 1, -3, 2.5, 1e300, "", "ab",
+             "https://x/y", "2024-05-01", "Senator", "D", "CA",
+             "SP.POP.TOTL", "GDP", "o/r", "C001", "node", "git"])
+    if r < 0.55:
+        return [_fuzz_json7(rng, depth + 1) for _ in range(rng.randrange(4))]
+    keys = ["id", "title", "doi", "url", "tags", "name", "type",
+            "results", "items", "elements", "docs", "observations",
+            "near_earth_objects", "indicator", "value", "date",
+            "close_approach_data", "closest_approach_distance",
+            "kilometers", "estimated_diameter", "meters",
+            "estimated_diameter_max", "close_approach_date",
+            "neo_reference_id", "object_name", "nasa_jpl_url",
+            "object_type", "is_hazardous", "absolute_magnitude",
+            "full_name", "html_url", "description", "language",
+            "stargazers_count", "cgi_id", "display_name", "party",
+            "state", "district", "chamber", "origin_visits_url",
+            "visit_types", "meta", "identifier", "lat", "lon",
+            "country", "page", "state", "geographic_unit", "NAME"]
+    return {k: _fuzz_json7(rng, depth + 1)
+            for k in rng.sample(keys, rng.randrange(6))}
+
+
+def test_batch7_fuzz():
+    import random
+    from gossamer.research_providers import _json_fallback
+    rng = random.Random(20260908)
+    n_checked = 0
+    for trial in range(400):
+        body = _fuzz_json7(rng)
+        max_results = rng.choice([0, 1, 3, 5, -1, 100])
+        rid = rng.choice(["q", "", 5, 0, None, True, 1.5, ["l"], {"d": 1}])
+        _, fj = _json_fallback(rid)
+        fj = fj or json.dumps(rid if rid is not None else None)
+        for v_fn, r_fn, extra in (
+            (_v_wb_fetch, _rs_wb_fetch, (rid, "D")),
+            (_v_gh_search, _rs_gh_search, (max_results,)),
+            (_v_cgr_search, _rs_cgr_search, (max_results,)),
+            (_v_op_search, _rs_op_search, (max_results,)),
+            (_v_doaj_search, _rs_doaj_search, (max_results,)),
+        ):
+            py_raised, py_val = _outcome(v_fn, body, *extra)
+            rs_raised, rs_val = _outcome(r_fn, body, *extra)
+            assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, body)
+            assert rs_val == py_val, (trial, body)
+            n_checked += 1
+        for v_fn, r_fn in (
+            (lambda b, f: _v_gh_fetch_row(b, f), _rs_gh_fetch),
+            (_v_cgr_row, _rs_cgr_fetch),
+            (lambda b, f: _v_nasa_row(b, f, True), _rs_nasa_fetch),
+        ):
+            py_raised, py_val = _outcome(v_fn, body, rid)
+            rs_raised, rs_val = _outcome(r_fn, body, rid)
+            assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, body)
+            assert rs_val == py_val, (trial, body, rid)
+            n_checked += 1
+        start = rng.choice(["2024-05-01", "", "x"])
+        py_raised, py_val = _outcome(_v_nasa_search, body, start, max_results)
+        rs_raised, rs_val = _outcome(_rs_nasa_search, body, start, max_results)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, body)
+        assert rs_val == py_val, (trial, body)
+        n_checked += 1
+        # Census rows are row-lists, not mappings: fuzz separately.
+        rows = [_fuzz_json7(rng) for _ in range(rng.randrange(4))]
+        if rng.random() < 0.3:
+            rows = body
+        py_raised, py_val = _outcome(_v_census_search, rows, "D", max_results)
+        rs_raised, rs_val = _outcome(_rs_census_search, rows, "D", max_results)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, rows)
+        assert rs_val == py_val, (trial, rows)
+        n_checked += 1
+        py_raised, py_val = _outcome(_v_census_fetch, rows, "D", rid)
+        rs_raised, rs_val = _outcome(_rs_census_fetch, rows, "D", rid)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, rows)
+        assert rs_val == py_val, (trial, rows, rid)
+        n_checked += 1
+    assert n_checked == 400 * 11
+
+
+class _FakeRespText(_FakeResp):
+    def __init__(self, text):
+        super().__init__(None)
+        self.text = text
+
+
+def test_batch7_hostile_wrappers(monkeypatch):
+    import httpx
+    from gossamer.research_providers import (
+        WorldBankAdapter, FredAdapter, GitHubAdapter, CongressAdapter,
+        NASAAdapter, SoftwareHeritageAdapter, OverpassAdapter,
+        CensusAdapter)
+    wb = WorldBankAdapter(delay=0)
+    fr = FredAdapter(delay=0)
+    gh = GitHubAdapter(delay=0)
+    cg = CongressAdapter(delay=0)
+    import gossamer.research_providers as rp
+    na = rp.NASAAdapter(delay=0)
+    _ = NASAAdapter
+    swh = SoftwareHeritageAdapter(delay=0)
+    op = OverpassAdapter(delay=0)
+    ce = CensusAdapter(delay=0)
+    cases = [
+        (wb._search_impl, ("anything",), {"search_unavailable": True}),
+        (wb.fetch, ({"page": 1},),
+         [{"page": 1}]),
+        (fr.fetch, ("GDP",), "DATE,VALUE\n2024-01-01,1.5\n"),
+        (gh._search_impl, ("q",), {"items": [{"id": 1}]}),
+        (gh.fetch, ("o/r",), {"id": 1}),
+        (cg._search_impl, ("q",), {"results": [{"cgi_id": "C1"}]}),
+        (cg.fetch, ("C1",), {"cgi_id": "C1"}),
+        (na._search_impl, ("2024-05-01",),
+         {"near_earth_objects": {"2024-05-01": [{"neo_reference_id": "1"}]}}),
+        (na.fetch, ("1",), {"neo_reference_id": "1"}),
+        (swh._search_impl, ("https://github.com/o/r",),
+         {"url": "https://github.com/o/r"}),
+        (op._search_impl, ("[out:json];node;",), {"elements": [{"id": 1}]}),
+        (ce._search_impl, ({"dataset": "D", "get": "x", "for": "y"},),
+         [["h"], ["v"]]),
+    ]
+    for fn, args, body in cases:
+        textual = isinstance(body, str)
+        if fn == fr.fetch and textual:
+            monkeypatch.setattr(httpx, "get",
+                                lambda *a, **k: _FakeRespText(body))
+        else:
+            monkeypatch.setattr(httpx, "get",
+                                lambda *a, **k: _FakeResp(body))
+        try:
+            got = fn(*args)
+            got_e = None
+        except Exception as e:  # noqa: BLE001
+            got, got_e = None, f"{type(e).__name__}: {e}"
+        assert got_e is None, (fn, args, got_e)
+        assert isinstance(got, list) and len(got) >= 1, (fn, args)
+        for rec in got:
+            if fn == fr.fetch:
+                assert rec["raw"] == "DATE,VALUE\n2024-01-01,1.5", (fn, args)
+            else:
+                assert rec["raw"] == json.dumps(json.loads(rec["raw"])), (fn, args)
+            assert rec["source"] in (
+                "worldbank", "fred", "github", "congress", "nasa",
+                "softwareheritage", "overpass", "census"), (fn, args)
