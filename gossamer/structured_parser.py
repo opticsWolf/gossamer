@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
+from gossamer import _core as _rust
+
 # ────────────────────────────────────────────────────────────────
 # Optional document extractors
 #
@@ -90,17 +92,15 @@ DOCUMENT_EXTENSIONS = frozenset({
 
 def classify_link(url: str) -> str:
     """Classify a URL as 'document' (needs extract_document) or 'page'
-    (needs inspect_html_page), based on its path extension."""
-    from urllib.parse import urlparse
+    (needs inspect_html_page), based on its path extension.
 
-    try:
-        path = urlparse(url).path.lower()
-        for ext in DOCUMENT_EXTENSIONS:
-            if path.endswith(ext):
-                return "document"
-    except Exception:
-        pass
-    return "page"
+    Extension check in Rust (``src/miscutils.rs``); every non-``str``
+    input took the original ``except`` arm to ``"page"``, so the
+    wrapper returns that directly.
+    """
+    if not isinstance(url, str):
+        return "page"
+    return _rust.classify_link(url)
 
 
 def parse_page_range(spec: str) -> tuple[int, Optional[int]]:
@@ -116,7 +116,19 @@ def parse_page_range(spec: str) -> tuple[int, Optional[int]]:
     ``end`` is ``None`` when the range is open-ended; the caller clamps
     it to the actual page count. Raises ``ValueError`` for anything
     that is not a well-formed positive page or range.
+
+    Parsing in Rust (``src/miscutils.rs``); ``_parse_page_range_py``
+    below keeps the original body verbatim as the parity oracle and
+    as the fallback for non-string probes (identical errors).
     """
+    probe = (spec or "")
+    if not isinstance(probe, str):
+        return _parse_page_range_py(spec)
+    return _rust.parse_page_range(probe)
+
+
+def _parse_page_range_py(spec: str) -> tuple[int, Optional[int]]:
+    """Original pure-Python page-range parser (parity oracle)."""
     spec = (spec or "").strip()
     if not spec or spec == "-":
         return 1, None

@@ -9,7 +9,6 @@ provenance helpers, and the M12 markdown-link absolutizer.
 
 from __future__ import annotations
 
-import hashlib
 import math
 import re
 import threading
@@ -21,6 +20,7 @@ from urllib.parse import urlparse, urljoin
 
 from pydantic import BaseModel, Field
 
+from gossamer import _core as _rust
 from gossamer.structured_parser import FollowUpCandidate
 # ── Fetch observability (Tier 2.6) ─────────────────────────────
 class FetchStats:
@@ -100,11 +100,18 @@ class FetchStats:
 
 
 def _domain_of(url: str) -> str:
-    """Best-effort host (netloc) for per-domain stats; falls back to url."""
-    try:
-        return urlparse(url).netloc or url
-    except Exception:
-        return url
+    """Best-effort host (netloc) for per-domain stats; falls back to url.
+
+    Netloc extraction in Rust (``src/miscutils.rs``); non-``str``
+    inputs take the original ``try/except`` verbatim so the fallback
+    value (the input itself) matches exactly.
+    """
+    if not isinstance(url, str):
+        try:
+            return urlparse(url).netloc or url
+        except Exception:
+            return url
+    return _rust.domain_of(url)
 
 
 # Tier 2.6: Rust `tracing` -> Python `logging` bridge (opt-in via
@@ -236,8 +243,13 @@ def _utc_now_iso() -> str:
 
 
 def _sha256_hex(text: str) -> str:
-    """SHA-256 of a string, for content provenance hashes."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    """SHA-256 of a string, for content provenance hashes.
+
+    Digest in Rust (``src/miscutils.rs``); the ``encode`` call doubles
+    as the type gate so exotic inputs raise exactly as before.
+    """
+    text.encode("utf-8")
+    return _rust.sha256_hex(text)
 
 
 def _provenance_from_fetch_meta(

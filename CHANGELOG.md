@@ -4,6 +4,23 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.21] — Rust port M21: models/structured_parser pure kernels
+
+- New `src/miscutils.rs`: `models._domain_of` (manual netloc
+  extraction — `//`/valid-`scheme://` only, case/userinfo/port
+  preserved, empty falls back to input), `models._sha256_hex`
+  (`sha2` crate), `structured_parser.classify_link` (query/fragment
+  stripped before the extension check — the bug that bit on the
+  first test run), `structured_parser.parse_page_range` (1-based
+  inclusive ranges, byte-identical `ValueError` texts via
+  `py_repr`, own `py_int` so the module stays independent).
+  Wrappers keep the original gates/fallbacks (non-`str` inputs use
+  the verbatim logic; `_parse_page_range_py` remains as the parity
+  oracle). Pydantic models, oxide orchestration, wall-clock
+  provenance, and the `urljoin` absolutizer stay Python by design.
+- Caught by parity: `url_path` must strip `?`/`#` *before*
+  authority-splitting; 23-digit pages fit `i128` on both sides.
+
 ## [0.8.20] — Rust port M20: stateful-adjacent pure kernels
 
 - New `src/cacheutils.rs` (`blake2 0.11`): `Cache._disk_key`

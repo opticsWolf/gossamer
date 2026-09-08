@@ -5452,3 +5452,109 @@ def test_cacheutils_parity(tmp_path):
         rs_raised, rs_val = _outcome(_safe_name, bad, "png")
         assert (py_raised, rs_raised) == (py_raised, py_raised), bad
         assert rs_val == py_val, bad
+
+
+# --- batch 11: models/structured_parser pure kernels (v0.8.21) -----
+# Pydantic models, oxide orchestration, wall-clock provenance and the
+# markdown absolutizer stay Python; only the deterministic string
+# kernels port.
+
+def _v_domain_of(url):
+    from urllib.parse import urlparse
+    try:
+        return urlparse(url).netloc or url
+    except Exception:
+        return url
+
+
+def _v_sha256_hex(text):
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _v_classify(url):
+    from urllib.parse import urlparse
+    from gossamer.structured_parser import DOCUMENT_EXTENSIONS
+    try:
+        path = urlparse(url).path.lower()
+        for ext in DOCUMENT_EXTENSIONS:
+            if path.endswith(ext):
+                return "document"
+    except Exception:
+        pass
+    return "page"
+
+
+def test_miscutils_parity():
+    from gossamer import _core
+    from gossamer.models import _domain_of, _sha256_hex
+    from gossamer.structured_parser import (
+        classify_link, parse_page_range, _parse_page_range_py)
+    for url in ["https://example.com/x", "http://user:pw@host:8080/p",
+                "//cdn.example/a", "not a url", "", "mailto:a@b",
+                "https://EXAMPLE.COM/x", "http://[::1]:8000/i",
+                "ftp://f.example/d.pdf", "a//b", "http:host",
+                "HTTPS://UPPER.EXAMPLE/Q?q=1#frag", "x" * 300,
+                "https://example.com:abc/", "//", "://",
+                "a:b/c", "tel:+123", "/just/a/path.pdf"]:
+        assert _core.domain_of(url) == _v_domain_of(url), url
+        assert _domain_of(url) == _v_domain_of(url), url
+    for bad in [None, 5, 0, b"x", ["l"], ("u",), {"k": 1}]:
+        assert _domain_of(bad) == _v_domain_of(bad), bad
+    for text in ["", "abc", "hello world", "Ünïcodé", "x" * 1000,
+                 "line\nbreak"]:
+        assert _core.sha256_hex(text) == _v_sha256_hex(text), text
+    for bad in [None, 5, b"x", ["l"]]:
+        py_raised, py_val = _outcome(_v_sha256_hex, bad)
+        rs_raised, rs_val = _outcome(_sha256_hex, bad)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), bad
+        assert rs_val == py_val, bad
+    for url in ["https://x/a.pdf", "https://x/a.PDF",
+                "https://x/a.pdf?dl=1#frag", "https://x/a",
+                "https://x/data.JSON", "https://x/feed.xml",
+                "https://x/feed.rss", "https://x/f.atom",
+                "http://x/DOC.DOCX", "http://x/sheet.XLSX",
+                "http://x/slides.pptx", "http://x/f.csv",
+                "http://x/n.txt", "http://x/r.md", "",
+                "a/b/csv", "//h/f.PdF?q=1", "not a url",
+                "https://x/a.pdfx", "https://x/.pdf"]:
+        assert _core.classify_link(url) == _v_classify(url), url
+        assert classify_link(url) == _v_classify(url), url
+    for bad in [None, 5, 0, b"x", ["l"], {"u": 1}]:
+        assert classify_link(bad) == _v_classify(bad) == "page", bad
+    for spec in ["10", "10-20", "10-", "-20", "", "-", " 10 - 20 ",
+                 "1", "1-1", "007", " 5 ", "1_0", "+3", " 1 - 3 ",
+                 "999999", "10-10", "99999999999999999999999"]:
+        assert _core.parse_page_range(spec) == _parse_page_range_py(spec), spec
+        assert parse_page_range(spec) == _parse_page_range_py(spec), spec
+    for spec in ["x", "0", "-0", "10-5", "1-2-3", "--5", "5--3",
+                 "1.5", "10 - 5"]:
+        py_raised, py_val = _outcome(_parse_page_range_py, spec)
+        rs_raised, rs_val = _outcome(_core.parse_page_range, spec)
+        assert py_raised and rs_raised, spec
+        assert rs_val == py_val, spec
+    # Non-string probes fall back to the verbatim original.
+    for spec in [None, 0, False, 5, 3.5, b"10", ["1"], {"a": 1}]:
+        py_raised, py_val = _outcome(_parse_page_range_py, spec)
+        rs_raised, rs_val = _outcome(parse_page_range, spec)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), spec
+        assert rs_val == py_val, spec
+
+
+def test_miscutils_fuzz():
+    import random
+    from gossamer import _core
+    from gossamer.structured_parser import _parse_page_range_py
+    rng = random.Random(20260911)
+    alphabet = "abcXYZ019 /:?#.-_+Üß"
+    for trial in range(400):
+        url = "".join(rng.choice(alphabet) for _ in range(rng.randrange(40)))
+        assert _core.domain_of(url) == _v_domain_of(url), (trial, url)
+        assert _core.classify_link(url) == _v_classify(url), (trial, url)
+    for trial in range(400):
+        spec = "".join(
+            rng.choice("0123456789- xyz_+") for _ in range(rng.randrange(8)))
+        py_raised, py_val = _outcome(_parse_page_range_py, spec)
+        rs_raised, rs_val = _outcome(_core.parse_page_range, spec)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, spec)
+        assert rs_val == py_val, (trial, spec)

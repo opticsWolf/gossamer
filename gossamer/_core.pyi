@@ -822,3 +822,19 @@ def resource_ext_from_content_type(ctype: str) -> str | None:
 def resource_safe_name(base: str, ext: str) -> str:
     """Slug base + optional extension (src/cacheutils.rs)."""
     ...
+
+def domain_of(url: str) -> str:
+    """Best-effort host (netloc) or the input (src/miscutils.rs)."""
+    ...
+
+def sha256_hex(text: str) -> str:
+    """SHA-256 hex of the UTF-8 bytes (src/miscutils.rs)."""
+    ...
+
+def classify_link(url: str) -> str:
+    """'document' or 'page' by path extension (src/miscutils.rs)."""
+    ...
+
+def parse_page_range(spec: str) -> tuple[int, int | None]:
+    """1-based inclusive (start, end), None = open (src/miscutils.rs)."""
+    ...
