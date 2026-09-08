@@ -4,6 +4,20 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.23] — Rust port M23: upstream RDFa fix integrated
+
+- `meta_oxide` fork rev `81bdb53` → `a55c09f`
+  (`fix/rdfa-property-typeof-recursion`, pushed to
+  `opticsWolf/meta_oxide`): the item root's `NodeId` is threaded
+  through RDFa property/value extraction, so a `property`+`typeof`
+  element falls back to its text value instead of recursing without
+  bound. Adds `ego-tree = "0.6"` over there + 2 regression tests
+  (664 passed over there).
+- Gossamer side: the `[typeof][property]` section-skip guard is
+  removed (it would now drop valid data); cycle fixtures assert the
+  fixed output instead of oracle equality (the installed 81bdb53
+  bridge still crashes on them, so the fuzz oracle-skip stays).
+
 ## [0.8.22] — Rust port M22: meta-oxide as a Rust crate
 
 - New `src/metaextract.rs` on the `meta_oxide` Rust crate (fork rev

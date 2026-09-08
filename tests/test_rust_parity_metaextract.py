@@ -1,10 +1,14 @@
 """Differential parity: Rust meta-oxide kernels vs the Python bridge (M22).
 
-Oracle is the installed `meta_oxide` package (fork rev 81bdb53 — the
-exact code the Rust crate dependency vendors). Two documented
-refinements assert their intended shape instead of equality:
-`twitter` single uses the with-fallback mapping (as `extract_all`
-always did), and `microformats` uses the combined parser shape.
+Oracle is the installed `meta_oxide` package (fork rev 81bdb53).
+The Rust crate dependency vendors rev a55c09f, whose only delta is
+the RDFa property+typeof recursion fix — so cycle inputs assert the
+FIXED output (hardcoded) instead of oracle equality, and the fuzz
+oracle-skip for those inputs stays (the installed package still
+crashes on them). Two documented refinements assert their intended
+shape instead of equality: `twitter` single uses the with-fallback
+mapping (as `extract_all` always did), and `microformats` uses the
+combined parser shape.
 """
 
 import json
@@ -110,15 +114,20 @@ CYCLE_FIXTURES = [
 ]
 
 
-def test_rdfa_cycle_guard():
-    # The old bridge stack-overflows the process on these (upstream
-    # infinite recursion); the kernel must survive with rdfa absent.
-    for html in CYCLE_FIXTURES:
-        for base in (None, "https://example.com", ""):
-            rs = _rs_all(html, base)
-            assert isinstance(rs, dict)
-            assert "rdfa" not in rs
-            assert rs.get("meta") is not None
+def test_rdfa_cycle_fixed():
+    # Upstream fix (rev a55c09f): property+typeof no longer recurses —
+    # the typeof side is captured by the element's own item and the
+    # property falls back to the text value. Hardcoded: the installed
+    # 81bdb53 oracle still stack-overflows on these.
+    rs = _rs_all(CYCLE_FIXTURES[0], None)
+    # Note the `""` key: the inner `<div property="">` carries an
+    # empty property name, which upstream records verbatim.
+    assert rs["rdfa"] == [{"type": ["summary"], "": "t", "x": "t"}], \
+        rs["rdfa"]
+    rs = _rs_all(CYCLE_FIXTURES[1], None)
+    assert rs["rdfa"] == [{"type": ["T"], "p": "text"}], rs["rdfa"]
+    rs = _rs_all(CYCLE_FIXTURES[2], None)
+    assert rs["rdfa"] == [{"type": ["T"], "p": "x"}], rs["rdfa"]
 
 
 def test_extract_all_parity():
@@ -212,9 +221,9 @@ def test_fuzz():
         base = rng.choice([None, "https://example.com/p", ""])
         rs = _rs_all(html, base)
         if _has_rdfa_cycle(html):
-            # Oracle would stack-overflow; assert graceful absence
-            # and still compare the crash-free single sections.
-            assert "rdfa" not in rs, (trial, html)
+            # The installed 81bdb53 oracle would stack-overflow here;
+            # the fixed kernel must still produce a well-formed section.
+            assert isinstance(rs.get("rdfa", []), list), (trial, html)
             assert (json.loads(_core.meta_extract_meta(html, base))
                     == meta_oxide.extract_meta(html, base)), (trial, html)
             assert (json.loads(_core.meta_extract_jsonld(html, base))

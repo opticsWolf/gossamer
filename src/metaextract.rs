@@ -2,7 +2,8 @@
 //!
 //! Replaces the `meta-oxide` Python bridge
 //! (`meta-oxide @ git+...`, which made gossamer un-publishable to
-//! PyPI). Same extraction code (fork rev `81bdb53`), reached through
+//! PyPI). Same extraction code (fork rev `a55c09f`, which also fixes
+//! the RDFa property+typeof infinite recursion), reached through
 //! its C-ABI section functions; outputs pass through `sparse()` so
 //! they match the Python `to_py_dict` shape (absent `None`s, no empty
 //! vecs). Two documented refinements vs the old bridge: `twitter`
@@ -18,7 +19,6 @@ use std::borrow::Cow;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
-use scraper::Selector;
 use serde_json::{Map, Value};
 
 use meta_oxide::ffi;
@@ -219,29 +219,6 @@ fn fix_oembed_endpoint(mut ep: Map<String, Value>) -> Map<String, Value> {
     ep
 }
 
-/// Upstream infinite-recursion guard: an element carrying BOTH
-/// `property` and `typeof` sends `extract_item_with_context` +
-/// `extract_property_value_with_context` into unbounded mutual
-/// recursion (process-killing stack overflow in the old bridge too).
-/// Any such element is always reached by the RDFa walk (it bears
-/// `typeof`, so it is a root or nested under one), hence
-/// document-wide presence ⟺ crash. Screen cheaply, confirm with
-/// one selector parse, and skip the section when present.
-fn rdfa_cycle_present(html: &str) -> bool {
-    let lower = html.to_lowercase();
-    if !(lower.contains("typeof") && lower.contains("property")) {
-        return false;
-    }
-    let Ok(doc) = std::panic::catch_unwind(|| scraper::Html::parse_document(html))
-    else {
-        return true; // unparseable: stay safe
-    };
-    let Ok(sel) = Selector::parse("[typeof][property]") else {
-        return false; // static selector: unreachable
-    };
-    doc.select(&sel).next().is_some()
-}
-
 fn is_nonempty_array(v: &Value) -> bool {
     matches!(v, Value::Array(a) if !a.is_empty())
 }
@@ -318,17 +295,18 @@ pub fn meta_extract_all_impl(html: &str, base_url: Option<&str>) -> String {
             }
         }
     }
-    if !rdfa_cycle_present(html) {
-        if let Some(Value::Array(items)) =
-            section(ffi::meta_oxide_extract_rdfa, html, base_url)
-        {
-            let mapped: Vec<Value> = items
-                .into_iter()
-                .map(|e| flat_item(e, &["type", "about", "vocab"]))
-                .collect();
-            if !mapped.is_empty() {
-                out.insert("rdfa".to_string(), Value::Array(mapped));
-            }
+    // Fixed upstream (rev a55c09f): a `property`+`typeof` element no
+    // longer recurses — its typeof side is captured by its own item
+    // and the property falls back to the text value.
+    if let Some(Value::Array(items)) =
+        section(ffi::meta_oxide_extract_rdfa, html, base_url)
+    {
+        let mapped: Vec<Value> = items
+            .into_iter()
+            .map(|e| flat_item(e, &["type", "about", "vocab"]))
+            .collect();
+        if !mapped.is_empty() {
+            out.insert("rdfa".to_string(), Value::Array(mapped));
         }
     }
     if let Some(v) = section_no_base(ffi::meta_oxide_extract_dublin_core, html) {

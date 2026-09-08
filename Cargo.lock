@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "gossamer-core"
-version = "0.8.22"
+version = "0.8.23"
 dependencies = [
  "blake2",
  "html2md",
@@ -1282,9 +1282,10 @@ dependencies = [
 [[package]]
 name = "meta_oxide"
 version = "0.1.2"
-source = "git+https://github.com/opticsWolf/meta_oxide.git?rev=81bdb53#81bdb53cdf6efac60a6abbdac1bee6b358be5b2f"
+source = "git+https://github.com/opticsWolf/meta_oxide.git?rev=a55c09f#a55c09f1e93892accc029bfb6255949ff5a3e89a"
 dependencies = [
  "cbindgen",
+ "ego-tree 0.6.3",
  "scraper 0.20.0",
  "serde",
  "serde_json",
