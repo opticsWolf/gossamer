@@ -701,6 +701,39 @@ mod tests {
         assert!(subscript_hits(Some(&n), 5).is_err());
         assert_eq!(subscript_hits(None, 5).unwrap().len(), 0);
     }
+
+    #[test]
+    fn batch6_scholarly_shapes() {
+        // OpenAlex: author folding + url/doi asymmetry.
+        let body = r#"{"results": [{"id": "W1", "title": "", "doi": null, "authorships": [{"author": {"display_name": "A."}}, {"author": {}}]}]}"#;
+        let out = openalex_parse_search_impl(body, 5).unwrap();
+        assert_eq!(out[0]["title"], "");
+        assert_eq!(out[0]["url"], "W1");
+        assert_eq!(out[0]["authors"], "A.");
+        assert_eq!(out[0]["snippet"], "A.");
+        // Crossref: title-first-char, date-parts head, abstract head.
+        let body = r#"{"message": {"items": [{"DOI": "10.1/x", "title": ["Ab"], "URL": "U", "published": {"date-parts": [[2024]]}, "author": [{"family": "F"}], "abstract": "Abc"}]}}"#;
+        let out = crossref_parse_search_impl(body, 5).unwrap();
+        assert_eq!(out[0]["title"], "Ab");
+        assert_eq!(out[0]["published"], serde_json::json!([2024]));
+        assert_eq!(out[0]["snippet"], "Abc");
+        // Crossref fetch: direct message indexing + DOI fallback.
+        assert!(crossref_parse_fetch_impl("{}", &Value::Null).is_err());
+        let out = crossref_parse_fetch_impl(
+            r#"{"message": {}}"#, &Value::String("10.1/f".to_string())).unwrap();
+        assert_eq!(out["id"], "10.1/f");
+        // OpenLibrary: unconditional fetch URL vs guarded search URL.
+        let body = r#"{"docs": [{"title": "T", "author": ["A."], "isbn": ["1"]}]}"#;
+        let out = openlibrary_parse_search_impl(body, 5, "https://b").unwrap();
+        assert_eq!(out[0]["url"], "");
+        let out =
+            openlibrary_parse_fetch_impl("{}", "/books/K", "https://b").unwrap();
+        assert_eq!(out["url"], "https://b/books/K");
+        // DOAJ: doi hunt skips non-doi identifiers, missing id reads None.
+        let body = r#"{"results": [{"id": "r", "bibjson": {"identifier": [{"type": "issn", "id": "1"}, {"type": "doi"}]}}]}"#;
+        let out = doaj_parse_search_impl(body, 5).unwrap();
+        assert_eq!(out[0]["doi"], Value::Null);
+    }
 }
 
 fn type_error_not_iterable(t: &str) -> String {
@@ -3966,5 +3999,797 @@ pub fn alphavantage_parse_fetch(py: Python, response_json: &str, rid: &str) -> P
             both.insert("meta".to_string(), meta);
             serde_json::to_string(&Value::Object(both)).map_err(|e| e.to_string())
         })
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ── OpenAlex ────────────────────────────────────────────────────
+
+/// `a.get("author", {}).get("display_name", "")` for one authorship:
+/// `a` must be a dict; `author` missing → ""; present values (even
+/// falsy) read as-is; non-dicts raise on the inner `.get`.
+fn openalex_author_name(a: &Value) -> Result<Value, String> {
+    let m = match a {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(a))),
+    };
+    Ok(match m.get("author") {
+        None => Value::String(String::new()),
+        Some(Value::Object(am)) => am
+            .get("display_name")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+        Some(other) => return Err(attr_error(json_type(other))),
+    })
+}
+
+fn openalex_work_impl(w: &Value, full: bool) -> Result<Value, String> {
+    let m = match w {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(w))),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("openalex".to_string()),
+    );
+    rec.insert(
+        "id".to_string(),
+        m.get("id").cloned().unwrap_or(Value::String(String::new())),
+    );
+    // `w.get("title") or ""`: falsy titles fold to "".
+    rec.insert(
+        "title".to_string(),
+        match m.get("title") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => Value::String(String::new()),
+        },
+    );
+    // `w.get("doi") or w.get("id")`: no defaults — both may be None.
+    rec.insert(
+        "url".to_string(),
+        match m.get("doi") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => m.get("id").cloned().unwrap_or(Value::Null),
+        },
+    );
+    rec.insert(
+        "doi".to_string(),
+        m.get("doi").cloned().unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "published".to_string(),
+        m.get("publication_date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    if full {
+        // Authors render with the *filtered* join index on TypeError.
+        // `w.get("authorships", [])`: missing → []; lists item-wise;
+        // dicts/strings iterate (keys/chars) and fail per item;
+        // anything else raises TypeError.
+        let raw_authors: Vec<Value> = match m.get("authorships") {
+            None => Vec::new(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .map(openalex_author_name)
+                .collect::<Result<Vec<Value>, String>>()?,
+            Some(Value::String(s)) => s
+                .chars()
+                .map(|c| openalex_author_name(&Value::String(c.to_string())))
+                .collect::<Result<Vec<Value>, String>>()?,
+            Some(Value::Object(mm)) => mm
+                .keys()
+                .map(|k| openalex_author_name(&Value::String(k.clone())))
+                .collect::<Result<Vec<Value>, String>>()?,
+            Some(other) => return Err(type_error_not_iterable(json_type(other))),
+        };
+        let mut kept: Vec<(String, &'static str)> = Vec::new();
+        for name in raw_authors.iter() {
+            if !is_truthy(name) {
+                continue;
+            }
+            kept.push((py_value_repr(name), json_type(name)));
+        }
+        let mut authors: Vec<String> = Vec::with_capacity(kept.len());
+        for (i, (text, t)) in kept.iter().enumerate() {
+            if *t != "str" {
+                return Err(sequence_item_error(i, t));
+            }
+            authors.push(text.clone());
+        }
+        let joined = authors.join(", ");
+        rec.insert("authors".to_string(), Value::String(joined.clone()));
+        rec.insert(
+            "citations".to_string(),
+            m.get("cited_by_count").cloned().unwrap_or(Value::from(0)),
+        );
+        rec.insert("snippet".to_string(), Value::String(joined));
+    }
+    Ok(Value::Object(rec))
+}
+
+pub fn openalex_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("results", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for w in hits {
+        out.push(openalex_work_impl(w, true)?);
+    }
+    Ok(out)
+}
+
+pub fn openalex_parse_fetch_impl(response_json: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    openalex_work_impl(&body, false)
+}
+
+// ── Crossref ────────────────────────────────────────────────────
+
+/// `(w.get("title") or [""])[0]`: falsy titles fold to `[""]`;
+/// truthy lists index (empty impossible — falsy caught); truthy
+/// strings yield their first char; anything else raises TypeError.
+fn crossref_title(title: Option<&Value>) -> Result<Value, String> {
+    let t = match title {
+        None => return Ok(Value::String(String::new())),
+        Some(v) if !is_truthy(v) => return Ok(Value::String(String::new())),
+        Some(v) => v,
+    };
+    match t {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(v.clone()),
+            None => Ok(Value::String(String::new())),
+        },
+        Value::String(s) => Ok(Value::String(
+            s.chars().next().map(|c| c.to_string()).unwrap_or_default(),
+        )),
+        other => Err(type_error_not_subscriptable(json_type(other))),
+    }
+}
+
+/// `(w.get("published", {}) or {}).get("date-parts", [[""]])[0]`:
+/// missing/falsy published folds to `{}`; truthy non-dicts raise on
+/// `.get`; the date-parts default applies only when missing.
+fn crossref_published(published: Option<&Value>) -> Result<Value, String> {
+    let m = match published {
+        None => return Ok(Value::Array(vec![Value::String(String::new())])),
+        Some(v) if !is_truthy(v) => {
+            return Ok(Value::Array(vec![Value::String(String::new())]))
+        }
+        Some(Value::Object(m)) => m,
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    let parts = match m.get("date-parts") {
+        None => Value::Array(vec![Value::Array(vec![Value::String(String::new())])]),
+        Some(v) => v.clone(),
+    };
+    // `[0]`: lists (empty → IndexError), strings (chars; empty →
+    // IndexError), dicts (KeyError 0), anything else TypeError.
+    match &parts {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(v.clone()),
+            None => Err("IndexError: list index out of range".to_string()),
+        },
+        Value::String(s) => match s.chars().next() {
+            Some(c) => Ok(Value::String(c.to_string())),
+            None => Err("IndexError: string index out of range".to_string()),
+        },
+        Value::Object(_) => Err("KeyError: 0".to_string()),
+        other => Err(type_error_not_subscriptable(json_type(other))),
+    }
+}
+
+/// `[a.get("family", a.get("name", "")) for a in ...]`: `a` must be a
+/// dict; the `name` default applies only when `family` is missing.
+fn crossref_author_name(a: &Value) -> Result<Value, String> {
+    let m = match a {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(a))),
+    };
+    Ok(match m.get("family") {
+        Some(v) => v.clone(),
+        None => m
+            .get("name")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    })
+}
+
+fn crossref_work_impl(w: &Value, fallback_id: &Value) -> Result<Value, String> {
+    let m = match w {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(w))),
+    };
+    // Evaluation order matches the original: title, then the author
+    // list, then published, then the abstract — an early field's
+    // error precedes any later field's.
+    let title = crossref_title(m.get("title"))?;
+    // `w.get("author", [])`: missing → []; present values iterate
+    // (lists item-wise, dicts key-wise, strings char-wise — failing
+    // per item); anything else raises TypeError.
+    let author_items: Vec<Value> = match m.get("author") {
+        None => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => {
+            s.chars().map(|c| Value::String(c.to_string())).collect()
+        }
+        Some(Value::Object(mm)) => {
+            mm.keys().map(|k| Value::String(k.clone())).collect()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    let mut raw_names: Vec<Value> = Vec::with_capacity(author_items.len());
+    for a in author_items.iter() {
+        raw_names.push(crossref_author_name(a)?);
+    }
+    // The author *join* runs after `published` in the original dict
+    // literal, so it is deferred until then.
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("crossref".to_string()),
+    );
+    rec.insert(
+        "id".to_string(),
+        m.get("DOI").cloned().unwrap_or(fallback_id.clone()),
+    );
+    rec.insert("title".to_string(), title);
+    // `w.get("URL")`: no default — missing reads None.
+    rec.insert(
+        "url".to_string(),
+        m.get("URL").cloned().unwrap_or(Value::Null),
+    );
+    rec.insert(
+        "doi".to_string(),
+        m.get("DOI")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("published".to_string(), crossref_published(m.get("published"))?);
+    // `", ".join(a for a in authors if a)`: falsy dropped, then
+    // strict (runs after `published` in the dict literal).
+    let mut kept: Vec<(String, &'static str)> = Vec::new();
+    for name in raw_names.iter() {
+        if !is_truthy(name) {
+            continue;
+        }
+        kept.push((py_value_repr(name), json_type(name)));
+    }
+    let mut authors: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(sequence_item_error(i, t));
+        }
+        authors.push(text.clone());
+    }
+    rec.insert(
+        "authors".to_string(),
+        Value::String(authors.join(", ")),
+    );
+    // `(w.get("abstract") or "")[:240]`: falsy folds; truthy lists
+    // slice (kept as lists!); truthy strings head; else TypeError.
+    let abstract_folded = match m.get("abstract") {
+        None => Value::String(String::new()),
+        Some(v) if !is_truthy(v) => Value::String(String::new()),
+        Some(v) => v.clone(),
+    };
+    rec.insert(
+        "snippet".to_string(),
+        match &abstract_folded {
+            Value::String(s) => Value::String(char_head(s, 240).to_string()),
+            Value::Array(a) => {
+                Value::Array(a.iter().take(240).cloned().collect())
+            }
+            Value::Object(_) => return Err(subscript_keyerror(240)),
+            other => return Err(type_error_not_subscriptable(json_type(other))),
+        },
+    );
+    Ok(Value::Object(rec))
+}
+
+pub fn crossref_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `msg = resp.json().get("message", {})` (missing → {}; present
+    // values kept as-is), then `msg.get("items", [])[:max_results]`.
+    let msg = match obj.get("message") {
+        None => Value::Object(serde_json::Map::new()),
+        Some(v) => v.clone(),
+    };
+    let msg_map = match &msg {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&msg))),
+    };
+    let hits: Vec<&Value> = match msg_map.get("items") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for w in hits {
+        out.push(crossref_work_impl(w, &Value::String(String::new()))?);
+    }
+    Ok(out)
+}
+
+pub fn crossref_parse_fetch_impl(
+    response_json: &str,
+    fallback: &Value,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `w = resp.json()["message"]`: direct indexing (missing key →
+    // KeyError; lists/strings index by integer only; anything else
+    // is not subscriptable).
+    let w = match &body {
+        Value::Object(m) => match m.get("message") {
+            Some(v) => v.clone(),
+            None => return Err("KeyError: message".to_string()),
+        },
+        Value::Array(_) => {
+            return Err(
+                "TypeError: list indices must be integers or slices, not str".to_string(),
+            );
+        }
+        Value::String(_) => {
+            return Err("TypeError: string indices must be integers, not 'str'".to_string());
+        }
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    crossref_work_impl(&w, fallback)
+}
+
+// ── OpenLibrary ─────────────────────────────────────────────────
+
+fn openlibrary_search_row_impl(d: &Value, base: &str) -> Result<Value, String> {
+    let m = match d {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(d))),
+    };
+    let key = m
+        .get("key")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    // `", ".join(d.get("author", []) or [])`: falsy folds; truthy
+    // values iterate strictly (lists item-wise, dicts key-wise,
+    // strings char-wise — non-strings raise at the raw index).
+    let author_vals: Vec<Value> = match m.get("author") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => {
+            s.chars().map(|c| Value::String(c.to_string())).collect()
+        }
+        Some(Value::Object(mm)) => {
+            mm.keys().map(|k| Value::String(k.clone())).collect()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    let mut authors: Vec<String> = Vec::with_capacity(author_vals.len());
+    for (i, a) in author_vals.iter().enumerate() {
+        match a {
+            Value::String(s) => authors.push(s.clone()),
+            _ => return Err(sequence_item_error(i, json_type(a))),
+        }
+    }
+    // `", ".join(d.get("isbn", []) or [])[:120]`: strict join, then
+    // a char slice of the joined string (never raises).
+    let isbn_vals: Vec<Value> = match m.get("isbn") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => {
+            s.chars().map(|c| Value::String(c.to_string())).collect()
+        }
+        Some(Value::Object(mm)) => {
+            mm.keys().map(|k| Value::String(k.clone())).collect()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    let mut isbns: Vec<String> = Vec::with_capacity(isbn_vals.len());
+    for (i, v) in isbn_vals.iter().enumerate() {
+        match v {
+            Value::String(s) => isbns.push(s.clone()),
+            _ => return Err(sequence_item_error(i, json_type(v))),
+        }
+    }
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("openlibrary".to_string()),
+    );
+    rec.insert("id".to_string(), key.clone());
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "url".to_string(),
+        if is_truthy(&key) {
+            Value::String(format!("{base}{0}", py_value_repr(&key)))
+        } else {
+            Value::String(String::new())
+        },
+    );
+    rec.insert(
+        "published".to_string(),
+        m.get("first_publish_year")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "authors".to_string(),
+        Value::String(authors.join(", ")),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(isbns.join(", ").as_str(), 120).to_string()),
+    );
+    Ok(Value::Object(rec))
+}
+
+pub fn openlibrary_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    base: &str,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("docs", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("docs") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for d in hits {
+        out.push(openlibrary_search_row_impl(d, base)?);
+    }
+    Ok(out)
+}
+
+fn openlibrary_fetch_authors_impl(book: &serde_json::Map<String, Value>) -> Result<Vec<Value>, String> {
+    // `for a in book.get("authors", []) or []`: falsy folds; truthy
+    // values iterate (lists item-wise, dicts key-wise, strings
+    // char-wise); anything else raises TypeError. Strings append
+    // as-is; dicts append `name`, else `author.key` when that is a
+    // dict (missing → ""); anything else is silently skipped.
+    let items: Vec<Value> = match book.get("authors") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => {
+            s.chars().map(|c| Value::String(c.to_string())).collect()
+        }
+        Some(Value::Object(mm)) => {
+            mm.keys().map(|k| Value::String(k.clone())).collect()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    let mut out = Vec::new();
+    for a in items.iter() {
+        match a {
+            Value::String(s) => out.push(Value::String(s.clone())),
+            Value::Object(am) => {
+                if let Some(name) = am.get("name") {
+                    out.push(name.clone());
+                } else if let Some(Value::Object(sub)) = am.get("author") {
+                    out.push(
+                        sub.get("key")
+                            .cloned()
+                            .unwrap_or(Value::String(String::new())),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+pub fn openlibrary_parse_fetch_impl(
+    response_json: &str,
+    key_s: &str,
+    base: &str,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let book = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `key = book.get("key", key)`: missing → the request key.
+    let key = book
+        .get("key")
+        .cloned()
+        .unwrap_or(Value::String(key_s.to_string()));
+    // `", ".join(a for a in authors if a)`: falsy dropped, then
+    // strict at the surviving index.
+    let mut kept: Vec<(String, &'static str)> = Vec::new();
+    for a in openlibrary_fetch_authors_impl(book)?.iter() {
+        if !is_truthy(a) {
+            continue;
+        }
+        kept.push((py_value_repr(a), json_type(a)));
+    }
+    let mut authors: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(sequence_item_error(i, t));
+        }
+        authors.push(text.clone());
+    }
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("openlibrary".to_string()),
+    );
+    rec.insert("id".to_string(), key.clone());
+    rec.insert(
+        "title".to_string(),
+        book.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    // Unconditional: `f"{BASE}{key}"` (no truthiness check here,
+    // unlike search).
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!("{base}{0}", py_value_repr(&key))),
+    );
+    // `book.get("first_publish_year") or ... or ""`: no defaults —
+    // missing reads propagate as None through the chain.
+    let published = match book.get("first_publish_year") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ => match book.get("first_publish_date") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => match book.get("publish_date") {
+                Some(v) if is_truthy(v) => v.clone(),
+                _ => Value::String(String::new()),
+            },
+        },
+    };
+    rec.insert("published".to_string(), published);
+    rec.insert(
+        "authors".to_string(),
+        Value::String(authors.join(", ")),
+    );
+    Ok(Value::Object(rec))
+}
+
+// ── DOAJ ────────────────────────────────────────────────────────
+fn doaj_row_impl(r: &Value) -> Result<Value, String> {
+    let m = match r {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(r))),
+    };
+    // `bib = r.get("bibjson", {}) or {}`: falsy folds; truthy
+    // non-dicts raise on the first `.get` (identifier read below —
+    // nothing raisable precedes it, so eager is exact).
+    let bib: Option<&serde_json::Map<String, Value>> = match m.get("bibjson") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(bm)) => Some(bm),
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    // DOI hunt: non-dict identifier items are silently skipped;
+    // `id` reads raw (missing → None!). Present non-list identifiers
+    // iterate harmlessly (keys/chars never match the dict filter).
+    let mut dois: Vec<Value> = Vec::new();
+    if let Some(bm) = bib {
+        match bm.get("identifier") {
+            None => {}
+            Some(Value::Array(a)) => {
+                for i in a.iter() {
+                    if let Value::Object(im) = i {
+                        if matches!(im.get("type"), Some(Value::String(t)) if t == "doi")
+                        {
+                            dois.push(im.get("id").cloned().unwrap_or(Value::Null));
+                        }
+                    }
+                }
+            }
+            Some(Value::Object(_)) | Some(Value::String(_)) => {}
+            Some(other) => return Err(type_error_not_iterable(json_type(other))),
+        }
+    }
+    // `bib.get("author", [])` only when it is a list (double `.get`,
+    // same result — no side effects either way).
+    let author_items: Vec<&Value> = match bib {
+        None => Vec::new(),
+        Some(bm) => match bm.get("author") {
+            Some(Value::Array(a)) => a.iter().collect(),
+            _ => Vec::new(),
+        },
+    };
+    // Strict join at the raw index (no truthiness filter here).
+    let mut parts: Vec<(String, &'static str)> = Vec::new();
+    for a in author_items.iter() {
+        match a {
+            Value::Object(am) => match am.get("name") {
+                None => parts.push((String::new(), "str")),
+                Some(Value::String(s)) => parts.push((s.clone(), "str")),
+                Some(v) => parts.push((py_value_repr(v), json_type(v))),
+            },
+            _ => parts.push((py_value_repr(a), "str")),
+        }
+    }
+    let mut author_names: Vec<String> = Vec::with_capacity(parts.len());
+    for (i, (text, t)) in parts.iter().enumerate() {
+        if *t != "str" {
+            return Err(sequence_item_error(i, t));
+        }
+        author_names.push(text.clone());
+    }
+    let title = match bib {
+        None => Value::String(String::new()),
+        Some(bm) => match bm.get("title") {
+            None => Value::String(String::new()),
+            Some(v) if !is_truthy(v) => Value::String(String::new()),
+            Some(v) => v.clone(),
+        },
+    };
+    let abstract_folded = match bib {
+        None => Value::String(String::new()),
+        Some(bm) => match bm.get("abstract") {
+            None => Value::String(String::new()),
+            Some(v) if !is_truthy(v) => Value::String(String::new()),
+            Some(v) => v.clone(),
+        },
+    };
+    let snippet = match &abstract_folded {
+        Value::String(s) => Value::String(char_head(s, 240).to_string()),
+        Value::Array(a) => Value::Array(a.iter().take(240).cloned().collect()),
+        Value::Object(_) => return Err(subscript_keyerror(240)),
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("doaj".to_string()));
+    rec.insert(
+        "id".to_string(),
+        m.get("id").cloned().unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("title".to_string(), title);
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://doaj.org/article/{0}",
+            py_value_repr(m.get("id").unwrap_or(&Value::String(String::new())))
+        )),
+    );
+    // `dois[0] if dois else ""`: the first hit stays raw (even None).
+    rec.insert(
+        "doi".to_string(),
+        dois.into_iter().next().unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "authors".to_string(),
+        Value::String(author_names.join(", ")),
+    );
+    rec.insert("snippet".to_string(), snippet);
+    Ok(Value::Object(rec))
+}
+
+pub fn doaj_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("results", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for r in hits {
+        out.push(doaj_row_impl(r)?);
+    }
+    Ok(out)
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn openalex_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    openalex_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn openalex_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    openalex_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn crossref_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    crossref_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback_json = "null"))]
+pub fn crossref_parse_fetch(py: Python, response_json: &str, fallback_json: &str) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    crossref_parse_fetch_impl(response_json, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5, base = "https://openlibrary.org"))]
+pub fn openlibrary_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+    base: &str,
+) -> PyResult<String> {
+    openlibrary_parse_search_impl(response_json, max_results, base)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, key = "", base = "https://openlibrary.org"))]
+pub fn openlibrary_parse_fetch(
+    py: Python,
+    response_json: &str,
+    key: &str,
+    base: &str,
+) -> PyResult<String> {
+    openlibrary_parse_fetch_impl(response_json, key, base)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn doaj_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    doaj_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }

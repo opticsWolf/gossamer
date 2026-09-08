@@ -125,28 +125,16 @@ class OpenAlexAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, headers=headers, timeout=15.0)
         resp.raise_for_status()
-        out: List[Dict[str, str]] = []
-        for w in resp.json().get("results", [])[:max_results]:
-            authors = [
-                a.get("author", {}).get("display_name", "")
-                for a in w.get("authorships", [])
-            ]
-            authors = [a for a in authors if a]
-            out.append(
-                {
-                    "source": "openalex",
-                    "id": w.get("id", ""),
-                    "title": w.get("title") or "",
-                    "url": w.get("doi") or w.get("id"),
-                    "doi": w.get("doi", ""),
-                    "published": w.get("publication_date", ""),
-                    "authors": ", ".join(authors),
-                    "citations": w.get("cited_by_count", 0),
-                    "snippet": ", ".join(authors),
-                    "raw": json.dumps(w),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each work.
+        body = resp.json()
+        works = body.get("results", [])
+        records = json.loads(
+            _rust.openalex_parse_search(json.dumps(body), max_results)
+        )
+        for rec, w in zip(records, works[:max_results]):
+            rec["raw"] = json.dumps(w)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -154,18 +142,11 @@ class OpenAlexAdapter(ResourceAdapter):
         url, params, headers = self.inject_auth(url, params, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=15.0)
         resp.raise_for_status()
-        w = resp.json()
-        return [
-            {
-                "source": "openalex",
-                "id": w.get("id", ""),
-                "title": w.get("title") or "",
-                "url": w.get("doi") or w.get("id"),
-                "doi": w.get("doi", ""),
-                "published": w.get("publication_date", ""),
-                "raw": json.dumps(w),
-            }
-        ]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        body = resp.json()
+        rec = json.loads(_rust.openalex_parse_fetch(json.dumps(body)))
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 class OpenMeteoAdapter(ResourceAdapter):
     """Open-Meteo weather/climate + place lookup (https://open-meteo.com).
@@ -333,25 +314,17 @@ class CrossrefAdapter(ResourceAdapter):
         url, params, headers = self.inject_auth(url, {"query": query}, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
-        msg = resp.json().get("message", {})
-        out: List[Dict[str, str]] = []
-        for w in msg.get("items", [])[:max_results]:
-            title = (w.get("title") or [""])[0]
-            authors = [a.get("family", a.get("name", "")) for a in w.get("author", [])]
-            out.append(
-                {
-                    "source": "crossref",
-                    "id": w.get("DOI", ""),
-                    "title": title,
-                    "url": w.get("URL"),
-                    "doi": w.get("DOI", ""),
-                    "published": (w.get("published", {}) or {}).get("date-parts", [[""]])[0],
-                    "authors": ", ".join(a for a in authors if a),
-                    "snippet": (w.get("abstract") or "")[:240],
-                    "raw": json.dumps(w),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each work.
+        body = resp.json()
+        msg = body.get("message", {})
+        items = msg.get("items", []) if isinstance(msg, dict) else []
+        records = json.loads(
+            _rust.crossref_parse_search(json.dumps(body), max_results)
+        )
+        for rec, w in zip(records, items[:max_results]):
+            rec["raw"] = json.dumps(w)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -359,21 +332,15 @@ class CrossrefAdapter(ResourceAdapter):
         url, params, headers = self.inject_auth(url, params, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
-        w = resp.json()["message"]
-        authors = [a.get("family", a.get("name", "")) for a in w.get("author", [])]
-        return [
-            {
-                "source": "crossref",
-                "id": w.get("DOI", record_id),
-                "title": (w.get("title") or [""])[0],
-                "url": w.get("URL"),
-                "doi": w.get("DOI", ""),
-                "published": (w.get("published", {}) or {}).get("date-parts", [[""]])[0],
-                "authors": ", ".join(a for a in authors if a),
-                "snippet": (w.get("abstract") or "")[:240],
-                "raw": json.dumps(w),
-            }
-        ]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        # The DOI fallback keeps the exact `record_id` spelling.
+        rid, fallback_json = _json_fallback(record_id)
+        body = resp.json()
+        rec = json.loads(
+            _rust.crossref_parse_fetch(json.dumps(body), fallback_json or json.dumps(rid))
+        )
+        rec["raw"] = json.dumps(body["message"])
+        return [rec]
 # ────────────────────────────────────────────────────────────────
 # Phase 2 adapters continued (scholarly / library / financial / tech)
 # ────────────────────────────────────────────────────────────────
@@ -884,23 +851,17 @@ class OpenLibraryAdapter(ResourceAdapter):
             timeout=20.0,
         )
         resp.raise_for_status()
-        docs = resp.json().get("docs", [])
-        out: List[Dict[str, str]] = []
-        for d in docs[:max_results]:
-            key = d.get("key", "")
-            out.append(
-                {
-                    "source": "openlibrary",
-                    "id": key,
-                    "title": d.get("title", ""),
-                    "url": f"{self.BASE}{key}" if key else "",
-                    "published": d.get("first_publish_year", ""),
-                    "authors": ", ".join(d.get("author", []) or []),
-                    "snippet": ", ".join(d.get("isbn", []) or [])[:120],
-                    "raw": json.dumps(d),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each doc.
+        body = resp.json()
+        docs = body.get("docs", [])
+        records = json.loads(
+            _rust.openlibrary_parse_search(
+                json.dumps(body), max_results, self.BASE)
+        )
+        for rec, d in zip(records, docs[:max_results]):
+            rec["raw"] = json.dumps(d)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -910,35 +871,15 @@ class OpenLibraryAdapter(ResourceAdapter):
             key = f"/books/{record_id}"
         resp = httpx.get(f"{self.BASE}{key}.json", timeout=20.0)
         resp.raise_for_status()
-        book = resp.json()
-        key = book.get("key", key)
-        # ``authors`` shape differs between the edition (/books) and work (/works)
-        # endpoints: [{name}], [{author:{key}}], or plain strings.
-        authors = []
-        for a in book.get("authors", []) or []:
-            if isinstance(a, str):
-                authors.append(a)
-            elif isinstance(a, dict):
-                if "name" in a:
-                    authors.append(a["name"])
-                elif isinstance(a.get("author"), dict):
-                    authors.append(a["author"].get("key", ""))
-        return [
-            {
-                "source": "openlibrary",
-                "id": key,
-                "title": book.get("title", ""),
-                "url": f"{self.BASE}{key}",
-                "published": (
-                    book.get("first_publish_year")
-                    or book.get("first_publish_date")
-                    or book.get("publish_date")
-                    or ""
-                ),
-                "authors": ", ".join(a for a in authors if a),
-                "raw": json.dumps(book),
-            }
-        ]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        # ``authors`` shape differs between the edition (/books) and work
+        # (/works) endpoints: [{name}], [{author:{key}}], or plain strings.
+        body = resp.json()
+        rec = json.loads(
+            _rust.openlibrary_parse_fetch(json.dumps(body), key, self.BASE)
+        )
+        rec["raw"] = json.dumps(body)
+        return [rec]
 
 class DoajAdapter(ResourceAdapter):
     """DOAJ open-access journals / articles search (https://doaj.org/api).
@@ -971,29 +912,16 @@ class DoajAdapter(ResourceAdapter):
             timeout=20.0,
         )
         resp.raise_for_status()
-        results = resp.json().get("results", [])
-        out: List[Dict[str, str]] = []
-        for r in results[:max_results]:
-            bib = r.get("bibjson", {}) or {}
-            dois = [
-                i.get("id")
-                for i in bib.get("identifier", [])
-                if isinstance(i, dict) and i.get("type") == "doi"
-            ]
-            authors = bib.get("author", []) if isinstance(bib.get("author"), list) else []
-            out.append(
-                {
-                    "source": "doaj",
-                    "id": r.get("id", ""),
-                    "title": (bib.get("title") or ""),
-                    "url": f"https://doaj.org/article/{r.get('id', '')}",
-                    "doi": dois[0] if dois else "",
-                    "authors": ", ".join(a.get("name", "") if isinstance(a, dict) else str(a) for a in authors),
-                    "snippet": (bib.get("abstract") or "")[:240],
-                    "raw": json.dumps(r),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each result.
+        body = resp.json()
+        results = body.get("results", [])
+        records = json.loads(
+            _rust.doaj_parse_search(json.dumps(body), max_results)
+        )
+        for rec, r in zip(records, results[:max_results]):
+            rec["raw"] = json.dumps(r)
+        return records
 
 class PubmedAdapter(ResourceAdapter):
     """PubMed / NCBI E-utilities search + fetch (eutils.ncbi.nlm.nih.gov).
@@ -1566,17 +1494,18 @@ class CongressAdapter(ResourceAdapter):
             }
         ]
 
-def _yahoo_fallback(record_id):
-    """Resolve the ``record_id`` fallback for the Rust fetch kernel.
+def _json_fallback(record_id):
+    """Resolve a ``record_id`` fallback for the Rust fetch kernels.
 
-    Returns ``(rid, fallback_json)``: None stays null, strings pass
-    through, JSON-native values (int/float/bool/list/dict) round-trip
-    exactly via ``fallback_json``, and anything else (tuples, sets,
-    objects — not expressible in JSON) arrives pre-rendered with
-    ``str()``. The last group renders identically in URLs/snippets
-    and differs from the original only in the ``id``/``title`` value
-    type (``str`` instead of the raw object) — the same JSON-string
-    boundary the whole port uses (cf. NaN payloads, lone surrogates).
+    Returns ``(rendered, fallback_json)``: None stays null, strings
+    pass through, JSON-native values (int/float/bool/list/dict)
+    round-trip exactly via ``fallback_json``, and anything else
+    (tuples, sets, objects — not expressible in JSON) arrives
+    pre-rendered with ``str()``. The last group renders identically
+    in URLs/snippets and differs from the original only in the
+    ``id``/``title`` value type (``str`` instead of the raw object)
+    — the same JSON-string boundary the whole port uses (cf. NaN
+    payloads, lone surrogates).
     """
     if record_id is None:
         return None, None
@@ -1589,6 +1518,12 @@ def _yahoo_fallback(record_id):
     except (TypeError, ValueError):
         fallback_json = None
     return rid, fallback_json
+
+
+# Backward-compatible alias (M12 name).
+def _yahoo_fallback(record_id):
+    """Alias of :func:`_json_fallback` (kept for compatibility)."""
+    return _json_fallback(record_id)
 
 
 class YahooFinanceAdapter(ResourceAdapter):

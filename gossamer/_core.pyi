@@ -553,3 +553,51 @@ def alphavantage_parse_search(
 def alphavantage_parse_fetch(response_json: str, rid: str) -> str:
     """`{"record", "meta"}` as JSON; Python attaches raw (src/adapters.rs)."""
     ...
+
+def openalex_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """OpenAlex work rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def openalex_parse_fetch(response_json: str) -> str:
+    """OpenAlex work row (short shape) minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def crossref_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Crossref work rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def crossref_parse_fetch(
+    response_json: str,
+    fallback_json: str = "null",
+) -> str:
+    """Crossref work row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def openlibrary_parse_search(
+    response_json: str,
+    max_results: int = 5,
+    base: str = "https://openlibrary.org",
+) -> str:
+    """Open Library doc rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def openlibrary_parse_fetch(
+    response_json: str,
+    key: str = "",
+    base: str = "https://openlibrary.org",
+) -> str:
+    """Open Library edition/work row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def doaj_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """DOAJ article rows minus raw, as JSON (src/adapters.rs)."""
+    ...

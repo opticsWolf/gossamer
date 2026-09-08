@@ -2584,3 +2584,607 @@ def test_e2e_alphavantage(mock_get):
     assert rec["fields"]["close"] == "171.5"
     assert rec["raw"] == json.dumps(
         AV_TS["Time Series (Daily)"]["2024-06-01"])
+
+
+# --- batch 6: scholarly kernels (v0.8.15) ---------------------------
+# Vendored originals are verbatim copies of the retired
+# `OpenAlexAdapter` search/fetch rows, `CrossrefAdapter` search/fetch
+# rows, `OpenLibraryAdapter` search/fetch rows and the `DoajAdapter`
+# search row (minus `raw`, which crosses the boundary separately).
+
+OA_WORK = {
+    "id": "https://openalex.org/W123",
+    "title": "On things",
+    "doi": "https://doi.org/10.1/x",
+    "publication_date": "2024-01-01",
+    "cited_by_count": 42,
+    "authorships": [
+        {"author": {"display_name": "Doe, J."}},
+        {"author": {"display_name": "Smith, K."}},
+    ],
+}
+
+
+def _v_oa_row(w, full=True):
+    rec = {
+        "source": "openalex",
+        "id": w.get("id", ""),
+        "title": w.get("title") or "",
+        "url": w.get("doi") or w.get("id"),
+        "doi": w.get("doi", ""),
+        "published": w.get("publication_date", ""),
+    }
+    if full:
+        authors = [
+            a.get("author", {}).get("display_name", "")
+            for a in w.get("authorships", [])
+        ]
+        authors = [a for a in authors if a]
+        rec["authors"] = ", ".join(authors)
+        rec["citations"] = w.get("cited_by_count", 0)
+        rec["snippet"] = ", ".join(authors)
+    return rec
+
+
+def _v_oa_search(body, max_results=5):
+    return [_v_oa_row(w) for w in body.get("results", [])[:max_results]]
+
+
+def _v_oa_fetch(body):
+    return _v_oa_row(body, full=False)
+
+
+def _rs_oa_search(body, max_results=5):
+    return json.loads(_core.openalex_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_oa_fetch(body):
+    return json.loads(_core.openalex_parse_fetch(json.dumps(body)))
+
+
+OA_SEARCH_BODIES = [
+    {"results": [OA_WORK]},
+    {"results": [OA_WORK, {"id": "W2"}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"id": None, "title": None, "doi": None}]},
+    {"results": [{"title": 0, "doi": "", "authorships": None}]},
+    {"results": [{"authorships": [{"author": None}]}]},
+    {"results": [{"authorships": [{"author": {"display_name": 5}}]}]},
+    {"results": [{"authorships": [{"author": {}}]}]},
+    {"results": [{"authorships": [None]}]},
+    {"results": [{"authorships": ["ab"]}]},
+    {"results": [{"authorships": {"a": 1}}]},
+    {"results": [{"authorships": [{}]}]},
+    {"results": [{"cited_by_count": None, "doi": 0}]},
+]
+
+
+@pytest.mark.parametrize("body", OA_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_oa_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_oa_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_oa_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+OA_FETCH_BODIES = [
+    OA_WORK,
+    {},
+    {"doi": "https://doi.org/10.1/y"},
+    {"title": ["T"]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", OA_FETCH_BODIES)
+def test_oa_fetch_parity(body):
+    py_raised, py_val = _outcome(_v_oa_fetch, body)
+    rs_raised, rs_val = _outcome(_rs_oa_fetch, body)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CR_WORK = {
+    "DOI": "10.1/xyz",
+    "title": ["A paper title"],
+    "URL": "https://doi.org/10.1/xyz",
+    "published": {"date-parts": [[2024, 5, 1]]},
+    "author": [{"family": "Doe", "given": "J."},
+               {"name": "Smith, K."}],
+    "abstract": "<p>An abstract.</p>",
+}
+
+
+def _v_cr_row(w, fallback_id=""):
+    title = (w.get("title") or [""])[0]
+    authors = [a.get("family", a.get("name", "")) for a in w.get("author", [])]
+    return {
+        "source": "crossref",
+        "id": w.get("DOI", fallback_id),
+        "title": title,
+        "url": w.get("URL"),
+        "doi": w.get("DOI", ""),
+        "published": (w.get("published", {}) or {}).get("date-parts", [[""]])[0],
+        "authors": ", ".join(a for a in authors if a),
+        "snippet": (w.get("abstract") or "")[:240],
+    }
+
+
+def _v_cr_search(body, max_results=5):
+    msg = body.get("message", {})
+    return [_v_cr_row(w) for w in msg.get("items", [])[:max_results]]
+
+
+def _v_cr_fetch(body, fallback_id=""):
+    return _v_cr_row(body["message"], fallback_id)
+
+
+def _rs_cr_search(body, max_results=5):
+    return json.loads(_core.crossref_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_cr_fetch(body, fallback):
+    return json.loads(_core.crossref_parse_fetch(
+        json.dumps(body), json.dumps(fallback)))
+
+
+CR_SEARCH_BODIES = [
+    {"message": {"items": [CR_WORK]}},
+    {"message": {"items": [CR_WORK, {"DOI": "10.1/y"}]}},
+    {},
+    {"message": None},
+    {"message": []},
+    {"message": ""},
+    {"message": 0},
+    {"message": "ab"},
+    {"message": 5},
+    {"message": {"items": None}},
+    {"message": {"items": []}},
+    {"message": {"items": ""}},
+    {"message": {"items": 0}},
+    {"message": {"items": {}}},
+    {"message": {"items": "ab"}},
+    {"message": {"items": 5}},
+    {"message": {"items": [None]}},
+    {"message": {"items": ["x"]}},
+    {"message": {"items": [5]}},
+    {"message": {"items": [{}]}},
+    {"message": {"items": [{"title": None, "author": None,
+                            "published": None, "abstract": None}]}},
+    {"message": {"items": [{"title": "Abc", "author": "xy",
+                            "published": {"date-parts": None}}]}},
+    {"message": {"items": [{"title": 5, "author": {"a": 1},
+                            "published": {"date-parts": []}}]}},
+    {"message": {"items": [{"title": [], "author": [None],
+                            "published": {"date-parts": ""}}]}},
+    {"message": {"items": [{"title": [None, "x"],
+                            "author": [{"family": None}],
+                            "published": {"date-parts": [None]},
+                            "abstract": ["A", "B"]}]}},
+    {"message": {"items": [{"title": [{"t": 1}],
+                            "author": [{"family": 5}],
+                            "published": {"date-parts": {}},
+                            "abstract": {"a": 1}}]}},
+    {"message": {"items": [{"DOI": 0, "URL": 0, "abstract": 0}]}},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", CR_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_cr_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_cr_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_cr_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CR_FETCH_BODIES = [
+    {"message": CR_WORK},
+    {"message": {}},
+    {"message": None},
+    {"message": 5},
+    {"message": "x"},
+    {},
+    {"other": 1},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", CR_FETCH_BODIES)
+@pytest.mark.parametrize("fallback", ["10.1/abc", "", 5, None])
+def test_cr_fetch_parity(body, fallback):
+    py_raised, py_val = _outcome(_v_cr_fetch, body, fallback)
+    rs_raised, rs_val = _outcome(_rs_cr_fetch, body, fallback)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback)
+    assert rs_val == py_val, (body, fallback)
+
+
+OL_DOC = {
+    "key": "/works/OL1W",
+    "title": "A book",
+    "author": ["Doe, J.", "Smith, K."],
+    "isbn": ["978-0-1-2", "978-0-1-3"],
+    "first_publish_year": 1999,
+}
+OL_BASE = "https://openlibrary.org"
+
+
+def _v_ol_row(d):
+    key = d.get("key", "")
+    return {
+        "source": "openlibrary",
+        "id": key,
+        "title": d.get("title", ""),
+        "url": f"{OL_BASE}{key}" if key else "",
+        "published": d.get("first_publish_year", ""),
+        "authors": ", ".join(d.get("author", []) or []),
+        "snippet": ", ".join(d.get("isbn", []) or [])[:120],
+    }
+
+
+def _v_ol_search(body, max_results=5):
+    return [_v_ol_row(d) for d in body.get("docs", [])[:max_results]]
+
+
+def _v_ol_fetch(body, key):
+    book = body
+    fkey = book.get("key", key)
+    authors = []
+    for a in book.get("authors", []) or []:
+        if isinstance(a, str):
+            authors.append(a)
+        elif isinstance(a, dict):
+            if "name" in a:
+                authors.append(a["name"])
+            elif isinstance(a.get("author"), dict):
+                authors.append(a["author"].get("key", ""))
+    return {
+        "source": "openlibrary",
+        "id": fkey,
+        "title": book.get("title", ""),
+        "url": f"{OL_BASE}{fkey}",
+        "published": (
+            book.get("first_publish_year")
+            or book.get("first_publish_date")
+            or book.get("publish_date")
+            or ""
+        ),
+        "authors": ", ".join(a for a in authors if a),
+    }
+
+
+def _rs_ol_search(body, max_results=5):
+    return json.loads(_core.openlibrary_parse_search(
+        json.dumps(body), max_results, OL_BASE))
+
+
+def _rs_ol_fetch(body, key):
+    return json.loads(_core.openlibrary_parse_fetch(
+        json.dumps(body), key, OL_BASE))
+
+
+OL_SEARCH_BODIES = [
+    {"docs": [OL_DOC]},
+    {"docs": [OL_DOC, {"key": "/books/OL2M"}]},
+    {},
+    {"docs": None},
+    {"docs": []},
+    {"docs": ""},
+    {"docs": 0},
+    {"docs": {}},
+    {"docs": "ab"},
+    {"docs": 5},
+    {"docs": [None]},
+    {"docs": ["x"]},
+    {"docs": [5]},
+    {"docs": [{}]},
+    {"docs": [{"key": None, "author": None, "isbn": None}]},
+    {"docs": [{"key": 0, "author": "", "isbn": 0}]},
+    {"docs": [{"key": ["k"], "author": {"a": "b"}, "isbn": "978"}]},
+    {"docs": [{"key": {"k": 1}, "author": [None, 5], "isbn": [None]}]},
+    {"docs": [{"key": "", "author": [""], "isbn": [["x"]]}]},
+    {"docs": [{"key": 0.0, "author": [{"a": 1}], "isbn": [{"i": 1}]}]},
+    {"docs": [{"title": ["T"], "first_publish_year": None}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", OL_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_ol_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_ol_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_ol_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+OL_FETCH_BODIES = [
+    ({"key": "/works/OL1W", "title": "W",
+      "authors": [{"name": "Doe, J."},
+                  {"author": {"key": "/authors/OL2A"}},
+                  "Plain, P.",
+                  {"author": "notadict"},
+                  {"other": 1},
+                  None, 5,
+                  {"name": None},
+                  {"author": {"other": 1}}]}, "/works/OL1W"),
+    ({}, "/books/OL9M"),
+    ({"key": None}, "/books/OL9M"),
+    ({"authors": None}, "/books/OL9M"),
+    ({"authors": ""}, "/books/OL9M"),
+    ({"authors": "ab"}, "/books/OL9M"),
+    ({"authors": {"a": "b"}}, "/books/OL9M"),
+    ({"authors": 5}, "/books/OL9M"),
+    ({"authors": [{"name": 5}]}, "/books/OL9M"),
+    ({"first_publish_year": None, "first_publish_date": "May 2000"},
+     "/books/OL9M"),
+    ({"first_publish_year": 0, "publish_date": "2001"}, "/books/OL9M"),
+    ([], "/books/OL9M"),
+    ("x", "/books/OL9M"),
+    (5, "/books/OL9M"),
+    (None, "/books/OL9M"),
+]
+
+
+@pytest.mark.parametrize("body,key", OL_FETCH_BODIES)
+def test_ol_fetch_parity(body, key):
+    py_raised, py_val = _outcome(_v_ol_fetch, body, key)
+    rs_raised, rs_val = _outcome(_rs_ol_fetch, body, key)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, key)
+    assert rs_val == py_val, (body, key)
+
+
+DOAJ_RESULT = {
+    "id": "abc123",
+    "bibjson": {
+        "title": "Open article",
+        "author": [{"name": "Doe, J."}, {"name": "Smith, K."}],
+        "identifier": [
+            {"type": "doi", "id": "10.1/oa"},
+            {"type": "issn", "id": "1234-5678"},
+        ],
+        "abstract": "An abstract.",
+    },
+}
+
+
+def _v_doaj_row(r):
+    bib = r.get("bibjson", {}) or {}
+    dois = [
+        i.get("id")
+        for i in bib.get("identifier", [])
+        if isinstance(i, dict) and i.get("type") == "doi"
+    ]
+    authors = bib.get("author", []) if isinstance(bib.get("author"), list) else []
+    return {
+        "source": "doaj",
+        "id": r.get("id", ""),
+        "title": (bib.get("title") or ""),
+        "url": f"https://doaj.org/article/{r.get('id', '')}",
+        "doi": dois[0] if dois else "",
+        "authors": ", ".join(
+            a.get("name", "") if isinstance(a, dict) else str(a)
+            for a in authors),
+        "snippet": (bib.get("abstract") or "")[:240],
+    }
+
+
+def _v_doaj_search(body, max_results=5):
+    return [_v_doaj_row(r) for r in body.get("results", [])[:max_results]]
+
+
+def _rs_doaj_search(body, max_results=5):
+    return json.loads(_core.doaj_parse_search(
+        json.dumps(body), max_results))
+
+
+DOAJ_BODIES = [
+    {"results": [DOAJ_RESULT]},
+    {"results": [DOAJ_RESULT, {"id": "x2"}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"id": None, "bibjson": None}]},
+    {"results": [{"id": 5, "bibjson": ""}]},
+    {"results": [{"id": ["i"], "bibjson": "ab"}]},
+    {"results": [{"id": {"i": 1}, "bibjson": 5}]},
+    {"results": [{"bibjson": {"identifier": None}}]},
+    {"results": [{"bibjson": {"identifier": "ab"}}]},
+    {"results": [{"bibjson": {"identifier": {"t": "doi"}}}]},
+    {"results": [{"bibjson": {"identifier": 5}}]},
+    {"results": [{"bibjson": {"identifier": ["x", 5, None, {}]}}]},
+    {"results": [{"bibjson": {"identifier": [{"type": "doi"}]}}]},
+    {"results": [{"bibjson": {"identifier": [{"type": "doi", "id": None}]}}]},
+    {"results": [{"bibjson": {"identifier": [{"type": 5, "id": "x"}]}}]},
+    {"results": [{"bibjson": {"identifier": [{"id": "x"}]}}]},
+    {"results": [{"bibjson": {"author": None, "title": None,
+                              "abstract": None}}]},
+    {"results": [{"bibjson": {"author": "xy", "title": 0,
+                              "abstract": 0}}]},
+    {"results": [{"bibjson": {"author": [{"nick": "n"}], "title": ["T"],
+                              "abstract": ["A", "B"]}}]},
+    {"results": [{"bibjson": {"author": [5, None], "abstract": {"a": 1}}}]},
+    {"results": [{"bibjson": {"author": [{"name": 5}]}}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", DOAJ_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_doaj_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_doaj_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_doaj_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+def _fuzz_json6(rng, depth=0):
+    r = rng.random()
+    if depth > 2 or r < 0.30:
+        return rng.choice(
+            [None, True, False, 0, 1, -3, 2.5, "", "ab", "https://x/y",
+             "Doe, J.", "10.1/xyz", 2024])
+    if r < 0.55:
+        return [_fuzz_json6(rng, depth + 1) for _ in range(rng.randrange(4))]
+    keys = ["id", "title", "doi", "author", "authors", "authorships",
+            "bibjson", "message", "results", "items", "docs", "key",
+            "name", "family", "identifier", "type", "abstract", "URL",
+            "DOI", "published", "date-parts", "publication_date",
+            "cited_by_count", "display_name", "isbn",
+            "first_publish_year", "first_publish_date", "publish_date"]
+    return {k: _fuzz_json6(rng, depth + 1)
+            for k in rng.sample(keys, rng.randrange(5))}
+
+
+def test_batch6_fuzz():
+    import random
+    rng = random.Random(20260907)
+    n_checked = 0
+    for trial in range(400):
+        body = _fuzz_json6(rng)
+        max_results = rng.choice([0, 1, 3, 5, -1, 100])
+        for v_fn, r_fn in (
+            (_v_oa_search, _rs_oa_search),
+            (_v_cr_search, _rs_cr_search),
+            (_v_ol_search, _rs_ol_search),
+            (_v_doaj_search, _rs_doaj_search),
+        ):
+            py_raised, py_val = _outcome(v_fn, body, max_results)
+            rs_raised, rs_val = _outcome(r_fn, body, max_results)
+            assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, body)
+            assert rs_val == py_val, (trial, body)
+            n_checked += 1
+        for v_fn, r_fn, extra in (
+            (_v_oa_fetch, _rs_oa_fetch, ()),
+            (_v_ol_fetch, _rs_ol_fetch, ("/books/OL9M",)),
+        ):
+            py_raised, py_val = _outcome(v_fn, body, *extra)
+            rs_raised, rs_val = _outcome(r_fn, body, *extra)
+            assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, body)
+            assert rs_val == py_val, (trial, body)
+            n_checked += 1
+        fb = rng.choice(["10.1/f", "", 5, None, ["l"], {"d": 1}])
+        py_raised, py_val = _outcome(_v_cr_fetch, body, fb)
+        rs_raised, rs_val = _outcome(_rs_cr_fetch, body, fb)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, body)
+        assert rs_val == py_val, (trial, body, fb)
+        n_checked += 1
+    assert n_checked == 400 * 7
+
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def _run_with_body(monkeypatch, adapter_fn, body, *args):
+    import httpx
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeResp(body))
+    return adapter_fn(*args)
+
+
+def _expected_hostile(fn, body, oa, cr, ol, dj):
+    # Pre-port semantics via the vendored rows (raises like the
+    # original, including the `raw` re-attachment reads).
+    if fn in (oa._search_impl,):
+        return [{**_v_oa_row(w), "raw": json.dumps(w)}
+                for w in body.get("results", [])[:5]]
+    if fn in (cr._search_impl,):
+        msg = body.get("message", {})
+        return [{**_v_cr_row(w), "raw": json.dumps(w)}
+                for w in msg.get("items", [])[:5]]
+    if fn in (ol._search_impl,):
+        return [{**_v_ol_row(d), "raw": json.dumps(d)}
+                for d in body.get("docs", [])[:5]]
+    if fn in (dj._search_impl,):
+        return [{**_v_doaj_row(r), "raw": json.dumps(r)}
+                for r in body.get("results", [])[:5]]
+    if fn == oa.fetch:
+        return [{**_v_oa_fetch(body), "raw": json.dumps(body)}]
+    if fn == cr.fetch:
+        return [{**_v_cr_fetch(body, "q"),
+                 "raw": json.dumps(body["message"])}]
+    return [{**_v_ol_fetch(body, "/books/q"), "raw": json.dumps(body)}]
+
+
+def test_batch6_hostile_wrappers(monkeypatch):
+    from gossamer.research_providers import (
+        OpenAlexAdapter, CrossrefAdapter, OpenLibraryAdapter, DoajAdapter)
+    oa, cr, ol, dj = (OpenAlexAdapter(delay=0), CrossrefAdapter(delay=0),
+                      OpenLibraryAdapter(delay=0), DoajAdapter(delay=0))
+    # Exotic-but-plausible payloads through the real methods.
+    hostile = [
+        (oa._search_impl, {"results": None}),
+        (oa._search_impl, {"results": []}),
+        (oa._search_impl, {"results": [{"id": "W1"}]}),
+        (oa._search_impl, {"results": "ab"}),
+        (cr._search_impl, {"message": {"items": [{"DOI": "10.1/a"}]}}),
+        (cr._search_impl, {"message": {"items": []}}),
+        (ol._search_impl, {"docs": [{"key": "/books/OL1M"}]}),
+        (ol._search_impl, {"docs": []}),
+        (dj._search_impl, {"results": [{"id": "r1"}]}),
+        (dj._search_impl, {"results": []}),
+        (oa.fetch, {"id": "W1", "title": "T"}),
+        (cr.fetch, {"message": {"DOI": "10.1/a"}}),
+        (ol.fetch, {"key": "/works/OL1W", "authors": [{"name": "N."}]}),
+    ]
+    for fn, body in hostile:
+        exp_raised, exp = _outcome(_expected_hostile, fn, body, oa, cr, ol, dj)
+        try:
+            got = _run_with_body(monkeypatch, fn, body, "q")
+            got_raised, got = False, got
+        except Exception as e:  # noqa: BLE001 - compared below
+            got_raised, got = True, f"{type(e).__name__}: {e}"
+        assert (got_raised, exp_raised) == (exp_raised, exp_raised), (fn, body)
+        assert got == exp, (fn, body)
+        if not got_raised:
+            assert got == exp, (fn, body)
+            for rec in got:
+                assert rec["raw"] == json.dumps(
+                    json.loads(rec["raw"])), (fn, body)

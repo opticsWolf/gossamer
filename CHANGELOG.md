@@ -4,6 +4,27 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.16] — Rust port M16: scholarly JSON kernels
+
+- `src/adapters.rs`: OpenAlex work search + fetch (author-display-name
+  folding, `doi or id` url asymmetry, short fetch shape);
+  Crossref work search + fetch (`(title or [""])[0]` first-char
+  rule, nested-family/name authors, `date-parts` head, abstract
+  head-or-list preservation, direct `["message"]` indexing with
+  list/str integer-index errors, exact title → author-listcomp →
+  published → author-join → snippet evaluation order); OpenLibrary
+  doc search (guarded url, strict author/isbn joins, joined-then-
+  sliced isbn snippet) + edition/work fetch (three-shape authors,
+  falsy-filtered join, unconditional url, `key` fallback);
+  DOAJ article search (doi hunt skipping non-dict identifiers,
+  raw-`id` doi hits, list-only authors, `str()` fallback names).
+  Shared `_json_fallback` helper (with `_yahoo_fallback` kept as an
+  alias) for the fetch DOI-fallback protocol.
+- Caught by parity: Crossref field evaluation order (title/authors
+  before published before the author join), dict/str authorships
+  iterating keys/chars in OpenAlex/OpenLibrary, Crossref fetch
+  `string indices must be integers` vs list message.
+
 ## [0.8.15] — Rust port M15: financial JSON kernels
 
 - `src/adapters.rs`: Eurostat JSON-stat unpacking (dimension index
