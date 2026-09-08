@@ -5363,3 +5363,92 @@ def test_batch9_hostile_wrappers(monkeypatch):
     assert "Samsung" in got[0]["snippet"]
     got = kp.fetch("1020240000001")
     assert got[0]["id"] == "DUP"
+
+
+# --- batch 10: stateful-adjacent pure kernels (v0.8.20) ---------------
+# `Cache` / `ResourceStore` objects stay Python; only the pure layout
+# helpers port (filenames must agree whichever side wrote them).
+
+def _v_disk_key(key):
+    import hashlib
+    return hashlib.blake2b(key.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def _v_human_size(nbytes):
+    for unit in ("B", "KB", "MB", "GB"):
+        if nbytes < 1024:
+            return f"{nbytes:.1f} {unit}"
+        nbytes /= 1024
+    return f"{nbytes:.1f} TB"
+
+
+def _v_ext(ctype):
+    ctype = (ctype or "").split(";")[0].strip().lower()
+    if ctype == "image/svg+xml":
+        return "svg"
+    if ctype.startswith("image/"):
+        return ctype.split("/", 1)[1] or None
+    return None
+
+
+def _v_safe_name(base, ext):
+    import re
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-._")
+    slug = slug[:80] or "asset"
+    return f"{slug}.{ext}" if ext else slug
+
+
+def test_cacheutils_parity(tmp_path):
+    import hashlib
+    from gossamer.cache import Cache
+    _cache = Cache(cache_dir=str(tmp_path / "c"))
+    # Disk keys incl. hostile unicode (surrogates raise identically —
+    # the wrapper's encode gate runs first).
+    for key in ["https://example.com/x", "", "x" * 500, "Ünïcodé",
+                "a/b?c=d&e=f", "\x00", "line\nbreak"]:
+        assert _core.cache_disk_key(key) == _v_disk_key(key), key
+    for bad in [None, 5, b"x", ["l"]]:
+        py_raised, py_val = _outcome(_v_disk_key, bad)
+        rs_raised, rs_val = _outcome(_cache._disk_key, bad)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), bad
+        assert rs_val == py_val, bad
+    # Surrogate halves: UnicodeEncodeError on both sides.
+    py_raised, _ = _outcome(_v_disk_key, "\ud800")
+    assert py_raised
+    # Human sizes incl. boundaries, floats, edge floats.
+    for n in [0, 1, 1023, 1024, 1536, 1048576, 10**9, 10**12, 10**15,
+              5 * 1024**4, -5, 1024.0, 1536.5, float("nan"),
+              float("inf"), 10**30]:
+        assert _core.cache_human_size(float(n)) == _v_human_size(n), n
+    for bad in ["x", None, [1]]:
+        py_raised, py_val = _outcome(_v_human_size, bad)
+        rs_raised, rs_val = _outcome(Cache._human_size, bad)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), bad
+        assert rs_val == py_val, bad
+    # Content types.
+    for ct in ["image/png", "Image/PNG; charset=x", "image/svg+xml",
+               "image/svg+xml; q=1", "image/", "image", "text/html", "",
+               "IMAGE/JPEG", " image/gif ", "image/x-icon",
+               "image/png;image/jpeg"]:
+        assert _core.resource_ext_from_content_type(ct) == _v_ext(ct), ct
+    for bad in [None, 0, 5, ["l"]]:
+        from gossamer.resource_store import _detect_ext_from_content_type
+        py_raised, py_val = _outcome(_v_ext, bad)
+        rs_raised, rs_val = _outcome(_detect_ext_from_content_type, bad)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), bad
+        assert rs_val == py_val, bad
+    # Safe names incl. truncation, fallback, odd extensions.
+    for base, ext in [("a/b?c", "png"), ("---", "png"), ("", ""),
+                      ("x", ""), ("a" * 200, "jpg"),
+                      ("file.name_v2-final", "svg"), ("Ünï", "png"),
+                      ("a" * 79 + "!b", "png"), ("...", "png"),
+                      ("-._-", "png"), ("ok", "weird ext"),
+                      ("ok", None), ("ok", 5), ("ok", "")]:
+        from gossamer.resource_store import _safe_name
+        assert _safe_name(base, ext) == _v_safe_name(base, ext), (base, ext)
+    for bad in [None, 5, b"x", ["l"]]:
+        from gossamer.resource_store import _safe_name
+        py_raised, py_val = _outcome(_v_safe_name, bad, "png")
+        rs_raised, rs_val = _outcome(_safe_name, bad, "png")
+        assert (py_raised, rs_raised) == (py_raised, py_raised), bad
+        assert rs_val == py_val, bad

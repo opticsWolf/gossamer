@@ -1,6 +1,6 @@
 [package]
 name = "gossamer-core"
-version = "0.8.19"
+version = "0.8.20"
 edition = "2021"
 
 [lib]
@@ -24,6 +24,7 @@ tiktoken-rs = "0.12.0"
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 serde = "1.0.229"
 quick-xml = "0.42.0"
+blake2 = "0.11.0"
 
 [profile.release]
 strip = true   # Remove debug symbols

@@ -36,6 +36,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from gossamer import _core as _rust
 from gossamer.ssrf import validate_public_url, SsrfBlockedError
 
 logger = logging.getLogger(__name__)
@@ -98,18 +99,22 @@ def _detect_ext_from_magic(data: bytes) -> str | None:
 
 
 def _detect_ext_from_content_type(ctype: str) -> str | None:
-    ctype = (ctype or "").split(";")[0].strip().lower()
-    if ctype == "image/svg+xml":
-        return "svg"
-    if ctype.startswith("image/"):
-        return ctype.split("/", 1)[1] or None
-    return None
+    # First fallible expression runs here so exotic inputs raise exactly
+    # as before; the mapping itself lives in Rust (src/cacheutils.rs).
+    probe = (ctype or "")
+    if probe and not isinstance(probe, str):
+        probe.split(";")  # noqa: B018 - intentional type gate
+        return None  # unreachable
+    return _rust.resource_ext_from_content_type(
+        probe if isinstance(probe, str) else "")
 
 
 def _safe_name(base: str, ext: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-._")
-    slug = slug[:80] or "asset"
-    return f"{slug}.{ext}" if ext else slug
+    # Type gates first (identical errors); rendering in Rust.
+    if not isinstance(base, str):
+        re.sub(r"[^A-Za-z0-9._-]+", "-", base)  # noqa: B018 - gate
+    ext_s = ext if isinstance(ext, str) else ("" if not ext else str(ext))
+    return _rust.resource_safe_name(base, ext_s)
 
 
 class ResourceStore:

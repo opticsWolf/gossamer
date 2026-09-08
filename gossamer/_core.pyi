@@ -806,3 +806,19 @@ def kipris_parse_search(
 def kipris_parse_fetch(response_xml: str) -> str:
     """First KIPRIS item rows, as JSON (src/adapters.rs)."""
     ...
+
+def cache_disk_key(key: str) -> str:
+    """blake2b-128 hex of the UTF-8 key (src/cacheutils.rs)."""
+    ...
+
+def cache_human_size(nbytes: float) -> str:
+    """Human-readable byte size, `f\"{n:.1f} {unit}\"` (src/cacheutils.rs)."""
+    ...
+
+def resource_ext_from_content_type(ctype: str) -> str | None:
+    """Image subtype from a Content-Type, else None (src/cacheutils.rs)."""
+    ...
+
+def resource_safe_name(base: str, ext: str) -> str:
+    """Slug base + optional extension (src/cacheutils.rs)."""
+    ...

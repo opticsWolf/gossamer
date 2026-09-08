@@ -4,6 +4,22 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.20] — Rust port M20: stateful-adjacent pure kernels
+
+- New `src/cacheutils.rs` (`blake2 0.11`): `Cache._disk_key`
+  (blake2b-128 hex — fixed-output `Blake2b128`, since truncating a
+  full blake2b-512 would give a *different* digest), `Cache._human_size`
+  (`nan`/`inf` casing matches Python `.1f`), `resource_store`
+  content-type sniffing and `_safe_name` slugger. `Cache` and
+  `ResourceStore` objects stay Python (locks, file I/O, wall-clock
+  TTL, byte payloads); only the layout helpers port so the on-disk
+  format stays readable whichever side wrote it. Wrappers keep the
+  original type gates (`encode`/`split`/`re.sub` run first) so exotic
+  inputs raise byte-identical errors.
+- Caught by parity: Rust `{:.1}` renders `NaN` vs Python `nan`;
+  `Blake2bVar` does not exist in blake2 0.11 (use `Blake2b128`);
+  parity tests must use `_outcome` for always-raising inputs.
+
 ## [0.8.19] — Rust port M19: register/patent/financial-XML kernels
 
 - `src/xmlatom.rs`: namespace-URI resolution for prefixed attribute

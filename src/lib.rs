@@ -9,6 +9,7 @@ mod ssrf;
 mod tokens;
 mod pycompat;
 mod xmlatom;
+mod cacheutils;
 mod sections;
 mod textlinks;
 mod urls;
@@ -1617,6 +1618,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::epo_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::kipris_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::kipris_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(cacheutils::cache_disk_key, m)?)?;
+    m.add_function(wrap_pyfunction!(cacheutils::cache_human_size, m)?)?;
+    m.add_function(wrap_pyfunction!(cacheutils::resource_ext_from_content_type, m)?)?;
+    m.add_function(wrap_pyfunction!(cacheutils::resource_safe_name, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;
