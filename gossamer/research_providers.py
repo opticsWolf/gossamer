@@ -511,39 +511,35 @@ class ArxivAdapter(ResourceAdapter):
         resp_xml = self._get(
             {"search_query": query, "start": 0, "max_results": min(max_results, 100)}
         )
+        # ElementTree parses first so malformed feeds raise ParseError
+        # exactly as before; rows build in Rust (src/adapters.rs) and
+        # `raw` is re-attached here via `ET.tostring` (byte-identical).
         root = ET.fromstring(resp_xml)
-        out: List[Dict[str, str]] = []
-        for entry in _entry_children(root, "entry"):
-            out.append(_parse_arxiv_entry(entry))
-            if len(out) >= max_results:
-                break
-        return out
+        entries = _entry_children(root, "entry")
+        records = json.loads(_rust.arxiv_parse_search(resp_xml, max_results))
+        for rec, entry in zip(records, entries):
+            rec["raw"] = ET.tostring(entry, encoding="unicode")
+        return records
 
     def fetch(self, record_id, params=None):
         # id_list is the version-safe documented way to fetch specific papers.
         ident = _bare_arxiv_id(record_id)
         resp_xml = self._get({"id_list": ident, "start": 0, "max_results": 1})
+        # ElementTree parses first (ParseError precedence + `raw`).
         root = ET.fromstring(resp_xml)
         entries = _entry_children(root, "entry")
         # A valid entry's <id> contains 'abs/'; a bad id yields an error feed
         # (a single entry with a query id and an 'Error' summary).
-        if not entries or "abs/" not in _entry_field(entries[0], "id"):
-            summary = _entry_field(entries[0], "summary") if entries else ""
-            return [
-                {
-                    "source": "arxiv",
-                    "id": ident,
-                    "title": "",
-                    "url": record_id,
-                    "doi": "",
-                    "published": "",
-                    "authors": "",
-                    "snippet": summary,
-                    "fields": {"arxiv": {"primary_category": ""}},
-                    "raw": "",
-                }
-            ]
-        return [_parse_arxiv_entry(entries[0])]
+        rid, fallback_json = _json_fallback(record_id)
+        rec = json.loads(
+            _rust.arxiv_parse_fetch(
+                resp_xml, ident, fallback_json or json.dumps(rid))
+        )
+        if entries and "abs/" in _entry_field(entries[0], "id"):
+            rec["raw"] = ET.tostring(entries[0], encoding="unicode")
+        else:
+            rec["raw"] = ""
+        return [rec]
 
 class WorldBankAdapter(ResourceAdapter):
     """World Bank indicators (time-series) data (https://api.worldbank.org/v2).
@@ -934,18 +930,16 @@ class PubmedAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
-        ids = resp.json()["esearchresult"].get("idlist", [])
-        return [
-            {
-                "source": "pubmed",
-                "id": uid,
-                "title": "",
-                "url": f"https://pubmed.ncbi.nlm.nih.gov/{uid}/",
-                "snippet": f"PMID {uid}",
-                "raw": json.dumps({"uid": uid}),
-            }
-            for uid in ids[:max_results]
-        ]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each uid.
+        body = resp.json()
+        ids = body["esearchresult"].get("idlist", [])
+        records = json.loads(
+            _rust.pubmed_parse_search(json.dumps(body), max_results)
+        )
+        for rec, uid in zip(records, ids[:max_results]):
+            rec["raw"] = json.dumps({"uid": uid})
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -957,32 +951,18 @@ class PubmedAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
+        # ElementTree parses first so malformed payloads raise ParseError
+        # exactly as before; the row builds in Rust (src/adapters.rs)
+        # and `raw` is the verbatim response text.
         root = ET.fromstring(resp.text)
         entry = root.find("PubmedArticle")
         if entry is None:
             return [{"source": "pubmed", "id": str(record_id), "title": "", "raw": resp.text}]
-        mc = entry.find("MedlineCitation")
-        uid = mc.findtext("PMID") or str(record_id)
-        article = mc.find("Article")
-        title = " ".join((article.findtext("ArticleTitle") or "").split())
-        authors: List[str] = []
-        alist = article.find("AuthorList") if article is not None else None
-        if alist is not None:
-            for a in alist.findall("Author"):
-                name = " ".join(x for x in (a.findtext("LastName"), a.findtext("ForeName")) if x).strip()
-                if name:
-                    authors.append(name)
-        return [
-            {
-                "source": "pubmed",
-                "id": uid,
-                "title": title,
-                "url": f"https://pubmed.ncbi.nlm.nih.gov/{uid}/",
-                "snippet": title[:240],
-                "authors": ", ".join(authors),
-                "raw": resp.text,
-            }
-        ]
+        rec = json.loads(_rust.pubmed_parse_fetch(resp.text, str(record_id)))
+        if rec is None:
+            return [{"source": "pubmed", "id": str(record_id), "title": "", "raw": resp.text}]
+        rec["raw"] = resp.text
+        return [rec]
 
 # ── Phase 3 adapters ──────────────────────────────────────────────────────
 # Domain waves (legal / science / financial / geo / tech) from the §4 matrix.

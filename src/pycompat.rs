@@ -135,3 +135,14 @@ pub fn py_splitlines(s: &str) -> Vec<&str> {
     }
     out
 }
+
+/// Python `" ".join(text.split())`: split on runs of Python whitespace
+/// (`str.split()` with no separator — Unicode White_Space plus
+/// 0x1C–0x1F and NEL, which Rust `split_whitespace` misses) and
+/// rejoin with single spaces.
+pub fn py_collapse_ws(s: &str) -> String {
+    s.split(|c: char| c.is_whitespace() || c == '\u{85}' || ('\u{1C}'..='\u{1F}').contains(&c))
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<&str>>()
+        .join(" ")
+}

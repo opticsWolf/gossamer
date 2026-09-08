@@ -8,6 +8,7 @@ mod robots;
 mod ssrf;
 mod tokens;
 mod pycompat;
+mod xmlatom;
 mod sections;
 mod textlinks;
 mod urls;
@@ -1603,6 +1604,10 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::overpass_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::census_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::census_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::arxiv_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::arxiv_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::pubmed_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::pubmed_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

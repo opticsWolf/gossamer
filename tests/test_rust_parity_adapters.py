@@ -4211,3 +4211,381 @@ def test_batch7_hostile_wrappers(monkeypatch):
             assert rec["source"] in (
                 "worldbank", "fred", "github", "congress", "nasa",
                 "softwareheritage", "overpass", "census"), (fn, args)
+
+
+# --- batch 8: XML feed kernels (v0.8.18) -----------------------------
+# ArXiv rows compare the Rust kernel against the (unported) ET helpers
+# as oracle; `raw` (ET.tostring) is re-attached wrapper-side in both.
+
+ARXIV_FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2401.00001v2</id>
+    <title>  A Test   Paper
+      Title</title>
+    <summary>An &amp; abstract with  <b>markup</b> tail.</summary>
+    <published>2024-01-01T00:00:00Z</published>
+    <author><name>Doe, J.</name></author>
+    <author><name>Smith, K.</name></author>
+    <author><name></name></author>
+    <arxiv:doi>10.1/test</arxiv:doi>
+    <arxiv:primary_category term="cs.AI" />
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom" />
+    <link href="http://arxiv.org/abs/2401.00001v2" rel="alternate" />
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2401.00002</id>
+    <title>Second</title>
+    <summary>Plain.</summary>
+    <link title="doi" href="https://doi.org/10.2/x" />
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom" />
+  </entry>
+</feed>"""
+
+
+def _v_arxiv_search(xml, max_results=5):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import (
+        _entry_children, _parse_arxiv_entry)
+    root = ET.fromstring(xml)
+    out = []
+    for entry in _entry_children(root, "entry"):
+        out.append(_parse_arxiv_entry(entry))
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def _rs_arxiv_search(xml, max_results=5):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _entry_children
+    root = ET.fromstring(xml)
+    entries = _entry_children(root, "entry")
+    recs = json.loads(_core.arxiv_parse_search(xml, max_results))
+    for rec, entry in zip(recs, entries):
+        rec["raw"] = ET.tostring(entry, encoding="unicode")
+    return recs
+
+
+ARXIV_XML_CASES = [
+    ARXIV_FEED,
+    "<feed/>",
+    "<feed></feed>",
+    "<feed><entry/></feed>",
+    "<feed><entry><id>x</id><summary>  spaced   out </summary></entry></feed>",
+    "<feed><entry><id>http://arxiv.org/abs/1</id><link title='doi'/><link title='doi' href='https://doi.org/10.9/y'/></entry></feed>",
+    "<feed><entry><id>http://arxiv.org/abs/1</id><category term='t1' scheme='http://arxiv.org/schemas/atom'/><category term='t2'/></entry></feed>",
+    "<feed><entry><id>http://arxiv.org/abs/1</id><arxiv:primary_category xmlns:arxiv='http://arxiv.org/schemas/atom'/><arxiv:primary_category term='cs.AI'/></entry></feed>",
+    "<feed><entry><id><nested>http://arxiv.org/abs/9</nested>tail</id><title><b>Bold</b> after</title><summary><![CDATA[raw <stuff> & more]]></summary></entry></feed>",
+    "<feed><entry><id>http://arxiv.org/abs/1</id><summary>a<!-- comment -->b<?pi data?>c</summary></entry></feed>",
+    "<feed xmlns='http://www.w3.org/2005/Atom'><foo:entry xmlns:foo='x'><foo:id>http://arxiv.org/abs/3</foo:id></foo:entry></feed>",
+    "<feed><entry><id>http://arxiv.org/abs/1</id><author>noname</author><author><name>A</name><extra>y</extra></author></entry></feed>",
+    "<feed><total>2</total></feed>",
+    "not xml at all",
+    "",
+    "<feed><entry>",
+]
+
+
+@pytest.mark.parametrize("xml", ARXIV_XML_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, 0, -1, 100])
+def test_arxiv_search_parity(xml, max_results):
+    py_raised, py_val = _outcome(_v_arxiv_search, xml, max_results)
+    rs_raised, rs_val = _outcome(_rs_arxiv_search, xml, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:80]
+    assert rs_val == py_val, xml[:80]
+
+
+ARXIV_FETCH_CASES = [
+    (ARXIV_FEED, "2401.00001v2"),
+    ("<feed><entry><id>oai:arXiv.org:1234</id><summary>Error</summary></entry></feed>",
+     "9999.99999"),
+    ("<feed/>", "1"),
+    ("<feed><entry><id>http://arxiv.org/abs/5</id></entry></feed>", "5"),
+    ("not xml", "1"),
+]
+
+
+@pytest.mark.parametrize("xml,ident", ARXIV_FETCH_CASES)
+@pytest.mark.parametrize("record_id", ["2401.00001v2", "o/r", "", 5, None])
+def test_arxiv_fetch_parity(xml, ident, record_id):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import (
+        _entry_children, _entry_field, _parse_arxiv_entry)
+    from gossamer.research_providers import _json_fallback
+
+    def _v_fetch():
+        root = ET.fromstring(xml)
+        entries = _entry_children(root, "entry")
+        if not entries or "abs/" not in _entry_field(entries[0], "id"):
+            summary = _entry_field(entries[0], "summary") if entries else ""
+            return [{
+                "source": "arxiv", "id": ident, "title": "",
+                "url": record_id, "doi": "", "published": "",
+                "authors": "", "snippet": summary,
+                "fields": {"arxiv": {"primary_category": ""}}, "raw": "",
+            }]
+        rec = _parse_arxiv_entry(entries[0])
+        rec["raw"] = ET.tostring(entries[0], encoding="unicode")
+        return [rec]
+
+    def _r_fetch():
+        root = ET.fromstring(xml)
+        entries = _entry_children(root, "entry")
+        rid, fj = _json_fallback(record_id)
+        rec = json.loads(_core.arxiv_parse_fetch(
+            xml, ident, fj or json.dumps(rid)))
+        if entries and "abs/" in _entry_field(entries[0], "id"):
+            rec["raw"] = ET.tostring(entries[0], encoding="unicode")
+        else:
+            rec["raw"] = ""
+        return [rec]
+
+    py_raised, py_val = _outcome(_v_fetch)
+    rs_raised, rs_val = _outcome(_r_fetch)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (xml[:60], record_id)
+    assert rs_val == py_val, (xml[:60], record_id)
+
+
+PUBMED_XML = """<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>12345</PMID>
+      <Article>
+        <ArticleTitle>  A   Study
+          of Things &amp; Stuff</ArticleTitle>
+        <AuthorList>
+          <Author><LastName>Doe</LastName><ForeName>J. Q.</ForeName></Author>
+          <Author><LastName>Smith</LastName></Author>
+          <Author><ForeName>Anon</ForeName></Author>
+          <Author></Author>
+          <Author><LastName>  </LastName><ForeName> X </ForeName></Author>
+        </AuthorList>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>"""
+
+
+def _v_pubmed_search(body, max_results=5):
+    ids = body["esearchresult"].get("idlist", [])
+    return [
+        {
+            "source": "pubmed",
+            "id": uid,
+            "title": "",
+            "url": f"https://pubmed.ncbi.nlm.nih.gov/{uid}/",
+            "snippet": f"PMID {uid}",
+            "raw": json.dumps({"uid": uid}),
+        }
+        for uid in ids[:max_results]
+    ]
+
+
+def _rs_pubmed_search(body, max_results=5):
+    recs = json.loads(_core.pubmed_parse_search(
+        json.dumps(body), max_results))
+    esearch = body["esearchresult"]
+    ids = esearch.get("idlist", []) if isinstance(esearch, dict) else []
+    for rec, uid in zip(recs, ids[:max_results]):
+        rec["raw"] = json.dumps({"uid": uid})
+    return recs
+
+
+PUBMED_SEARCH_BODIES = [
+    {"esearchresult": {"idlist": ["123", "456"]}},
+    {"esearchresult": {"idlist": ["123", 456, None]}},
+    {"esearchresult": {}},
+    {"esearchresult": {"idlist": None}},
+    {"esearchresult": {"idlist": []}},
+    {"esearchresult": {"idlist": ""}},
+    {"esearchresult": {"idlist": {}}},
+    {"esearchresult": {"idlist": "ab"}},
+    {"esearchresult": {"idlist": 5}},
+    {"esearchresult": None},
+    {"esearchresult": []},
+    {"esearchresult": ""},
+    {"esearchresult": 5},
+    {},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", PUBMED_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_pubmed_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_pubmed_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_pubmed_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+def _v_pubmed_fetch(xml, record_id):
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(xml)
+    entry = root.find("PubmedArticle")
+    if entry is None:
+        return [{"source": "pubmed", "id": str(record_id), "title": "",
+                 "raw": xml}]
+    mc = entry.find("MedlineCitation")
+    uid = mc.findtext("PMID") or str(record_id)
+    article = mc.find("Article")
+    title = " ".join((article.findtext("ArticleTitle") or "").split())
+    authors = []
+    alist = article.find("AuthorList") if article is not None else None
+    if alist is not None:
+        for a in alist.findall("Author"):
+            name = " ".join(
+                x for x in (a.findtext("LastName"), a.findtext("ForeName")) if x
+            ).strip()
+            if name:
+                authors.append(name)
+    return [{
+        "source": "pubmed",
+        "id": uid,
+        "title": title,
+        "url": f"https://pubmed.ncbi.nlm.nih.gov/{uid}/",
+        "snippet": title[:240],
+        "authors": ", ".join(authors),
+        "raw": xml,
+    }]
+
+
+def _rs_pubmed_fetch(xml, record_id):
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(xml)
+    entry = root.find("PubmedArticle")
+    if entry is None:
+        return [{"source": "pubmed", "id": str(record_id), "title": "",
+                 "raw": xml}]
+    rec = json.loads(_core.pubmed_parse_fetch(xml, str(record_id)))
+    if rec is None:
+        return [{"source": "pubmed", "id": str(record_id), "title": "",
+                 "raw": xml}]
+    rec["raw"] = xml
+    return [rec]
+
+
+PUBMED_FETCH_CASES = [
+    PUBMED_XML,
+    "<PubmedArticleSet/>",
+    "<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID></PMID><Article><ArticleTitle>T</ArticleTitle></Article></MedlineCitation></PubmedArticle>",
+    "<PubmedArticleSet><PubmedArticle><MedlineCitation><Article><ArticleTitle>No PMID</ArticleTitle></Article></MedlineCitation></PubmedArticle>",
+    "<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>1</PMID></MedlineCitation></PubmedArticle>",
+    "<PubmedArticleSet><PubmedArticle></PubmedArticle></PubmedArticle>",
+    "<PubmedArticleSet><Other/></PubmedArticleSet>",
+    "<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>1</PMID><Article><ArticleTitle><b>Bold</b> tail</ArticleTitle><AuthorList><Author><LastName>A&amp;B</LastName></Author></AuthorList></Article></MedlineCitation></PubmedArticle>",
+    "not xml",
+    "",
+    "<PubmedArticleSet><PubmedArticle>",
+]
+
+
+@pytest.mark.parametrize("xml", PUBMED_FETCH_CASES)
+@pytest.mark.parametrize("record_id", ["12345", "", 5, None])
+def test_pubmed_fetch_parity(xml, record_id):
+    py_raised, py_val = _outcome(_v_pubmed_fetch, xml, record_id)
+    rs_raised, rs_val = _outcome(_rs_pubmed_fetch, xml, record_id)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+def _fuzz_xml8(rng):
+    tag = lambda t, body="", attrs="": f"<{t}{attrs}>{body}</{t}>"
+    txt = rng.choice(["hello", "a  b", "x&y", "  spaced  ", "", "caf\u00e9",
+                      "line1\nline2", "a\x1cb", "tab\there"])
+    # Always well-formed here (malformed inputs raise ParseError in the
+    # wrapper before any kernel runs); escape & and < in text slots.
+    txt = txt.replace("&", "&amp;").replace("<", "&lt;")
+    entry = "".join([
+        tag("id", rng.choice(["http://arxiv.org/abs/1", "oai:x", ""])),
+        tag("title", txt),
+        tag("summary", txt),
+        tag("published", "2024-01-01"),
+        "".join(tag("author", tag("name", n))
+                for n in rng.choice([[], ["A"], ["A", "B"], [""]])
+                ),
+        tag("arxiv:doi", rng.choice(["", "10.1/x"]),
+            " xmlns:arxiv='http://arxiv.org/schemas/atom'"),
+        f"<link title='doi' href='{rng.choice(['', 'https://doi.org/10.1/z'])}'/>",
+        f"<category term='{rng.choice(['', 'cs.AI'])}' scheme='{rng.choice(['', 'http://arxiv.org/schemas/atom'])}'/>",
+        rng.choice(["", "<extra><deep>t</deep></extra>", "<!-- c -->"]),
+    ])
+    n = rng.randrange(3)
+    entries = "".join(tag(rng.choice(["entry", "entry", "item"]), entry)
+                      for _ in range(n))
+    return (f"<feed xmlns='http://www.w3.org/2005/Atom'>{entries}</feed>",
+            rng.choice([0, 1, 2, 5, -1, 100]))
+
+
+def test_batch8_fuzz():
+    import random
+    rng = random.Random(20260909)
+    n_checked = 0
+    for trial in range(300):
+        xml, max_results = _fuzz_xml8(rng)
+        py_raised, py_val = _outcome(_v_arxiv_search, xml, max_results)
+        rs_raised, rs_val = _outcome(_rs_arxiv_search, xml, max_results)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, xml)
+        assert rs_val == py_val, (trial, xml)
+        n_checked += 1
+        rid = rng.choice(["1", "", 5, None])
+        py_raised, py_val = _outcome(_v_pubmed_fetch, xml, rid)
+        rs_raised, rs_val = _outcome(_rs_pubmed_fetch, xml, rid)
+        # PubMed-shaped assertions on feed XML: both must agree that no
+        # PubmedArticle exists (bare records) — presence of one would be
+        # a generator bug, not a kernel bug.
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, xml)
+        assert rs_val == py_val, (trial, xml, rid)
+        n_checked += 1
+    # PubMed-shaped fuzz separately.
+    for trial in range(200):
+        arts = []
+        for _ in range(rng.randrange(3)):
+            author = "".join(
+                f"<Author><LastName>{ln}</LastName><ForeName>{fn}</ForeName></Author>"
+                for ln, fn in rng.choice(
+                    [[], [["A", "B"]], [["", ""], ["C", ""]]])
+            )
+            title = rng.choice(["T", "A  B", "x&y"]).replace("&", "&amp;")
+            arts.append(
+                f"<PubmedArticle><MedlineCitation>"
+                f"<PMID>{rng.choice(['1', ''])}</PMID>"
+                f"<Article><ArticleTitle>{title}</ArticleTitle>"
+                f"<AuthorList>{author}</AuthorList>"
+                f"</Article></MedlineCitation></PubmedArticle>")
+        xml = f"<PubmedArticleSet>{''.join(arts)}</PubmedArticleSet>"
+        rid = rng.choice(["1", "", 5, None])
+        py_raised, py_val = _outcome(_v_pubmed_fetch, xml, rid)
+        rs_raised, rs_val = _outcome(_rs_pubmed_fetch, xml, rid)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, xml)
+        assert rs_val == py_val, (trial, xml, rid)
+        n_checked += 1
+    assert n_checked == 800
+
+
+def test_batch8_hostile_wrappers(monkeypatch):
+    import httpx
+    from gossamer.research_providers import ArxivAdapter, PubmedAdapter
+    ax, pm = ArxivAdapter(delay=0), PubmedAdapter(delay=0)
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeRespText(ARXIV_FEED))
+    got = ax._search_impl("q", max_results=5)
+    assert len(got) == 2 and got[0]["id"] == "2401.00001v2"
+    assert "2401.00001v2" in got[0]["raw"]
+    assert got[0]["authors"] == "Doe, J., Smith, K."
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeRespText(PUBMED_XML))
+    got = pm.fetch("12345")
+    assert got[0]["id"] == "12345" and got[0]["raw"] == PUBMED_XML
+    assert got[0]["authors"] == "Doe J. Q., Smith, Anon, X"
+    monkeypatch.setattr(
+        httpx, "get",
+        lambda *a, **k: _FakeResp({"esearchresult": {"idlist": ["7"]}}))
+    got = pm._search_impl("q")
+    assert got[0]["raw"] == '{"uid": "7"}'
+    assert got[0]["snippet"] == "PMID 7"

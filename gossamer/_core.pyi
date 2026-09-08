@@ -715,3 +715,32 @@ def census_parse_fetch(
 ) -> str:
     """Census matched row (raw payload embedded), as JSON (src/adapters.rs)."""
     ...
+
+def arxiv_parse_search(
+    response_xml: str,
+    max_results: int = 5,
+) -> str:
+    """arXiv Atom entry rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def arxiv_parse_fetch(
+    response_xml: str,
+    ident: str = "",
+    url_fallback_json: str = "null",
+) -> str:
+    """arXiv Atom entry (or error record) minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def pubmed_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """PubMed esearch uid rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def pubmed_parse_fetch(
+    response_xml: str,
+    rid: str = "",
+) -> str:
+    """PubMed efetch row (or 'null'), minus raw, as JSON (src/adapters.rs)."""
+    ...

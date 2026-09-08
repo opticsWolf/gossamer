@@ -703,6 +703,38 @@ mod tests {
     }
 
     #[test]
+    fn batch8_xml_shapes() {
+        // xmlatom: local names ignore prefixes; tails invisible.
+        let root = crate::xmlatom::parse_document(
+            "<f xmlns:a='u'><a:x>y<b/>tail</a:x></f>").unwrap();
+        let x = root.child("x").unwrap();
+        assert_eq!(x.text, "y");
+        // arxiv: doi/category fallback chains + append-then-break.
+        let out = arxiv_parse_search_impl(
+            "<feed><entry><id>http://arxiv.org/abs/1</id>\
+             <link title='doi' href='https://doi.org/10.9/y'/>\
+             <category term='t' scheme='http://arxiv.org/schemas/atom'/>\
+             </entry></feed>", 0).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["doi"], "10.9/y");
+        assert_eq!(out[0]["fields"]["arxiv"]["primary_category"], "t");
+        // arxiv fetch: error record shape.
+        let rec = arxiv_parse_fetch_impl(
+            "<feed/>", "9", &Value::String("R".to_string())).unwrap();
+        assert_eq!(rec["snippet"], "");
+        assert_eq!(rec["url"], "R");
+        // pubmed: char-sliced string idlists + direct-index errors.
+        let out = pubmed_parse_search_impl(
+            r#"{"esearchresult": {"idlist": "ab"}}"#, 5).unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(pubmed_parse_search_impl("{}", 5).is_err());
+        // pubmed fetch: None for article-less payloads.
+        assert!(pubmed_parse_fetch_impl("<PubmedArticleSet/>", "1")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn batch7_misc_shapes() {
         // WorldBank: indicator fallback + recent join slice.
         let body = r#"[{"page": 1}, [{"indicator": {"id": "X", "value": "V"}, "date": "2023", "value": 5}]]"#;
@@ -6287,6 +6319,379 @@ pub fn census_parse_fetch(
     rid: &str,
 ) -> PyResult<String> {
     census_parse_fetch_impl(response_json, dataset, rid)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ── arXiv (Atom via src/xmlatom.rs) ─────────────────────────────
+
+/// `_bare_arxiv_id`: reduce an id or abs URL to the bare identifier.
+fn arxiv_bare_id(value: &str) -> String {
+    let mut ident = value.to_string();
+    for sep in ["arxiv.org/abs/", "arxiv.org/abs", "arxiv.org/"] {
+        if let Some((_, rest)) = ident.split_once(sep) {
+            ident = rest.to_string();
+        }
+    }
+    ident.trim_matches('/').to_string()
+}
+
+/// `_entry_field`: collapsed text of the first direct child with this
+/// local name ("" when absent).
+fn arxiv_field(entry: &crate::xmlatom::Node, name: &str) -> String {
+    match entry.child(name) {
+        None => String::new(),
+        Some(c) => crate::pycompat::py_collapse_ws(&c.text),
+    }
+}
+
+fn arxiv_entry_impl(entry: &crate::xmlatom::Node) -> Value {
+    let entry_id = arxiv_field(entry, "id");
+    let bare_id = arxiv_bare_id(&entry_id);
+    // DOI: the extension field, else the rel=related title=doi link.
+    let mut doi = arxiv_field(entry, "doi");
+    if doi.is_empty() {
+        for link in entry.children_named("link") {
+            if link.attr("title") == "doi" {
+                let href = link.attr("href").trim().to_string();
+                doi = match href.split_once("doi.org/") {
+                    Some((_, rest)) => rest.trim().to_string(),
+                    None => href,
+                };
+                break;
+            }
+        }
+    }
+    // Primary category: the extension, else the arxiv-scheme category.
+    let mut primary = String::new();
+    for pc in entry.children_named("primary_category") {
+        primary = pc.attr("term").to_string();
+        if !primary.is_empty() {
+            break;
+        }
+    }
+    if primary.is_empty() {
+        for cat in entry.children_named("category") {
+            if cat.attr("scheme").ends_with("schemas/atom") {
+                primary = cat.attr("term").to_string();
+                break;
+            }
+        }
+    }
+    let mut authors: Vec<String> = Vec::new();
+    for a in entry.children_named("author") {
+        let name = arxiv_field(a, "name");
+        if !name.is_empty() {
+            authors.push(name);
+        }
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "primary_category".to_string(),
+        Value::String(primary),
+    );
+    let mut arxiv = serde_json::Map::new();
+    arxiv.insert("arxiv".to_string(), Value::Object(fields));
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("arxiv".to_string()));
+    rec.insert("id".to_string(), Value::String(bare_id.clone()));
+    rec.insert(
+        "title".to_string(),
+        Value::String(arxiv_field(entry, "title")),
+    );
+    rec.insert(
+        "url".to_string(),
+        Value::String(if entry_id.is_empty() {
+            bare_id
+        } else {
+            entry_id
+        }),
+    );
+    rec.insert("doi".to_string(), Value::String(doi));
+    rec.insert(
+        "published".to_string(),
+        Value::String(arxiv_field(entry, "published")),
+    );
+    rec.insert(
+        "authors".to_string(),
+        Value::String(authors.join(", ")),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            crate::pycompat::char_head(
+                crate::pycompat::py_collapse_ws(&arxiv_field(entry, "summary")).as_str(),
+                240,
+            )
+            .to_string(),
+        ),
+    );
+    // `raw` is `ET.tostring(entry)`: re-attached by the wrapper from
+    // its own ElementTree parse (see below).
+    rec.insert("fields".to_string(), Value::Object(arxiv));
+    Value::Object(rec)
+}
+
+pub fn arxiv_parse_search_impl(
+    response_xml: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // Append-then-break: any entries at all yield at least one record,
+    // even for `max_results <= 0`.
+    let mut out = Vec::new();
+    for entry in root.children_named("entry") {
+        out.push(arxiv_entry_impl(entry));
+        if out.len() as i64 >= max_results {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+pub fn arxiv_parse_fetch_impl(
+    response_xml: &str,
+    ident: &str,
+    url_fallback: &Value,
+) -> Result<Value, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    let entries = root.children_named("entry");
+    // A valid entry's <id> contains 'abs/'; otherwise (or when empty)
+    // answer the error record with the entry summary ("" when empty).
+    let entry = entries.first().copied();
+    let valid = match entry {
+        Some(e) => arxiv_field(e, "id").contains("abs/"),
+        None => false,
+    };
+    if !valid {
+        let summary = match entry {
+            Some(e) => arxiv_field(e, "summary"),
+            None => String::new(),
+        };
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "primary_category".to_string(),
+            Value::String(String::new()),
+        );
+        let mut arxiv = serde_json::Map::new();
+        arxiv.insert("arxiv".to_string(), Value::Object(fields));
+        let mut rec = serde_json::Map::new();
+        rec.insert("source".to_string(), Value::String("arxiv".to_string()));
+        rec.insert("id".to_string(), Value::String(ident.to_string()));
+        rec.insert("title".to_string(), Value::String(String::new()));
+        rec.insert("url".to_string(), url_fallback.clone());
+        rec.insert("doi".to_string(), Value::String(String::new()));
+        rec.insert("published".to_string(), Value::String(String::new()));
+        rec.insert("authors".to_string(), Value::String(String::new()));
+        rec.insert("snippet".to_string(), Value::String(summary));
+        rec.insert("fields".to_string(), Value::Object(arxiv));
+        // `raw` is "": attached by the wrapper.
+        return Ok(Value::Object(rec));
+    }
+    Ok(arxiv_entry_impl(entry.unwrap()))
+}
+
+// ── PubMed ──────────────────────────────────────────────────────
+
+pub fn pubmed_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `resp.json()["esearchresult"]`: direct indexing (missing key →
+    // KeyError; lists/strings index by integer only; anything else is
+    // not subscriptable).
+    let esearch = match &body {
+        Value::Object(m) => match m.get("esearchresult") {
+            Some(v) => v.clone(),
+            None => return Err("KeyError: esearchresult".to_string()),
+        },
+        Value::Array(_) => {
+            return Err(
+                "TypeError: list indices must be integers or slices, not str".to_string(),
+            );
+        }
+        Value::String(_) => {
+            return Err("TypeError: string indices must be integers, not 'str'".to_string());
+        }
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    let emap = match &esearch {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&esearch))),
+    };
+    // `.get("idlist", [])[:max_results]`: missing → []; lists slice;
+    // strings slice per char (uids render, never `.get`); dicts raise
+    // `KeyError(slice)`; anything else raises TypeError.
+    let hits: Vec<Value> = match emap.get("idlist") {
+        None => Vec::new(),
+        Some(Value::Array(a)) => slice_refs(a, max_results)
+            .into_iter()
+            .cloned()
+            .collect(),
+        Some(Value::String(s)) => {
+            let chars: Vec<char> = s.chars().collect();
+            let n = chars.len() as i64;
+            let end = (if max_results < 0 {
+                (n + max_results).max(0)
+            } else {
+                max_results.min(n)
+            }) as usize;
+            chars[..end]
+                .iter()
+                .map(|c| Value::String(c.to_string()))
+                .collect()
+        }
+        Some(Value::Object(_)) => return Err(subscript_keyerror(max_results)),
+        Some(other) => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    let mut out = Vec::new();
+    for uid in hits.iter() {
+        let uid_s = py_str_value(uid);
+        let mut rec = serde_json::Map::new();
+        rec.insert("source".to_string(), Value::String("pubmed".to_string()));
+        rec.insert("id".to_string(), uid.clone());
+        rec.insert("title".to_string(), Value::String(String::new()));
+        rec.insert(
+            "url".to_string(),
+            Value::String(format!("https://pubmed.ncbi.nlm.nih.gov/{uid_s}/")),
+        );
+        rec.insert(
+            "snippet".to_string(),
+            Value::String(format!("PMID {uid_s}")),
+        );
+        out.push(Value::Object(rec));
+    }
+    Ok(out)
+}
+
+pub fn pubmed_parse_fetch_impl(
+    response_xml: &str,
+    rid_s: &str,
+) -> Result<Option<Value>, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // `root.find("PubmedArticle")`: None answers the bare record in
+    // the wrapper (which owns the ET lookup); the kernel returns None.
+    let entry = match root.child("PubmedArticle") {
+        Some(e) => e,
+        None => return Ok(None),
+    };
+    // `entry.find("MedlineCitation")`: None raises AttributeError on
+    // the first `.findtext` below.
+    let mc = entry.child("MedlineCitation");
+    let pmid = match mc {
+        None => return Err(attr_error("NoneType")),
+        Some(m) => match m.child("PMID") {
+            None => None,
+            Some(p) => Some(p.text.clone()),
+        },
+    };
+    // `article.findtext("ArticleTitle")`: article None raises here.
+    let article = mc.unwrap().child("Article");
+    let title = match article {
+        None => return Err(attr_error("NoneType")),
+        Some(a) => match a.child("ArticleTitle") {
+            None => String::new(),
+            Some(t) => crate::pycompat::py_collapse_ws(&t.text),
+        },
+    };
+    let mut authors: Vec<String> = Vec::new();
+    if let Some(alist) = article.unwrap().child("AuthorList") {
+        for a in alist.children_named("Author") {
+            let last = a.child("LastName").map(|n| n.text.as_str());
+            let fore = a.child("ForeName").map(|n| n.text.as_str());
+            // `" ".join(x for x in (ln, fn) if x).strip()`: raw parts
+            // (uncollapsed), single-space join, ends stripped.
+            let mut parts: Vec<&str> = Vec::new();
+            if let Some(x) = last {
+                if !x.is_empty() {
+                    parts.push(x);
+                }
+            }
+            if let Some(x) = fore {
+                if !x.is_empty() {
+                    parts.push(x);
+                }
+            }
+            let name = parts.join(" ").trim().to_string();
+            if !name.is_empty() {
+                authors.push(name);
+            }
+        }
+    }
+    // `mc.findtext("PMID") or str(record_id)`: falsy PMIDs fold.
+    let uid = match pmid {
+        Some(t) if !t.is_empty() => t,
+        _ => rid_s.to_string(),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("pubmed".to_string()));
+    rec.insert("id".to_string(), Value::String(uid.clone()));
+    rec.insert("title".to_string(), Value::String(title.clone()));
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!("https://pubmed.ncbi.nlm.nih.gov/{uid}/")),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(crate::pycompat::char_head(title.as_str(), 240).to_string()),
+    );
+    rec.insert(
+        "authors".to_string(),
+        Value::String(authors.join(", ")),
+    );
+    // `raw` is `resp.text` verbatim: attached by the wrapper.
+    Ok(Some(Value::Object(rec)))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, max_results = 5))]
+pub fn arxiv_parse_search(
+    py: Python,
+    response_xml: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    arxiv_parse_search_impl(response_xml, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, ident = "", url_fallback_json = "null"))]
+pub fn arxiv_parse_fetch(
+    py: Python,
+    response_xml: &str,
+    ident: &str,
+    url_fallback_json: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(url_fallback_json).unwrap_or(Value::Null);
+    arxiv_parse_fetch_impl(response_xml, ident, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn pubmed_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    pubmed_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, rid = ""))]
+pub fn pubmed_parse_fetch(
+    py: Python,
+    response_xml: &str,
+    rid: &str,
+) -> PyResult<String> {
+    pubmed_parse_fetch_impl(response_xml, rid)
         .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }

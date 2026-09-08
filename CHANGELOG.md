@@ -4,6 +4,25 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.18] — Rust port M18: XML feed kernels
+
+- New `src/xmlatom.rs` (on `quick-xml` 0.42): ElementTree-shaped
+  subset — namespace-ignoring local names, direct-text-only `.text`
+  (grandchild tails invisible), predefined/char entity refs as
+  `GeneralRef` events, XML 1.0 EOL normalization, unqualified-only
+  attribute gets; plus `py_collapse_ws` in `src/pycompat.rs`.
+  Wrappers run `ET.fromstring` first, so malformed feeds keep
+  raising `ParseError` in Python and `raw` stays byte-identical
+  (`ET.tostring` / verbatim text) via re-attachment.
+- `src/adapters.rs`: arXiv Atom search (append-then-break slicing)
+  + fetch (`abs/` validity gate, error record) with doi/category
+  fallback chains and `_bare_arxiv_id`; PubMed esearch (direct
+  `["esearchresult"]` indexing, per-char string idlists) + efetch
+  (`MedlineCitation`/`Article` gating, collapsed titles, raw author
+  parts).
+- Caught by parity: entity refs arriving as separate events (the
+  `&amp;` drop), PubMed string idlists iterating chars.
+
 ## [0.8.17] — Rust port M17: misc/geo/financial kernels
 
 - `src/adapters.rs`: WorldBank retired-search note + indicator fetch
