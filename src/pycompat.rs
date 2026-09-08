@@ -97,3 +97,41 @@ pub fn py_list_repr(items: &[String]) -> String {
     let inner: Vec<String> = items.iter().map(|s| py_repr(s)).collect();
     format!("[{0}]", inner.join(", "))
 }
+
+/// Python `str.splitlines()` boundaries: \n, \r, \r\n (one break),
+/// \x0b, \x0c, \x1c–\x1e, \x85, \u2028, \u2029. (Differs from Rust
+/// `.lines()` on \x0b/\x0c/\x1c–\x1e/\x85/\u2028/\u2029, which Rust
+/// does not split on.)
+pub fn py_splitlines(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    while i < s.len() {
+        let b = bytes[i];
+        // ASCII breaks + multibyte NEL/LS/PS handled below.
+        if b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c || (0x1c..=0x1e).contains(&b) {
+            out.push(&s[start..i]);
+            if b == b'\r' && i + 1 < s.len() && bytes[i + 1] == b'\n' {
+                i += 2;
+            } else {
+                i += 1;
+            }
+            start = i;
+            continue;
+        }
+        let c = s[i..].chars().next().unwrap_or('\0');
+        if c == '\u{85}' || c == '\u{2028}' || c == '\u{2029}' {
+            out.push(&s[start..i]);
+            i += c.len_utf8();
+            start = i;
+            continue;
+        }
+        i += c.len_utf8().max(1);
+    }
+    // No trailing segment after a final break; empty input splits to [].
+    if start < s.len() {
+        out.push(&s[start..]);
+    }
+    out
+}

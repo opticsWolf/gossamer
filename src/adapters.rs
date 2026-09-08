@@ -4793,3 +4793,1439 @@ pub fn doaj_parse_search(
         .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }
+
+// ── M17 helpers ─────────────────────────────────────────────────
+
+/// Python `str()` rendering of a JSON value: strings pass through
+/// unquoted; everything else renders exactly as `py_value_repr`
+/// (which already matches `str()` for containers, booleans and
+/// None) except numbers, which use Python float formatting
+/// (`1e+300`, `1.5e-07`, trailing `.0`).
+fn py_str_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => py_str_number(n),
+        _ => py_value_repr(v),
+    }
+}
+
+fn py_str_number(n: &serde_json::Number) -> String {
+    if let Some(i) = n.as_i64() {
+        return i.to_string();
+    }
+    if let Some(u) = n.as_u64() {
+        return u.to_string();
+    }
+    // Shortest round-trip digits, then Python exponent restyling.
+    let f = n.as_f64().unwrap_or(f64::NAN);
+    let s = format!("{f:?}");
+    if !f.is_finite() {
+        return s;
+    }
+    if let Some(pos) = s.find(['e', 'E']) {
+        let (mant, exp) = s.split_at(pos);
+        let exp = &exp[1..];
+        let (sign, digits) = match exp.strip_prefix('-') {
+            Some(d) => ('-', d),
+            None => ('+', exp.strip_prefix('+').unwrap_or(exp)),
+        };
+        let width = digits.len().max(2);
+        return format!("{mant}e{sign}{digits:0>width$}", width = width);
+    }
+    if s.contains('.') {
+        s
+    } else {
+        format!("{s}.0")
+    }
+}
+
+// ── WorldBank ───────────────────────────────────────────────────
+
+/// The static retired-search note (minus `raw`, which the wrapper
+/// re-attaches with the original `json.dumps` expression verbatim).
+pub fn worldbank_note_impl() -> Result<Value, String> {
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("worldbank".to_string()),
+    );
+    rec.insert("id".to_string(), Value::String(String::new()));
+    rec.insert(
+        "title".to_string(),
+        Value::String("World Bank keyword search unavailable".to_string()),
+    );
+    rec.insert("url".to_string(), Value::String(String::new()));
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            "The World Bank /v2/search endpoint was retired. Use \
+             fetch(series_code) for time-series data (e.g. SP.POP.TOTL)."
+                .to_string(),
+        ),
+    );
+    Ok(Value::Object(rec))
+}
+
+pub fn worldbank_parse_fetch_impl(
+    response_json: &str,
+    fallback: &Value,
+    record_url: &str,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `payload[1]` only when the body is a long-enough list whose
+    // second element is itself a list; anything else folds to [].
+    let points: Vec<Value> = match &body {
+        Value::Array(p) if p.len() > 1 => match &p[1] {
+            Value::Array(pts) => pts.clone(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
+    let first: Option<&Value> = points.first();
+    // `(first or {}).get("indicator", {}) if isinstance(first, dict)
+    // else {}`: non-dict firsts fold to {}; falsy dicts fold; the
+    // indicator read itself stays raw (even falsy/None).
+    let indicator: Value = match first {
+        Some(Value::Object(fm)) if !fm.is_empty() => match fm.get("indicator") {
+            None => Value::Object(serde_json::Map::new()),
+            Some(v) => v.clone(),
+        },
+        _ => Value::Object(serde_json::Map::new()),
+    };
+    // `indicator.get("id") or record_id`: a non-dict indicator raises
+    // here (AttributeError), matching the original.
+    let indicator_map = match &indicator {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&indicator))),
+    };
+    let series_id = match indicator_map.get("id") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ => fallback.clone(),
+    };
+    let title = match indicator_map.get("value") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ => fallback.clone(),
+    };
+    // Dated non-null points render `date:value`, joined and sliced.
+    // (Missing dates render as ""; the count covers all points.)
+    let n_points = points.len();
+    let mut pairs: Vec<String> = Vec::new();
+    for pt in points.iter() {
+        if let Value::Object(pm) = pt {
+            match pm.get("value") {
+                Some(Value::Null) | None => {}
+                Some(val) => {
+                    let date = match pm.get("date") {
+                        None => String::new(),
+                        Some(v) => py_str_value(v),
+                    };
+                    pairs.push(format!("{date}:{0}", py_str_value(val)));
+                }
+            }
+        }
+    }
+    // `payload[0] if isinstance(payload, list) and payload else {}`.
+    let pagination: Value = match &body {
+        Value::Array(p) if !p.is_empty() => p[0].clone(),
+        _ => Value::Object(serde_json::Map::new()),
+    };
+    let mut wb = serde_json::Map::new();
+    wb.insert("observations".to_string(), Value::Array(points));
+    wb.insert("pagination".to_string(), pagination);
+    let mut fields = serde_json::Map::new();
+    fields.insert("worldbank".to_string(), Value::Object(wb));
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("worldbank".to_string()),
+    );
+    rec.insert("id".to_string(), series_id);
+    rec.insert("title".to_string(), title);
+    rec.insert("url".to_string(), Value::String(record_url.to_string()));
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(format!(
+            "{n_points} observations; recent: {0}",
+            char_head(pairs.join(", ").as_str(), 200)
+        )),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+// ── FRED ────────────────────────────────────────────────────────
+
+/// Shared `_record` builder: `obs` items are kernel-built
+/// `{date, value}` dicts; the id stays raw while title/url render it.
+/// `raw` crosses separately for the official path (`None` here — the
+/// wrapper re-attaches `json.dumps(data)`); the CSV path computes its
+/// own `raw` before calling.
+fn fred_record_impl(obs: &[Value], rid: &Value, raw: Option<String>) -> Value {
+    let tail: Vec<&Value> = if obs.len() > 10 {
+        obs[obs.len() - 10..].iter().collect()
+    } else {
+        obs.iter().collect()
+    };
+    let mut points: Vec<String> = Vec::with_capacity(tail.len());
+    for o in tail.iter() {
+        // Items are kernel-built `{date, value}` dicts (missing keys
+        // read "", matching the original `.get` defaults).
+        let om = match o {
+            Value::Object(om) => om,
+            _ => {
+                points.push("=".to_string());
+                continue;
+            }
+        };
+        points.push(format!(
+            "{0}={1}",
+            om.get("date").map(py_str_value).unwrap_or_default(),
+            om.get("value").map(py_str_value).unwrap_or_default()
+        ));
+    }
+    let last = points.last().cloned().unwrap_or("n/a".to_string());
+    let kept: Vec<Value> = if obs.len() > 50 {
+        obs[obs.len() - 50..].to_vec()
+    } else {
+        obs.to_vec()
+    };
+    let mut fred = serde_json::Map::new();
+    fred.insert("observations".to_string(), Value::Array(kept));
+    let mut fields = serde_json::Map::new();
+    fields.insert("fred".to_string(), Value::Object(fred));
+    let rid_s = py_str_value(rid);
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("fred".to_string()));
+    rec.insert("id".to_string(), rid.clone());
+    rec.insert(
+        "title".to_string(),
+        Value::String(format!("FRED series {rid_s}")),
+    );
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!("https://fred.stlouisfed.org/series/{rid_s}")),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(format!("{0} observations; last: {last}", obs.len())),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    if let Some(raw) = raw {
+        rec.insert("raw".to_string(), Value::String(raw));
+    }
+    Value::Object(rec)
+}
+
+pub fn fred_parse_official_impl(
+    response_json: &str,
+    fallback: &Value,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `data.get("observations", [])`: the body must be a dict; lists
+    // build per item (non-dict items raise on `.get`); strings/dicts
+    // iterate and raise on their first member; anything else raises
+    // TypeError. (The official `raw` is `json.dumps(data)`, re-attached
+    // by the wrapper.)
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    let obs: Vec<Value> = match obj.get("observations") {
+        None => Vec::new(),
+        Some(Value::Array(a)) => {
+            let mut out = Vec::with_capacity(a.len());
+            for o in a.iter() {
+                let om = match o {
+                    Value::Object(m) => m,
+                    _ => return Err(attr_error(json_type(o))),
+                };
+                let mut point = serde_json::Map::new();
+                point.insert(
+                    "date".to_string(),
+                    om.get("date").cloned().unwrap_or(Value::String(String::new())),
+                );
+                point.insert(
+                    "value".to_string(),
+                    om.get("value").cloned().unwrap_or(Value::String(String::new())),
+                );
+                out.push(Value::Object(point));
+            }
+            out
+        }
+        // Non-empty strings/dicts fail on their first member's `.get`.
+        Some(Value::String(s)) => {
+            if s.chars().next().is_some() {
+                return Err(attr_error("str"));
+            }
+            Vec::new()
+        }
+        Some(Value::Object(mm)) => {
+            if mm.keys().next().is_some() {
+                return Err(attr_error("str"));
+            }
+            Vec::new()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    Ok(fred_record_impl(&obs, fallback, None))
+}
+
+pub fn fred_parse_csv_impl(response_text: &str, fallback: &Value) -> Result<Value, String> {
+    use crate::pycompat::{py_splitlines, py_strip};
+    // `resp.text.strip().splitlines()`; the header row is skipped and
+    // each remaining line splits on the first comma.
+    let lines: Vec<&str> = py_splitlines(py_strip(response_text));
+    let mut obs: Vec<Value> = Vec::new();
+    for line in lines.iter().skip(1) {
+        let (before, after) = match line.split_once(',') {
+            Some((b, a)) => (b, a),
+            None => (*line, ""),
+        };
+        let date = py_strip(before);
+        let value = py_strip(after);
+        if !date.is_empty() && !value.is_empty() {
+            let mut point = serde_json::Map::new();
+            point.insert("date".to_string(), Value::String(date.to_string()));
+            point.insert("value".to_string(), Value::String(value.to_string()));
+            obs.push(Value::Object(point));
+        }
+    }
+    let raw = lines
+        .iter()
+        .take(51)
+        .copied()
+        .collect::<Vec<&str>>()
+        .join("\n");
+    Ok(fred_record_impl(&obs, fallback, Some(raw)))
+}
+
+// ── GitHub ──────────────────────────────────────────────────────
+
+/// `is_fetch` selects the fetch defaults (`record_id` for a missing
+/// id/title, `""` for a missing url) over the search ones (`""`,
+/// `""`, `r.get("url")`).
+fn github_row_impl(r: &Value, fallback: &Value, is_fetch: bool) -> Result<Value, String> {
+    let m = match r {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(r))),
+    };
+    // Search: `r.get("html_url") or r.get("url")` (no defaults —
+    // both may read None). Fetch: `repo.get("html_url") or ""`.
+    let url = match m.get("html_url") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ if is_fetch => Value::String(String::new()),
+        _ => m.get("url").cloned().unwrap_or(Value::Null),
+    };
+    let mut gh = serde_json::Map::new();
+    gh.insert(
+        "language".to_string(),
+        m.get("language").cloned().unwrap_or(Value::Null),
+    );
+    gh.insert(
+        "stars".to_string(),
+        m.get("stargazers_count").cloned().unwrap_or(Value::Null),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("github".to_string(), Value::Object(gh));
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("github".to_string()));
+    rec.insert(
+        "id".to_string(),
+        // Search `str(r.get("id", ""))`, fetch
+        // `str(repo.get("id", record_id))`: strings pass through;
+        // anything else renders with Python `str()`.
+        Value::String(py_str_value(m.get("id").unwrap_or(fallback))),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("full_name")
+            .cloned()
+            .unwrap_or(fallback.clone()),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "snippet".to_string(),
+        match m.get("description") {
+            None => Value::String(String::new()),
+            Some(v) if !is_truthy(v) => Value::String(String::new()),
+            Some(Value::String(s)) => Value::String(char_head(s, 240).to_string()),
+            Some(Value::Array(a)) => {
+                Value::Array(a.iter().take(240).cloned().collect())
+            }
+            Some(Value::Object(_)) => return Err(subscript_keyerror(240)),
+            Some(other) => return Err(type_error_not_subscriptable(json_type(other))),
+        },
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn github_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("items", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("items") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let empty = Value::String(String::new());
+    let mut out = Vec::new();
+    for r in hits {
+        out.push(github_row_impl(r, &empty, false)?);
+    }
+    Ok(out)
+}
+
+pub fn github_parse_fetch_impl(
+    response_json: &str,
+    fallback: &Value,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    github_row_impl(&body, fallback, true)
+}
+
+// ── Congress ────────────────────────────────────────────────────
+
+/// The dead `loc` computation (`r.get("state", "")` dance) is skipped:
+/// it never reaches the record and cannot raise anything the first
+/// field read does not already raise identically.
+fn congress_row_impl(r: &Value, fallback: &Value) -> Result<Value, String> {
+    let m = match r {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(r))),
+    };
+    let mut cg = serde_json::Map::new();
+    cg.insert(
+        "chamber".to_string(),
+        m.get("chamber")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    cg.insert(
+        "party".to_string(),
+        m.get("party").cloned().unwrap_or(Value::String(String::new())),
+    );
+    cg.insert(
+        "state".to_string(),
+        m.get("state").cloned().unwrap_or(Value::String(String::new())),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("congress".to_string(), Value::Object(cg));
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("congress".to_string()),
+    );
+    rec.insert(
+        "id".to_string(),
+        m.get("cgi_id").cloned().unwrap_or(fallback.clone()),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("display_name").cloned().unwrap_or(fallback.clone()),
+    );
+    rec.insert(
+        "url".to_string(),
+        m.get("url").cloned().unwrap_or(Value::String(String::new())),
+    );
+    // `f"{title} {party} — {state}{district}"`: every slot renders
+    // raw (missing → "").
+    let empty = Value::String(String::new());
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(format!(
+            "{0} {1} \u{2014} {2}{3}",
+            py_str_value(m.get("title").unwrap_or(&empty)),
+            py_str_value(m.get("party").unwrap_or(&empty)),
+            py_str_value(m.get("state").unwrap_or(&empty)),
+            py_str_value(m.get("district").unwrap_or(&empty))
+        )),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn congress_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("results", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let empty = Value::String(String::new());
+    let mut out = Vec::new();
+    for r in hits {
+        out.push(congress_row_impl(r, &empty)?);
+    }
+    Ok(out)
+}
+
+pub fn congress_parse_fetch_impl(
+    response_json: &str,
+    fallback: &Value,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    congress_row_impl(&body, fallback)
+}
+
+// ── NASA NeoWs ──────────────────────────────────────────────────
+
+/// `(neo.get("estimated_diameter", {}) or {}).get("meters", {}) or {}`:
+/// missing/falsy outer folds; truthy non-dicts raise; the meters read
+/// stays raw (falsy folds, truthy kept even when not a dict).
+fn nasa_diameter(neo: &serde_json::Map<String, Value>) -> Result<Value, String> {
+    // Falsy outers fold; truthy non-dicts raise on `.get`.
+    let est = match neo.get("estimated_diameter") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(v) => Some(v),
+    };
+    let meters: Value = match est {
+        None => Value::Object(serde_json::Map::new()),
+        Some(Value::Object(em)) => em
+            .get("meters")
+            .cloned()
+            .unwrap_or(Value::Object(serde_json::Map::new())),
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    // `.get("meters", {}) or {}`: falsy folds, truthy kept as-is.
+    Ok(if is_truthy(&meters) {
+        meters
+    } else {
+        Value::Object(serde_json::Map::new())
+    })
+}
+
+/// `(neo.get("close_approach_data") or [{}])[0]`: missing/falsy folds
+/// to `[{}]`; truthy lists index (empty impossible — falsy caught);
+/// truthy strings yield their first char; truthy dicts raise KeyError;
+/// anything else raises TypeError.
+fn nasa_first_ca(neo: &serde_json::Map<String, Value>) -> Result<Value, String> {
+    let cad = match neo.get("close_approach_data") {
+        None => Value::Array(vec![Value::Object(serde_json::Map::new())]),
+        Some(v) if !is_truthy(v) => {
+            Value::Array(vec![Value::Object(serde_json::Map::new())])
+        }
+        Some(v) => v.clone(),
+    };
+    match &cad {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(v.clone()),
+            None => Ok(Value::Object(serde_json::Map::new())),
+        },
+        Value::String(s) => Ok(Value::String(
+            s.chars().next().map(|c| c.to_string()).unwrap_or_default(),
+        )),
+        Value::Object(_) => Err("KeyError: 0".to_string()),
+        other => Err(type_error_not_subscriptable(json_type(other))),
+    }
+}
+
+fn nasa_row_impl(neo: &Value, fallback: &Value, is_fetch: bool) -> Result<Value, String> {
+    let m = match neo {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(neo))),
+    };
+    // Evaluation order matches the original: search builds `ca`
+    // before `diam`; fetch never touches `close_approach_data`.
+    let ca: Option<Value> = if is_fetch {
+        None
+    } else {
+        Some(nasa_first_ca(m)?)
+    };
+    let diam = nasa_diameter(m)?;
+    let (published, km) = if is_fetch {
+        (Value::String(String::new()), Value::String(String::new()))
+    } else {
+        let ca = ca.unwrap();
+        let ca_map = match &ca {
+            Value::Object(m) => m,
+            _ => return Err(attr_error(json_type(&ca))),
+        };
+        // `published` reads `ca` before the snippet touches the
+        // distance (original dict order).
+        let published = ca_map
+            .get("close_approach_date")
+            .cloned()
+            .unwrap_or(Value::String(String::new()));
+        // `ca.get('closest_approach_distance', {}).get('kilometers',
+        // '')`: the inner read stays raw (falsy/None/non-dict raises).
+        let dist = match ca_map.get("closest_approach_distance") {
+            None => Value::Object(serde_json::Map::new()),
+            Some(v) => v.clone(),
+        };
+        let km = match &dist {
+            Value::Object(dm) => dm
+                .get("kilometers")
+                .cloned()
+                .unwrap_or(Value::String(String::new())),
+            _ => return Err(attr_error(json_type(&dist))),
+        };
+        (published, km)
+    };
+    let diam_map = match &diam {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&diam))),
+    };
+    let diam_max = diam_map
+        .get("estimated_diameter_max")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let empty = Value::String(String::new());
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("nasa".to_string()));
+    rec.insert(
+        "id".to_string(),
+        m.get("neo_reference_id").cloned().unwrap_or(fallback.clone()),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("object_name").cloned().unwrap_or(fallback.clone()),
+    );
+    rec.insert(
+        "url".to_string(),
+        m.get("nasa_jpl_url")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    if !is_fetch {
+        rec.insert("published".to_string(), published);
+    }
+    // Search: `f"~{max} m diameter; {km} km closest"`. Fetch:
+    // `f"~{max} m diameter"`.
+    let snippet = if is_fetch {
+        format!("~{0} m diameter", py_str_value(&diam_max))
+    } else {
+        format!(
+            "~{0} m diameter; {1} km closest",
+            py_str_value(&diam_max),
+            py_str_value(&km)
+        )
+    };
+    rec.insert("snippet".to_string(), Value::String(snippet));
+    let mut nasa = serde_json::Map::new();
+    nasa.insert(
+        "object_type".to_string(),
+        m.get("object_type").cloned().unwrap_or(empty.clone()),
+    );
+    nasa.insert(
+        "is_hazardous".to_string(),
+        m.get("is_hazardous").cloned().unwrap_or(empty.clone()),
+    );
+    if !is_fetch {
+        nasa.insert(
+            "absolute_magnitude".to_string(),
+            m.get("absolute_magnitude").cloned().unwrap_or(empty.clone()),
+        );
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert("nasa".to_string(), Value::Object(nasa));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn nasa_parse_search_impl(
+    response_json: &str,
+    start: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `.get("near_earth_objects", {}).get(start, [])`: a missing outer
+    // folds; falsy/non-dict outers raise on the inner `.get`.
+    let objects: Vec<&Value> = match obj.get("near_earth_objects") {
+        None => Vec::new(),
+        Some(Value::Object(nm)) => match nm.get(start) {
+            None => Vec::new(),
+            Some(v) => subscript_hits(Some(v), max_results)?,
+        },
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    let empty = Value::String(String::new());
+    let mut out = Vec::new();
+    for neo in objects {
+        out.push(nasa_row_impl(neo, &empty, false)?);
+    }
+    Ok(out)
+}
+
+pub fn nasa_parse_fetch_impl(
+    response_json: &str,
+    fallback: &Value,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    nasa_row_impl(&body, fallback, true)
+}
+
+// ── Software Heritage ───────────────────────────────────────────
+
+pub fn swh_origin_row_impl(origin: &Value, fallback: &str) -> Result<Value, String> {
+    let m = match origin {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(origin))),
+    };
+    // `\", \".join(origin.get(\"visit_types\", []) or [])`: falsy folds;
+    // truthy values iterate strictly (dicts key-wise, strings
+    // char-wise — non-strings raise at the raw index).
+    let vt_vals: Vec<Value> = match m.get("visit_types") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => {
+            s.chars().map(|c| Value::String(c.to_string())).collect()
+        }
+        Some(Value::Object(mm)) => {
+            mm.keys().map(|k| Value::String(k.clone())).collect()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    let mut vts: Vec<String> = Vec::with_capacity(vt_vals.len());
+    for (i, v) in vt_vals.iter().enumerate() {
+        match v {
+            Value::String(s) => vts.push(s.clone()),
+            _ => return Err(sequence_item_error(i, json_type(v))),
+        }
+    }
+    let types = vts.join(", ");
+    let url = m
+        .get("url")
+        .cloned()
+        .unwrap_or(Value::String(fallback.to_string()));
+    let visits = m
+        .get("origin_visits_url")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let mut swh = serde_json::Map::new();
+    swh.insert("visit_types".to_string(), Value::String(types.clone()));
+    let mut fields = serde_json::Map::new();
+    fields.insert("softwareheritage".to_string(), Value::Object(swh));
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("softwareheritage".to_string()),
+    );
+    rec.insert("id".to_string(), url.clone());
+    rec.insert("title".to_string(), url.clone());
+    // `f"...{url}" if url else visits`: url truthiness decides.
+    rec.insert(
+        "url".to_string(),
+        if is_truthy(&url) {
+            Value::String(format!(
+                "https://archive.softwareheritage.org/browse/origin/?origin_url={0}",
+                py_str_value(&url)
+            ))
+        } else {
+            visits
+        },
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(if types.is_empty() {
+            "archived origin".to_string()
+        } else {
+            format!("archived origin; visit types: {types}")
+        }),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn swh_parse_search_impl(
+    response_json: &str,
+    fallback: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `[self._origin_row(resp.json(), q)][:max_results]`: the single
+    // row builds first (raising on hostile shapes), then slices (a
+    // 1-list keeps its row only for `max_results >= 1`).
+    let row = swh_origin_row_impl(&body, fallback)?;
+    Ok(if max_results >= 1 { vec![row] } else { Vec::new() })
+}
+
+pub fn swh_parse_fetch_origin_impl(
+    response_json: &str,
+    fallback: &str,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    swh_origin_row_impl(&body, fallback)
+}
+
+pub fn swh_parse_fetch_sid_impl(
+    response_json: &str,
+    sid: &str,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let src = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `meta = src.get("meta", {}) or {}`: falsy folds; truthy
+    // non-dicts raise on their first `.get` below (nothing raisable
+    // precedes it past the dict check, so eager is exact).
+    let meta: Option<&serde_json::Map<String, Value>> = match src.get("meta") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(mm)) => Some(mm),
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    // Evaluation order matches the dict build: id, then title (whose
+    // eager `src.get("id", sid)` default re-reads the id), then url.
+    let id = src
+        .get("id")
+        .cloned()
+        .unwrap_or(Value::String(sid.to_string()));
+    let title = match meta {
+        None => id.clone(),
+        Some(mm) => match mm.get("name") {
+            // Eager default: `src.get("id", sid)` runs regardless.
+            None => src
+                .get("id")
+                .cloned()
+                .unwrap_or(Value::String(sid.to_string())),
+            Some(v) => v.clone(),
+        },
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("softwareheritage".to_string()),
+    );
+    rec.insert("id".to_string(), id.clone());
+    rec.insert("title".to_string(), title);
+    let sid_val = Value::String(sid.to_string());
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://archive.softwareheritage.org/{0}",
+            py_str_value(src.get("id").unwrap_or(&sid_val))
+        )),
+    );
+    let published = match meta {
+        None => Value::String(String::new()),
+        Some(mm) => mm
+            .get("date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    rec.insert("published".to_string(), published);
+    // `(meta.get("description", "") or "")[:240]`: meta folds to {}
+    // when missing/falsy, so the read is always safe here.
+    let desc_folded = match meta {
+        None => Value::String(String::new()),
+        Some(mm) => match mm.get("description") {
+            None => Value::String(String::new()),
+            Some(v) if !is_truthy(v) => Value::String(String::new()),
+            Some(v) => v.clone(),
+        },
+    };
+    rec.insert(
+        "snippet".to_string(),
+        match &desc_folded {
+            Value::String(s) => Value::String(char_head(s, 240).to_string()),
+            Value::Array(a) => Value::Array(a.iter().take(240).cloned().collect()),
+            Value::Object(_) => return Err(subscript_keyerror(240)),
+            other => return Err(type_error_not_subscriptable(json_type(other))),
+        },
+    );
+    let mut swh = serde_json::Map::new();
+    swh.insert(
+        "type".to_string(),
+        src.get("type")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("softwareheritage".to_string(), Value::Object(swh));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+// ── Overpass ────────────────────────────────────────────────────
+
+fn overpass_row_impl(el: &Value) -> Result<Value, String> {
+    let m = match el {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(el))),
+    };
+    // `tags = el.get("tags", {}) or {}`: falsy folds; truthy non-dicts
+    // raise on the first `.get`/`.items` (the name read comes first).
+    let tags: Option<&serde_json::Map<String, Value>> = match m.get("tags") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(tm)) => Some(tm),
+        Some(other) => return Err(attr_error(json_type(other))),
+    };
+    let name = match tags {
+        None => Value::String(String::new()),
+        Some(tm) => tm
+            .get("name")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    let empty = Value::String(String::new());
+    let el_type = m.get("type").unwrap_or(&empty);
+    let el_id = m.get("id").unwrap_or(&empty);
+    // `name or f"{type}:{id}"`: name truthiness decides (kept raw).
+    let title = if is_truthy(&name) {
+        name.clone()
+    } else {
+        Value::String(format!(
+            "{0}:{1}",
+            py_str_value(el_type),
+            py_str_value(el_id)
+        ))
+    };
+    // `", ".join(f"{k}={v}" for k, v in list(tags.items())[:6])`:
+    // all slots render, so joining never raises past the tags check.
+    let mut pairs: Vec<String> = Vec::new();
+    if let Some(tm) = tags {
+        for (k, v) in tm.iter().take(6) {
+            pairs.push(format!("{k}={0}", py_str_value(v)));
+        }
+    }
+    let mut op = serde_json::Map::new();
+    op.insert(
+        "type".to_string(),
+        m.get("type").cloned().unwrap_or(Value::String(String::new())),
+    );
+    op.insert(
+        "lat".to_string(),
+        m.get("lat").cloned().unwrap_or(Value::String(String::new())),
+    );
+    op.insert(
+        "lon".to_string(),
+        m.get("lon").cloned().unwrap_or(Value::String(String::new())),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("overpass".to_string(), Value::Object(op));
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("overpass".to_string()),
+    );
+    rec.insert(
+        "id".to_string(),
+        Value::String(py_str_value(m.get("id").unwrap_or(&empty))),
+    );
+    rec.insert("title".to_string(), title);
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://www.openstreetmap.org/{0}/{1}",
+            py_str_value(el_type),
+            py_str_value(el_id)
+        )),
+    );
+    rec.insert("snippet".to_string(), Value::String(pairs.join(", ")));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+pub fn overpass_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    // `resp.json().get("elements", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("elements") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for el in hits {
+        out.push(overpass_row_impl(el)?);
+    }
+    Ok(out)
+}
+
+// ── Census ──────────────────────────────────────────────────────
+
+/// `[h.lower().replace(" ", "_") for h in rows[0]]`: `rows[0]`
+/// indexes directly (dicts → KeyError 0, others index); members must
+/// be strings (`.lower` raises otherwise — chars/keys included).
+fn census_header(first: &Value) -> Result<Vec<String>, String> {
+    let items: Vec<&Value> = match first {
+        Value::Array(a) => a.iter().collect(),
+        Value::String(s) => {
+            // Chars carry no owned storage; rebuild as owned Values.
+            let chars: Vec<Value> = s
+                .chars()
+                .map(|c| Value::String(c.to_string()))
+                .collect();
+            // Validated below through the same path.
+            return census_header_owned(&chars);
+        }
+        Value::Object(_) => return Err("KeyError: 0".to_string()),
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    let owned: Vec<Value> = items.into_iter().cloned().collect();
+    census_header_owned(&owned)
+}
+
+fn census_header_owned(items: &[Value]) -> Result<Vec<String>, String> {
+    let mut out = Vec::with_capacity(items.len());
+    for h in items.iter() {
+        match h {
+            Value::String(s) => out.push(s.to_lowercase().replace(' ', "_")),
+            _ => return Err(attr_error(json_type(h))),
+        }
+    }
+    Ok(out)
+}
+
+/// `{header[i]: row[i] for i in range(len(header)) if i < len(row)}`:
+/// `len(row)` raises first for unsized rows; dict rows raise KeyError
+/// on `row[0]`; anything else indexes.
+fn census_record(header: &[String], row: &Value) -> Result<serde_json::Map<String, Value>, String> {
+    // An empty header never touches the row (neither `len` nor `[i]`).
+    if header.is_empty() {
+        return Ok(serde_json::Map::new());
+    }
+    match row {
+        Value::Array(a) => {
+            let mut rec = serde_json::Map::new();
+            for (i, h) in header.iter().enumerate() {
+                if i < a.len() {
+                    rec.insert(h.clone(), a[i].clone());
+                }
+            }
+            Ok(rec)
+        }
+        Value::String(s) => {
+            let chars: Vec<Value> =
+                s.chars().map(|c| Value::String(c.to_string())).collect();
+            let mut rec = serde_json::Map::new();
+            for (i, h) in header.iter().enumerate() {
+                if i < chars.len() {
+                    rec.insert(h.clone(), chars[i].clone());
+                }
+            }
+            Ok(rec)
+        }
+        Value::Object(_) => Err("KeyError: 0".to_string()),
+        other => Err(format!(
+            "TypeError: object of type '{0}' has no len()",
+            json_type(other)
+        )),
+    }
+}
+
+fn census_search_row_impl(
+    header: &[String],
+    row: &Value,
+    dataset: &str,
+) -> Result<Value, String> {
+    let rec = census_record(header, row)?;
+    // `key = rec.get("state", rec.get("geographic_unit", ""))`:
+    // eager default, always dict-safe here.
+    let geo = rec
+        .get("geographic_unit")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let key = rec.get("state").cloned().unwrap_or(geo);
+    // Title renders the first three pairs; the snippet renders slots
+    // 1.. (both raw-rendered, so joining never raises).
+    let keys: Vec<&String> = rec.keys().collect();
+    let title_pairs: Vec<String> = keys
+        .iter()
+        .take(3)
+        .map(|k| format!("{k}={0}", py_str_value(&rec[*k])))
+        .collect();
+    // `f"{header[i]}={row[i]}" for i in range(1, len(header)) if i <
+    // len(row)`: header names pair with the RAW row slots.
+    let row_len: usize = match row {
+        Value::Array(a) => a.len(),
+        Value::String(s) => s.chars().count(),
+        _ => 0,
+    };
+    let mut snip: Vec<String> = Vec::new();
+    for (i, h) in header.iter().enumerate().skip(1) {
+        if i < row_len {
+            let v = match row {
+                Value::Array(a) => a[i].clone(),
+                Value::String(s) => Value::String(
+                    s.chars().nth(i).map(|c| c.to_string()).unwrap_or_default(),
+                ),
+                _ => Value::Null,
+            };
+            snip.push(format!("{h}={0}", py_str_value(&v)));
+        }
+    }
+    let mut cf = serde_json::Map::new();
+    cf.insert("dataset".to_string(), Value::String(dataset.to_string()));
+    let mut fields = serde_json::Map::new();
+    fields.insert("census".to_string(), Value::Object(cf));
+    let mut out = serde_json::Map::new();
+    out.insert("source".to_string(), Value::String("census".to_string()));
+    out.insert("id".to_string(), Value::String(py_str_value(&key)));
+    out.insert(
+        "title".to_string(),
+        Value::String(title_pairs.join(", ")),
+    );
+    out.insert(
+        "url".to_string(),
+        Value::String(format!("https://data.census.gov/?g={dataset}")),
+    );
+    out.insert("snippet".to_string(), Value::String(snip.join(", ")));
+    out.insert("fields".to_string(), Value::Object(fields));
+    // `raw` is `json.dumps(rec)`: the rebuilt record crosses here and
+    // the wrapper attaches it verbatim (see below).
+    out.insert("raw".to_string(), Value::Object(rec));
+    Ok(Value::Object(out))
+}
+
+/// Shared response prologue: falsy bodies fold to []; truthy bodies
+/// index `[0]` (dicts → KeyError 0) and slice `[1:]` (strings slice
+/// by char; anything else raises TypeError).
+fn census_rows_impl(body: &Value) -> Result<(Vec<String>, Vec<Value>), String> {
+    if !is_truthy(body) {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let first: Value = match body {
+        Value::Array(a) => match a.first() {
+            Some(v) => v.clone(),
+            None => return Ok((Vec::new(), Vec::new())),
+        },
+        Value::String(s) => Value::String(
+            s.chars().next().map(|c| c.to_string()).unwrap_or_default(),
+        ),
+        Value::Object(_) => return Err("KeyError: 0".to_string()),
+        other => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    // `"".rows[0]` on an empty string: `"a"[0]` of `""`… unreachable
+    // (empty strings are falsy and folded above).
+    let header = census_header(&first)?;
+    let tail: Vec<Value> = match body {
+        Value::Array(a) => a.iter().skip(1).cloned().collect(),
+        Value::String(s) => s
+            .chars()
+            .skip(1)
+            .map(|c| Value::String(c.to_string()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    Ok((header, tail))
+}
+
+pub fn census_parse_search_impl(
+    response_json: &str,
+    dataset: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    // `if not rows: return []` folds falsy bodies before any indexing.
+    if !is_truthy(&body) {
+        return Ok(Vec::new());
+    }
+    let (header, tail) = census_rows_impl(&body)?;
+    // `rows[1:][:max_results]`: slice, then slice again.
+    let mut out = Vec::new();
+    for row in slice_refs(&tail, max_results) {
+        out.push(census_search_row_impl(&header, row, dataset)?);
+    }
+    Ok(out)
+}
+
+pub fn census_parse_fetch_impl(
+    response_json: &str,
+    dataset: &str,
+    rid_s: &str,
+) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    if !is_truthy(&body) {
+        return Ok(Value::Array(Vec::new()));
+    }
+    let (header, tail) = census_rows_impl(&body)?;
+    for row in tail.iter() {
+        let rec = census_record(&header, row)?;
+        // `str(rec.get("state", rec.get("geographic_unit", ""))) ==
+        // str(record_id)`: both sides Python-str rendered.
+        let geo = rec
+            .get("geographic_unit")
+            .cloned()
+            .unwrap_or(Value::String(String::new()));
+        let key = rec.get("state").cloned().unwrap_or(geo);
+        if py_str_value(&key) == rid_s {
+            // Title renders slots 1..; snippet reads `state` raw.
+            let row_len: usize = match row {
+                Value::Array(a) => a.len(),
+                Value::String(s) => s.chars().count(),
+                _ => 0,
+            };
+            let mut title: Vec<String> = Vec::new();
+            for (i, h) in header.iter().enumerate().skip(1) {
+                if i < row_len {
+                    let v = match row {
+                        Value::Array(a) => a[i].clone(),
+                        Value::String(s) => Value::String(
+                            s.chars().nth(i).map(|c| c.to_string()).unwrap_or_default(),
+                        ),
+                        _ => Value::Null,
+                    };
+                    title.push(format!("{h}={0}", py_str_value(&v)));
+                }
+            }
+            let mut cf = serde_json::Map::new();
+            cf.insert("dataset".to_string(), Value::String(dataset.to_string()));
+            let mut fields = serde_json::Map::new();
+            fields.insert("census".to_string(), Value::Object(cf));
+            let mut out = serde_json::Map::new();
+            out.insert("source".to_string(), Value::String("census".to_string()));
+            out.insert("id".to_string(), Value::String(rid_s.to_string()));
+            out.insert("title".to_string(), Value::String(title.join(", ")));
+            out.insert(
+                "url".to_string(),
+                Value::String(format!("https://data.census.gov/?g={dataset}")),
+            );
+            out.insert(
+                "snippet".to_string(),
+                rec.get("state")
+                    .cloned()
+                    .unwrap_or(Value::String(String::new())),
+            );
+            out.insert("fields".to_string(), Value::Object(fields));
+            out.insert("raw".to_string(), Value::Object(rec));
+            return Ok(Value::Array(vec![Value::Object(out)]));
+        }
+    }
+    Ok(Value::Array(Vec::new()))
+}
+
+#[pyfunction]
+pub fn worldbank_note(py: Python) -> PyResult<String> {
+    worldbank_note_impl()
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback_json = "null", record_url = ""))]
+pub fn worldbank_parse_fetch(
+    py: Python,
+    response_json: &str,
+    fallback_json: &str,
+    record_url: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    worldbank_parse_fetch_impl(response_json, &fallback, record_url)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback_json = "null"))]
+pub fn fred_parse_official(
+    py: Python,
+    response_json: &str,
+    fallback_json: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    fred_parse_official_impl(response_json, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_text, fallback_json = "null"))]
+pub fn fred_parse_csv(
+    py: Python,
+    response_text: &str,
+    fallback_json: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    fred_parse_csv_impl(response_text, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn github_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    github_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback_json = "null"))]
+pub fn github_parse_fetch(
+    py: Python,
+    response_json: &str,
+    fallback_json: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    github_parse_fetch_impl(response_json, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn congress_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    congress_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback_json = "null"))]
+pub fn congress_parse_fetch(
+    py: Python,
+    response_json: &str,
+    fallback_json: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    congress_parse_fetch_impl(response_json, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, start = "", max_results = 5))]
+pub fn nasa_parse_search(
+    py: Python,
+    response_json: &str,
+    start: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    nasa_parse_search_impl(response_json, start, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback_json = "null"))]
+pub fn nasa_parse_fetch(
+    py: Python,
+    response_json: &str,
+    fallback_json: &str,
+) -> PyResult<String> {
+    let fallback: Value =
+        serde_json::from_str(fallback_json).unwrap_or(Value::Null);
+    nasa_parse_fetch_impl(response_json, &fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback = "", max_results = 5))]
+pub fn swh_parse_search(
+    py: Python,
+    response_json: &str,
+    fallback: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    swh_parse_search_impl(response_json, fallback, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, fallback = ""))]
+pub fn swh_parse_fetch_origin(
+    py: Python,
+    response_json: &str,
+    fallback: &str,
+) -> PyResult<String> {
+    swh_parse_fetch_origin_impl(response_json, fallback)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, sid = ""))]
+pub fn swh_parse_fetch_sid(
+    py: Python,
+    response_json: &str,
+    sid: &str,
+) -> PyResult<String> {
+    swh_parse_fetch_sid_impl(response_json, sid)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn overpass_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    overpass_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, dataset = "", max_results = 5))]
+pub fn census_parse_search(
+    py: Python,
+    response_json: &str,
+    dataset: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    census_parse_search_impl(response_json, dataset, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, dataset = "", rid = ""))]
+pub fn census_parse_fetch(
+    py: Python,
+    response_json: &str,
+    dataset: &str,
+    rid: &str,
+) -> PyResult<String> {
+    census_parse_fetch_impl(response_json, dataset, rid)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}

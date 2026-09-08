@@ -3188,3 +3188,421 @@ def test_batch6_hostile_wrappers(monkeypatch):
             for rec in got:
                 assert rec["raw"] == json.dumps(
                     json.loads(rec["raw"])), (fn, body)
+
+
+# --- batch 7: misc/geo/financial kernels (v0.8.17) -------------------
+# Vendored originals are verbatim copies of the retired row builders
+# (minus `raw`, which crosses the boundary separately).
+
+def _v_wb_fetch(payload, record_id, data_url):
+    points = (
+        payload[1]
+        if isinstance(payload, list) and len(payload) > 1 and isinstance(payload[1], list)
+        else []
+    )
+    first = points[0] if points else {}
+    indicator = (first or {}).get("indicator", {}) if isinstance(first, dict) else {}
+    series_id = indicator.get("id") or record_id
+    title = indicator.get("value") or record_id
+    recent = ", ".join(
+        f"{pt.get('date', '')}:{pt.get('value', '')}"
+        for pt in points
+        if isinstance(pt, dict) and pt.get("value") is not None
+    )[:200]
+    pagination = payload[0] if isinstance(payload, list) and payload else {}
+    return {
+        "source": "worldbank",
+        "id": series_id,
+        "title": title,
+        "url": f"{data_url}/{record_id}",
+        "snippet": f"{len(points)} observations; recent: {recent}",
+        "fields": {
+            "worldbank": {"observations": points, "pagination": pagination}
+        },
+    }
+
+
+def _rs_wb_fetch(payload, record_id, data_url="https://api.worldbank.org/v2/country/all/indicator"):
+    from gossamer.research_providers import _json_fallback
+    rid, fj = _json_fallback(record_id)
+    return json.loads(_core.worldbank_parse_fetch(
+        json.dumps(payload), fj or json.dumps(rid),
+        f"{data_url}/{record_id}"))
+
+
+WB_POINT = {"indicator": {"id": "SP.POP.TOTL", "value": "Population, total"},
+            "country": {"id": "1W", "value": "World"},
+            "date": "2023", "value": 8000000000}
+WB_BODIES = [
+    [{"page": 1}, [WB_POINT]],
+    [{"page": 1}, [WB_POINT, {"date": "2022", "value": None}]],
+    [{"page": 1}, []],
+    [{"page": 1}],
+    [{}, None],
+    [{}, 5],
+    [{}, "ab"],
+    [{}, {}],
+    [{}, []],
+    [[], [WB_POINT]],
+    [{}, [None, 5, "x", {}, WB_POINT]],
+    [{}, [{"indicator": None}]],
+    [{}, [{"indicator": 5}]],
+    [{}, [{"indicator": {}}]],
+    [{}, [{"indicator": {"id": 0, "value": ""}}]],
+    [{}, [{"indicator": {"id": None}}]],
+    [{}, ["x"]],
+    [{}, [5]],
+    [{}, "ab"],
+    [{}, 5],
+    [{}, None],
+    [{}, {}],
+    {},
+    {"a": 1},
+    [],
+    [{}],
+    [None, 5],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", WB_BODIES)
+@pytest.mark.parametrize("record_id", ["SP.POP.TOTL", "", 5, None])
+def test_wb_fetch_parity(body, record_id):
+    py_raised, py_val = _outcome(_v_wb_fetch, body, record_id, "D")
+    rs_raised, rs_val = _outcome(_rs_wb_fetch, body, record_id, "D")
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, record_id)
+    assert rs_val == py_val, (body, record_id)
+
+
+def test_wb_note_parity():
+    rec = json.loads(_core.worldbank_note())
+    assert rec["source"] == "worldbank"
+    assert rec["title"] == "World Bank keyword search unavailable"
+    assert "raw" not in rec
+
+
+def _v_fred_official(data, record_id):
+    obs = [
+        {"date": o.get("date", ""), "value": o.get("value", "")}
+        for o in data.get("observations", [])
+    ]
+    return _v_fred_record(record_id, obs)
+
+
+def _v_fred_record(record_id, obs):
+    points = [f"{o.get('date', '')}={o.get('value', '')}" for o in obs[-10:]]
+    return {
+        "source": "fred",
+        "id": record_id,
+        "title": f"FRED series {record_id}",
+        "url": f"https://fred.stlouisfed.org/series/{record_id}",
+        "snippet": f"{len(obs)} observations; last: {points[-1] if points else 'n/a'}",
+        "fields": {"fred": {"observations": obs[-50:]}},
+    }
+
+
+def _v_fred_csv(text, record_id):
+    lines = text.strip().splitlines()
+    obs = []
+    for line in lines[1:]:
+        date, _, value = line.partition(",")
+        date, value = date.strip(), value.strip()
+        if date and value:
+            obs.append({"date": date, "value": value})
+    rec = _v_fred_record(record_id, obs)
+    rec["raw"] = "\n".join(lines[:51])
+    return rec
+
+
+def _rs_fred_official(data, record_id):
+    from gossamer.research_providers import _json_fallback
+    rid, fj = _json_fallback(record_id)
+    return json.loads(_core.fred_parse_official(
+        json.dumps(data), fj or json.dumps(rid)))
+
+
+def _rs_fred_csv(text, record_id):
+    from gossamer.research_providers import _json_fallback
+    rid, fj = _json_fallback(record_id)
+    return json.loads(_core.fred_parse_csv(
+        text, fj or json.dumps(rid)))
+
+
+FRED_OFFICIAL_BODIES = [
+    {"observations": [{"date": "2024-01-01", "value": "1.5"}]},
+    {"observations": [{"date": "2024-01-01", "value": "1.5"},
+                      {"date": "2024-02-01", "value": "."}]},
+    {},
+    {"observations": None},
+    {"observations": []},
+    {"observations": ""},
+    {"observations": "ab"},
+    {"observations": {}},
+    {"observations": {"a": 1}},
+    {"observations": 5},
+    {"observations": [None]},
+    {"observations": ["x"]},
+    {"observations": [5]},
+    {"observations": [{}]},
+    {"observations": [{"date": None, "value": None}]},
+    {"observations": [{"date": 5, "value": 1.5}]},
+    {"observations": [{"date": ["d"], "value": {"v": 1}}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", FRED_OFFICIAL_BODIES)
+@pytest.mark.parametrize("record_id", ["GDP", "", 5, None])
+def test_fred_official_parity(body, record_id):
+    py_raised, py_val = _outcome(_v_fred_official, body, record_id)
+    rs_raised, rs_val = _outcome(_rs_fred_official, body, record_id)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, record_id)
+    assert rs_val == py_val, (body, record_id)
+
+
+FRED_CSV_TEXTS = [
+    "DATE,VALUE\n2024-01-01,1.5\n2024-02-01,1.6\n",
+    "DATE,VALUE\n",
+    "DATE,VALUE",
+    "",
+    "   \n  ",
+    "DATE,VALUE\n2024-01-01,\n,1.5\n,\nno-comma-line\n2024-03-01,  2.0  \n",
+    "DATE,VALUE\r\n2024-01-01,1.5\r\n",
+    "DATE,VALUE\x0b2024-01-01,1.5\x0c2024-02-01,1.6\x85end",
+    "DATE,VALUE 2024-01-01,1.5 tail",
+    "DATE,VALUE\x1c2024-01-01,9.9",
+    "H1,H2\n" + "\n".join(f"2024-01-{i:02d},{i}.0" for i in range(1, 70)),
+    "DATE,VALUE\na,b,c\nd,e",
+]
+
+
+@pytest.mark.parametrize("text", FRED_CSV_TEXTS)
+@pytest.mark.parametrize("record_id", ["GDP", "", 5, None])
+def test_fred_csv_parity(text, record_id):
+    py_raised, py_val = _outcome(_v_fred_csv, text, record_id)
+    rs_raised, rs_val = _outcome(_rs_fred_csv, text, record_id)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (text, record_id)
+    assert rs_val == py_val, (text, record_id)
+
+
+GH_REPO = {
+    "id": 123,
+    "full_name": "o/r",
+    "html_url": "https://github.com/o/r",
+    "url": "https://api.github.com/repos/o/r",
+    "description": "A repo.",
+    "language": "Python",
+    "stargazers_count": 42,
+}
+
+
+def _v_gh_search_row(r):
+    return {
+        "source": "github",
+        "id": str(r.get("id", "")),
+        "title": r.get("full_name", ""),
+        "url": r.get("html_url") or r.get("url"),
+        "snippet": (r.get("description") or "")[:240],
+        "fields": {
+            "github": {
+                "language": r.get("language"),
+                "stars": r.get("stargazers_count"),
+            }
+        },
+    }
+
+
+def _v_gh_fetch_row(repo, record_id):
+    return {
+        "source": "github",
+        "id": str(repo.get("id", record_id)),
+        "title": repo.get("full_name", record_id),
+        "url": repo.get("html_url") or "",
+        "snippet": (repo.get("description") or "")[:240],
+        "fields": {
+            "github": {
+                "language": repo.get("language"),
+                "stars": repo.get("stargazers_count"),
+            }
+        },
+    }
+
+
+def _v_gh_search(body, max_results=5):
+    return [_v_gh_search_row(r) for r in body.get("items", [])[:max_results]]
+
+
+def _rs_gh_search(body, max_results=5):
+    return json.loads(_core.github_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_gh_fetch(body, fallback):
+    return json.loads(_core.github_parse_fetch(
+        json.dumps(body), json.dumps(fallback)))
+
+
+GH_SEARCH_BODIES = [
+    {"items": [GH_REPO]},
+    {"items": [GH_REPO, {"id": "x"}]},
+    {},
+    {"items": None},
+    {"items": []},
+    {"items": ""},
+    {"items": 0},
+    {"items": {}},
+    {"items": "ab"},
+    {"items": 5},
+    {"items": [None]},
+    {"items": ["x"]},
+    {"items": [5]},
+    {"items": [{}]},
+    {"items": [{"id": None, "html_url": None, "url": None,
+                "description": None}]},
+    {"items": [{"id": True, "html_url": "", "url": "u",
+                "description": ["d"]}]},
+    {"items": [{"id": 1.5, "html_url": 0, "description": {"d": 1}}]},
+    {"items": [{"id": [1], "description": 0}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", GH_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_gh_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_gh_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_gh_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+GH_FETCH_BODIES = [
+    GH_REPO,
+    {},
+    {"html_url": None},
+    {"description": 5},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", GH_FETCH_BODIES)
+@pytest.mark.parametrize("fallback", ["o/r", "", 5, None, ["l"]])
+def test_gh_fetch_parity(body, fallback):
+    py_raised, py_val = _outcome(_v_gh_fetch_row, body, fallback)
+    rs_raised, rs_val = _outcome(_rs_gh_fetch, body, fallback)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback)
+    assert rs_val == py_val, (body, fallback)
+
+
+CG_MEMBER = {
+    "cgi_id": "C001",
+    "display_name": "Doe, J.",
+    "url": "https://api.data.gov/x",
+    "title": "Senator",
+    "party": "D",
+    "state": "CA",
+    "district": "",
+    "chamber": "Senate",
+}
+
+
+def _v_cgr_row(r, fallback=""):
+    return {
+        "source": "congress",
+        "id": r.get("cgi_id", fallback),
+        "title": r.get("display_name", fallback),
+        "url": r.get("url", ""),
+        "snippet": (
+            f"{r.get('title', '')} {r.get('party', '')} — "
+            f"{r.get('state', '')}{r.get('district', '')}"
+        ),
+        "fields": {
+            "congress": {
+                "chamber": r.get("chamber", ""),
+                "party": r.get("party", ""),
+                "state": r.get("state", ""),
+            }
+        },
+    }
+
+
+def _v_cgr_search(body, max_results=5):
+    return [_v_cgr_row(r) for r in body.get("results", [])[:max_results]]
+
+
+def _rs_cgr_search(body, max_results=5):
+    return json.loads(_core.congress_parse_search(
+        json.dumps(body), max_results))
+
+
+def _rs_cgr_fetch(body, fallback):
+    return json.loads(_core.congress_parse_fetch(
+        json.dumps(body), json.dumps(fallback)))
+
+
+CGR_SEARCH_BODIES = [
+    {"results": [CG_MEMBER]},
+    {"results": [CG_MEMBER, {"cgi_id": "C002"}]},
+    {},
+    {"results": None},
+    {"results": []},
+    {"results": ""},
+    {"results": 0},
+    {"results": {}},
+    {"results": "ab"},
+    {"results": 5},
+    {"results": [None]},
+    {"results": ["x"]},
+    {"results": [5]},
+    {"results": [{}]},
+    {"results": [{"title": None, "party": None, "state": None,
+                  "district": None}]},
+    {"results": [{"title": ["T"], "party": 5, "state": 0,
+                  "district": {"d": 1}}]},
+    {"results": [{"cgi_id": None, "display_name": ["N"], "url": 5,
+                  "chamber": None}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", CGR_SEARCH_BODIES)
+@pytest.mark.parametrize("max_results", [1, 5, -1, 0, 100])
+def test_cgr_search_parity(body, max_results):
+    py_raised, py_val = _outcome(_v_cgr_search, body, max_results)
+    rs_raised, rs_val = _outcome(_rs_cgr_search, body, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), body
+    assert rs_val == py_val, body
+
+
+CGR_FETCH_BODIES = [
+    CG_MEMBER,
+    {},
+    {"title": 5, "district": None},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("body", CGR_FETCH_BODIES)
+@pytest.mark.parametrize("fallback", ["C009", "", 5, None, ["l"]])
+def test_cgr_fetch_parity(body, fallback):
+    py_raised, py_val = _outcome(_v_cgr_row, body, fallback)
+    rs_raised, rs_val = _outcome(_rs_cgr_fetch, body, fallback)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (body, fallback)
+    assert rs_val == py_val, (body, fallback)

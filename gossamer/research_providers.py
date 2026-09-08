@@ -575,19 +575,11 @@ class WorldBankAdapter(ResourceAdapter):
 
     def _search_impl(self, query, max_results=5):
         # /v2/search was retired (2026); keyword search is unavailable.
-        return [
-            {
-                "source": "worldbank",
-                "id": "",
-                "title": "World Bank keyword search unavailable",
-                "url": "",
-                "snippet": (
-                    "The World Bank /v2/search endpoint was retired. Use "
-                    "fetch(series_code) for time-series data (e.g. SP.POP.TOTL)."
-                ),
-                "raw": json.dumps({"search_unavailable": True, "query": query}),
-            }
-        ]
+        # Static note built in Rust (src/adapters.rs); `raw` re-attached
+        # here with the original expression so it stays byte-identical.
+        rec = json.loads(_rust.worldbank_note())
+        rec["raw"] = json.dumps({"search_unavailable": True, "query": query})
+        return [rec]
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -596,36 +588,20 @@ class WorldBankAdapter(ResourceAdapter):
             p.update({k: v for k, v in params.items() if v is not None})
         resp = httpx.get(f"{self.DATA}/{record_id}", params=p, timeout=20.0)
         resp.raise_for_status()
-        payload = resp.json()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of the payload.
         # Data endpoint returns [pagination, [data points, ...]].
-        points = (
-            payload[1]
-            if isinstance(payload, list) and len(payload) > 1 and isinstance(payload[1], list)
-            else []
+        payload = resp.json()
+        rid, fallback_json = _json_fallback(record_id)
+        rec = json.loads(
+            _rust.worldbank_parse_fetch(
+                json.dumps(payload),
+                fallback_json or json.dumps(rid),
+                f"{self.DATA}/{record_id}",
+            )
         )
-        first = points[0] if points else {}
-        indicator = (first or {}).get("indicator", {}) if isinstance(first, dict) else {}
-        series_id = indicator.get("id") or record_id
-        title = indicator.get("value") or record_id
-        recent = ", ".join(
-            f"{pt.get('date', '')}:{pt.get('value', '')}"
-            for pt in points
-            if isinstance(pt, dict) and pt.get("value") is not None
-        )[:200]
-        pagination = payload[0] if isinstance(payload, list) and payload else {}
-        return [
-            {
-                "source": "worldbank",
-                "id": series_id,
-                "title": title,
-                "url": f"{self.DATA}/{record_id}",
-                "snippet": f"{len(points)} observations; recent: {recent}",
-                "fields": {
-                    "worldbank": {"observations": points, "pagination": pagination}
-                },
-                "raw": json.dumps(payload),
-            }
-        ]
+        rec["raw"] = json.dumps(payload)
+        return [rec]
 
 class FredAdapter(ResourceAdapter):
     """FRED macro time-series data (https://fred.stlouisfed.org/docs/api/).
@@ -673,20 +649,8 @@ class FredAdapter(ResourceAdapter):
             return self._fetch_official(record_id, params)
         return self._fetch_csv(record_id)
 
-    def _record(self, record_id, obs, raw):
-        points = [f"{o.get('date', '')}={o.get('value', '')}" for o in obs[-10:]]
-        return [
-            {
-                "source": "fred",
-                "id": record_id,
-                "title": f"FRED series {record_id}",
-                "url": f"https://fred.stlouisfed.org/series/{record_id}",
-                "snippet": f"{len(obs)} observations; last: {points[-1] if points else 'n/a'}",
-                "fields": {"fred": {"observations": obs[-50:]}},
-                "raw": raw,
-            }
-        ]
-
+    # NOTE: the old `_record` row helper was retired in the Rust port
+    # (M17); both fetch paths build their rows in `src/adapters.rs`.
     def _fetch_official(self, record_id, params=None):
         url, params, headers = self.inject_auth(
             f"{self.BASE}/series/observations",
@@ -695,12 +659,16 @@ class FredAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of the payload.
         data = resp.json()
-        obs = [
-            {"date": o.get("date", ""), "value": o.get("value", "")}
-            for o in data.get("observations", [])
-        ]
-        return self._record(record_id, obs, json.dumps(data))
+        rid, fallback_json = _json_fallback(record_id)
+        rec = json.loads(
+            _rust.fred_parse_official(
+                json.dumps(data), fallback_json or json.dumps(rid))
+        )
+        rec["raw"] = json.dumps(data)
+        return [rec]
 
     def _fetch_csv(self, record_id):
         # Keyless fallback: the graph CSV download (official API needs a key).
@@ -708,14 +676,15 @@ class FredAdapter(ResourceAdapter):
             self.GRAPH_CSV, params={"id": record_id}, timeout=20.0
         )
         resp.raise_for_status()
-        lines = resp.text.strip().splitlines()
-        obs = []
-        for line in lines[1:]:
-            date, _, value = line.partition(",")
-            date, value = date.strip(), value.strip()
-            if date and value:
-                obs.append({"date": date, "value": value})
-        return self._record(record_id, obs, "\n".join(lines[:51]))
+        # Row building in Rust (src/adapters.rs), including the
+        # `raw` line window; `record_id` keeps its exact spelling.
+        rid, fallback_json = _json_fallback(record_id)
+        return [
+            json.loads(
+                _rust.fred_parse_csv(
+                    resp.text, fallback_json or json.dumps(rid))
+            )
+        ]
 
 class GitHubAdapter(ResourceAdapter):
     """GitHub code / repository search (https://docs.github.com/rest).
@@ -762,26 +731,16 @@ class GitHubAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
-        items = resp.json().get("items", [])
-        out: List[Dict[str, str]] = []
-        for r in items[:max_results]:
-            out.append(
-                {
-                    "source": "github",
-                    "id": str(r.get("id", "")),
-                    "title": r.get("full_name", ""),
-                    "url": r.get("html_url") or r.get("url"),
-                    "snippet": (r.get("description") or "")[:240],
-                    "fields": {
-                        "github": {
-                            "language": r.get("language"),
-                            "stars": r.get("stargazers_count"),
-                        }
-                    },
-                    "raw": json.dumps(r),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each repo.
+        body = resp.json()
+        items = body.get("items", [])
+        records = json.loads(
+            _rust.github_parse_search(json.dumps(body), max_results)
+        )
+        for rec, r in zip(records, items[:max_results]):
+            rec["raw"] = json.dumps(r)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -791,23 +750,16 @@ class GitHubAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, headers=headers, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        # A missing id/title falls back to the exact `record_id` spelling.
+        rid, fallback_json = _json_fallback(record_id)
         repo = resp.json()
-        return [
-            {
-                "source": "github",
-                "id": str(repo.get("id", record_id)),
-                "title": repo.get("full_name", record_id),
-                "url": repo.get("html_url") or "",
-                "snippet": (repo.get("description") or "")[:240],
-                "fields": {
-                    "github": {
-                        "language": repo.get("language"),
-                        "stars": repo.get("stargazers_count"),
-                    }
-                },
-                "raw": json.dumps(repo),
-            }
-        ]
+        rec = json.loads(
+            _rust.github_parse_fetch(
+                json.dumps(repo), fallback_json or json.dumps(rid))
+        )
+        rec["raw"] = json.dumps(repo)
+        return [rec]
 
 class OpenLibraryAdapter(ResourceAdapter):
     """Open Library book search / lookup (https://openlibrary.org).
@@ -1111,32 +1063,15 @@ class NASAAdapter(ResourceAdapter):
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
         objects = resp.json().get("near_earth_objects", {}).get(start, [])
-        out: List[Dict[str, str]] = []
-        for neo in objects[:max_results]:
-            ca = (neo.get("close_approach_data") or [{}])[0]
-            diam = (neo.get("estimated_diameter", {}) or {}).get("meters", {}) or {}
-            out.append(
-                {
-                    "source": "nasa",
-                    "id": neo.get("neo_reference_id", ""),
-                    "title": neo.get("object_name", ""),
-                    "url": neo.get("nasa_jpl_url", ""),
-                    "published": ca.get("close_approach_date", ""),
-                    "snippet": (
-                        f"~{diam.get('estimated_diameter_max', '')} m diameter; "
-                        f"{ca.get('closest_approach_distance', {}).get('kilometers', '')} km closest"
-                    ),
-                    "fields": {
-                        "nasa": {
-                            "object_type": neo.get("object_type", ""),
-                            "is_hazardous": neo.get("is_hazardous", ""),
-                            "absolute_magnitude": neo.get("absolute_magnitude", ""),
-                        }
-                    },
-                    "raw": json.dumps(neo),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each object.
+        body = resp.json()
+        records = json.loads(
+            _rust.nasa_parse_search(json.dumps(body), start, max_results)
+        )
+        for rec, neo in zip(records, objects[:max_results]):
+            rec["raw"] = json.dumps(neo)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -1146,26 +1081,15 @@ class NASAAdapter(ResourceAdapter):
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
         # The single-object endpoint returns the object directly.
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        rid, fallback_json = _json_fallback(record_id)
         neo = resp.json()
-        diam = (neo.get("estimated_diameter", {}) or {}).get("meters", {}) or {}
-        return [
-            {
-                "source": "nasa",
-                "id": neo.get("neo_reference_id", record_id),
-                "title": neo.get("object_name", record_id),
-                "url": neo.get("nasa_jpl_url", ""),
-                "snippet": (
-                    f"~{diam.get('estimated_diameter_max', '')} m diameter"
-                ),
-                "fields": {
-                    "nasa": {
-                        "object_type": neo.get("object_type", ""),
-                        "is_hazardous": neo.get("is_hazardous", ""),
-                    }
-                },
-                "raw": json.dumps(neo),
-            }
-        ]
+        rec = json.loads(
+            _rust.nasa_parse_fetch(
+                json.dumps(neo), fallback_json or json.dumps(rid))
+        )
+        rec["raw"] = json.dumps(neo)
+        return [rec]
 
 class NvdAdapter(ResourceAdapter):
     """NIST National Vulnerability Database (CVE API 2.0).
@@ -1339,21 +1263,6 @@ class SoftwareHeritageAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
         )
 
-    @staticmethod
-    def _origin_row(origin: dict, fallback: str = "") -> dict:
-        url = origin.get("url", fallback)
-        visits = origin.get("origin_visits_url", "")
-        types = ", ".join(origin.get("visit_types", []) or [])
-        return {
-            "source": "softwareheritage",
-            "id": url,
-            "title": url,
-            "url": f"https://archive.softwareheritage.org/browse/origin/?origin_url={url}" if url else visits,
-            "snippet": f"archived origin; visit types: {types}" if types else "archived origin",
-            "fields": {"softwareheritage": {"visit_types": types}},
-            "raw": json.dumps(origin),
-        }
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         q = (query or "").strip()
@@ -1364,7 +1273,14 @@ class SoftwareHeritageAdapter(ResourceAdapter):
             q = "https://" + q.lstrip("/")
         resp = httpx.get(f"{self.BASE}/origin/{q}/get/", timeout=20.0)
         resp.raise_for_status()
-        return [self._origin_row(resp.json(), q)][:max_results]
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of the origin.
+        body = resp.json()
+        records = json.loads(_rust.swh_parse_search(
+            json.dumps(body), q, max_results))
+        for rec in records:
+            rec["raw"] = json.dumps(body)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -1378,24 +1294,20 @@ class SoftwareHeritageAdapter(ResourceAdapter):
             q = sid if "://" in sid else "https://" + sid.lstrip("/")
             resp = httpx.get(f"{self.BASE}/origin/{q}/get/", timeout=20.0)
             resp.raise_for_status()
-            return [self._origin_row(resp.json(), q)]
+            # Row building in Rust (src/adapters.rs); `raw` re-attached.
+            body = resp.json()
+            rec = json.loads(_rust.swh_parse_fetch_origin(
+                json.dumps(body), q))
+            rec["raw"] = json.dumps(body)
+            return [rec]
         # SWEET id: best-effort content lookup.
         resp = httpx.get(f"{self.BASE}/source/sid/{sid}", timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
         src = resp.json()
-        meta = src.get("meta", {}) or {}
-        return [
-            {
-                "source": "softwareheritage",
-                "id": src.get("id", sid),
-                "title": meta.get("name", src.get("id", sid)),
-                "url": f"https://archive.softwareheritage.org/{src.get('id', sid)}",
-                "published": meta.get("date", ""),
-                "snippet": meta.get("description", "")[:240],
-                "fields": {"softwareheritage": {"type": src.get("type", "")}},
-                "raw": json.dumps(src),
-            }
-        ]
+        rec = json.loads(_rust.swh_parse_fetch_sid(json.dumps(src), sid))
+        rec["raw"] = json.dumps(src)
+        return [rec]
 
 class CongressAdapter(ResourceAdapter):
     """Congress.gov legislative data via api.data.gov — https://api.data.gov/congress.
@@ -1437,33 +1349,16 @@ class CongressAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        results = resp.json().get("results", [])
-        out: List[Dict[str, str]] = []
-        for r in results[:max_results]:
-            loc = r.get("state", "") or ""
-            if r.get("chamber") == "Senate" and not loc:
-                loc = r.get("state", "")
-            out.append(
-                {
-                    "source": "congress",
-                    "id": r.get("cgi_id", ""),
-                    "title": r.get("display_name", ""),
-                    "url": r.get("url", ""),
-                    "snippet": (
-                        f"{r.get('title', '')} {r.get('party', '')} — "
-                        f"{r.get('state', '')}{r.get('district', '')}"
-                    ),
-                    "fields": {
-                        "congress": {
-                            "chamber": r.get("chamber", ""),
-                            "party": r.get("party", ""),
-                            "state": r.get("state", ""),
-                        }
-                    },
-                    "raw": json.dumps(r),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each member.
+        body = resp.json()
+        results = body.get("results", [])
+        records = json.loads(
+            _rust.congress_parse_search(json.dumps(body), max_results)
+        )
+        for rec, r in zip(records, results[:max_results]):
+            rec["raw"] = json.dumps(r)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -1472,27 +1367,16 @@ class CongressAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here.
+        # A missing id/title falls back to the exact `record_id` spelling.
+        rid, fallback_json = _json_fallback(record_id)
         r = resp.json()
-        return [
-            {
-                "source": "congress",
-                "id": r.get("cgi_id", record_id),
-                "title": r.get("display_name", record_id),
-                "url": r.get("url", ""),
-                "snippet": (
-                    f"{r.get('title', '')} {r.get('party', '')} — "
-                    f"{r.get('state', '')}{r.get('district', '')}"
-                ),
-                "fields": {
-                    "congress": {
-                        "chamber": r.get("chamber", ""),
-                        "party": r.get("party", ""),
-                        "state": r.get("state", ""),
-                    }
-                },
-                "raw": json.dumps(r),
-            }
-        ]
+        rec = json.loads(
+            _rust.congress_parse_fetch(
+                json.dumps(r), fallback_json or json.dumps(rid))
+        )
+        rec["raw"] = json.dumps(r)
+        return [rec]
 
 def _json_fallback(record_id):
     """Resolve a ``record_id`` fallback for the Rust fetch kernels.
@@ -1632,34 +1516,16 @@ class OverpassAdapter(ResourceAdapter):
             self.BASE, params={"data": data, "format": "json"}, timeout=60.0
         )
         resp.raise_for_status()
-        elements = resp.json().get("elements", [])
-        out: List[Dict[str, str]] = []
-        for el in elements[:max_results]:
-            tags = el.get("tags", {}) or {}
-            name = tags.get("name", "")
-            out.append(
-                {
-                    "source": "overpass",
-                    "id": str(el.get("id", "")),
-                    "title": name or f"{el.get('type', '')}:{el.get('id', '')}",
-                    "url": (
-                        f"https://www.openstreetmap.org/{el.get('type', '')}/"
-                        f"{el.get('id', '')}"
-                    ),
-                    "snippet": ", ".join(
-                        f"{k}={v}" for k, v in list(tags.items())[:6]
-                    ),
-                    "fields": {
-                        "overpass": {
-                            "type": el.get("type", ""),
-                            "lat": el.get("lat", ""),
-                            "lon": el.get("lon", ""),
-                        }
-                    },
-                    "raw": json.dumps(el),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs); `raw` re-attached here
+        # so it stays byte-identical `json.dumps` of each element.
+        body = resp.json()
+        elements = body.get("elements", [])
+        records = json.loads(
+            _rust.overpass_parse_search(json.dumps(body), max_results)
+        )
+        for rec, el in zip(records, elements[:max_results]):
+            rec["raw"] = json.dumps(el)
+        return records
 
 class CensusAdapter(ResourceAdapter):
     """US Census Bureau data API — https://api.census.gov.
@@ -1707,28 +1573,16 @@ class CensusAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        rows = resp.json()
-        if not rows:
-            return []
-        header = [h.lower().replace(" ", "_") for h in rows[0]]
-        out: List[Dict[str, str]] = []
-        for row in rows[1:][:max_results]:
-            rec = {header[i]: row[i] for i in range(len(header)) if i < len(row)}
-            key = rec.get("state", rec.get("geographic_unit", ""))
-            out.append(
-                {
-                    "source": "census",
-                    "id": str(key),
-                    "title": ", ".join(f"{k}={v}" for k, v in list(rec.items())[:3]),
-                    "url": f"https://data.census.gov/?g={dataset}",
-                    "snippet": ", ".join(
-                        f"{header[i]}={row[i]}" for i in range(1, len(header)) if i < len(row)
-                    ),
-                    "fields": {"census": {"dataset": dataset}},
-                    "raw": json.dumps(rec),
-                }
-            )
-        return out
+        # Row building in Rust (src/adapters.rs). Each record carries
+        # its rebuilt `raw` payload; it is re-dumped here so `raw`
+        # stays byte-identical `json.dumps` of the decoded row.
+        body = resp.json()
+        records = json.loads(
+            _rust.census_parse_search(json.dumps(body), dataset, max_results)
+        )
+        for rec in records:
+            rec["raw"] = json.dumps(rec.pop("raw"))
+        return records
 
     def fetch(self, record_id, params=None):
         # Lookup one geography row by id within a dataset spec.
@@ -1739,27 +1593,16 @@ class CensusAdapter(ResourceAdapter):
         )
         resp = httpx.get(url, params=params, timeout=20.0)
         resp.raise_for_status()
-        rows = resp.json()
-        if not rows:
-            return []
-        header = [h.lower().replace(" ", "_") for h in rows[0]]
-        for row in rows[1:]:
-            rec = {header[i]: row[i] for i in range(len(header)) if i < len(row)}
-            if str(rec.get("state", rec.get("geographic_unit", ""))) == str(record_id):
-                return [
-                    {
-                        "source": "census",
-                        "id": str(record_id),
-                        "title": ", ".join(
-                            f"{header[i]}={row[i]}" for i in range(1, len(header)) if i < len(row)
-                        ),
-                        "url": f"https://data.census.gov/?g={dataset}",
-                        "snippet": rec.get("state", ""),
-                        "fields": {"census": {"dataset": dataset}},
-                        "raw": json.dumps(rec),
-                    }
-                ]
-        return []
+        # Row building in Rust (src/adapters.rs); `raw` re-dumped here.
+        # The id match compares Python-`str()` on both sides.
+        body = resp.json()
+        recs = json.loads(
+            _rust.census_parse_fetch(
+                json.dumps(body), dataset, str(record_id))
+        )
+        for rec in recs:
+            rec["raw"] = json.dumps(rec.pop("raw"))
+        return recs
 
 def _strip_tags(text: str) -> str:
     """Strip HTML tags from a description string (Zenodo descriptions are HTML)."""
