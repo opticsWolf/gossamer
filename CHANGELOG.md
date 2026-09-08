@@ -4,6 +4,37 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.22] — Rust port M22: meta-oxide as a Rust crate
+
+- New `src/metaextract.rs` on the `meta_oxide` Rust crate (fork rev
+  `81bdb53`, `default-features = false` — the fork fixed the
+  feature gating so it builds without pyo3; crates.io 0.1.1 does
+  not). Section extractors are reached through the crate's C-ABI
+  (`ffi::meta_oxide_extract_*`); outputs pass through `sparse()`
+  plus per-section normalizers so they match the Python
+  `to_py_dict` shape exactly (absent `None`s, no empty vecs,
+  single-element microdata/RDFa arrays unwrapped, `type_` back to
+  `type`, oembed `Json|Xml` to `json|xml`). `meta_extractor.py`
+  now prefers the kernels (legacy package = last-resort fallback),
+  and the `meta-oxide @ git+...` line is gone from
+  `pyproject.toml` — **PyPI publishing is unblocked**.
+- Two documented refinements: `twitter` uses the with-fallback
+  mapping everywhere (as `extract_all` always did), and
+  `microformats` uses the combined parser (any `h-*` class, the
+  crate's C-API shape; key presence preserved) instead of the 9
+  named-field extractors, whose modules are not public API.
+- Upstream bug found + guarded: an element bearing BOTH `property`
+  and `typeof` sends the RDFa extractor into infinite mutual
+  recursion (process-killing stack overflow in the OLD bridge too
+  — same native code). The kernel skips the rdfa section when
+  `[typeof][property]` matches; `merge`/`compact` never touch rdfa
+  shapes, and the existing test only asserts key presence.
+- NUL boundary: HTML NULs pre-replaced with U+FFFD (what the HTML
+  tokenizer does anyway); a NUL-bearing base becomes NULL.
+- Caught by parity: FFI `extract_twitter` already bakes in the
+  fallback (plain is Python-only); `parse_html` aborts on
+  `Some("")` bases while individuals keep raw URLs (None-retry).
+
 ## [0.8.21] — Rust port M21: models/structured_parser pure kernels
 
 - New `src/miscutils.rs`: `models._domain_of` (manual netloc

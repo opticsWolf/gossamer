@@ -838,3 +838,23 @@ def classify_link(url: str) -> str:
 def parse_page_range(spec: str) -> tuple[int, int | None]:
     """1-based inclusive (start, end), None = open (src/miscutils.rs)."""
     ...
+
+def meta_extract_all(html: str, base_url: str | None = None) -> str:
+    """All HTML metadata sections, as JSON (src/metaextract.rs)."""
+    ...
+
+def meta_extract_meta(html: str, base_url: str | None = None) -> str:
+    """Standard HTML meta tags, as JSON (src/metaextract.rs)."""
+    ...
+
+def meta_extract_opengraph(html: str, base_url: str | None = None) -> str:
+    """Open Graph metadata, as JSON (src/metaextract.rs)."""
+    ...
+
+def meta_extract_twitter(html: str, base_url: str | None = None) -> str:
+    """Twitter Card metadata (with OG fallback), as JSON (src/metaextract.rs)."""
+    ...
+
+def meta_extract_jsonld(html: str, base_url: str | None = None) -> str:
+    """JSON-LD objects, as JSON (src/metaextract.rs)."""
+    ...
