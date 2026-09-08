@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "gossamer-core"
-version = "0.8.23"
+version = "0.8.24"
 dependencies = [
  "blake2",
  "html2md",

@@ -4,6 +4,26 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.24] — Document gaps: PDF images flag, tables-by-default
+
+- `extract_document(..., include_images=False)`: PDF-only, requires
+  `store=True` (in-band JSON errors otherwise, like store+pages).
+  Collects `extract_image_bytes` per page (`page{i}_{j}.png`, capped
+  at 200) into `<stem>.files/` via the previously caller-less
+  `ResourceStore.extract_embedded` (new `## Figures` section, reported
+  under `stored.resources.embedded`). Threaded through toolbox +
+  MCP `ToolSpec` + CLI (`extract --store --store-dir
+  --include-images`).
+- Tables: verified they already render as markdown tables by default
+  on both converters (pdf-oxide `to_markdown`, office-oxide sheets)
+  — locked in with a fixture test, no flag added. Noted upstream
+  behavior: pdf-oxide ignores tiny images below its size floor;
+  vector-only figures have no raster bytes.
+- Stale comments fixed (`document.py`, `resource_store.py` claimed
+  image bytes were unretrievable); `SKILL.md` gains the
+  Config/cache section + PDF limits from
+  `docs/GOSSAMER_PDF_IMAGE_EXTRACTION.md` (repo + installed copy).
+
 ## [0.8.23] — Rust port M23: upstream RDFa fix integrated
 
 - `meta_oxide` fork rev `81bdb53` → `a55c09f`

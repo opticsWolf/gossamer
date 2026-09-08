@@ -156,6 +156,11 @@ print(pdf_content)
 # Extract structured document (metadata + pages + tables)
 structured = tools.extract_document("https://example.com/report.pdf", structured=True)
 print(structured)
+
+# Extract PDF with figures (PDF only, needs store=True; tables are
+# already in the markdown by default)
+with_figs = tools.extract_document("https://example.com/paper.pdf",
+                                    store=True, include_images=True)
 ```
 
 ### Async Usage

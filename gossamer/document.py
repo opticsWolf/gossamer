@@ -99,6 +99,7 @@ class DocumentExtractor:
         *,
         store: bool = False,
         store_dir: Optional[str] = None,
+        include_images: bool = False,
     ) -> str:
         """Extract text content from documents.
 
@@ -129,7 +130,35 @@ class DocumentExtractor:
             ``pages``.
         store_dir : str, optional
             Directory to write the stored files into. Created if missing.
+        include_images : bool
+            PDF only; requires ``store=True``. Extract embedded raster
+            images (``extract_image_bytes`` per page) into
+            ``<stem>.files/`` and append a ``## Figures`` section to the
+            stored markdown; the ``stored.resources`` field reports them
+            under ``embedded``/``files``. Vector-only figures have no
+            raster bytes and are skipped. Tables need no flag: detected
+            tables are rendered as markdown tables by default.
         """
+        if include_images and not store:
+            return json.dumps(
+                {
+                    "error": (
+                        "include_images=True requires store=True; images "
+                        "need a directory to live in"
+                    )
+                },
+                indent=2,
+            )
+        if include_images and structured:
+            return json.dumps(
+                {
+                    "error": (
+                        "include_images cannot be combined with "
+                        "structured=True; use store=True instead"
+                    )
+                },
+                indent=2,
+            )
         if structured:
             return self._extract_document_structured_impl(source)
         try:
@@ -219,9 +248,18 @@ class DocumentExtractor:
                     store_prov = {"fetched_at": _utc_now_iso()}
             else:
                 store_prov = prov
-            stored = self._store_document(
-                source, raw_bytes, full_content, is_url, store_dir, store_prov
-            )
+            try:
+                stored = self._store_document(
+                    source,
+                    raw_bytes,
+                    full_content,
+                    is_url,
+                    store_dir,
+                    store_prov,
+                    include_images=include_images,
+                )
+            except ValueError as e:
+                return json.dumps({"error": str(e)}, indent=2)
 
         truncated = self._tb._budget._truncate(
             full_content, self._tb.max_markdown_chars, self._tb.max_tokens
@@ -242,7 +280,20 @@ class DocumentExtractor:
             result.stored = stored
         return self._finish_document(result)
 
-    def _store_document(self, source, raw_bytes, full_text, is_url, store_dir, prov=None):
+    # Cap on embedded PDF images per store call (disk-fill guard;
+    # reported via the manifest when hit).
+    _MAX_EMBEDDED_IMAGES = 200
+
+    def _store_document(
+        self,
+        source,
+        raw_bytes,
+        full_text,
+        is_url,
+        store_dir,
+        prov=None,
+        include_images=False,
+    ):
         """Write the original document bytes + extracted markdown to disk.
 
         ``raw_bytes`` is the untouched document (stored verbatim); ``full_text``
@@ -282,6 +333,13 @@ class DocumentExtractor:
             stem = Path(orig_name).stem or _sanitize_filename(source)
             suffix = suffix or ".bin"
 
+        if include_images and suffix.lower() != ".pdf":
+            raise ValueError(
+                f"include_images is only supported for PDF documents "
+                f"(got {suffix or 'no extension'}) — store without "
+                f"the flag instead"
+            )
+
         orig_path = out_dir / f"{stem}{suffix}"
         md_path = out_dir / f"{stem}.md"
 
@@ -289,8 +347,19 @@ class DocumentExtractor:
             orig_path.write_bytes(raw_bytes)
         md_path.write_text(full_text, encoding="utf-8")
 
+        embedded = (
+            self._pdf_embedded_images(raw_bytes)
+            if include_images and raw_bytes is not None
+            else []
+        )
         resources = self._store_resources(
-            served, out_dir, stem, full_text, raw_bytes, suffix
+            served,
+            out_dir,
+            stem,
+            full_text,
+            raw_bytes,
+            suffix,
+            embedded_images=embedded,
         )
 
         return {
@@ -303,8 +372,52 @@ class DocumentExtractor:
             "resources": resources,
         }
 
+    def _pdf_embedded_images(self, raw_bytes: bytes) -> list:
+        """Collect embedded raster images from PDF bytes for storage.
+
+        One ``extract_image_bytes`` call per page; each hit becomes an
+        ``extract_embedded``-shaped dict (``data``/``filename``/``ext``)
+        with page-aware names (``page{i}_{j}.png``). Vector-only
+        figures have no raster bytes and are skipped. Best-effort per
+        page; capped at ``_MAX_EMBEDDED_IMAGES``.
+        """
+        images: list = []
+        try:
+            doc = require_pdf_oxide().from_bytes(raw_bytes)
+            n_pages = len(doc)
+        except Exception as e:  # noqa: BLE001 - best-effort
+            logger.warning("PDF image scan failed: %s", e)
+            return []
+        for i in range(n_pages):
+            try:
+                blobs = doc.extract_image_bytes(i) or []
+            except Exception:  # noqa: BLE001 - best-effort per page
+                continue
+            for j, blob in enumerate(blobs, start=1):
+                if not isinstance(blob, dict) or not blob.get("data"):
+                    continue
+                fmt = str(blob.get("format") or "").lower()
+                ext = {"png": "png", "jpeg": "jpg", "jpg": "jpg"}.get(
+                    fmt, fmt or "img"
+                )
+                images.append(
+                    {
+                        "data": blob["data"],
+                        "filename": f"page{i + 1}_{j}.{ext}",
+                        "ext": ext,
+                    }
+                )
+                if len(images) >= self._MAX_EMBEDDED_IMAGES:
+                    logger.warning(
+                        "PDF image cap reached (%d); rest skipped",
+                        self._MAX_EMBEDDED_IMAGES,
+                    )
+                    return images
+        return images
+
     def _store_resources(
-        self, served, out_dir, stem, full_text, raw_bytes, suffix
+        self, served, out_dir, stem, full_text, raw_bytes, suffix,
+        embedded_images=None,
     ) -> dict:
         """Extract images referenced in the stored content into
         ``<stem>.files/`` and rewrite ``<stem>.md`` to point at them.
@@ -314,10 +427,10 @@ class DocumentExtractor:
         local paths. Text/office documents whose converter kept image refs
         are handled the same way.
 
-        Note: PDF and office converters drop images from the extracted
-        markdown, and the bundled pdf_oxide detects images but cannot extract
-        their bytes, so embedded PDF images are not currently retrievable --
-        this method then yields an empty manifest rather than erroring.
+        ``embedded_images`` (``[{data, filename?, ext?}]``) covers the
+        other case: converters that dropped the images (PDF raster
+        figures via ``_pdf_embedded_images``). They are written alongside
+        and linked from an appended ``## Figures`` section.
 
         Best-effort: never raises, so a resource download failure cannot
         fail the whole store.
@@ -327,18 +440,33 @@ class DocumentExtractor:
             manifest = store.extract(
                 markdown=full_text, base_url=served, out_dir=out_dir, stem=stem,
             )
-            if manifest["referenced"]:
+            md_text = manifest["markdown"]
+            files = list(manifest["files"])
+            embedded = 0
+            if embedded_images:
+                emb = store.extract_embedded(
+                    markdown=md_text,
+                    out_dir=out_dir,
+                    stem=stem,
+                    images=embedded_images,
+                )
+                md_text = emb["markdown"]
+                files = sorted(set(files) | set(emb["files"]))
+                embedded = emb["embedded"]
+            if manifest["referenced"] or embedded:
                 (Path(out_dir) / f"{stem}.md").write_text(
-                    manifest["markdown"], encoding="utf-8"
+                    md_text, encoding="utf-8"
                 )
             return {
                 "dir": manifest["dir"],
-                "files": manifest["files"],
+                "files": files,
                 "referenced": manifest["referenced"],
+                "embedded": embedded,
             }
         except Exception as e:  # noqa: BLE001 - resources are best-effort
             logger.warning("ResourceStore failed for %s: %s", served, e)
-            return {"dir": None, "files": [], "referenced": 0}
+            return {"dir": None, "files": [], "referenced": 0,
+                    "embedded": 0}
 
     def _fetch_document_url(self, url: str) -> tuple[bytes, dict]:
         """Tier 1.3: download a document URL; return (bytes, provenance).

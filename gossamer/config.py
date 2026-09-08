@@ -281,6 +281,12 @@ TOOL_REGISTRY = (
                 None,
                 "Directory to write stored files into (created if missing). Only used when store=true.",
             ),
+            ToolParam(
+                "include_images",
+                bool,
+                False,
+                "PDF only; requires store=true. Also extract embedded raster images into <stem>.files/ with a ## Figures section (reported under stored.resources). Vector-only figures are skipped; tables render by default.",
+            ),
         ),
     ),
     ToolSpec(

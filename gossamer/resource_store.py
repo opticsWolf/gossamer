@@ -5,8 +5,10 @@ references images by URL. Two things happen depending on the source:
 
 * **HTML pages** keep ``![alt](url)`` image refs in their markdown (and,
   via ``_absolutize_markdown_links``, those URLs are already absolute).
-* **PDF / office converters drop images entirely** -- the markdown has no
-  image refs at all, even when the source contains figures.
+* **PDF / office converters drop images from the markdown** -- it has no
+  image refs even when the source contains figures (PDF rasters are
+  recoverable via ``extract_image_bytes`` and wired in by
+  ``DocumentExtractor`` when ``include_images=True``).
 
 This module makes stored markdown fully self-contained by downloading those
 images into a sibling ``<stem>.files/`` directory (next to the stored

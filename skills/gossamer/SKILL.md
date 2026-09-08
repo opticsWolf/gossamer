@@ -53,3 +53,15 @@ API keys live in the keystore (`~/.gossamer/keys.json`;
 `python -m gossamer.keystore --init`), never in harness configs or prompts.
 Keyed providers raise an actionable error naming the exact variable
 (e.g. `GOSSAMER_EPO_KEY`) — surface it to the user instead of retrying.
+
+## Config / cache (where stuff actually is)
+
+- Cache: `GOSSAMER_CACHE_DIR` (see `mcp.json`) > `gossamer.json:cache_dir` > `./.gossamer_cache`.
+- Keys: `$GOSSAMER_KEYSTORE` > `gossamer.json:keystore` > `~/.gossamer/keys.json` (created only via `keystore --init`; absent = normal, not a broken install).
+- Check effective paths in `mcp.json` + `gossamer keystore --check`, not `~/.gossamer`.
+
+## Documents (PDF limits that matter)
+
+- Tables render as markdown tables by default — no flag needed.
+- Figures need `extract … --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.
+- Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).
