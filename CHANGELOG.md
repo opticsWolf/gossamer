@@ -4,6 +4,29 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.8.19] — Rust port M19: register/patent/financial-XML kernels
+
+- `src/xmlatom.rs`: namespace-URI resolution for prefixed attribute
+  keys (`{uri}local`, ElementTree spelling; implicitly-bound `xml:`
+  pre-seeded; `xmlns` declarations excluded) plus
+  `descendant_text` (`.//{*}name`); `py_strip_chars` in
+  `src/pycompat.rs` (`.strip(" —")`). Wrappers run `ET.fromstring`
+  first, so malformed payloads keep raising `ParseError` in Python
+  and `raw` stays byte-identical via re-attachment.
+- `src/adapters.rs`: eCFR part DFS (zero-stripped two-pass walk,
+  reversible-sequence errors) + part/title records (retired
+  `_find_part`/`_sections`); Bundesbank generic-data `Obs` walk
+  (keep-previous period, root-inclusive pre-order, out-of-check
+  limit break; retired `_observations`); BIS structure-specific
+  walk (eager TIME/OBS double-pops, `dim_` spread, embedded raw;
+  retired `_observations`); EPO exchange-documents (last-doc-id
+  wins, descendant names, lang-prefixed titles, charset-stripped
+  snippets; retired `_text`/`_row`); KIPRIS items (duplicate-tag
+  last-wins, eager get-chains, `ensure_ascii=False` raw; retired
+  `_items`/`_item_to_dict`/`_row`).
+- Caught by parity: dict children iterating keys in `_sections`,
+  the stray `@staticmethod` on `_part`, KIPRIS fail-fast precedence.
+
 ## [0.8.18] — Rust port M18: XML feed kernels
 
 - New `src/xmlatom.rs` (on `quick-xml` 0.42): ElementTree-shaped

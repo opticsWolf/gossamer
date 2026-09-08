@@ -1608,6 +1608,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::arxiv_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::pubmed_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::pubmed_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::ecfr_find_part, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::ecfr_part_record, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::ecfr_title_record, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::bundesbank_parse, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::bis_parse, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::epo_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::epo_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::kipris_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::kipris_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(sections::split_sections, m)?)?;
     m.add_function(wrap_pyfunction!(sections::tokenize_text, m)?)?;
     m.add_function(wrap_pyfunction!(sections::bm25_scores, m)?)?;

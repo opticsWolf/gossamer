@@ -4589,3 +4589,777 @@ def test_batch8_hostile_wrappers(monkeypatch):
     got = pm._search_impl("q")
     assert got[0]["raw"] == '{"uid": "7"}'
     assert got[0]["snippet"] == "PMID 7"
+
+
+# --- batch 9: register/patent/financial-XML kernels (v0.8.19) --------
+
+ECFR_TREE = {
+    "identifier": "21",
+    "label": "Title 21",
+    "type": "title",
+    "children": [
+        {"identifier": "0113", "label": "Part 113", "type": "part",
+         "label_description": "Desc.",
+         "children": [
+             {"identifier": "113.3", "label": "Sec 3", "type": "section"},
+             {"identifier": "113.5", "label": "Sec 5", "type": "section"},
+         ]},
+        {"identifier": "113", "label": "Appendix", "type": "appendix",
+         "children": []},
+    ],
+}
+
+
+def _v_ecfr_walk(node, want, only_parts):
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        ident = str(current.get("identifier", "")).lstrip("0")
+        if ident == want and (
+            not only_parts or current.get("type") == "part"
+        ):
+            return current
+        stack.extend(reversed(current.get("children", []) or []))
+    return None
+
+
+def _v_ecfr_find(tree, part):
+    want = str(part).lstrip("0")
+    return _v_ecfr_walk(tree, want, True) or _v_ecfr_walk(tree, want, False)
+
+
+def _v_ecfr_sections(node, limit=12):
+    out = []
+    for child in node.get("children", []) or []:
+        if child.get("type") == "section":
+            out.append(
+                f"{child.get('identifier', '')} {child.get('label', '')}".strip()
+            )
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _v_ecfr_part(node, title, part):
+    label = node.get("label", "")
+    desc = node.get("label_description", "")
+    sections = _v_ecfr_sections(node)
+    snippet = " ".join(s for s in [desc, f"Sections: {'; '.join(sections)}"] if s)[:400]
+    return {
+        "source": "ecfr",
+        "id": f"{title}/{part}",
+        "title": f"Title {title}: {label}" if label else f"Title {title} part {part}",
+        "url": f"https://www.ecfr.gov/current/title-{title}/part-{part}",
+        "snippet": snippet,
+        "fields": {
+            "title_no": str(title),
+            "part": str(part),
+            "label": label,
+            "section_count": len(node.get("children", []) or []),
+        },
+    }
+
+
+def _v_ecfr_title(tree, title):
+    label = tree.get("label", "")
+    descs = [str(c.get("label", "")) for c in (tree.get("children", []) or [])[:8]]
+    return {
+        "source": "ecfr",
+        "id": str(title),
+        "title": label or f"Title {title}",
+        "url": f"https://www.ecfr.gov/current/title-{title}",
+        "snippet": "; ".join(d for d in descs if d)[:400],
+        "fields": {"title_no": str(title)},
+    }
+
+
+def _rs_ecfr_find(tree, part):
+    return json.loads(_core.ecfr_find_part(json.dumps(tree), str(part)))
+
+
+def _rs_ecfr_part(node, title, part):
+    return json.loads(_core.ecfr_part_record(
+        json.dumps(node), str(title), str(part)))
+
+
+def _rs_ecfr_title(tree, title):
+    return json.loads(_core.ecfr_title_record(
+        json.dumps(tree), str(title)))
+
+
+ECFR_TREES = [
+    ECFR_TREE,
+    {},
+    {"identifier": "1"},
+    {"identifier": "007", "children": None},
+    {"identifier": "7", "children": ""},
+    {"identifier": "7", "children": "ab"},
+    {"identifier": "7", "children": {}},
+    {"identifier": "7", "children": 5},
+    {"identifier": "7", "children": [None]},
+    {"identifier": "7", "children": ["x"]},
+    {"identifier": "7", "children": [{}]},
+    {"identifier": None, "children": [{"identifier": 0, "type": "part"}]},
+    {"identifier": ["1"], "children": [{"identifier": {"i": 1}}]},
+    {"children": [{"identifier": "000", "type": "part",
+                   "children": [{"identifier": "s", "label": ["L"],
+                                 "type": "section"}]}]},
+    {"children": [{"identifier": "5", "type": "part",
+                   "label": 5, "label_description": ["d"],
+                   "children": "xy"}]},
+    [],
+    "x",
+    5,
+    None,
+]
+
+
+@pytest.mark.parametrize("tree", ECFR_TREES)
+@pytest.mark.parametrize("part", ["113", "0113", "007", "", "0", "999", 5])
+def test_ecfr_find_parity(tree, part):
+    py_raised, py_val = _outcome(_v_ecfr_find, tree, part)
+    rs_raised, rs_val = _outcome(_rs_ecfr_find, tree, part)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (tree, part)
+    assert rs_val == py_val, (tree, part)
+
+
+ECFR_NODES = [
+    ECFR_TREE["children"][0],
+    ECFR_TREE["children"][1],
+    {},
+    {"label": None, "label_description": None},
+    {"label": 0, "label_description": 0, "children": 0},
+    {"label": "", "children": ""},
+    {"label": ["L"], "children": ["c"]},
+    {"label": {"l": 1}, "children": {"c": 1}},
+    {"label": "L", "label_description": "D",
+     "children": [{"identifier": "s", "type": "section"}]},
+    {"children": [None]},
+    {"children": [{"type": "section"}]},
+    {"children": [{"identifier": 5, "label": 1.5, "type": "section"}]},
+]
+
+
+@pytest.mark.parametrize("node", ECFR_NODES)
+@pytest.mark.parametrize("title,part", [("21", "113"), ("", ""), (5, 5)])
+def test_ecfr_part_parity(node, title, part):
+    py_raised, py_val = _outcome(_v_ecfr_part, node, title, part)
+    rs_raised, rs_val = _outcome(_rs_ecfr_part, node, title, part)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (node, title)
+    assert rs_val == py_val, (node, title)
+
+
+@pytest.mark.parametrize("tree", ECFR_TREES)
+@pytest.mark.parametrize("title", ["21", "", 5])
+def test_ecfr_title_parity(tree, title):
+    py_raised, py_val = _outcome(_v_ecfr_title, tree, title)
+    rs_raised, rs_val = _outcome(_rs_ecfr_title, tree, title)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), (tree, title)
+    assert rs_val == py_val, (tree, title)
+
+
+BB_XML = """<message:GenericData xmlns:message="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message" xmlns:generic="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/data/generic">
+  <message:DataSet>
+    <generic:Series>
+      <generic:Obs>
+        <generic:ObsDimension value="2024-01-01"/>
+        <generic:ObsValue value="1.08"/>
+      </generic:Obs>
+      <generic:Obs>
+        <generic:TimeDimension value="2024-01-02"/>
+        <generic:ObsValue value="1.09"/>
+      </generic:Obs>
+      <generic:Obs>
+        <generic:ObsDimension value="2024-01-03"/>
+      </generic:Obs>
+      <generic:Obs/>
+    </generic:Series>
+  </message:DataSet>
+</message:GenericData>"""
+
+
+def _v_bb(xml, flow, key, max_results=5):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+    root = ET.fromstring(xml)
+    out = []
+    for el in root.iter():
+        if _local_name(el.tag) != "Obs":
+            continue
+        period, value = "", ""
+        for child in el:
+            lname = _local_name(child.tag)
+            if lname in ("ObsDimension", "TimeDimension"):
+                period = child.attrib.get("value", period)
+            elif lname == "ObsValue":
+                value = child.attrib.get("value", value)
+        if period or value:
+            out.append({
+                "source": "bundesbank",
+                "id": f"{flow}/{key}/{period}",
+                "title": f"{flow} {key} {period} = {value}",
+                "url": "",
+                "snippet": f"{period}: {value}",
+                "fields": {"flow": flow, "key": key, "date": period,
+                           "value": value},
+                "raw": json.dumps({"flow": flow, "key": key, "date": period,
+                                   "value": value}),
+            })
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def _rs_bb(xml, flow, key, max_results=5):
+    import xml.etree.ElementTree as ET
+    ET.fromstring(xml)
+    recs = json.loads(_core.bundesbank_parse(xml, flow, key, max_results))
+    for rec in recs:
+        f = rec["fields"]
+        rec["raw"] = json.dumps({"flow": flow, "key": key, "date": f["date"],
+                                 "value": f["value"]})
+    return recs
+
+
+BIS_XML = """<StructureSpecificData xmlns="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/data/structurespecific">
+  <DataSet>
+    <Series FREQ="M" REF_AREA="XM" UNIT="EUR">
+      <Obs TIME_PERIOD="2024-01" OBS_VALUE="3.5" EXTRA="e1"/>
+      <Obs TIME="2024-02" OBS="3.6"/>
+      <Obs TIME_PERIOD="2024-03"/>
+    </Series>
+    <Series FREQ="Q">
+      <Obs TIME_PERIOD="2024-Q1" OBS_VALUE="1"/>
+      <Other>skip</Other>
+    </Series>
+  </DataSet>
+</StructureSpecificData>"""
+
+
+def _v_bis(xml, flow, key, max_results=5):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+    root = ET.fromstring(xml)
+    out = []
+    for series in root.iter():
+        if _local_name(series.tag) != "Series":
+            continue
+        series_key = {k: v for k, v in series.attrib.items()}
+        for obs in series:
+            if _local_name(obs.tag) != "Obs":
+                continue
+            attrs = dict(obs.attrib)
+            period = attrs.pop("TIME_PERIOD", attrs.pop("TIME", ""))
+            value = attrs.pop("OBS_VALUE", attrs.pop("OBS", ""))
+            key_txt = ".".join(f"{k}={v}" for k, v in series_key.items())
+            out.append({
+                "source": "bis",
+                "id": f"{flow}/{key}/{period}",
+                "title": f"{flow} {key_txt} {period} = {value}",
+                "url": "",
+                "snippet": f"{key_txt} — {period}: {value}",
+                "fields": {"flow": flow, "key": key, "date": period,
+                           "value": value,
+                           **{f"dim_{k}": v for k, v in series_key.items()}},
+                "raw": json.dumps({"flow": flow, "series": series_key,
+                                   "date": period, "value": value,
+                                   "extra": attrs}),
+            })
+            if len(out) >= max_results:
+                return out
+    return out
+
+
+def _rs_bis(xml, flow, key, max_results=5):
+    import xml.etree.ElementTree as ET
+    ET.fromstring(xml)
+    recs = json.loads(_core.bis_parse(xml, flow, key, max_results))
+    for rec in recs:
+        rec["raw"] = json.dumps(rec.pop("raw"))
+    return recs
+
+
+SDMX_XML_CASES = [
+    BB_XML,
+    BIS_XML,
+    "<Data/>",
+    "<Data></Data>",
+    "<Obs/>",
+    "<Obs><ObsDimension/><ObsValue/></Obs>",
+    "<Obs><ObsDimension value='p'/><ObsDimension/><ObsValue/><ObsValue value='v'/></Obs>",
+    "<S xmlns='u' xmlns:p='w'><p:Series p:FREQ='M'><p:Obs p:TIME_PERIOD='t' p:OBS_VALUE='v' xml:lang='en'/></p:Series></S>",
+    "<S><Series FREQ='M'><Obs TIME='a' TIME_PERIOD='b' OBS='c' OBS_VALUE='d'/></Series></S>",
+    "<S><Series><Obs/></Series></S>",
+    "<S><Series FREQ='M'/></S>",
+    "<S><Other><Obs><ObsValue value='v'/></Obs></Other></S>",
+    "<S><Series><Series><Obs TIME_PERIOD='nested' OBS_VALUE='1'/></Obs></Series></Series></S>",
+    "not xml",
+    "",
+    "<S><unclosed>",
+]
+
+
+@pytest.mark.parametrize("xml", SDMX_XML_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, 0, -1, 100])
+def test_bb_parity(xml, max_results):
+    py_raised, py_val = _outcome(_v_bb, xml, "F", "K", max_results)
+    rs_raised, rs_val = _outcome(_rs_bb, xml, "F", "K", max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+@pytest.mark.parametrize("xml", SDMX_XML_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, 0, -1, 100])
+def test_bis_parity(xml, max_results):
+    py_raised, py_val = _outcome(_v_bis, xml, "F", "K", max_results)
+    rs_raised, rs_val = _outcome(_rs_bis, xml, "F", "K", max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+EPO_XML = """<ops:world-patent-data xmlns:ops="http://ops.epo.org" xmlns="http://www.epo.org/exchange">
+  <ops:meta name="elapsed-time" value="10"/>
+  <exchange-documents>
+    <exchange-document>
+      <bibliographic-data>
+        <document-id document-id-type="epodoc">
+          <doc-number>EP1234567</doc-number>
+          <kind>A1</kind>
+          <date>20240101</date>
+        </document-id>
+        <document-id document-id-type="original">
+          <doc-number>X</doc-number>
+        </document-id>
+        <invention-title lang="en">A  Widget</invention-title>
+        <invention-title lang="de">Ein Ger&#228;t</invention-title>
+        <applicants>
+          <applicant-name><name>Acme Corp</name></applicant-name>
+          <applicant-name><name></name></applicant-name>
+        </applicants>
+        <inventors>
+          <inventor-name><name><last>Doe</last></name></inventor-name>
+        </inventors>
+      </bibliographic-data>
+    </exchange-document>
+    <exchange-document>
+      <bibliographic-data>
+        <document-id document-id-type="epodoc">
+          <doc-number>EP7654321</doc-number>
+        </document-id>
+      </bibliographic-data>
+    </exchange-document>
+  </exchange-documents>
+</ops:world-patent-data>"""
+
+
+def _v_epo_row(doc):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+    number, kind, date, applicants = "", "", "", []
+    for el in doc.iter():
+        lname = _local_name(el.tag)
+        if lname == "document-id" and el.attrib.get("document-id-type") == "epodoc":
+            for child in el:
+                cname = _local_name(child.tag)
+                if cname == "doc-number":
+                    number = (child.text or "").strip()
+                elif cname == "kind":
+                    kind = (child.text or "").strip()
+                elif cname == "date":
+                    date = (child.text or "").strip()[:10]
+        elif lname in ("applicant-name", "inventor-name"):
+            name = (el.findtext(".//{*}name") or "").strip()
+            if name:
+                applicants.append(name)
+    epodoc = f"{number}{kind}"
+    parts = []
+    for el in doc.iter():
+        if _local_name(el.tag) in ("invention-title", "title") and el.text:
+            lang = el.attrib.get("lang", "")
+            parts.append(f"[{lang}] {el.text.strip()}" if lang else el.text.strip())
+    title = " ".join(parts)[:400] or epodoc
+    return {
+        "source": "epo",
+        "id": epodoc or number,
+        "title": title,
+        "url": f"https://worldwide.espacenet.com/patent/search?q=pn%3D{epodoc}" if epodoc else "",
+        "published": date,
+        "snippet": f"{title} — {', '.join(applicants[:3])}".strip(" —"),
+        "fields": {
+            "publication_number": number,
+            "kind": kind,
+            "applicants": ", ".join(applicants[:5]),
+        },
+        "raw": json.dumps({"epodoc": epodoc, "title": title, "date": date}),
+    }
+
+
+def _rs_epo_search(xml, max_results=5):
+    import xml.etree.ElementTree as ET
+    ET.fromstring(xml)
+    recs = json.loads(_core.epo_parse_search(xml, max_results))
+    for rec in recs:
+        f = rec["fields"]
+        rec["raw"] = json.dumps({"epodoc": f["publication_number"] + f["kind"],
+                                 "title": rec["title"],
+                                 "date": rec["published"]})
+    return recs
+
+
+def _rs_epo_fetch(xml):
+    import xml.etree.ElementTree as ET
+    ET.fromstring(xml)
+    rec = json.loads(_core.epo_parse_fetch(xml))
+    if rec is None:
+        return []
+    f = rec["fields"]
+    rec["raw"] = json.dumps({"epodoc": f["publication_number"] + f["kind"],
+                             "title": rec["title"], "date": rec["published"]})
+    return [rec]
+
+
+EPO_XML_CASES = [
+    EPO_XML,
+    "<root/>",
+    "<root><exchange-document/></root>",
+    "<root><exchange-document><document-id><doc-number> N </doc-number><kind>B2</kind><date>2024-05-06 extra long date text</date></document-id></exchange-document></root>",
+    "<root><exchange-document><document-id document-id-type='epodoc'/><invention-title>   </invention-title><title>T2</title><applicant-name><name>  A  </name></applicant-name></exchange-document></root>",
+    "<root><exchange-document><document-id document-id-type='epodoc'><doc-number>1</doc-number></document-id><document-id document-id-type='epodoc'><doc-number>2</doc-number><kind>K</kind></document-id></exchange-document></root>",
+    "<root><exchange-document><inventor-name><name><first>F</first></name></inventor-name></exchange-document></root>",
+    "not xml",
+    "",
+    "<root><unclosed>",
+]
+
+
+@pytest.mark.parametrize("xml", EPO_XML_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, 0, -1, 100])
+def test_epo_search_parity(xml, max_results):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+
+    def _v_search():
+        root = ET.fromstring(xml)
+        out = []
+        for el in root.iter():
+            if _local_name(el.tag) != "exchange-document":
+                continue
+            # inline the retired _row via _v_epo_row
+            out.append(_v_epo_row(el))
+            if len(out) >= max_results:
+                break
+        return out
+
+    py_raised, py_val = _outcome(_v_search)
+    rs_raised, rs_val = _outcome(_rs_epo_search, xml, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+@pytest.mark.parametrize("xml", EPO_XML_CASES)
+def test_epo_fetch_parity(xml):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+
+    def _v_fetch():
+        root = ET.fromstring(xml)
+        for el in root.iter():
+            if _local_name(el.tag) == "exchange-document":
+                return [_v_epo_row(el)]
+        return []
+
+    py_raised, py_val = _outcome(_v_fetch)
+    rs_raised, rs_val = _outcome(_rs_epo_fetch, xml)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+KIPRIS_XML = """<response><body><items>
+  <item>
+    <applicationNumber>1020240000001</applicationNumber>
+    <inventionTitle>Quantum  Widget</inventionTitle>
+    <applicantName>Samsung</applicantName>
+    <applicationStatus>registered</applicationStatus>
+    <publicationDate>2024-01-15</publicationDate>
+    <applicationNumber>DUP</applicationNumber>
+  </item>
+  <item>
+    <application_number>999</application_number>
+    <title>Fallback Title</title>
+    <registerStatus>pending</registerStatus>
+    <registrationDate>2023-05-05</registrationDate>
+  </item>
+</items></body></response>"""
+
+
+def _v_kipris_item(item):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+    out = {}
+    for child in item:
+        out[_local_name(child.tag)] = (child.text or "").strip()
+    return out
+
+
+def _v_kipris_row(d):
+    app_no = d.get("applicationNumber", d.get("application_number", ""))
+    title = d.get("inventionTitle", d.get("title", app_no))
+    return {
+        "source": "kipris",
+        "id": app_no,
+        "title": title,
+        "url": "",
+        "published": d.get("publicationDate", d.get("registrationDate", "")),
+        "snippet": f"{title} — {d.get('applicantName', '')}".strip(" —"),
+        "fields": {
+            "applicant": d.get("applicantName", ""),
+            "status": d.get("applicationStatus", d.get("registerStatus", "")),
+        },
+        "raw": json.dumps(d, ensure_ascii=False),
+    }
+
+
+def _rs_kipris_search(xml, max_results=5):
+    import xml.etree.ElementTree as ET
+    ET.fromstring(xml)
+    recs = json.loads(_core.kipris_parse_search(xml, max_results))
+    for rec in recs:
+        rec["raw"] = json.dumps(rec.pop("raw"), ensure_ascii=False)
+    return recs
+
+
+def _rs_kipris_fetch(xml):
+    import xml.etree.ElementTree as ET
+    ET.fromstring(xml)
+    recs = json.loads(_core.kipris_parse_fetch(xml))
+    for rec in recs:
+        rec["raw"] = json.dumps(rec.pop("raw"), ensure_ascii=False)
+    return recs
+
+
+KIPRIS_XML_CASES = [
+    KIPRIS_XML,
+    "<response/>",
+    "<response><body><items><item/></items></body></response>",
+    "<response><body><items><item><title>  spaced  </title><title>second</title><sub><deep>x</deep></sub>tail</item></items></body></response>",
+    "not xml",
+    "",
+    "<response><unclosed>",
+]
+
+
+@pytest.mark.parametrize("xml", KIPRIS_XML_CASES)
+@pytest.mark.parametrize("max_results", [1, 5, 0, -1, 100])
+def test_kipris_search_parity(xml, max_results):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+
+    def _v_search():
+        root = ET.fromstring(xml)
+        items = []
+        for el in root.iter():
+            if _local_name(el.tag) == "item":
+                items.append(_v_kipris_item(el))
+        return [_v_kipris_row(d) for d in items[:max_results]]
+
+    py_raised, py_val = _outcome(_v_search)
+    rs_raised, rs_val = _outcome(_rs_kipris_search, xml, max_results)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+@pytest.mark.parametrize("xml", KIPRIS_XML_CASES)
+def test_kipris_fetch_parity(xml):
+    import xml.etree.ElementTree as ET
+    from gossamer.research_providers import _local_name
+
+    def _v_fetch():
+        root = ET.fromstring(xml)
+        items = []
+        for el in root.iter():
+            if _local_name(el.tag) == "item":
+                items.append(_v_kipris_item(el))
+        return [_v_kipris_row(items[0])] if items else []
+
+    py_raised, py_val = _outcome(_v_fetch)
+    rs_raised, rs_val = _outcome(_rs_kipris_fetch, xml)
+    assert (py_raised, rs_raised) == (py_raised, py_raised), xml[:60]
+    assert rs_val == py_val, xml[:60]
+
+
+def _fuzz_json9(rng, depth=0):
+    r = rng.random()
+    if depth > 2 or r < 0.35:
+        return rng.choice(
+            [None, True, False, 0, 1, 7, "113", "0113", "000", "",
+             "part", "section", "appendix", "Title", "Desc", "21"])
+    if r < 0.60:
+        return [_fuzz_json9(rng, depth + 1) for _ in range(rng.randrange(4))]
+    keys = ["identifier", "label", "label_description", "type", "children"]
+    return {k: _fuzz_json9(rng, depth + 1)
+            for k in rng.sample(keys, rng.randrange(5))}
+
+
+def _bis_series9(rng):
+    freq = rng.choice(["", "FREQ=" + rng.choice(["M", "Q"])])
+    area = rng.choice(["", "REF_AREA=XM"])
+    pairs = rng.choice([[("2024-01", "1")], []])
+    obs = "".join(
+        "<Obs TIME_PERIOD='%s' OBS_VALUE='%s'/>" % (p, v) for p, v in pairs)
+    extra = rng.choice(["", "<Obs/>", "<Nope/>"])
+    return "<Series %s %s>%s%s</Series>" % (freq, area, obs, extra)
+
+
+def _fuzz_xml9(rng):
+    tag = lambda t, body="", attrs="": f"<{t}{attrs}>{body}</{t}>"
+    obs = "".join(
+        tag("Obs",
+            tag(rng.choice(["ObsDimension", "TimeDimension"]),
+                "", f" value='{rng.choice(['', '2024-01-01'])}'") +
+            tag("ObsValue", "", f" value='{rng.choice(['', '1.5'])}'"))
+        for _ in range(rng.randrange(3)))
+    series = "".join(
+        _bis_series9(rng)
+        for _ in range(rng.randrange(2)))
+    lang = "" if rng.random() < 0.5 else " lang='en'"
+    docs = "".join(
+        "<exchange-document>"
+        "<document-id document-id-type='epodoc'>"
+        "<doc-number>%s</doc-number>"
+        "<kind>%s</kind>"
+        "</document-id>"
+        "<invention-title%s>" % (rng.choice(["", "EP1"]),
+                                   rng.choice(["", "A1"]), lang) +
+        "%s</invention-title>" % rng.choice(["T", "A  B", ""]) +
+        "<applicant-name><name>%s</name></applicant-name>" % rng.choice(["Acme", ""]) +
+        "</exchange-document>"
+        for _ in range(rng.randrange(3)))
+    items = "".join(
+        f"<item><applicationNumber>{rng.choice(['1', ''])}</applicationNumber>"
+        f"<inventionTitle>{rng.choice(['T', ''])}</inventionTitle></item>"
+        for _ in range(rng.randrange(3)))
+    return (f"<root>{obs}{series}{docs}"
+            f"<response><body><items>{items}</items></body></response>"
+            f"</root>")
+
+
+def test_batch9_fuzz():
+    import random
+    rng = random.Random(20260910)
+    n_checked = 0
+    for trial in range(300):
+        tree = _fuzz_json9(rng)
+        part = rng.choice(["113", "0113", "", "0", "999", 5, "1"])
+        py_raised, py_val = _outcome(_v_ecfr_find, tree, part)
+        rs_raised, rs_val = _outcome(_rs_ecfr_find, tree, part)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, tree)
+        assert rs_val == py_val, (trial, tree, part)
+        n_checked += 1
+        node = _fuzz_json9(rng)
+        title = rng.choice(["21", "", 5])
+        py_raised, py_val = _outcome(_v_ecfr_part, node, title, part)
+        rs_raised, rs_val = _outcome(_rs_ecfr_part, node, title, part)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, node)
+        assert rs_val == py_val, (trial, node, title)
+        n_checked += 1
+        py_raised, py_val = _outcome(_v_ecfr_title, tree, title)
+        rs_raised, rs_val = _outcome(_rs_ecfr_title, tree, title)
+        assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, tree)
+        assert rs_val == py_val, (trial, tree, title)
+        n_checked += 1
+    for trial in range(300):
+        xml = _fuzz_xml9(rng)
+        max_results = rng.choice([0, 1, 3, 5, -1, 100])
+        for v_fn, r_fn in (
+            (lambda x, m: _v_bb(x, "F", "K", m),
+             lambda x, m: _rs_bb(x, "F", "K", m)),
+            (lambda x, m: _v_bis(x, "F", "K", m),
+             lambda x, m: _rs_bis(x, "F", "K", m)),
+        ):
+            py_raised, py_val = _outcome(v_fn, xml, max_results)
+            rs_raised, rs_val = _outcome(r_fn, xml, max_results)
+            assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, xml)
+            assert rs_val == py_val, (trial, xml)
+            n_checked += 1
+        import xml.etree.ElementTree as ET
+        from gossamer.research_providers import _local_name
+
+        def _v_epo():
+            root = ET.fromstring(xml)
+            out = []
+            for el in root.iter():
+                if _local_name(el.tag) != "exchange-document":
+                    continue
+                out.append(_v_epo_row(el))
+                if len(out) >= max_results:
+                    break
+            return out
+
+        def _v_kip():
+            root = ET.fromstring(xml)
+            items = []
+            for el in root.iter():
+                if _local_name(el.tag) == "item":
+                    items.append(_v_kipris_item(el))
+            return [_v_kipris_row(d) for d in items[:max_results]]
+
+        for v_fn, r_fn in (
+            (_v_epo, lambda: _rs_epo_search(xml, max_results)),
+            (_v_kip, lambda: _rs_kipris_search(xml, max_results)),
+        ):
+            py_raised, py_val = _outcome(v_fn)
+            rs_raised, rs_val = _outcome(r_fn)
+            assert (py_raised, rs_raised) == (py_raised, py_raised), (trial, xml)
+            assert rs_val == py_val, (trial, xml)
+            n_checked += 1
+    assert n_checked == 300 * 3 + 300 * 4
+
+
+def test_batch9_hostile_wrappers(monkeypatch):
+    import httpx
+    from gossamer.research_providers import (
+        EcfrAdapter, BundesbankAdapter, BisAdapter, EpoOpsAdapter,
+        KiprisAdapter)
+    ec = EcfrAdapter(delay=0)
+    bb = BundesbankAdapter(delay=0)
+    bi = BisAdapter(delay=0)
+    epo = EpoOpsAdapter(delay=0)
+    kp = KiprisAdapter(delay=0, api_key="K")
+    titles = {"titles": [{"number": 21, "latest_issue_date": "2024-01-01"}]}
+    tree = dict(ECFR_TREE)
+    monkeypatch.setattr(
+        httpx, "get",
+        lambda url, **k: _FakeResp(
+            titles if url.endswith("/titles.json") else tree))
+    got = ec.fetch("21/113")
+    assert got[0]["id"] == "21/113"
+    assert got[0]["fields"]["section_count"] == 2
+    assert got[0]["raw"] == json.dumps(tree["children"][0])
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeRespText(BB_XML))
+    got = bb._search_impl("F/K", max_results=5)
+    assert len(got) == 3 and got[0]["fields"]["date"] == "2024-01-01"
+    assert got[0]["raw"] == json.dumps({"flow": "F", "key": "K",
+                                        "date": "2024-01-01",
+                                        "value": "1.08"})
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeRespText(BIS_XML))
+    got = bi._search_impl("F/K", max_results=5)
+    assert len(got) == 4 and "dim_FREQ" in got[0]["fields"]
+    assert json.loads(got[0]["raw"])["extra"] == {"EXTRA": "e1"}
+    monkeypatch.setattr(epo, "_auth_headers", lambda: {})
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeRespText(EPO_XML))
+    got = epo._search_impl("ti=x", max_results=5)
+    assert len(got) == 2 and got[0]["id"] == "EP1234567A1"
+    assert "Acme Corp" in got[0]["fields"]["applicants"]
+    assert json.loads(got[0]["raw"])["epodoc"] == "EP1234567A1"
+    got = epo.fetch("EP1234567A1")
+    assert got[0]["id"] == "EP1234567A1"
+    monkeypatch.setattr(httpx, "get",
+                        lambda *a, **k: _FakeRespText(KIPRIS_XML))
+    got = kp._search_impl("quantum", max_results=5)
+    assert len(got) == 2 and got[0]["id"] == "DUP"
+    assert "Samsung" in got[0]["snippet"]
+    got = kp.fetch("1020240000001")
+    assert got[0]["id"] == "DUP"

@@ -703,6 +703,33 @@ mod tests {
     }
 
     #[test]
+    fn batch9_register_shapes() {
+        // eCFR: zero-stripped two-pass DFS.
+        let tree = r#"{"children": [{"identifier": "0113", "label": "P", "type": "appendix"}, {"identifier": "113", "label": "Q", "type": "part", "children": [{"identifier": "s", "label": "S", "type": "section"}]}]}"#;
+        let node = ecfr_find_part_impl(tree, "113").unwrap().unwrap();
+        assert_eq!(node["label"], "Q");
+        let rec = ecfr_part_record_impl(&serde_json::to_string(&node).unwrap(), "21", "113").unwrap();
+        assert_eq!(rec["snippet"], "Sections: s S");
+        assert_eq!(rec["fields"]["section_count"], 1);
+        let rec = ecfr_title_record_impl(tree, "21").unwrap();
+        assert_eq!(rec["id"], "21");
+        // Bundesbank: keep-previous period default + limit break.
+        let out = bundesbank_parse_impl("<Obs><ObsValue value='v'/></Obs>", "F", "K", 5).unwrap();
+        assert_eq!(out[0]["fields"]["date"], "");
+        // BIS: eager double-pop (TIME_PERIOD wins, TIME still consumed).
+        let out = bis_parse_impl("<Series F='1'><Obs TIME='a' TIME_PERIOD='b' OBS_VALUE='v'/></Series>", "F", "K", 5).unwrap();
+        assert_eq!(out[0]["fields"]["date"], "b");
+        assert_eq!(out[0]["raw"]["extra"], serde_json::json!({}));
+        // EPO: last document-id wins; error fetch is null.
+        let out = epo_parse_search_impl("<exchange-document><document-id document-id-type='epodoc'><doc-number>N</doc-number><kind>A</kind></document-id></exchange-document>", 5).unwrap();
+        assert_eq!(out[0]["id"], "NA");
+        assert!(epo_parse_fetch_impl("<root/>").unwrap().is_null());
+        // KIPRIS: duplicate tags keep first position, last value.
+        let out = kipris_parse_search_impl("<item><a>1</a><a>2</a></item>", 5).unwrap();
+        assert_eq!(out[0]["raw"]["a"], "2");
+    }
+
+    #[test]
     fn batch8_xml_shapes() {
         // xmlatom: local names ignore prefixes; tails invisible.
         let root = crate::xmlatom::parse_document(
@@ -6692,6 +6719,835 @@ pub fn pubmed_parse_fetch(
     rid: &str,
 ) -> PyResult<String> {
     pubmed_parse_fetch_impl(response_xml, rid)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ── eCFR ────────────────────────────────────────────────────────
+
+/// `str(value).lstrip("0")`: Python-`str()` render, then strip all
+/// leading zeros ("000" folds to "").
+fn ecfr_ident_key(v: Option<&Value>) -> String {
+    match v {
+        None => String::new(),
+        Some(x) => py_str_value(x).trim_start_matches('0').to_string(),
+    }
+}
+
+/// `_find_part` one pass: iterative DFS (the stack pops from the end
+/// while children extend reversed); identifiers compare after
+/// zero-stripping; `only_parts` gates on `type == "part"`.
+fn ecfr_walk(node: &Value, want: &str, only_parts: bool) -> Result<Option<Value>, String> {
+    let mut stack: Vec<Value> = vec![node.clone()];
+    while let Some(current) = stack.pop() {
+        let m = match &current {
+            Value::Object(m) => m,
+            _ => return Err(attr_error(json_type(&current))),
+        };
+        if ecfr_ident_key(m.get("identifier")) == want
+            && (!only_parts
+                || matches!(m.get("type"), Some(Value::String(t)) if t == "part"))
+        {
+            return Ok(Some(current));
+        }
+        // `(current.get("children", []) or [])`, reversed: falsy
+        // folds; lists reverse item-wise; strings/dicts reverse
+        // (chars/keys — failing later per item); anything else raises
+        // TypeError.
+        let kids: Vec<Value> = match m.get("children") {
+            None => Vec::new(),
+            Some(v) if !is_truthy(v) => Vec::new(),
+            Some(Value::Array(a)) => a.iter().rev().cloned().collect(),
+            Some(Value::String(s)) => s
+                .chars()
+                .rev()
+                .map(|c| Value::String(c.to_string()))
+                .collect(),
+            Some(Value::Object(mm)) => mm
+                .keys()
+                .rev()
+                .map(|k| Value::String(k.clone()))
+                .collect(),
+            Some(other) => {
+                return Err(format!(
+                    "TypeError: '{0}' object is not reversible",
+                    json_type(other)
+                ));
+            }
+        };
+        stack.extend(kids);
+    }
+    Ok(None)
+}
+
+pub fn ecfr_find_part_impl(response_json: &str, part: &str) -> Result<Option<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let want = part.trim_start_matches('0').to_string();
+    // First pass prefers `type == "part"` hits; the second accepts any
+    // identifier hit. (`walk(True) or walk(False)` — an error aborts.)
+    match ecfr_walk(&body, &want, true)? {
+        Some(n) => Ok(Some(n)),
+        None => ecfr_walk(&body, &want, false),
+    }
+}
+
+/// `_sections`: `f"{identifier} {label}".strip()` over direct
+/// `type == "section"` children (falsy children fold; truthy non-lists
+/// raise TypeError on iteration), capped at 12.
+fn ecfr_sections(node: &serde_json::Map<String, Value>) -> Result<Vec<String>, String> {
+    let kids: Vec<Value> = match node.get("children") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        // Dicts/strings iterate (keys/chars — failing per item on
+        // `.get` below); anything else raises TypeError.
+        Some(Value::String(s)) => {
+            s.chars().map(|c| Value::String(c.to_string())).collect()
+        }
+        Some(Value::Object(mm)) => {
+            mm.keys().map(|k| Value::String(k.clone())).collect()
+        }
+        Some(other) => return Err(type_error_not_iterable(json_type(other))),
+    };
+    let empty = Value::String(String::new());
+    let mut out = Vec::new();
+    for child in kids.iter() {
+        let cm = match child {
+            Value::Object(m) => m,
+            _ => return Err(attr_error(json_type(child))),
+        };
+        if matches!(cm.get("type"), Some(Value::String(t)) if t == "section") {
+            // `.get` defaults ("") then f-string render, stripped
+            // (Python-`strip()` set via pycompat).
+            let ident = py_str_value(cm.get("identifier").unwrap_or(&empty));
+            let label = py_str_value(cm.get("label").unwrap_or(&empty));
+            out.push(
+                crate::pycompat::py_strip(&format!("{ident} {label}")).to_string(),
+            );
+            if out.len() >= 12 {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
+pub fn ecfr_part_record_impl(
+    node_json: &str,
+    title_s: &str,
+    part_s: &str,
+) -> Result<Value, String> {
+    let node: Value = serde_json::from_str(node_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let m = match &node {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&node))),
+    };
+    // Evaluation order matches the dict build: label/desc reads, then
+    // sections, then the children-length count.
+    let label = m
+        .get("label")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let desc = m
+        .get("label_description")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let sections = ecfr_sections(m)?;
+    // `len(node.get("children", []) or [])`: falsy folds to 0; strs and
+    // dicts measure by length; anything else raises TypeError.
+    let section_count = match m.get("children") {
+        None => 0,
+        Some(v) if !is_truthy(v) => 0,
+        Some(Value::Array(a)) => a.len(),
+        Some(Value::String(s)) => s.chars().count(),
+        Some(Value::Object(mm)) => mm.len(),
+        Some(other) => {
+            return Err(format!(
+                "TypeError: object of type '{0}' has no len()",
+                json_type(other)
+            ));
+        }
+    };
+    // `" ".join(s for s in [desc, f"Sections: ..."] if s)[:400]`:
+    // desc stays raw (falsy dropped, non-strings raise at join time).
+    let mut kept: Vec<(String, &'static str)> = Vec::new();
+    for v in [desc, Value::String(format!("Sections: {0}", sections.join("; ")))] {
+        if !is_truthy(&v) {
+            continue;
+        }
+        kept.push((py_value_repr(&v), json_type(&v)));
+    }
+    let mut parts: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(sequence_item_error(i, t));
+        }
+        parts.push(text.clone());
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert("title_no".to_string(), Value::String(title_s.to_string()));
+    fields.insert("part".to_string(), Value::String(part_s.to_string()));
+    fields.insert("label".to_string(), label.clone());
+    fields.insert("section_count".to_string(), Value::from(section_count));
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("ecfr".to_string()));
+    rec.insert(
+        "id".to_string(),
+        Value::String(format!("{title_s}/{part_s}")),
+    );
+    rec.insert(
+        "title".to_string(),
+        Value::String(if is_truthy(&label) {
+            format!("Title {title_s}: {0}", py_str_value(&label))
+        } else {
+            format!("Title {title_s} part {part_s}")
+        }),
+    );
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://www.ecfr.gov/current/title-{title_s}/part-{part_s}"
+        )),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            crate::pycompat::char_head(parts.join(" ").as_str(), 400).to_string(),
+        ),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    // `raw` is `json.dumps(node)`: re-attached by the wrapper.
+    Ok(Value::Object(rec))
+}
+
+pub fn ecfr_title_record_impl(
+    tree_json: &str,
+    title_s: &str,
+) -> Result<Value, String> {
+    let tree: Value = serde_json::from_str(tree_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let m = match &tree {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&tree))),
+    };
+    let label = m
+        .get("label")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    // `[str(c.get("label", "")) for c in children[:8]]`: falsy folds;
+    // lists slice; strings slice per char; dicts raise KeyError(slice);
+    // anything else raises TypeError.
+    let kids: Vec<&Value> = match m.get("children") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => slice_refs(a, 8),
+        Some(Value::String(s)) => {
+            let chars: Vec<char> = s.chars().collect();
+            let end = 8.min(chars.len());
+            // Chars fail per item (`.get` on a str) unless sliced away.
+            if end == 0 {
+                Vec::new()
+            } else {
+                return Err(attr_error("str"));
+            }
+        }
+        Some(Value::Object(_)) => return Err(subscript_keyerror(8)),
+        Some(other) => return Err(type_error_not_subscriptable(json_type(other))),
+    };
+    let empty = Value::String(String::new());
+    let mut descs: Vec<String> = Vec::with_capacity(kids.len());
+    for c in kids.iter() {
+        match c {
+            Value::Object(cm) => {
+                descs.push(py_str_value(cm.get("label").unwrap_or(&empty)));
+            }
+            _ => return Err(attr_error(json_type(c))),
+        }
+    }
+    // `"; ".join(d for d in descs if d)[:400]`: all strings by
+    // construction (str() applied above), so joining never raises.
+    let kept: Vec<&str> = descs.iter().map(|s| s.as_str()).filter(|s| !s.is_empty()).collect();
+    let mut fields = serde_json::Map::new();
+    fields.insert("title_no".to_string(), Value::String(title_s.to_string()));
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("ecfr".to_string()));
+    rec.insert("id".to_string(), Value::String(title_s.to_string()));
+    rec.insert(
+        "title".to_string(),
+        if is_truthy(&label) {
+            label.clone()
+        } else {
+            Value::String(format!("Title {title_s}"))
+        },
+    );
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!("https://www.ecfr.gov/current/title-{title_s}")),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            crate::pycompat::char_head(kept.join("; ").as_str(), 400).to_string(),
+        ),
+    );
+    rec.insert("fields".to_string(), Value::Object(fields));
+    // `raw` is the identifier/label/type subset: attached by the wrapper.
+    Ok(Value::Object(rec))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, part = ""))]
+pub fn ecfr_find_part(
+    py: Python,
+    response_json: &str,
+    part: &str,
+) -> PyResult<String> {
+    ecfr_find_part_impl(response_json, part)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (node_json, title_s = "", part_s = ""))]
+pub fn ecfr_part_record(
+    py: Python,
+    node_json: &str,
+    title_s: &str,
+    part_s: &str,
+) -> PyResult<String> {
+    ecfr_part_record_impl(node_json, title_s, part_s)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (tree_json, title_s = ""))]
+pub fn ecfr_title_record(
+    py: Python,
+    tree_json: &str,
+    title_s: &str,
+) -> PyResult<String> {
+    ecfr_title_record_impl(tree_json, title_s)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ── Bundesbank (SDMX-ML generic data) ───────────────────────────
+
+pub fn bundesbank_parse_impl(
+    response_xml: &str,
+    flow: &str,
+    key: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // Namespace-agnostic `Obs` extraction over all descendants, in
+    // document order; append-then-break (any hits yield at least one
+    // record, even for `max_results <= 0`).
+    let mut out = Vec::new();
+    // `root.iter()` visits the root itself first, then descendants
+    // in pre-order — replicated with an explicit stack.
+    let mut stack: Vec<&crate::xmlatom::Node> = vec![&root];
+    while let Some(el) = stack.pop() {
+        if el.local == "Obs" {
+            // `period = attrib.get("value", period)`: keep-previous
+            // default (not "").
+            let mut period = String::new();
+            let mut value = String::new();
+            for child in el.children.iter() {
+                if child.local == "ObsDimension" || child.local == "TimeDimension" {
+                    if let Some(v) = child.attr_opt("value") {
+                        period = v.to_string();
+                    }
+                } else if child.local == "ObsValue" {
+                    if let Some(v) = child.attr_opt("value") {
+                        value = v.to_string();
+                    }
+                }
+            }
+            if !period.is_empty() || !value.is_empty() {
+                let mut fields = serde_json::Map::new();
+                fields.insert("flow".to_string(), Value::String(flow.to_string()));
+                fields.insert("key".to_string(), Value::String(key.to_string()));
+                fields.insert("date".to_string(), Value::String(period.clone()));
+                fields.insert("value".to_string(), Value::String(value.clone()));
+                let mut rec = serde_json::Map::new();
+                rec.insert(
+                    "source".to_string(),
+                    Value::String("bundesbank".to_string()),
+                );
+                rec.insert(
+                    "id".to_string(),
+                    Value::String(format!("{flow}/{key}/{period}")),
+                );
+                rec.insert(
+                    "title".to_string(),
+                    Value::String(format!("{flow} {key} {period} = {value}")),
+                );
+                rec.insert("url".to_string(), Value::String(String::new()));
+                rec.insert(
+                    "snippet".to_string(),
+                    Value::String(format!("{period}: {value}")),
+                );
+                rec.insert("fields".to_string(), Value::Object(fields));
+                // `raw` is `json.dumps({flow, key, date, value})`:
+                // re-attached by the wrapper from the fields above.
+                out.push(Value::Object(rec));
+            }
+            // Outside the nonempty check: any Obs trips the limit
+            // once reached (even leading empty ones for limits <= 0).
+            if out.len() as i64 >= max_results {
+                break;
+            }
+        }
+        stack.extend(el.children.iter().rev());
+    }
+    Ok(out)
+}
+
+// ── BIS (SDMX-ML structure-specific data) ───────────────────────
+
+pub fn bis_parse_impl(
+    response_xml: &str,
+    flow: &str,
+    key: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // `Series` descendants in pre-order (root itself included, as with
+    // `root.iter()`); each `Obs` child maps with the eager double-pop
+    // convention (`TIME_PERIOD` over `TIME`, `OBS_VALUE` over `OBS` —
+    // the inner pop always runs first and wins only when the outer is
+    // absent). The limit returns immediately once reached.
+    let mut out = Vec::new();
+    let mut stack: Vec<&crate::xmlatom::Node> = vec![&root];
+    while let Some(el) = stack.pop() {
+        if el.local == "Series" {
+            let series_key: Vec<(String, String)> =
+                el.attrs.iter().cloned().collect();
+            for obs in el.children.iter() {
+                if obs.local != "Obs" {
+                    continue;
+                }
+                let mut attrs: Vec<(String, String)> =
+                    obs.attrs.iter().cloned().collect();
+                // Eager inner pops first (both sides always evaluated).
+                let time_fallback = pop_attr(&mut attrs, "TIME");
+                let period = pop_attr(&mut attrs, "TIME_PERIOD")
+                    .or(time_fallback)
+                    .unwrap_or_default();
+                let obs_fallback = pop_attr(&mut attrs, "OBS");
+                let value = pop_attr(&mut attrs, "OBS_VALUE")
+                    .or(obs_fallback)
+                    .unwrap_or_default();
+                let key_txt = series_key
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<String>>()
+                    .join(".");
+                let mut fields = serde_json::Map::new();
+                fields.insert("flow".to_string(), Value::String(flow.to_string()));
+                fields.insert("key".to_string(), Value::String(key.to_string()));
+                fields
+                    .insert("date".to_string(), Value::String(period.clone()));
+                fields
+                    .insert("value".to_string(), Value::String(value.clone()));
+                for (k, v) in series_key.iter() {
+                    fields.insert(format!("dim_{k}"), Value::String(v.clone()));
+                }
+                let mut rec = serde_json::Map::new();
+                rec.insert("source".to_string(), Value::String("bis".to_string()));
+                rec.insert(
+                    "id".to_string(),
+                    Value::String(format!("{flow}/{key}/{period}")),
+                );
+                rec.insert(
+                    "title".to_string(),
+                    Value::String(format!("{flow} {key_txt} {period} = {value}")),
+                );
+                rec.insert("url".to_string(), Value::String(String::new()));
+                rec.insert(
+                    "snippet".to_string(),
+                    Value::String(format!("{key_txt} \u{2014} {period}: {value}")),
+                );
+                rec.insert("fields".to_string(), Value::Object(fields));
+                // `raw` is `json.dumps({flow, series, date, value,
+                // extra})`: the series/extra maps cross here and the
+                // wrapper re-dumps them (see below).
+                let mut series_map = serde_json::Map::new();
+                for (k, v) in series_key.iter() {
+                    series_map.insert(k.clone(), Value::String(v.clone()));
+                }
+                let mut extra_map = serde_json::Map::new();
+                for (k, v) in attrs.iter() {
+                    extra_map.insert(k.clone(), Value::String(v.clone()));
+                }
+                let mut raw = serde_json::Map::new();
+                raw.insert("flow".to_string(), Value::String(flow.to_string()));
+                raw.insert("series".to_string(), Value::Object(series_map));
+                raw.insert("date".to_string(), Value::String(period));
+                raw.insert("value".to_string(), Value::String(value));
+                raw.insert("extra".to_string(), Value::Object(extra_map));
+                rec.insert("raw".to_string(), Value::Object(raw));
+                out.push(Value::Object(rec));
+                if out.len() as i64 >= max_results {
+                    return Ok(out);
+                }
+            }
+        }
+        stack.extend(el.children.iter().rev());
+    }
+    Ok(out)
+}
+
+/// Ordered attribute pop: removes and returns the first value for
+/// `name` (ElementTree attribs cannot hold duplicates, so first is all).
+fn pop_attr(attrs: &mut Vec<(String, String)>, name: &str) -> Option<String> {
+    if let Some(pos) = attrs.iter().position(|(k, _)| k == name) {
+        Some(attrs.remove(pos).1)
+    } else {
+        None
+    }
+}
+
+// ── EPO OPS (exchange-document) ─────────────────────────────────
+
+/// `_text`: `" ".join(parts)[:400]` over `invention-title` / `title`
+/// descendants in document order (the element itself included, as with
+/// `element.iter()`). Only elements with truthy `.text` contribute —
+/// whitespace-only texts strip to "" but are still appended — with a
+/// `[lang]` prefix when set.
+fn epo_title_text(doc: &crate::xmlatom::Node) -> String {
+    let mut items: Vec<&crate::xmlatom::Node> = Vec::new();
+    let mut st = vec![doc];
+    while let Some(n) = st.pop() {
+        items.push(n);
+        st.extend(n.children.iter().rev());
+    }
+    let mut parts: Vec<String> = Vec::new();
+    for el in items.iter() {
+        if el.local == "invention-title" || el.local == "title" {
+            if !el.text.is_empty() {
+                let lang = el.attr("lang");
+                let stripped =
+                    crate::pycompat::py_strip(el.text.as_str()).to_string();
+                if lang.is_empty() {
+                    parts.push(stripped);
+                } else {
+                    parts.push(format!("[{lang}] {stripped}"));
+                }
+            }
+        }
+    }
+    crate::pycompat::char_head(parts.join(" ").as_str(), 400).to_string()
+}
+
+fn epo_row_impl(doc: &crate::xmlatom::Node) -> Value {
+    let mut number = String::new();
+    let mut kind = String::new();
+    let mut date = String::new();
+    let mut applicants: Vec<String> = Vec::new();
+    // `doc.iter()` in document order, self included; later
+    // `document-id` hits overwrite earlier ones (no break).
+    let mut items: Vec<&crate::xmlatom::Node> = Vec::new();
+    let mut st = vec![doc];
+    while let Some(n) = st.pop() {
+        items.push(n);
+        st.extend(n.children.iter().rev());
+    }
+    for el in items.iter() {
+        if el.local == "document-id" && el.attr("document-id-type") == "epodoc" {
+            for child in el.children.iter() {
+                if child.local == "doc-number" {
+                    number = crate::pycompat::py_strip(child.text.as_str()).to_string();
+                } else if child.local == "kind" {
+                    kind = crate::pycompat::py_strip(child.text.as_str()).to_string();
+                } else if child.local == "date" {
+                    date = crate::pycompat::char_head(
+                        crate::pycompat::py_strip(child.text.as_str()),
+                        10,
+                    )
+                    .to_string();
+                }
+            }
+        } else if el.local == "applicant-name" || el.local == "inventor-name" {
+            // `el.findtext(".//{*}name")`: first descendant `name`.
+            let name = match el.descendant_text("name") {
+                None => String::new(),
+                Some(t) => crate::pycompat::py_strip(t.as_str()).to_string(),
+            };
+            if !name.is_empty() {
+                applicants.push(name);
+            }
+        }
+    }
+    let epodoc = format!("{number}{kind}");
+    let title = match epo_title_text(doc) {
+        t if t.is_empty() => epodoc.clone(),
+        t => t,
+    };
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "publication_number".to_string(),
+        Value::String(number.clone()),
+    );
+    fields.insert("kind".to_string(), Value::String(kind.clone()));
+    fields.insert(
+        "applicants".to_string(),
+        Value::String(applicants.iter().take(5).cloned().collect::<Vec<String>>().join(", ")),
+    );
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("epo".to_string()));
+    rec.insert(
+        "id".to_string(),
+        Value::String(if epodoc.is_empty() {
+            number.clone()
+        } else {
+            epodoc.clone()
+        }),
+    );
+    rec.insert("title".to_string(), Value::String(title.clone()));
+    rec.insert(
+        "url".to_string(),
+        Value::String(if epodoc.is_empty() {
+            String::new()
+        } else {
+            format!("https://worldwide.espacenet.com/patent/search?q=pn%3D{epodoc}")
+        }),
+    );
+    rec.insert("published".to_string(), Value::String(date.clone()));
+    // `f"{title} — {applicants[:3]}".strip(" —")`: strip chars.
+    let joined = applicants.iter().take(3).cloned().collect::<Vec<String>>().join(", ");
+    let snippet = crate::pycompat::py_strip_chars(
+        format!("{title} \u{2014} {joined}").as_str(),
+        &[' ', '\u{2014}'],
+    )
+    .to_string();
+    rec.insert("snippet".to_string(), Value::String(snippet));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    // `raw` is `json.dumps({epodoc, title, date})`: the three cross
+    // here (id/title/published reconstruct them) and the wrapper
+    // re-dumps (see below).
+    let mut raw = serde_json::Map::new();
+    raw.insert("epodoc".to_string(), Value::String(epodoc));
+    raw.insert("title".to_string(), Value::String(title));
+    raw.insert("date".to_string(), Value::String(date));
+    rec.insert("raw".to_string(), Value::Object(raw));
+    Value::Object(rec)
+}
+
+pub fn epo_parse_search_impl(
+    response_xml: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // `exchange-document` descendants in pre-order (root included),
+    // append-then-break.
+    let mut out = Vec::new();
+    let mut stack: Vec<&crate::xmlatom::Node> = vec![&root];
+    while let Some(el) = stack.pop() {
+        if el.local == "exchange-document" {
+            out.push(epo_row_impl(el));
+            if out.len() as i64 >= max_results {
+                break;
+            }
+        }
+        stack.extend(el.children.iter().rev());
+    }
+    Ok(out)
+}
+
+pub fn epo_parse_fetch_impl(response_xml: &str) -> Result<Value, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // First `exchange-document` wins; none answers `[]` (as JSON null
+    // here — the wrapper maps it back to an empty list).
+    let mut stack: Vec<&crate::xmlatom::Node> = vec![&root];
+    while let Some(el) = stack.pop() {
+        if el.local == "exchange-document" {
+            return Ok(epo_row_impl(el));
+        }
+        stack.extend(el.children.iter().rev());
+    }
+    Ok(Value::Null)
+}
+
+// ── KIPRIS ──────────────────────────────────────────────────────
+
+/// `_item_to_dict`: direct `{tag: stripped-text}` (later duplicates
+/// overwrite earlier ones, keeping first position — as dicts do).
+fn kipris_item_dict(item: &crate::xmlatom::Node) -> serde_json::Map<String, Value> {
+    let mut out = serde_json::Map::new();
+    for child in item.children.iter() {
+        // NOTE: `child.text or ""` then `.strip()`.
+        out.insert(
+            child.local.clone(),
+            Value::String(crate::pycompat::py_strip(child.text.as_str()).to_string()),
+        );
+    }
+    out
+}
+
+fn kipris_row_impl(d: &serde_json::Map<String, Value>) -> Value {
+    let empty = Value::String(String::new());
+    // `d.get("applicationNumber", d.get("application_number", ""))`:
+    // eager inner default (both evaluated regardless).
+    let app_no = d
+        .get("applicationNumber")
+        .unwrap_or(d.get("application_number").unwrap_or(&empty))
+        .clone();
+    let title = d
+        .get("inventionTitle")
+        .unwrap_or(d.get("title").unwrap_or(&app_no))
+        .clone();
+    let published = d
+        .get("publicationDate")
+        .unwrap_or(d.get("registrationDate").unwrap_or(&empty))
+        .clone();
+    let applicant = d.get("applicantName").unwrap_or(&empty);
+    let status = d
+        .get("applicationStatus")
+        .unwrap_or(d.get("registerStatus").unwrap_or(&empty))
+        .clone();
+    // `f"{title} — {applicant}".strip(" —")`: title/applicant render.
+    let snippet = crate::pycompat::py_strip_chars(
+        format!(
+            "{0} \u{2014} {1}",
+            py_str_value(&title),
+            py_str_value(applicant)
+        )
+        .as_str(),
+        &[' ', '\u{2014}'],
+    )
+    .to_string();
+    let mut fields = serde_json::Map::new();
+    fields.insert("applicant".to_string(), applicant.clone());
+    fields.insert("status".to_string(), status);
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("kipris".to_string()));
+    rec.insert("id".to_string(), app_no);
+    rec.insert("title".to_string(), title);
+    rec.insert("url".to_string(), Value::String(String::new()));
+    rec.insert("published".to_string(), published);
+    rec.insert("snippet".to_string(), Value::String(snippet));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    // `raw` is `json.dumps(d, ensure_ascii=False)`: `d` crosses here
+    // and the wrapper re-dumps with `ensure_ascii=False` (see below).
+    rec.insert("raw".to_string(), Value::Object(d.clone()));
+    Value::Object(rec)
+}
+
+pub fn kipris_parse_impl(response_xml: &str) -> Result<Vec<serde_json::Map<String, Value>>, String> {
+    let root = crate::xmlatom::parse_document(response_xml)?;
+    // All `item` descendants in pre-order (root included), no limit.
+    let mut out = Vec::new();
+    let mut stack: Vec<&crate::xmlatom::Node> = vec![&root];
+    while let Some(el) = stack.pop() {
+        if el.local == "item" {
+            out.push(kipris_item_dict(el));
+        }
+        stack.extend(el.children.iter().rev());
+    }
+    Ok(out)
+}
+
+pub fn kipris_parse_search_impl(
+    response_xml: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let items = kipris_parse_impl(response_xml)?;
+    // `items[:max_results]` slices (negatives clip, dicts impossible —
+    // items is a fresh list).
+    let end = slice_refs_len(items.len(), max_results);
+    let mut out = Vec::new();
+    for d in items.iter().take(end) {
+        out.push(kipris_row_impl(d));
+    }
+    Ok(out)
+}
+
+/// Slice length for `items[:max_results]` on a fresh list.
+fn slice_refs_len(len: usize, max_results: i64) -> usize {
+    let n = len as i64;
+    (if max_results < 0 {
+        (n + max_results).max(0)
+    } else {
+        max_results.min(n)
+    }) as usize
+}
+
+pub fn kipris_parse_fetch_impl(response_xml: &str) -> Result<Value, String> {
+    let items = kipris_parse_impl(response_xml)?;
+    // `[self._row(items[0])] if items else []`.
+    match items.first() {
+        Some(d) => Ok(Value::Array(vec![kipris_row_impl(d)])),
+        None => Ok(Value::Array(Vec::new())),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, flow = "", key = "", max_results = 5))]
+pub fn bundesbank_parse(
+    py: Python,
+    response_xml: &str,
+    flow: &str,
+    key: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    bundesbank_parse_impl(response_xml, flow, key, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, flow = "", key = "", max_results = 5))]
+pub fn bis_parse(
+    py: Python,
+    response_xml: &str,
+    flow: &str,
+    key: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    bis_parse_impl(response_xml, flow, key, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, max_results = 5))]
+pub fn epo_parse_search(
+    py: Python,
+    response_xml: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    epo_parse_search_impl(response_xml, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn epo_parse_fetch(py: Python, response_xml: &str) -> PyResult<String> {
+    epo_parse_fetch_impl(response_xml)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_xml, max_results = 5))]
+pub fn kipris_parse_search(
+    py: Python,
+    response_xml: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    kipris_parse_search_impl(response_xml, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn kipris_parse_fetch(py: Python, response_xml: &str) -> PyResult<String> {
+    kipris_parse_fetch_impl(response_xml)
         .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }

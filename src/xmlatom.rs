@@ -17,10 +17,15 @@ use quick_xml::escape::unescape;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 
-/// One element: local name, direct attributes (unqualified keys only —
-/// `get("title")` in ElementTree never matches `xlink:title`), direct
-/// text (entity-expanded, EOL-normalized, child tails excluded), and
-/// direct child elements in document order.
+/// One element: local name, direct attributes, direct text
+/// (entity-expanded, EOL-normalized, child tails excluded), and direct
+/// child elements in document order.
+///
+/// Attribute keys follow ElementTree: unqualified attributes keep
+/// their bare name (`get("title")` never matches `xlink:title`),
+/// while prefixed attributes resolve to `{namespace-uri}local`
+/// through the in-scope `xmlns` declarations. `xmlns` declarations
+/// themselves never appear as attributes.
 #[derive(Debug, Clone, Default)]
 pub struct Node {
     pub local: String,
@@ -38,6 +43,20 @@ impl Node {
     /// Direct children with this local name.
     pub fn children_named(&self, name: &str) -> Vec<&Node> {
         self.children.iter().filter(|c| c.local == name).collect()
+    }
+
+    /// `el.findtext(".//{*}name")`: direct text of the first descendant
+    /// (any depth, document order) with this local name — `None` when
+    /// absent (present-but-empty yields `Some("")`, as ElementTree does).
+    pub fn descendant_text(&self, name: &str) -> Option<String> {
+        let mut stack: Vec<&Node> = self.children.iter().rev().collect();
+        while let Some(n) = stack.pop() {
+            if n.local == name {
+                return Some(n.text.clone());
+            }
+            stack.extend(n.children.iter().rev());
+        }
+        None
     }
 
     /// `el.get(key, "")`: first unqualified attribute match, else "".
@@ -77,9 +96,10 @@ pub fn parse_document(xml: &str) -> Result<Node, String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().expand_empty_elements = true;
     // Stack of open elements: the node under construction, its direct
-    // text so far, and whether a child element has started (later
-    // direct text is a grandchild tail — invisible to field reads).
-    let mut stack: Vec<(Node, String, bool)> = Vec::new();
+    // text so far, whether a child element has started (later direct
+    // text is a grandchild tail — invisible to field reads), and the
+    // in-scope namespace declarations (prefix -> uri, "" = default).
+    let mut stack: Vec<(Node, String, bool, Vec<(String, String)>)> = Vec::new();
     let mut root: Option<Node> = None;
     let mut buf = Vec::new();
     loop {
@@ -87,19 +107,53 @@ pub fn parse_document(xml: &str) -> Result<Node, String> {
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => {
                 let local = local_name(e.local_name().as_ref());
-                let mut attrs = Vec::new();
+                // Scope: parent declarations plus this element's own
+                // (`xml` is implicitly bound, as in expat).
+                let mut scope: Vec<(String, String)> = match stack.last() {
+                    Some(top) => top.3.clone(),
+                    None => vec![(
+                        "xml".to_string(),
+                        "http://www.w3.org/XML/1998/namespace".to_string(),
+                    )],
+                };
+                let mut raw_attrs: Vec<(String, String)> = Vec::new();
                 for a in e.attributes() {
                     let a = a.map_err(|e| format!("ValueError: {e}"))?;
                     let key: &str = a.key.as_ref();
-                    // Qualified attribute names never match plain gets.
-                    if key.contains(':') {
-                        continue;
-                    }
                     let v = a
                         .unescape_value()
                         .map_err(|e| format!("ValueError: {e}"))?
                         .into_owned();
-                    attrs.push((key.to_string(), v));
+                    if key == "xmlns" {
+                        scope.push((String::new(), v));
+                    } else if let Some(prefix) = key.strip_prefix("xmlns:") {
+                        scope.push((prefix.to_string(), v));
+                    } else {
+                        raw_attrs.push((key.to_string(), v));
+                    }
+                }
+                // Resolve prefixed keys to `{uri}local` (ElementTree
+                // spelling); unqualified keys stay bare. Unresolvable
+                // prefixes are malformed (the wrappers reject them via
+                // ET first), so erroring here is unreachable in practice.
+                let resolve = |key: &str, scope: &[(String, String)]| -> Result<String, String> {
+                    match key.split_once(':') {
+                        None => Ok(key.to_string()),
+                        Some((prefix, local)) => match scope
+                            .iter()
+                            .rev()
+                            .find(|(p, _)| p == prefix)
+                        {
+                            Some((_, uri)) => Ok(format!("{{{uri}}}{local}")),
+                            None => Err(format!(
+                                "ValueError: unbound prefix {prefix:?}"
+                            )),
+                        },
+                    }
+                };
+                let mut attrs = Vec::with_capacity(raw_attrs.len());
+                for (k, v) in raw_attrs.into_iter() {
+                    attrs.push((resolve(&k, &scope)?, v));
                 }
                 if let Some(top) = stack.last_mut() {
                     top.2 = true;
@@ -112,6 +166,7 @@ pub fn parse_document(xml: &str) -> Result<Node, String> {
                     },
                     String::new(),
                     false,
+                    scope,
                 ));
             }
             Ok(Event::Empty(_)) => {
@@ -119,7 +174,7 @@ pub fn parse_document(xml: &str) -> Result<Node, String> {
                 continue;
             }
             Ok(Event::End(_e)) => {
-                let (mut node, text, _) = stack.pop().unwrap_or_default();
+                let (mut node, text, _, _) = stack.pop().unwrap_or_default();
                 // Mismatched tags already error in the reader.
                 node.text = text;
                 match stack.last_mut() {

@@ -1725,64 +1725,22 @@ class EcfrAdapter(ResourceAdapter):
         resp.raise_for_status()
         return resp.json()
 
-    @staticmethod
-    def _find_part(node: dict, part: str):
-        """DFS for the part node whose identifier matches *part*.
-
-        First pass prefers ``type == "part"`` hits; the second pass accepts
-        any identifier hit (e.g. appendices numbered like parts).
-        """
-        want = str(part).lstrip("0")
-
-        def walk(only_parts: bool):
-            stack = [node]
-            while stack:
-                current = stack.pop()
-                ident = str(current.get("identifier", "")).lstrip("0")
-                if ident == want and (
-                    not only_parts or current.get("type") == "part"
-                ):
-                    return current
-                stack.extend(reversed(current.get("children", []) or []))
-            return None
-
-        return walk(True) or walk(False)
-
-    @staticmethod
-    def _sections(node: dict, limit: int = 12) -> list:
-        out = []
-        for child in node.get("children", []) or []:
-            if child.get("type") == "section":
-                out.append(
-                    f"{child.get('identifier', '')} {child.get('label', '')}".strip()
-                )
-                if len(out) >= limit:
-                    break
-        return out
-
+    # NOTE: `_find_part` (DFS) and `_sections` were retired in the Rust
+    # port (M19); the kernels `ecfr_find_part` / `ecfr_part_record` in
+    # `src/adapters.rs` implement them exactly.
     def _part(self, title, part):
         tree = self._structure(title)
-        node = self._find_part(tree, part)
+        # Part search (DFS) + row building in Rust (src/adapters.rs);
+        # `raw` re-attached here so it stays byte-identical.
+        node_json = _rust.ecfr_find_part(json.dumps(tree), str(part))
+        node = json.loads(node_json)
         if node is None:
             raise ValueError(f"eCFR title {title} has no part {part!r}")
-        label = node.get("label", "")
-        desc = node.get("label_description", "")
-        sections = self._sections(node)
-        snippet = " ".join(s for s in [desc, f"Sections: {'; '.join(sections)}"] if s)[:400]
-        return {
-            "source": "ecfr",
-            "id": f"{title}/{part}",
-            "title": f"Title {title}: {label}" if label else f"Title {title} part {part}",
-            "url": f"https://www.ecfr.gov/current/title-{title}/part-{part}",
-            "snippet": snippet,
-            "fields": {
-                "title_no": str(title),
-                "part": str(part),
-                "label": label,
-                "section_count": len(node.get("children", []) or []),
-            },
-            "raw": json.dumps(node),
-        }
+        rec = json.loads(
+            _rust.ecfr_part_record(node_json, str(title), str(part))
+        )
+        rec["raw"] = json.dumps(node)
+        return rec
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -1794,21 +1752,15 @@ class EcfrAdapter(ResourceAdapter):
             )
         if not part:
             tree = self._structure(title)
-            label = tree.get("label", "")
-            descs = [
-                str(c.get("label", "")) for c in (tree.get("children", []) or [])[:8]
-            ]
-            return [{
-                "source": "ecfr",
-                "id": str(title),
-                "title": label or f"Title {title}",
-                "url": f"https://www.ecfr.gov/current/title-{title}",
-                "snippet": "; ".join(d for d in descs if d)[:400],
-                "fields": {"title_no": str(title)},
-                "raw": json.dumps(
-                    {k: tree.get(k) for k in ("identifier", "label", "type")}
-                ),
-            }]
+            # Row building in Rust (src/adapters.rs); `raw` re-attached
+            # here (identifier/label/type subset, as before).
+            rec = json.loads(
+                _rust.ecfr_title_record(json.dumps(tree), str(title))
+            )
+            rec["raw"] = json.dumps(
+                {k: tree.get(k) for k in ("identifier", "label", "type")}
+            )
+            return [rec]
         return [self._part(title, part)]
 
     def fetch(self, record_id, params=None):
@@ -2606,42 +2558,25 @@ class BundesbankAdapter(ResourceAdapter):
                 params[k.strip()] = v.strip()
         return flow.strip(), key.strip(), params
 
-    @staticmethod
-    def _observations(xml_text: str, limit: int) -> list:
-        """Namespace-agnostic generic-data ``Obs`` extraction."""
-        root = ET.fromstring(xml_text)
-        out = []
-        for el in root.iter():
-            if _local_name(el.tag) != "Obs":
-                continue
-            period, value = "", ""
-            for child in el:
-                lname = _local_name(child.tag)
-                if lname in ("ObsDimension", "TimeDimension"):
-                    period = child.attrib.get("value", period)
-                elif lname == "ObsValue":
-                    value = child.attrib.get("value", value)
-            if period or value:
-                out.append((period, value))
-            if len(out) >= limit:
-                break
-        return out
-
+    # NOTE: `_observations` was retired in the Rust port (M19); the
+    # kernel `bundesbank_parse` in `src/adapters.rs` implements it.
     def _run(self, flow: str, key: str, params: dict, max_results: int) -> list:
         resp = httpx.get(f"{self.BASE}/data/{flow}/{key}", params=params, timeout=30.0)
         resp.raise_for_status()
-        out = []
-        for period, value in self._observations(resp.text, max_results):
-            out.append({
-                "source": "bundesbank",
-                "id": f"{flow}/{key}/{period}",
-                "title": f"{flow} {key} {period} = {value}",
-                "url": "",
-                "snippet": f"{period}: {value}",
-                "fields": {"flow": flow, "key": key, "date": period, "value": value},
-                "raw": json.dumps({"flow": flow, "key": key, "date": period, "value": value}),
-            })
-        return out
+        # ElementTree parses first so malformed payloads raise ParseError
+        # exactly as before; rows build in Rust (src/adapters.rs) and
+        # `raw` is re-attached here (byte-identical).
+        ET.fromstring(resp.text)
+        records = json.loads(
+            _rust.bundesbank_parse(resp.text, flow, key, max_results)
+        )
+        for rec in records:
+            f = rec["fields"]
+            rec["raw"] = json.dumps(
+                {"flow": flow, "key": key, "date": f["date"],
+                 "value": f["value"]}
+            )
+        return records
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -2689,48 +2624,24 @@ class BisAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
         )
 
-    @staticmethod
-    def _observations(xml_text: str, limit: int) -> list:
-        """Generic structure-specific extraction: series dimension attrs +
-        per-Obs attribute maps (dimension names vary by flow, so nothing is
-        hardcoded except the TIME_PERIOD/OBS_VALUE convention)."""
-        root = ET.fromstring(xml_text)
-        out = []
-        for series in root.iter():
-            if _local_name(series.tag) != "Series":
-                continue
-            series_key = {k: v for k, v in series.attrib.items()}
-            for obs in series:
-                if _local_name(obs.tag) != "Obs":
-                    continue
-                attrs = dict(obs.attrib)
-                period = attrs.pop("TIME_PERIOD", attrs.pop("TIME", ""))
-                value = attrs.pop("OBS_VALUE", attrs.pop("OBS", ""))
-                out.append((series_key, period, value, attrs))
-                if len(out) >= limit:
-                    return out
-        return out
-
+    # NOTE: `_observations` was retired in the Rust port (M19); the
+    # kernel `bis_parse` in `src/adapters.rs` implements it.
     def _run(self, flow: str, key: str, params: dict, max_results: int) -> list:
         if not key:
             key = "all"
         resp = httpx.get(f"{self.BASE}/data/{flow}/{key}", params=params, timeout=40.0)
         resp.raise_for_status()
-        out = []
-        for series_key, period, value, extra in self._observations(resp.text, max_results):
-            key_txt = ".".join(f"{k}={v}" for k, v in series_key.items())
-            out.append({
-                "source": "bis",
-                "id": f"{flow}/{key}/{period}",
-                "title": f"{flow} {key_txt} {period} = {value}",
-                "url": "",
-                "snippet": f"{key_txt} — {period}: {value}",
-                "fields": {"flow": flow, "key": key, "date": period,
-                             "value": value, **{f"dim_{k}": v for k, v in series_key.items()}},
-                "raw": json.dumps({"flow": flow, "series": series_key,
-                                     "date": period, "value": value, "extra": extra}),
-            })
-        return out
+        # ElementTree parses first so malformed payloads raise ParseError
+        # exactly as before; rows build in Rust (src/adapters.rs). Each
+        # record carries its `raw` payload; it is re-dumped here so
+        # `raw` stays byte-identical.
+        ET.fromstring(resp.text)
+        records = json.loads(
+            _rust.bis_parse(resp.text, flow, key, max_results)
+        )
+        for rec in records:
+            rec["raw"] = json.dumps(rec.pop("raw"))
+        return records
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -2888,49 +2799,9 @@ class EpoOpsAdapter(ResourceAdapter):
             self._token_expires = _time.time() + max(60, ttl)
         return {"Authorization": f"Bearer {self._token}", "Accept": "application/xml"}
 
-    @staticmethod
-    def _text(element, limit: int = 400) -> str:
-        parts = []
-        for el in element.iter():
-            if _local_name(el.tag) in ("invention-title", "title") and el.text:
-                lang = el.attrib.get("lang", "")
-                parts.append(f"[{lang}] {el.text.strip()}" if lang else el.text.strip())
-        return " ".join(parts)[:limit]
-
-    def _row(self, doc) -> Dict[str, str]:
-        number, kind, date, applicants = "", "", "", []
-        for el in doc.iter():
-            lname = _local_name(el.tag)
-            if lname == "document-id" and el.attrib.get("document-id-type") == "epodoc":
-                for child in el:
-                    cname = _local_name(child.tag)
-                    if cname == "doc-number":
-                        number = (child.text or "").strip()
-                    elif cname == "kind":
-                        kind = (child.text or "").strip()
-                    elif cname == "date":
-                        date = (child.text or "").strip()[:10]
-            elif lname in ("applicant-name", "inventor-name"):
-                name = (el.findtext(".//{*}name") or "").strip()
-                if name:
-                    applicants.append(name)
-        epodoc = f"{number}{kind}"
-        title = self._text(doc) or epodoc
-        return {
-            "source": "epo",
-            "id": epodoc or number,
-            "title": title,
-            "url": f"https://worldwide.espacenet.com/patent/search?q=pn%3D{epodoc}" if epodoc else "",
-            "published": date,
-            "snippet": f"{title} — {', '.join(applicants[:3])}".strip(" —"),
-            "fields": {
-                "publication_number": number,
-                "kind": kind,
-                "applicants": ", ".join(applicants[:5]),
-            },
-            "raw": json.dumps({"epodoc": epodoc, "title": title, "date": date}),
-        }
-
+    # NOTE: `_text` and `_row` were retired in the Rust port (M19); the
+    # kernels `epo_parse_search` / `epo_parse_fetch` in `src/adapters.rs`
+    # implement them exactly.
     def search(self, query, max_results=5):
         # Missing credentials never succeed on retry: fail fast instead of
         # burning backoff sleeps (same pattern as BioRxivAdapter).
@@ -2955,15 +2826,17 @@ class EpoOpsAdapter(ResourceAdapter):
             timeout=30.0,
         )
         resp.raise_for_status()
-        root = ET.fromstring(resp.text)
-        out = []
-        for el in root.iter():
-            if _local_name(el.tag) != "exchange-document":
-                continue
-            out.append(self._row(el))
-            if len(out) >= max_results:
-                break
-        return out
+        # ElementTree parses first so malformed payloads raise ParseError
+        # exactly as before; rows build in Rust (src/adapters.rs) and
+        # `raw` is re-attached here (byte-identical).
+        ET.fromstring(resp.text)
+        records = json.loads(_rust.epo_parse_search(resp.text, max_results))
+        for rec in records:
+            f = rec["fields"]
+            rec["raw"] = json.dumps({
+                "epodoc": f["publication_number"] + f["kind"],
+                "title": rec["title"], "date": rec["published"]})
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
@@ -2977,11 +2850,17 @@ class EpoOpsAdapter(ResourceAdapter):
             timeout=30.0,
         )
         resp.raise_for_status()
-        root = ET.fromstring(resp.text)
-        for el in root.iter():
-            if _local_name(el.tag) == "exchange-document":
-                return [self._row(el)]
-        return []
+        # ElementTree parses first (ParseError precedence); the row
+        # builds in Rust, `raw` re-attached here.
+        ET.fromstring(resp.text)
+        rec = json.loads(_rust.epo_parse_fetch(resp.text))
+        if rec is None:
+            return []
+        f = rec["fields"]
+        rec["raw"] = json.dumps({
+            "epodoc": f["publication_number"] + f["kind"],
+            "title": rec["title"], "date": rec["published"]})
+        return [rec]
 
 
 class KiprisAdapter(ResourceAdapter):
@@ -3016,45 +2895,9 @@ class KiprisAdapter(ResourceAdapter):
         if not self.api_key:
             raise RuntimeError("KiprisAdapter needs GOSSAMER_KIPRIS_KEY (free dev tier).")
 
-    @staticmethod
-    def _item_to_dict(item) -> dict:
-        """Generic XML item -> {tag: text} (field names vary by service)."""
-        out = {}
-        for child in item:
-            name = _local_name(child.tag)
-            out[name] = (child.text or "").strip()
-        return out
-
-    @staticmethod
-    def _row(d: dict) -> Dict[str, str]:
-        app_no = d.get("applicationNumber", d.get("application_number", ""))
-        title = d.get("inventionTitle", d.get("title", app_no))
-        return {
-            "source": "kipris",
-            "id": app_no,
-            "title": title,
-            "url": "",
-            "published": d.get("publicationDate", d.get("registrationDate", "")),
-            "snippet": f"{title} — {d.get('applicantName', '')}".strip(" —"),
-            "fields": {
-                "applicant": d.get("applicantName", ""),
-                "status": d.get("applicationStatus", d.get("registerStatus", "")),
-            },
-            "raw": json.dumps(d, ensure_ascii=False),
-        }
-
-    def _items(self, service: str, operation: str, params: dict):
-        self._require_key()
-        query = {"serviceKey": self.api_key, "numOfRows": 10, **params}
-        resp = httpx.get(f"{self.BASE}/{service}/{operation}", params=query, timeout=25.0)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.text)
-        items = []
-        for el in root.iter():
-            if _local_name(el.tag) == "item":
-                items.append(self._item_to_dict(el))
-        return items
-
+    # NOTE: `_item_to_dict` and `_row` were retired in the Rust port
+    # (M19); the kernels `kipris_parse_search` / `kipris_parse_fetch`
+    # in `src/adapters.rs` implement them exactly.
     def search(self, query, max_results=5):
         if not self.api_key:
             raise RuntimeError("KiprisAdapter needs GOSSAMER_KIPRIS_KEY (free dev tier).")
@@ -3065,22 +2908,44 @@ class KiprisAdapter(ResourceAdapter):
         q = (query or "").strip()
         if not q:
             raise ValueError("KiprisAdapter search needs a keyword query")
-        items = self._items(
-            "patUtliInfoSearchService", "getWordSearch",
-            {"word": q, "numOfRows": min(max_results, 100)},
+        self._require_key()
+        resp = httpx.get(
+            f"{self.BASE}/patUtliInfoSearchService/getWordSearch",
+            params={"serviceKey": self.api_key, "numOfRows": min(max_results, 100),
+                    "word": q},
+            timeout=25.0,
         )
-        return [self._row(d) for d in items[:max_results]]
+        resp.raise_for_status()
+        # ElementTree parses first so malformed payloads raise ParseError
+        # exactly as before; rows build in Rust (src/adapters.rs) and
+        # `raw` is re-dumped here with `ensure_ascii=False` (as before).
+        ET.fromstring(resp.text)
+        records = json.loads(
+            _rust.kipris_parse_search(resp.text, max_results)
+        )
+        for rec in records:
+            rec["raw"] = json.dumps(rec.pop("raw"), ensure_ascii=False)
+        return records
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()
         rid = str(record_id or "").strip()
         if not rid:
             raise ValueError("KiprisAdapter fetch needs an application number")
-        items = self._items(
-            "patUtliInfoSearchService", "getWordSearch",
-            {"word": rid, "numOfRows": 5},
+        self._require_key()
+        resp = httpx.get(
+            f"{self.BASE}/patUtliInfoSearchService/getWordSearch",
+            params={"serviceKey": self.api_key, "numOfRows": 5, "word": rid},
+            timeout=25.0,
         )
-        return [self._row(items[0])] if items else []
+        resp.raise_for_status()
+        # ElementTree parses first (ParseError precedence); the row
+        # builds in Rust, `raw` re-dumped here.
+        ET.fromstring(resp.text)
+        records = json.loads(_rust.kipris_parse_fetch(resp.text))
+        for rec in records:
+            rec["raw"] = json.dumps(rec.pop("raw"), ensure_ascii=False)
+        return records
 
 
 class PatentsViewAdapter(ResourceAdapter):

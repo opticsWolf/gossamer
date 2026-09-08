@@ -744,3 +744,65 @@ def pubmed_parse_fetch(
 ) -> str:
     """PubMed efetch row (or 'null'), minus raw, as JSON (src/adapters.rs)."""
     ...
+
+def ecfr_find_part(
+    response_json: str,
+    part: str = "",
+) -> str:
+    """eCFR part node (or 'null'), as JSON (src/adapters.rs)."""
+    ...
+
+def ecfr_part_record(
+    node_json: str,
+    title_s: str = "",
+    part_s: str = "",
+) -> str:
+    """eCFR part row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def ecfr_title_record(
+    tree_json: str,
+    title_s: str = "",
+) -> str:
+    """eCFR title row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def bundesbank_parse(
+    response_xml: str,
+    flow: str = "",
+    key: str = "",
+    max_results: int = 5,
+) -> str:
+    """Bundesbank SDMX observation rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def bis_parse(
+    response_xml: str,
+    flow: str = "",
+    key: str = "",
+    max_results: int = 5,
+) -> str:
+    """BIS SDMX observation rows (raw payloads embedded), as JSON (src/adapters.rs)."""
+    ...
+
+def epo_parse_search(
+    response_xml: str,
+    max_results: int = 5,
+) -> str:
+    """EPO exchange-document rows (raw payloads embedded), as JSON (src/adapters.rs)."""
+    ...
+
+def epo_parse_fetch(response_xml: str) -> str:
+    """First EPO exchange-document row (or 'null'), as JSON (src/adapters.rs)."""
+    ...
+
+def kipris_parse_search(
+    response_xml: str,
+    max_results: int = 5,
+) -> str:
+    """KIPRIS item rows (raw payloads embedded), as JSON (src/adapters.rs)."""
+    ...
+
+def kipris_parse_fetch(response_xml: str) -> str:
+    """First KIPRIS item rows, as JSON (src/adapters.rs)."""
+    ...
