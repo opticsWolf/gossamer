@@ -13,6 +13,9 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   and the PyPI blocker is gone.
 - Clippy-strict clean on Rust 1.98 (`-D warnings`, zero behavior
   change — full parity suite re-run with no output changed).
+- reqwest on rustls-tls instead of native-tls: no system OpenSSL
+  needed to build or install (Linux manylinux wheels), same
+  features otherwise; verified with a live HTTPS fetch.
 
 ## [0.8.24] — Document gaps: PDF images flag, tables-by-default
 
