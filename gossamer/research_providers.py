@@ -58,7 +58,7 @@ def _package_version() -> str:
     try:
         from importlib.metadata import version as _metadata_version
 
-        return _metadata_version("gossamer")
+        return _metadata_version("gossamer-web")
     except Exception:  # pragma: no cover - editable/src layouts without metadata
         return "0.0.0"
 

@@ -23,7 +23,7 @@ from gossamer import _core as _rust
 # Optional document extractors
 #
 # pdf_oxide / office_oxide ship in the ``documents`` extra
-# (``pip install "gossamer[documents]"``). The import is
+# (``pip install "gossamer-web[documents]"``). The import is
 # best-effort so the rest of the package (HTML research, search) works
 # without them; the error surfaces at parse time with an install hint.
 # ────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ except ImportError:  # optional extra not installed
 
 DOCUMENTS_EXTRA_HINT = (
     "PDF/Office extraction requires the 'documents' extra — "
-    'install it with: pip install "gossamer[documents]"'
+    'install it with: pip install "gossamer-web[documents]"'
 )
 
 

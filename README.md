@@ -6,7 +6,7 @@
 > multi-provider search.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
-[![PyPI](https://img.shields.io/pypi/v/gossamer.svg)](https://pypi.org/project/gossamer/)
+[![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-10983%20passing%2C%202%20skipped-brightgreen)](tests/)

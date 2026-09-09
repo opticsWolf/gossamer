@@ -63,5 +63,5 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - Long crawls outlast harness timeouts: `max_pages ≤ 15` or raise the budget.
 - `store=True` writes `<stem><ext>` + `<stem>.md` under `stored_documents/` (default).
 - Tables render by default; figures need `--store --include-images`; vector-only figures have no bytes.
-- Guard is off by default (`GuardConfig(enabled=True)` + `gossamer[guard]` extra to arm).
+- Guard is off by default (`GuardConfig(enabled=True)` + `gossamer-web[guard]` extra to arm).
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).

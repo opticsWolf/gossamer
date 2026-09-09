@@ -1,7 +1,7 @@
 """Prompt-injection annotation layer (review item 7).
 
 A pluggable :class:`Guard` protocol with a default implementation backed by
-the optional ``jailguard`` detector (``pip install gossamer[guard]``).
+the optional ``jailguard`` detector (``pip install gossamer-web[guard]``).
 Off by default: when disabled there is zero import, zero latency, and zero
 payload change. When enabled, the guard scans the configured output scopes for
 prompt-injection-like text, in **chunks** (the detector truncates input to
