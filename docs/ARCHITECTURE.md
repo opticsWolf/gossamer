@@ -149,7 +149,9 @@ delegating to collaborator objects, all returning JSON strings.
    leaked the `PermissionError`. The corpus uses hermetic paths only.
    Likewise the SSRF tables track current CPython IANA data: ancient
    micro-releases (e.g. 3.10.11) disagree on a handful of ranges —
-   CI pins current patches (see `ci.yml`), upgrade rather than
+   CI pins current patches (see `ci.yml`; setup-python ships no
+   win32 builds past 3.10.11/3.11.9/3.12.10, so those minors run on
+   Ubuntu only), upgrade rather than
    report.
 
 ## 5. Provider system
