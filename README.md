@@ -160,9 +160,9 @@ in the keystore, never in client configs. Shallowest first: direct CLI
 
 ```json
 { "mcpServers": { "gossamer": {
-  "command": "D:/User/Documents/Python/stitch-web-researcher/.venv/Scripts/python.exe",
+  "command": "D:/User/Documents/Python/gossamer/.venv/Scripts/python.exe",
   "args": ["-m", "gossamer.mcp_server"],
-  "env": { "GOSSAMER_CACHE_DIR": "D:/User/Documents/Python/stitch-web-researcher/.gossamer_cache",
+  "env": { "GOSSAMER_CACHE_DIR": "D:/User/Documents/Python/gossamer/.gossamer_cache",
             "GOSSAMER_LOG_LEVEL": "WARNING" },
   "directTools": true } } }
 ```
@@ -171,7 +171,7 @@ in the keystore, never in client configs. Shallowest first: direct CLI
 
 ```toml
 [mcp_servers.gossamer]
-command = "D:/User/Documents/Python/stitch-web-researcher/.venv/Scripts/python.exe"
+command = "D:/User/Documents/Python/gossamer/.venv/Scripts/python.exe"
 args = ["-m", "gossamer.mcp_server"]
 startup_timeout_sec = 30
 ```
@@ -179,7 +179,7 @@ startup_timeout_sec = 30
 **Claude Code:**
 
 ```bash
-claude mcp add gossamer -- D:/User/Documents/Python/stitch-web-researcher/.venv/Scripts/python.exe -m gossamer.mcp_server
+claude mcp add gossamer -- D:/User/Documents/Python/gossamer/.venv/Scripts/python.exe -m gossamer.mcp_server
 ```
 
 Keep crawls modest (`max_pages ≤ 15`) — long runs outlast harness timeouts.
