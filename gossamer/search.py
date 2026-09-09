@@ -12,7 +12,7 @@ import hashlib
 import json
 import logging
 import time
-from typing import List, Optional
+from typing import Optional
 from gossamer.config import canonical_url
 from gossamer.search_providers import resolve_provider_name
 from gossamer.guard import evaluate

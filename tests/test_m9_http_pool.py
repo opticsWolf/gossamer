@@ -102,7 +102,7 @@ class TestClientSingletonSource:
     @pytest.fixture(scope="class")
     def lib_source(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(root, "src", "lib.rs"), encoding="utf-8") as f:
+        with open(os.path.join(root, "src", "fetch.rs"), encoding="utf-8") as f:
             return f.read()
 
     def test_once_lock_client_declared(self, lib_source):

@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.9.0)
+# gossamer — architecture (v0.9.2)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -93,7 +93,7 @@ delegating to collaborator objects, all returning JSON strings.
 
 | Module | Kernels |
 |---|---|
-| `adapters.rs` | all 35 provider row-builders (`*_parse_search/fetch`) + shared error/type helpers |
+| `adapters/` | all 35 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
 | `metaextract.rs` | HTML metadata via the `meta_oxide` crate FFI + `sparse()`/normalizers matching `to_py_dict` shapes |
 | `xmlatom.rs` | ATOM/XML traversal (arXiv/PubMed), SDMX-ML (Bundesbank/BIS), namespace-URI resolution |
 | `ssrf.rs` | IP/DNS allow-list logic mirroring CPython `ipaddress` tables |
@@ -109,7 +109,9 @@ delegating to collaborator objects, all returning JSON strings.
 | `cacheutils.rs` | disk-key (blake2b-128), human sizes, content-type ext, safe names |
 | `miscutils.rs` | domain-of, sha256-hex, link classification, page ranges |
 | `pycompat.rs` | `py_strip`/`py_repr`/`char_head`/`char_slice`/splitlines — CPython string semantics Rust lacks |
-| `lib.rs` | PyO3 surface + shared Tokio runtime (`block_on`) |
+| `lib.rs` | `#[pymodule] _core` registry only (all paths explicit) |
+| `fetch.rs` | blocking HTTP transport: shared Tokio runtime (`block_on`), client singleton, overrides, SSRF-net, HTML stripping, retry |
+| `bridge.rs` | the 10 fetch `#[pyfunction]` wrappers + logging/tables served through `_core` |
 
 ### Boundary rules (normative for new ports)
 
@@ -132,6 +134,25 @@ delegating to collaborator objects, all returning JSON strings.
    time, randomness, and network stay Python. Known crossings that
    cannot work: lone surrogates (invalid UTF-8), NaN payloads,
    non-JSON-native ids (arrive `str()`-rendered).
+6. **Error spellings follow the running interpreter.** A few CPython
+   messages changed across versions (`d[slice]`: `TypeError` through
+   3.11, `KeyError` from 3.12; `re.sub` and `s[str]` suffixes from
+   3.11; `urlsplit` scheme rules from 3.11). `#[pymodule]` records
+   `sys.version_info.minor` once (`pycompat::note_runtime_minor`)
+   and the affected kernels gate on it, so one `abi3` binary matches
+   3.10–3.13 exactly. Rust unit tests (no interpreter) follow the
+   newest spelling.
+7. **Environment-dependent behavior is not pinned.** `Path.exists()`
+   raises `PermissionError` on unreadable paths (all versions), while
+   Rust `exists()` is false-on-error — so an unreadable absolute path
+   is "not a URL" (`ValueError`) from `_core` where v0.8.0 Python
+   leaked the `PermissionError`. The corpus uses hermetic paths only.
+   Likewise the SSRF tables track current CPython IANA data: ancient
+   micro-releases (e.g. 3.10.11) disagree on a handful of ranges —
+   CI pins current patches (see `ci.yml`; setup-python ships no
+   win32 builds past 3.10.11/3.11.9/3.12.10, so those minors run on
+   Ubuntu only), upgrade rather than
+   report.
 
 ## 5. Provider system
 
@@ -212,6 +233,16 @@ is absent (`risk: None`). No import, no latency when disabled.
   shape tests. The suite is the port contract.
 - **Behavioral suites**: one file per surface, auto-grouped into
   `area_*` markers by filename (`tests/conftest.py`).
+- **Source pins** (`test_m9_http_pool.py`, `test_m15_retry_after.py`):
+  assert on the Rust transport source itself (client singleton,
+  retry-after branch) — they read `src/fetch.rs` since the `lib.rs`
+  split (registry / transport / bridge).
+- **Optional oracle deps**: `test_rust_parity_metaextract.py` needs a
+  `meta_oxide` build from the local fork (same rev `src/metaextract.rs`
+  pins) and `test_citations.py` needs `citeproc-py` +
+  `citeproc-py-styles` (styles are a separate package — without them
+  the tests silently take the fallback and fail); both skip
+  gracefully when absent (see `requirements.txt`).
 - **Live smoke**: opt-in real-request drift detection, key-optional.
 - **Hermetic default**: no network, SSRF guard on; full run
   `pytest -q -n auto --ignore=tests/test_live_smoke.py`.

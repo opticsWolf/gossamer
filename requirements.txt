@@ -11,3 +11,10 @@ pytest-asyncio>=0.21
 # Required by pyproject.toml addopts ("-n auto"); without it every pytest
 # invocation fails with "unrecognized arguments: -n" (review A.7).
 pytest-xdist>=3.0
+# Test-only: exercises the real CSL path in TestCiteprocIntegration
+# (without these, those tests skip and only the fallback is covered).
+# NOTE: citeproc-py-styles is a separate package — citeproc-py alone
+# is NOT enough (the style lookup fails and the tests silently take
+# the approximation fallback, which then fails the no-italics pin).
+citeproc-py>=0.11
+citeproc-py-styles>=0.1

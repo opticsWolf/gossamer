@@ -40,16 +40,20 @@ pub(crate) fn validate_netloc_pub(netloc: &str) -> Result<(), String> {
     validate_netloc(netloc)
 }
 
-/// Python `urlparse` scheme detection: leading ASCII letter, then scheme
-/// chars, before the first ':'.
+/// Python `urlparse` scheme detection: scheme chars before the first
+/// ':', with a leading ASCII letter required from 3.11 on (3.10 took
+/// any scheme-chars run, so `'127.0.0.1:8000/x'` had scheme
+/// `'127.0.0.1'` there and fails `Unsupported URL scheme`).
 fn has_scheme(s: &str) -> bool {
     match s.find(':') {
         Some(i) if i > 0 => {
             let head = &s[..i];
-            let mut chars = head.chars();
-            match chars.next() {
-                Some(c) if c.is_ascii_alphabetic() => {}
-                _ => return false,
+            if crate::pycompat::runtime_minor().is_none_or(|m| m >= 11) {
+                let mut chars = head.chars();
+                match chars.next() {
+                    Some(c) if c.is_ascii_alphabetic() => {}
+                    _ => return false,
+                }
             }
             head.chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))

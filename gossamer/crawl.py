@@ -111,9 +111,6 @@ toolbox), mirroring ``SearchService`` / ``FetchService`` /
 seen live instead of via a stale captured copy.
 """
 
-import copy
-from typing import Optional
-from urllib.parse import urlparse
 
 class Crawler:
     """Focused best-first crawl over a site link graph.

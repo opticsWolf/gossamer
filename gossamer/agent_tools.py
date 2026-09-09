@@ -1,68 +1,34 @@
 import asyncio
 import copy
-import hashlib
 import json
 import logging
-import math
-import os
 import random
-import re
 import threading
 import time
 import warnings
-from enum import Enum
-from collections import OrderedDict, deque
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from functools import lru_cache
-from pathlib import Path
-from typing import List, Optional
-from urllib.parse import urlparse, urljoin, urlunparse
+from collections import OrderedDict
+from pathlib import Path  # noqa: F401  # test seam (patched by tests)
+from typing import Optional
+from urllib.parse import urlparse
 
-import httpx
-from pydantic import BaseModel, Field
+import httpx  # noqa: F401  # test seam (patched by tests)
 
 from gossamer._core import (
-    batch_research,
-    fetch_html_full,
-    fetch_html_conditional,
-    extract_links_from_html as _extract_links_from_html,
-    process_rendered_html as _process_rendered_html,
-    extract_main_content_markdown,
-    extract_tables_from_html,
-    init_rust_logging as _init_rust_logging,
     configure_http as _configure_http,
-)
-from gossamer.token_budget import truncate_to_tokens, count_tokens
-from gossamer.structured_parser import (
-    StructuredOxideParser,
-    DOCUMENT_EXTENSIONS,
-    FollowUpCandidate,
-    ParsedDocumentPayload,
-    build_follow_up_candidates,
-    require_office_oxide,
-    require_pdf_oxide,
+    init_rust_logging as _init_rust_logging,  # noqa: F401  # test seam
 )
 from gossamer.search_providers import (
     DuckDuckGoProvider,
     RateLimit,
-    resolve_provider_name,
 )
-from gossamer.text_links import extract_links
 from gossamer import meta_extractor
 from gossamer.cache import Cache
 from gossamer.robots import RobotsChecker
 from gossamer.ssrf import SsrfBlockedError, validate_public_url
-from gossamer.sections import select_relevant_sections
 from gossamer.guard import (
-    GuardConfig,
     JailGuardGuard,
     build_guard,
-    evaluate,
-    wrap_untrusted,
 )
-
-logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────────────────────────────
 # Re-exports for backwards compatibility.
@@ -123,6 +89,8 @@ from gossamer.budget import ContentBudget  # noqa: F401
 from gossamer.discovery import ResourceDiscovery  # noqa: F401
 from gossamer.research_categories import CATEGORIES, search_category  # noqa: F401
 from gossamer.citations import format_citations  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 
 class WebResearcherToolbox:
