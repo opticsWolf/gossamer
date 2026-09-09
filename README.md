@@ -74,10 +74,10 @@
 - **Async Rust Core**: Tokio-based concurrent fetching with browser impersonation, brotli decompression, and exponential backoff retries
 - **Smart/Fallback Routing**: `use_smart` is a tri-state render strategy — `"auto"` (default, follows `fetch_mode`, static-first with stealth-browser fallback on failure/non-text), `"browser"` (headless `browser_oxide` first, static on failure), or `"static"` (static-only)
 - **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx) — tables render as markdown by default; `extract_document(..., store=True, include_images=True)` also saves PDF figures into `<stem>.files/` with a `## Figures` section
-- **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
-- **HTML Table Extraction (Tier 3.11)**: `inspect_html_page(structured=True)` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
-- **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
-- **Research Orchestration (Tier 3.13)**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
+- **More Input Formats**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
+- **HTML Table Extraction**: `inspect_html_page(structured=True)` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
+- **Sitemap-Aware Discovery**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
+- **Research Orchestration**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
 - **Document Link Detection (v0.4.5)**: `extract_document` (and `extract_document(structured=True)` for a validated `ParsedDocumentPayload`) also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
 - **Crawl (v0.4.6 as focused_discovery, semantic v0.4.8; renamed to `crawl` in v0.8.0)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **Patent Providers**: `patent` category — EPO OPS (worldwide via INPADOC), KIPRIS (Korea), PatentsView (USPTO), all key-gated with fail-fast errors naming the exact variable
@@ -425,7 +425,7 @@ base = {"title": "Base Title", "format": "html"}
 merged = merge_into_document_metadata(metadata, base)
 ```
 
-### Observability (Tier 2.6)
+### Observability
 
 `get_stats()` now includes a `fetches` section with thread-safe telemetry
 collected at the single fetch-dispatch choke point (every `inspect_html_page`
@@ -458,7 +458,7 @@ GOSSAMER_RUST_LOG=debug   # error | warn | info | debug
 The bridge initialises once (idempotent) and emits a single
 `rust logging bridge initialized` record so operators can confirm it is live.
 
-### HTTP Transport Overrides (Tier 2.7)
+### HTTP Transport Overrides
 
 For authenticated or proxied sources, the static (Rust) fetch path supports
 process-level transport overrides, baked into the lazily-built shared client
@@ -487,7 +487,7 @@ rather than fatal. robots.txt compliance (S4), politeness delay
 (`domain_delay`), and per-host concurrency (S5) already cover the rest of
 review item 7.
 
-### Search Result Caching & Cross-Provider Merge (Tier 2.8)
+### Search Result Caching & Cross-Provider Merge
 
 `search_web` now caches successful results at the result level and can
 optionally merge across providers:
@@ -513,7 +513,7 @@ tb = WebResearcherToolbox(ToolboxConfig(search_merge=True))
 results = tb.search_web("quantum computing", max_results=10)
 ```
 
-### Real Async Path (Tier 2.9)
+### Real Async Path
 
 Every blocking toolbox method has an async counterpart:
 `search_web_async`, `inspect_html_page_async`, and (new)
@@ -524,7 +524,7 @@ the work runs on a worker thread. The underlying network I/O remains
 synchronous (no native async I/O in the fetch/search layer) -- see the
 [Async Usage](#async-usage) section above for a runnable example.
 
-### More Input Formats (Tier 3.10)
+### More Input Formats
 
 `extract_document` previously delivered PDF/DOCX/XLSX/PPTX and plain
 TXT/MD/CSV; anything else errored (M16) or got scraped as HTML. Now:
@@ -550,7 +550,7 @@ plain = tools.extract_document("https://example.com/raw-data")  # text/plain
 `extract_document` instead of page scraping, so discovered links of these
 types go to the right tool.
 
-### HTML Table Extraction (Tier 3.11)
+### HTML Table Extraction
 
 `inspect_html_structured` previously delivered HTML pages as markdown only:
 `ExtractedTable` existed for PDF/Office documents, but web-page tables
@@ -584,7 +584,7 @@ for table in payload["tables"]:
 Extraction is best-effort: a failure logs a warning and the page is
 delivered with `tables: []` rather than failing the whole call.
 
-### Sitemap-Aware Discovery (Tier 3.12)
+### Sitemap-Aware Discovery
 
 `discover_resources(url)` is a cheaper alternative to link-graph
 traversal when a research task needs "what does this site contain?":
@@ -612,7 +612,7 @@ print(result["feeds"])    # [{url, type}, ...]
 print(result["urls"][:5]) # sitemap page URLs
 ```
 
-### Research Orchestration (Tier 3.13)
+### Research Orchestration
 
 `research(topic, depth=5, max_tokens=0, provider=None, max_results=None)`
 chains the toolbox verbs into one orchestrated research pass — plan, fan out,
