@@ -775,7 +775,7 @@ for u in doc.get("links", []):
     print(u)  # URLs written inside the document text
 ```
 
-### Prompt-Injection Guard (optional, §7)
+### Prompt-Injection Guard
 
 Fetched web content is *untrusted*. The optional guard runs a
 [JailGuard](https://github.com/yfedoseev/jailguard) ONNX detector over the
@@ -848,7 +848,7 @@ gossamer/
 │   ├── budget.py                     # Output-budget enforcement
 │   ├── discovery.py                  # Sitemap/feed resource discovery
 │   ├── cache.py                      # Two-tier cache: TTL + size-cap LRU eviction, scoped clears
-│   ├── guard.py                      # Optional prompt-injection guard (§7, JailGuard)
+│   ├── guard.py                      # Optional prompt-injection guard (JailGuard)
 │   ├── cli.py                        # `gossamer` CLI, 1:1 with the MCP tools
 │   ├── keystore.py / settings.py / env.py  # keys, gossamer.json, GOSSAMER_* resolution
 │   ├── liveness.py / resource_store.py      # reachability probes, stored-file assets
@@ -890,7 +890,7 @@ gossamer/
 | **Optional — `[documents]`** | `pdf_oxide >=0.1` | High-speed PDF extraction |
 | | `office_oxide >=0.1` | DOCX/XLSX/PPTX extraction (PyPI) |
 | **Optional — `[mcp]`** | `mcp >=2.0` | MCP server runtime (Python 3.10+) |
-| **Optional — `[guard]`** | `jailguard >=0.1.2` | Prompt-injection detection (ONNX, §7) |
+| **Optional — `[guard]`** | `jailguard >=0.1.2` | Prompt-injection detection (ONNX) |
 
 ## Running Tests
 
