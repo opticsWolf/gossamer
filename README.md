@@ -256,8 +256,8 @@ report = tools.research_by_category("AAPL", category="financial", provider="yaho
 
 Euro-centric queries route here automatically (`EZB`, `Leitzins`, `Eurostat`,
 `HICP`, `BIP`, `EGMR`, `EuGH`, `CELEX`, `BVerfG`, `BGH`, `DSGVO`, …). Full
-endpoint notes and the providers that were retired for fictional endpoints
-live in `docs/PROVIDER_ALTERNATIVES_2026-09-05.md`.
+endpoint notes (and the providers retired for fictional endpoints) live in
+the local `planning/` notes, which are deliberately unsynced.
 
 ### Token Budgeting
 
@@ -724,7 +724,7 @@ print(res["stop"])       # max_pages reached | frontier exhausted
 
 The v0.4.6 frontier score was purely lexical and treated every term
 and every page the same. v0.4.8 makes it adapt to the site it is
-reading (plan: `docs/SEMANTIC_CRAWL_PLAN.md`, features A + B):
+reading (internal semantic-crawl plan, features A + B):
 
 - **BM25/IDF over the live corpus** — the traversal keeps a running
   document-frequency table of the pages it has fetched. Term weights
@@ -826,7 +826,8 @@ gossamer/
 ├── pyproject.toml                    # Build config (maturin) + dependency metadata
 ├── requirements.txt                  # Dev/test dependencies (runtime deps live in pyproject)
 ├── README.md                         # This file
-├── docs/                             # Audits, provider research & plans (REVIEW, LIVE_PROVIDER_TEST, PROVIDER_ALTERNATIVES, *_PLAN.md, SPEC_AUDIT.md)
+├── docs/                             # QUICKREV.md (orientation) + ARCHITECTURE.md (system design)
+├── planning/                         # Local-only audits/plans (gitignored, unsynced)
 ├── src/                              # Rust core: parsing kernels behind a JSON-string boundary
 │   ├── lib.rs                        # PyO3 surface + shared Tokio runtime
 │   ├── adapters.rs                   # all 35 domain-adapter row builders
@@ -927,8 +928,7 @@ additive — they never change which tests run under the default `pytest`.
 >
 > Live provider tests are opt-in and key-optional:
 > `GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py` runs one real search per
-> keyless adapter to catch endpoint drift (see
-> `docs/LIVE_PROVIDER_TEST_2026-09-05.md`).
+> keyless adapter to catch endpoint drift.
 
 ## License
 
