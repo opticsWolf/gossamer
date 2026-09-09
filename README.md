@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://python.org)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-1323%20passing%2C%2031%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-10983%20passing%2C%202%20skipped-brightgreen)](tests/)
 
 ---
 
@@ -39,8 +39,9 @@
      │  Domain     │
      │  Adapters   │
      │  ┌───────┐  │
-     │  │Scholar│  │  OpenAlex, Crossref, arXiv, Zenodo
+     │  │Scholar│  │  OpenAlex, Crossref, arXiv, Zenodo, PubMed, …
      │  │Legal  │  │  CourtListener, eCFR, FedReg, OLDP, HUDOC, GovInfo
+     │  │Patent │  │  EPO OPS, KIPRIS, PatentsView (all key-gated)
      │  │Finance│  │  Yahoo, Frankfurter, Eurostat, Bundesbank, BIS, CoinGecko
      │  │Geo    │  │  Open-Meteo, Overpass
      │  └───────┘  │
@@ -51,14 +52,14 @@
 
 | Layer | Module | Purpose |
 |-------|--------|---------|
-| **Rust Core** | `_core` (PyO3) | Async HTTP fetching (`reqwest`), HTML parsing (`scraper`), markdown conversion (`html2md`), shared Tokio runtime |
+| **Rust Core** | `_core` (PyO3) | Response parsing for all 35 domain adapters, HTML metadata via the in-core `meta_oxide` crate, plus SSRF/robots, budgets, guard, citations, categories, tokens, sections, dedupe (JSON-string boundary; HTTP/keys/rate-limit stay Python) |
 | **Python Orchestration** | `agent_tools.py` | LLM toolbox, caching, rate limiting, retry logic, smart/fallback routing |
 | **Search** | `search_providers.py` | Multi-provider search abstraction (DDG, Google, Bing, Exa) with fallback chaining |
-| **Domain data** | `research_providers.py` | 30+ scholarly/legal/financial/geo adapters (OpenAlex, CourtListener, FRED, …) on one politeness/quota contract |
+| **Domain data** | `research_providers.py` | 35 scholarly/legal/patent/financial/geo adapters (OpenAlex, CourtListener, FRED, …) on one politeness/quota contract; HTTP/keys/rate-limit in Python, row-building in Rust |
 | **Category routing** | `research_categories.py` | Keyword classifier mapping free-form queries to the right domain category |
 | **Document Parsing** | `structured_parser.py` | Pydantic v2 schemas, PDF/DOCX/XLSX/PPTX extraction via `pdf_oxide` + `office_oxide` |
 | **Token Budgeting** | `token_budget.py` | Token-aware truncation via `tiktoken` for GPT-4, Claude, and other models |
-| **HTML Metadata** | `meta_extractor.py` | Open Graph, Twitter Cards, JSON-LD, Microdata, Dublin Core via `meta-oxide` |
+| **HTML Metadata** | `meta_extractor.py` | Open Graph, Twitter Cards, JSON-LD, Microdata, Dublin Core via the in-core `meta_oxide` Rust crate (no separate install; PyPI-clean) |
 | **Smart Fetch** | `agent_tools.py` | Headless JS rendering via `browser_oxide` with static fallback |
 
 ---
@@ -72,14 +73,16 @@
 - **Source Liveness**: `check_sources` probes URL reachability (SSRF-safe, polite) before you spend budget fetching
 - **Async Rust Core**: Tokio-based concurrent fetching with browser impersonation, brotli decompression, and exponential backoff retries
 - **Smart/Fallback Routing**: `use_smart` is a tri-state render strategy — `"auto"` (default, follows `fetch_mode`, static-first with stealth-browser fallback on failure/non-text), `"browser"` (headless `browser_oxide` first, static on failure), or `"static"` (static-only)
-- **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx)
+- **High-Speed Document Extraction**: `pdf_oxide` (~0.8ms mean) and `office_oxide` (up to 100x faster than python-docx) — tables render as markdown by default; `extract_document(..., store=True, include_images=True)` also saves PDF figures into `<stem>.files/` with a `## Figures` section
 - **More Input Formats (Tier 3.10)**: `extract_document` also handles TXT, MD, CSV, JSON (pretty-printed), XML, and RSS/Atom feeds (surfaced as readable entry lists); extension-less URLs are detected via Content-Type
 - **HTML Table Extraction (Tier 3.11)**: `inspect_html_page(structured=True)` extracts top-level `<table>` grids into structured `tables` (colspan/rowspan expanded, `<th>` headers, caption names) — web tables reach the model as tables, not ragged markdown
 - **Sitemap-Aware Discovery (Tier 3.12)**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **Research Orchestration (Tier 3.13)**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
 - **Document Link Detection (v0.4.5)**: `extract_document` (and `extract_document(structured=True)` for a validated `ParsedDocumentPayload`) also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
 - **Crawl (v0.4.6 as focused_discovery, semantic v0.4.8; renamed to `crawl` in v0.8.0)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
-- **HTML Metadata Extraction**: `meta-oxide` extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed
+- **Patent Providers**: `patent` category — EPO OPS (worldwide via INPADOC), KIPRIS (Korea), PatentsView (USPTO), all key-gated with fail-fast errors naming the exact variable
+- **HTML Metadata Extraction**: the in-core `meta_oxide` Rust crate extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed — no separate package, no PyPI blocker
+- **Rust-Core Milestone (v0.9.0)**: every response parser and pure kernel lives in `_core` behind a JSON-string boundary, verified by differential parity tests with vendored oracles + seeded fuzz; Python keeps orchestration, harness adaptation, and state
 - **Token-Aware Truncation**: Precise token budgets via `tiktoken` for GPT-4, Claude, and other models — two-pass truncation (tokens first, then character safety cap)
 - **Structured Document Parsing**: Pydantic v2 schemas for validated `DocumentMetadata`, `ExtractedPage`, `ExtractedTable`, and `ParsedDocumentPayload`
 - **Production-Ready**:
@@ -105,7 +108,7 @@
 ### Build & Install
 
 ```bash
-cd gossamer
+git clone https://github.com/opticsWolf/gossamer && cd gossamer
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -643,7 +646,7 @@ for s in report["sources"]:
     # ... the agent writes the cited synthesis ...
 ```
 
-### Focused Discovery (v0.4.6)
+### Crawl (v0.4.6 as focused_discovery, renamed in v0.8.0)
 
 `crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
 min_score=0.05, excerpts=False, search_prior=False, seed_urls=[], use_smart="auto")`
@@ -824,8 +827,15 @@ gossamer/
 ├── requirements.txt                  # Dev/test dependencies (runtime deps live in pyproject)
 ├── README.md                         # This file
 ├── docs/                             # Audits, provider research & plans (REVIEW, LIVE_PROVIDER_TEST, PROVIDER_ALTERNATIVES, *_PLAN.md, SPEC_AUDIT.md)
-├── src/
-│   └── lib.rs                        # Rust async fetcher (shared Tokio runtime)
+├── src/                              # Rust core: parsing kernels behind a JSON-string boundary
+│   ├── lib.rs                        # PyO3 surface + shared Tokio runtime
+│   ├── adapters.rs                   # all 35 domain-adapter row builders
+│   ├── metaextract.rs                # HTML metadata via the meta_oxide crate
+│   ├── xmlatom.rs                    # ATOM/XML feed + SDMX helpers
+│   ├── ssrf.rs / robots.rs / guard.rs # safety + prompt-injection scanning
+│   ├── cite.rs / categories.rs / tokens.rs / budget.rs
+│   ├── sections.rs / dedupe.rs / textlinks.rs / urls.rs
+│   └── cacheutils.rs / miscutils.rs / pycompat.rs
 ├── gossamer/
 │   ├── __init__.py                   # Package exports
 │   ├── agent_tools.py                # WebResearcherToolbox facade (delegates to collaborators)
@@ -839,6 +849,10 @@ gossamer/
 │   ├── discovery.py                  # Sitemap/feed resource discovery
 │   ├── cache.py                      # Two-tier cache: TTL + size-cap LRU eviction, scoped clears
 │   ├── guard.py                      # Optional prompt-injection guard (§7, JailGuard)
+│   ├── cli.py                        # `gossamer` CLI, 1:1 with the MCP tools
+│   ├── keystore.py / settings.py / env.py  # keys, gossamer.json, GOSSAMER_* resolution
+│   ├── liveness.py / resource_store.py      # reachability probes, stored-file assets
+│   ├── sections.py / text_links.py     # markdown shaping helpers
 │   ├── mcp_server.py                 # MCP server (stdio) exposing the toolbox
 │   ├── robots.py                     # robots.txt compliance (per-host cache, UA groups)
 │   ├── search_providers.py           # SearchProvider ABC + DuckDuckGo/Google/Bing/Exa
@@ -851,7 +865,7 @@ gossamer/
 │   ├── structured_parser.py          # Pydantic v2 schemas + StructuredOxideParser
 │   ├── token_budget.py               # tiktoken-based token counting & truncation
 │   └── meta_extractor.py             # meta-oxide wrapper for HTML metadata
-└── tests/                            # 80+ modules (unit + integration + live smoke)
+└── tests/                            # 90+ modules incl. Rust-parity differential suites + live smoke
 ```
 
 ## Dependencies
@@ -867,7 +881,11 @@ gossamer/
 | | `httpx >=0.27` | Async HTTP for providers |
 | | `pydantic >=2.7` | Data validation schemas |
 | | `tiktoken >=0.5.0` | Token counting & truncation |
-| **Oxide SDK** | `meta_oxide 0.1.2` (git fork — PyPI sdist broken, see CHANGELOG 0.4.7) | HTML metadata extraction |
+| **Rust Core (cont.)** | `serde` / `serde_json 1` | Record + metadata (de)serialization |
+| | `quick-xml 0.42` | ATOM/SDMX/XML feed parsing |
+| | `tiktoken-rs` | In-core token counting (registry-first encodings) |
+| | `meta_oxide` (git fork rev, `default-features=false`) | HTML metadata extraction, in-core — no Python bridge package |
+| | `regex`, `blake2`, misc | Scanning, cache-key hashing, compat shims |
 | **Optional — `[browser]`** | `browser_oxide >=0.1` | Headless JS rendering (macOS/Windows only on PyPI; static fallback without it) |
 | **Optional — `[documents]`** | `pdf_oxide >=0.1` | High-speed PDF extraction |
 | | `office_oxide >=0.1` | DOCX/XLSX/PPTX extraction (PyPI) |
@@ -877,7 +895,7 @@ gossamer/
 ## Running Tests
 
 The suite is offline and hermetic by default (no network, SSRF guard active).
-It runs green in ~20s in parallel on a multi-core box.
+It runs green in ~3 min serial, faster in parallel on a multi-core box.
 
 ```bash
 # Full suite (serial):
