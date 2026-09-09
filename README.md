@@ -646,7 +646,7 @@ for s in report["sources"]:
     # ... the agent writes the cited synthesis ...
 ```
 
-### Crawl (v0.4.6 as focused_discovery, renamed in v0.8.0)
+### Crawl
 
 `crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
 min_score=0.05, excerpts=False, search_prior=False, seed_urls=[], use_smart="auto")`
