@@ -1,6 +1,7 @@
 # gossamer — quick reference
 
-Command-level companion to `docs/ARCHITECTURE.md`. Full manual: `README.md`.
+Command-level companion to [Architecture](./ARCHITECTURE.md). Full manual:
+[README](../README.md). Per-version history: [Changelog](../CHANGELOG.md).
 Planning history: local `planning/` (unsynced).
 
 ## Tools (MCP = CLI = `execute_tool`)

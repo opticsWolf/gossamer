@@ -1,8 +1,9 @@
 # gossamer — architecture (v0.9.0)
 
 How the system fits together, why it is split the way it is, and where
-each behavior lives. Companion: `docs/QUICKREF.md` for the
-command-level reference, `README.md` for the user manual.
+each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
+commands, [README](../README.md) for the user manual,
+[Changelog](../CHANGELOG.md) for per-version history.
 
 ## 1. Principles
 
@@ -215,7 +216,136 @@ is absent (`risk: None`). No import, no latency when disabled.
 - **Hermetic default**: no network, SSRF guard on; full run
   `pytest -q -n auto --ignore=tests/test_live_smoke.py`.
 
-## 11. Build & release
+## 11. Document pipeline
+
+`extract_document` accepts a URL or local path. URLs are SSRF-checked,
+robots-gated, rate-limited, and downloaded under `max_response_bytes`
+(Content-Length early-reject + streaming chunk cap); locals are read
+under the same cap. Bytes route by suffix (`classify_link` must stay
+in sync): PDF via `pdf_oxide`, office via `office_oxide`, plain text
+(CSV/TXT/MD, pretty-printed JSON), XML/RSS/Atom (feeds become entry
+lists, other XML falls back to raw text), extension-less URLs via
+Content-Type sniffing. Tables render as markdown tables by default on
+both converters — no flag exists or is needed.
+
+- `pages="10-20"` selects PDF pages / XLSX sheets through the
+  structured parser (per-page blocks); cached under a range-specific
+  key; cannot combine with `store=`.
+- `structured=True` returns a validated `ParsedDocumentPayload`
+  (`DocumentMetadata`, `ExtractedPage[]`, flattened `tables`).
+- `store=True` writes `<stem><ext>` (verbatim bytes) + `<stem>.md`
+  (full untruncated markdown) under `store_dir` (default
+  `stored_documents/`), with `stored.resources` reporting downloaded
+  refs; `store=True, include_images=True` (PDF only) additionally
+  saves raster figures as `<stem>.files/page{i}_{j}.png` (capped at
+  200, vector-only figures skipped) with a `## Figures` section.
+- Document text runs link detection (bare `www.` promoted, Latin/CJK
+  trailing punctuation stripped, deduped, capped at 50) into `links`,
+  so reports yield follow-up targets despite no hyperlink annotations.
+
+## 12. Async & threading model
+
+Every blocking toolbox method has an `*_async` twin
+(`search_web_async`, `inspect_html_page_async`,
+`batch_inspect_pages_async`). "Async" means **thread pool**: each
+wrapper offloads the shared blocking implementation to Python's
+default executor (`loop.run_in_executor(None, …)`) so the event loop
+stays responsive. The underlying network I/O is synchronous — there
+is no native async I/O in the fetch/search layer (the Tokio runtime
+in `_core` serves the Rust fetch primitives the Python layer drives
+synchronously). Shared mutable state is lock-guarded (`Cache` tiers,
+`FetchStats`, per-domain rate state, in-flight/visited sets) because
+the MCP SDK dispatches tools on worker threads. Use the async twins
+inside `asyncio` apps; call sync methods otherwise.
+
+## 13. Observability
+
+`get_stats()` reports a `fetches` section from the single
+dispatch choke point: totals, error counts, bytes, p50/p95/p99/max
+latency over a bounded 1024-sample sliding window (`fetch_stats_window`),
+per-domain and per-error-class breakdowns, plus cache and guard
+counters. Rust-side HTTP logging is off (zero cost) until
+`GOSSAMER_RUST_LOG=error|warn|info|debug` bridges Rust `log` events
+into Python `logging` (one-time init record confirms liveness).
+
+## 14. HTTP transport overrides
+
+For authenticated/proxied sources, the static fetch path bakes
+process-level overrides into the lazily-built shared client at first
+use (last non-empty value wins — singleton, not per-request):
+`http_proxy` / `user_agent` / `custom_headers` / `cookies` (all with
+`GOSSAMER_*` env spellings). Invalid values log and are ignored, never
+fatal. Robots, politeness delay, and per-host concurrency apply on top.
+
+## 15. Search result caching & merge
+
+Successful searches cache in-memory (bounded, TTL =
+`cache_ttl_seconds`) keyed by normalized
+`(query, max_results, provider, merge-mode)`; errors never cache and
+`clear_cache` wipes it. Within-provider URL dedup is default
+(canonical form: scheme case, default ports, fragments, trailing
+slash). `search_merge=True` (or `GOSSAMER_SEARCH_MERGE=1`) queries
+every provider in priority order and merges + dedupes up to
+`max_results` instead of strict first-success failover.
+
+## 16. HTML tables & metadata
+
+`inspect_html_structured` runs raw static HTML through the in-core
+`extract_tables_from_html`: top-level tables only, `<th>`-first-row
+headers, colspan/rowspan expanded to rectangular grids, markup-free
+cells (whitespace collapsed, ≤1000 chars), caption-or-`table-N`
+names, ≤20 tables / ≤500 rows per page. Best-effort (failure →
+`tables: []`); the browser path exposes no DOM so its tables are
+empty; the plain page path is untouched. Page metadata comes from
+`meta_extractor`: `extract_all` returns meta/opengraph/twitter/
+jsonld/microdata/microformats/dublin_core/rdfa/rel_links/oembed/
+manifest sections, merged into `DocumentMetadata` (base values win;
+raw sections pass through verbatim).
+
+## 17. Discovery & research orchestration
+
+`discover_resources` fetches once: `<link rel="alternate">` feed
+declarations (RSS/Atom/Feed-JSON only, `hreflang` ignored, hrefs
+absolutized) plus a bounded `/sitemap.xml` probe (indexes to 3 hops,
+≤10 fetches, 500 URLs/sitemap, 1000 total, ordered dedupe,
+`truncated` on cap hit). Metadata-level only — the page stays
+unvisited. `research(topic, depth, …)` chains plan → dedupe → fan-out:
+up to `depth*2` candidates (cap 20), normalized/deduped/SSRF-validated
+to ≤ `depth` pages (cap 10), each through the normal pipeline (cache
+--; repeated runs are cheap), returning per-source
+`url/title/snippet/status` + payload-or-error under the global
+budget (later sources yield first). Synthesis stays the agent's job.
+
+## 18. Semantic discovery & link detection
+
+Beyond the §6 frontier: term weights sharpen as the corpus grows
+(flat until 3 pages), anchor labels gain ±50-char surrounding content
+(≤8 tokens), doc-ish URL paths score ×1.15 vs ×0.85 transactional,
+and `thesaurus.json` (~230 terms, 31 clusters, no generic tokens)
+expands the query at half weight (≤2× base, deterministic order,
+fail-open load). The query echo reports expansions (`"deep learning
++2"`). Document link detection (also §11) covers the Oxide blind
+spot on hyperlink annotations.
+
+## 19. Dependencies
+
+| Layer | Package | Role |
+|---|---|---|
+| Rust | `pyo3 0.27` (abi3) | bindings |
+| | `reqwest 0.12` + `tokio` | static fetch primitives |
+| | `scraper`, `html2md` | HTML parse → markdown |
+| | `serde/serde_json`, `quick-xml` | records, feeds |
+| | `tiktoken-rs` | in-core encodings |
+| | `meta_oxide` (git fork, no default features) | metadata, in-core |
+| | `regex`, `blake2`, misc | scans, hashes, shims |
+| Python | `httpx`, `pydantic>=2.7`, `tiktoken`, `ddgs` | providers, schemas, search |
+| Oxide | `pdf_oxide`, `office_oxide` (`[documents]`) | document converters |
+| Opt | `mcp` (`[mcp]`), `browser-oxide` (`[browser]`), `jailguard` (`[guard]`) | server, JS rendering, guard model |
+
+All MIT/Apache-2.0. No Python direct (git) references remain — the
+wheel is PyPI-clean.
+
+## 20. Build & release
 
 `maturin develop --release` builds `_core` in place
 (`abi3`, LTO + stripped release profile). Versions move together
