@@ -26,21 +26,14 @@ pub fn domain_of_impl(url: &str) -> String {
 }
 
 fn url_netloc(url: &str) -> Option<&str> {
-    let rest = if url.starts_with("//") {
-        &url[2..]
-    } else if let Some(colon) = url.find(':') {
-        let scheme = &url[..colon];
-        if !valid_scheme(scheme) {
-            return None;
-        }
-        let after = &url[colon + 1..];
-        if let Some(stripped) = after.strip_prefix("//") {
-            stripped
-        } else {
-            return None;
-        }
+    let rest = if let Some(stripped) = url.strip_prefix("//") {
+        stripped
     } else {
-        return None;
+        let colon = url.find(':')?;
+        if !valid_scheme(&url[..colon]) {
+            return None;
+        }
+        url[colon + 1..].strip_prefix("//")?
     };
     let end = rest
         .find(['/', '?', '#'])
@@ -103,8 +96,7 @@ pub fn classify_link_impl(url: &str) -> &'static str {
 fn url_path(url: &str) -> &str {
     let no_frag = url.split('#').next().unwrap_or(url);
     let no_query = no_frag.split('?').next().unwrap_or(no_frag);
-    if no_query.starts_with("//") {
-        let rest = &no_query[2..];
+    if let Some(rest) = no_query.strip_prefix("//") {
         match rest.find('/') {
             Some(i) => &rest[i..],
             None => "",
@@ -154,12 +146,10 @@ fn py_int(s: &str) -> Option<i128> {
             prev_underscore = true;
             continue;
         }
-        match c.to_digit(10) {
-            Some(d) => {
-                val = val.checked_mul(10)?.checked_add(d as i128)?;
-                prev_underscore = false;
-            }
-            None => return None,
+        {
+            let d = c.to_digit(10)?;
+            val = val.checked_mul(10)?.checked_add(d as i128)?;
+            prev_underscore = false;
         }
     }
     if prev_underscore {

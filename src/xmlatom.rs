@@ -16,6 +16,7 @@
 use quick_xml::escape::unescape;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
+use quick_xml::XmlVersion;
 
 /// One element: local name, direct attributes, direct text
 /// (entity-expanded, EOL-normalized, child tails excluded), and direct
@@ -33,6 +34,11 @@ pub struct Node {
     pub text: String,
     pub children: Vec<Node>,
 }
+
+/// Stack entry while streaming: the open node, its element-name
+/// fallback, whether any direct text was seen, and the in-scope
+/// namespace declarations (prefix -> uri, `""` = default).
+type XmlStackEntry = (Node, String, bool, Vec<(String, String)>);
 
 impl Node {
     /// First direct child with this local name.
@@ -99,7 +105,7 @@ pub fn parse_document(xml: &str) -> Result<Node, String> {
     // text so far, whether a child element has started (later direct
     // text is a grandchild tail — invisible to field reads), and the
     // in-scope namespace declarations (prefix -> uri, "" = default).
-    let mut stack: Vec<(Node, String, bool, Vec<(String, String)>)> = Vec::new();
+    let mut stack: Vec<XmlStackEntry> = Vec::new();
     let mut root: Option<Node> = None;
     let mut buf = Vec::new();
     loop {
@@ -120,8 +126,11 @@ pub fn parse_document(xml: &str) -> Result<Node, String> {
                 for a in e.attributes() {
                     let a = a.map_err(|e| format!("ValueError: {e}"))?;
                     let key: &str = a.key.as_ref();
+                    // Identical to the old `unescape_value()`: same
+                    // normalization, entity set, and depth, spelled
+                    // without the deprecated alias.
                     let v = a
-                        .unescape_value()
+                        .normalized_value(XmlVersion::Implicit1_0)
                         .map_err(|e| format!("ValueError: {e}"))?
                         .into_owned();
                     if key == "xmlns" {

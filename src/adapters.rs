@@ -852,7 +852,7 @@ fn sequence_item_error(index: usize, t: &str) -> String {
 /// empty; lists sliced (negatives clip); strings sliced then failed per
 /// character (empty-after-slice iterates zero times); dicts raise
 /// `KeyError(slice)`; anything else raises TypeError.
-fn subscript_hits<'a>(v: Option<&'a Value>, max_results: i64) -> Result<Vec<&'a Value>, String> {
+fn subscript_hits(v: Option<&Value>, max_results: i64) -> Result<Vec<&Value>, String> {
     match v {
         None => Ok(Vec::new()),
         Some(Value::Array(a)) => Ok(slice_refs(a, max_results)),
@@ -875,7 +875,7 @@ fn subscript_hits<'a>(v: Option<&'a Value>, max_results: i64) -> Result<Vec<&'a 
     }
 }
 
-fn slice_refs<'a>(items: &'a [Value], max_results: i64) -> Vec<&'a Value> {
+fn slice_refs(items: &[Value], max_results: i64) -> Vec<&Value> {
     let n = items.len() as i64;
     let end = if max_results < 0 {
         (n + max_results).max(0)
@@ -1025,7 +1025,7 @@ pub fn yahoo_parse_fetch_impl(
         .unwrap_or(fallback.clone());
     let url = format!(
         "https://finance.yahoo.com/quote/{}",
-        py_value_repr(meta_map.get("symbol").unwrap_or(&fallback))
+        py_value_repr(meta_map.get("symbol").unwrap_or(fallback))
     );
     let price = match meta_map.get("regularMarketPrice") {
         None => String::new(),
@@ -1073,9 +1073,10 @@ pub fn yahoo_parse_fetch_impl(
     Ok((Value::Object(rec), meta))
 }
 
-/// Mirror of the CVE-id routing in `NvdAdapter._search_impl` (`re.match`
-/// + `upper()`); the `(query or "").strip()` pre-step stays Python in the
-/// wrapper, so this takes the already-stripped query verbatim.
+/// Mirror of the CVE-id routing in `NvdAdapter._search_impl` (regex
+/// match plus `upper()`); the `(query or "").strip()` pre-step stays
+/// Python in the wrapper, so this takes the already-stripped query
+/// verbatim.
 pub fn nvd_route_query_impl(query: &str) -> (String, String) {
     static RE: OnceLock<Regex> = OnceLock::new();
     // NB: Python `$` also matches just before a trailing newline, so the
@@ -3067,12 +3068,10 @@ fn py_int(s: &str) -> Option<i128> {
             prev_underscore = true;
             continue;
         }
-        match c.to_digit(10) {
-            Some(d) => {
-                val = val.checked_mul(10)?.checked_add(d as i128)?;
-                prev_underscore = false;
-            }
-            None => return None,
+        {
+            let d = c.to_digit(10)?;
+            val = val.checked_mul(10)?.checked_add(d as i128)?;
+            prev_underscore = false;
         }
     }
     if prev_underscore {
@@ -3275,14 +3274,17 @@ enum Idx {
     F(f64),
 }
 
+/// One Eurostat cell: `(dim, code, label)` triples (raw JSON values;
+/// dims may be non-strings in hostile cubes) plus the cell value.
+type EurostatRow = (Vec<(Value, Value, Value)>, Value);
+
 /// Mirror `EurostatAdapter._unpack`: JSON-stat cube → `[(coords, value)]`,
 /// capped *after* appending (a non-positive limit still yields the first
-/// cell when values exist). `coords` are `(dim, code, label)` triples
-/// with raw JSON values (dims may be non-strings in hostile cubes).
+/// cell when values exist).
 fn eurostat_unpack_impl(
     data: &serde_json::Map<String, Value>,
     limit: i64,
-) -> Result<Vec<(Vec<(Value, Value, Value)>, Value)>, String> {
+) -> Result<Vec<EurostatRow>, String> {
     // `ids` iterates (lists item-wise, dicts key-wise, strings
     // char-wise); anything else raises TypeError.
     let mut dims: Vec<Value> = Vec::new();
@@ -3342,9 +3344,8 @@ fn eurostat_unpack_impl(
                         Ok(Max::I(1))
                     }
                 } else {
-                    Err(format!(
-                        "TypeError: '>' not supported between instances of 'str' and 'int'"
-                    ))
+                    Err("TypeError: '>' not supported between instances of 'str' and 'int'"
+                        .to_string())
                 }
             }
             other => Err(format!(
@@ -3448,7 +3449,7 @@ fn eurostat_unpack_impl(
     };
     // Cells in `values` insertion order, capped after appending (a
     // non-positive limit still yields the first cell when values exist).
-    let mut out: Vec<(Vec<(Value, Value, Value)>, Value)> = Vec::new();
+    let mut out: Vec<EurostatRow> = Vec::new();
     if let Some(vm) = values {
         for (flat, val) in vm.iter() {
             let pos = match py_int(flat.as_str()) {
@@ -5881,7 +5882,7 @@ pub fn overpass_parse_search_impl(
 fn census_header(first: &Value) -> Result<Vec<String>, String> {
     match first {
         Value::Array(a) => {
-            let owned: Vec<Value> = a.iter().cloned().collect();
+            let owned: Vec<Value> = a.to_vec();
             census_header_owned(&owned)
         }
         // Dicts iterate keys (always strings in JSON).
@@ -5901,7 +5902,7 @@ fn census_header(first: &Value) -> Result<Vec<String>, String> {
             census_header_owned(&chars)
         }
         // Iterating the header row (not indexing it).
-        other => return Err(type_error_not_iterable(json_type(other))),
+        other => Err(type_error_not_iterable(json_type(other))),
     }
 }
 
@@ -6609,10 +6610,7 @@ pub fn pubmed_parse_fetch_impl(
     let mc = entry.child("MedlineCitation");
     let pmid = match mc {
         None => return Err(attr_error("NoneType")),
-        Some(m) => match m.child("PMID") {
-            None => None,
-            Some(p) => Some(p.text.clone()),
-        },
+        Some(m) => m.child("PMID").map(|p| p.text.clone()),
     };
     // `article.findtext("ArticleTitle")`: article None raises here.
     let article = mc.unwrap().child("Article");
@@ -7125,14 +7123,12 @@ pub fn bis_parse_impl(
     let mut stack: Vec<&crate::xmlatom::Node> = vec![&root];
     while let Some(el) = stack.pop() {
         if el.local == "Series" {
-            let series_key: Vec<(String, String)> =
-                el.attrs.iter().cloned().collect();
+            let series_key: Vec<(String, String)> = el.attrs.to_vec();
             for obs in el.children.iter() {
                 if obs.local != "Obs" {
                     continue;
                 }
-                let mut attrs: Vec<(String, String)> =
-                    obs.attrs.iter().cloned().collect();
+                let mut attrs: Vec<(String, String)> = obs.attrs.to_vec();
                 // Eager inner pops first (both sides always evaluated).
                 let time_fallback = pop_attr(&mut attrs, "TIME");
                 let period = pop_attr(&mut attrs, "TIME_PERIOD")
@@ -7205,11 +7201,10 @@ pub fn bis_parse_impl(
 /// Ordered attribute pop: removes and returns the first value for
 /// `name` (ElementTree attribs cannot hold duplicates, so first is all).
 fn pop_attr(attrs: &mut Vec<(String, String)>, name: &str) -> Option<String> {
-    if let Some(pos) = attrs.iter().position(|(k, _)| k == name) {
-        Some(attrs.remove(pos).1)
-    } else {
-        None
-    }
+    attrs
+        .iter()
+        .position(|(k, _)| k == name)
+        .map(|pos| attrs.remove(pos).1)
 }
 
 // ── EPO OPS (exchange-document) ─────────────────────────────────
@@ -7228,16 +7223,16 @@ fn epo_title_text(doc: &crate::xmlatom::Node) -> String {
     }
     let mut parts: Vec<String> = Vec::new();
     for el in items.iter() {
-        if el.local == "invention-title" || el.local == "title" {
-            if !el.text.is_empty() {
-                let lang = el.attr("lang");
-                let stripped =
-                    crate::pycompat::py_strip(el.text.as_str()).to_string();
-                if lang.is_empty() {
-                    parts.push(stripped);
-                } else {
-                    parts.push(format!("[{lang}] {stripped}"));
-                }
+        if (el.local == "invention-title" || el.local == "title")
+            && !el.text.is_empty()
+        {
+            let lang = el.attr("lang");
+            let stripped =
+                crate::pycompat::py_strip(el.text.as_str()).to_string();
+            if lang.is_empty() {
+                parts.push(stripped);
+            } else {
+                parts.push(format!("[{lang}] {stripped}"));
             }
         }
     }

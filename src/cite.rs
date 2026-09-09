@@ -61,7 +61,7 @@ impl Clone for BibliographicRecord {
     // Manual: `Py<PyAny>` is not Clone. Only called with the GIL held
     // (formatter arg marshaling inside `#[pyfunction]`s).
     fn clone(&self) -> Self {
-        Python::with_gil(|py| Self {
+        Python::attach(|py| Self {
             title: self.title.clone(),
             authors: self.authors.clone(),
             year: self.year.clone(),
@@ -156,20 +156,6 @@ impl BibliographicRecord {
     }
 }
 
-/// Python-`str()` spelling for JSON scalars (bool None-case handled by
-/// callers via truthiness, mirroring `str(v)`). Containers render via
-/// `py_value_repr` at the call sites that can observe them.
-fn py_scalar_str(v: &Value) -> Option<String> {
-    match v {
-        Value::Null => None,
-        Value::Bool(true) => Some("True".to_string()),
-        Value::Bool(false) => Some("False".to_string()),
-        Value::Number(n) => Some(n.to_string()),
-        Value::String(s) => Some(s.clone()),
-        Value::Array(_) | Value::Object(_) => None,
-    }
-}
-
 fn is_truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -213,7 +199,7 @@ fn first_value<'a>(d: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Opti
 /// Python `repr()` for nested values (single quotes, `True`/`False`/
 /// `None` spellings). Used where the original stringifies containers
 /// (`str(parts[i])`, `str(authors-dict)`); direct strings keep identity
-/// via the caller (see `py_scalar_str`).
+/// via the caller.
 pub(crate) fn py_value_repr(v: &Value) -> String {
     match v {
         Value::Null => "None".to_string(),
@@ -293,8 +279,10 @@ fn normalize_authors(raw: Option<&Value>) -> Vec<String> {
                             out.push(t.to_string());
                         }
                     }
-                    // Containers render via `str(a)` (verbatim port).
-                    Value::Array(_) | Value::Object(_) => {
+                    // Array elements render via `str(a)` (verbatim port;
+                    // objects are handled by the arm above, so only arrays
+                    // can reach here).
+                    Value::Array(_) => {
                         let t = py_strip(&py_value_repr(a)).to_string();
                         if !t.is_empty() {
                             out.push(t);
@@ -340,11 +328,14 @@ fn json_type_name(v: &Value) -> &'static str {
     }
 }
 
+/// Partial (year, month, day): each leg optional.
+type Ymd = (Option<String>, Option<String>, Option<String>);
+
 /// `_g(i)` over a truthy `parts` element: lists index (missing →
 /// None), strings index by character, dicts raise `KeyError(i)`
 /// (JSON dicts never hold int keys), other scalars raise TypeError
 /// (`len()`), elements render via `str()`.
-fn date_from_element(elem: &Value) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+fn date_from_element(elem: &Value) -> Result<Ymd, String> {
     if !is_truthy(elem) {
         return Ok((None, None, None));
     }
@@ -379,7 +370,7 @@ fn date_from_str_parts(s: &str) -> (Option<String>, Option<String>, Option<Strin
     (s.chars().next().map(|c| c.to_string()), None, None)
 }
 
-fn extract_date(result: &serde_json::Map<String, Value>) -> Result<(Option<String>, Option<String>, Option<String>), String> {
+fn extract_date(result: &serde_json::Map<String, Value>) -> Result<Ymd, String> {
     let published = result
         .get("published")
         .filter(|v| is_truthy(v))
@@ -433,10 +424,6 @@ fn extract_date(result: &serde_json::Map<String, Value>) -> Result<(Option<Strin
             caps.get(3).map(|m| m.as_str().to_string()),
         )),
     }
-}
-
-fn non_empty(s: Option<String>) -> Option<String> {
-    s.filter(|v| !v.is_empty())
 }
 
 /// `_venue_from_raw`: `None` on unparseable JSON; `AttributeError` when
@@ -557,7 +544,7 @@ fn citation_key(r: &Record) -> String {
     let mut name = String::new();
     if let Some(first) = r.authors.first() {
         if !first.is_empty() {
-            let after_comma = first.split(',').last().unwrap_or("");
+            let after_comma = first.split(',').next_back().unwrap_or("");
             let token = after_comma.split_whitespace().last().unwrap_or("");
             let stripped: String = alnum_re().replace_all(token, "").to_string();
             name = stripped.chars().take(8).collect();

@@ -249,18 +249,17 @@ pub fn meta_extract_all_impl(html: &str, base_url: Option<&str>) -> String {
             out.insert("jsonld".to_string(), s);
         }
     }
-    if let Some(v) = section(ffi::meta_oxide_extract_microdata, html, base_url)
+    // Bespoke mapper (no generic sparse: it would drop a hypothetical
+    // `Some([])` that `to_py_dict` keeps).
+    if let Some(Value::Array(items)) =
+        section(ffi::meta_oxide_extract_microdata, html, base_url)
     {
-        // Bespoke mapper (no generic sparse: it would drop a
-        // hypothetical `Some([])` that `to_py_dict` keeps).
-        if let Value::Array(items) = v {
-            let mapped: Vec<Value> = items
-                .into_iter()
-                .map(|e| flat_item(e, &["type", "id"]))
-                .collect();
-            if !mapped.is_empty() {
-                out.insert("microdata".to_string(), Value::Array(mapped));
-            }
+        let mapped: Vec<Value> = items
+            .into_iter()
+            .map(|e| flat_item(e, &["type", "id"]))
+            .collect();
+        if !mapped.is_empty() {
+            out.insert("microdata".to_string(), Value::Array(mapped));
         }
     }
     // The combined parser aborts wholesale on an unresolvable URL
