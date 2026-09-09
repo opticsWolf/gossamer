@@ -11,6 +11,8 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   behavior change over 0.8.24. First minor: the Python surface is
   stable (toolbox/MCP/CLI 1:1), `_core` carries the parsing load,
   and the PyPI blocker is gone.
+- Clippy-strict clean on Rust 1.98 (`-D warnings`, zero behavior
+  change — full parity suite re-run with no output changed).
 
 ## [0.8.24] — Document gaps: PDF images flag, tables-by-default
 

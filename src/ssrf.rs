@@ -14,7 +14,7 @@
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use std::sync::OnceLock;
 
 use crate::pycompat::py_repr;
@@ -98,8 +98,11 @@ fn parse_v6(s: &str) -> (u128, u128) {
     (u128::from(ip), mask)
 }
 
-fn v4_tables() -> &'static (Vec<(u32, u32)>, Vec<(u32, u32)>) {
-    static CELL: OnceLock<(Vec<(u32, u32)>, Vec<(u32, u32)>)> = OnceLock::new();
+/// (net, mask) pairs: blocked ranges plus their exceptions.
+type V4Tables = (Vec<(u32, u32)>, Vec<(u32, u32)>);
+
+fn v4_tables() -> &'static V4Tables {
+    static CELL: OnceLock<V4Tables> = OnceLock::new();
     CELL.get_or_init(|| {
         (
             V4_PRIVATE.iter().map(|c| parse_v4(&format!("{}/{}", c.0, c.1))).collect(),
@@ -111,9 +114,15 @@ fn v4_tables() -> &'static (Vec<(u32, u32)>, Vec<(u32, u32)>) {
     })
 }
 
-fn v6_tables() -> &'static (Vec<(u128, u128)>, Vec<(u128, u128)>, Vec<(u128, u128)>) {
-    static CELL: OnceLock<(Vec<(u128, u128)>, Vec<(u128, u128)>, Vec<(u128, u128)>)> =
-        OnceLock::new();
+/// (net, mask) triples: blocked, exceptions, reserved.
+type V6Tables = (
+    Vec<(u128, u128)>,
+    Vec<(u128, u128)>,
+    Vec<(u128, u128)>,
+);
+
+fn v6_tables() -> &'static V6Tables {
+    static CELL: OnceLock<V6Tables> = OnceLock::new();
     CELL.get_or_init(|| {
         (
             V6_PRIVATE.iter().map(|c| parse_v6(&format!("{}/{}", c.0, c.1))).collect(),
@@ -183,10 +192,13 @@ fn split_host_port(hostport: &str) -> (&str, Option<&str>) {
 
 /// Mirror of `validate_public_url`. `allow_private` is resolved Python-side
 /// (env layer stays); `resolve` performs DNS (mockable seam for tests).
+/// DNS resolver seam (mocked in tests so literals never hit DNS).
+type Resolver = dyn Fn(&str, u16) -> Result<Vec<IpAddr>, String>;
+
 pub fn check_url_impl(
     url: &str,
     allow_private: bool,
-    resolve: &dyn Fn(&str, u16) -> Result<Vec<IpAddr>, String>,
+    resolve: &Resolver,
 ) -> Result<(), String> {
     if allow_private {
         return Ok(());
@@ -202,7 +214,7 @@ pub fn check_url_impl(
     // any scheme/host check runs.
     if let Some(after_slashes) = rest.strip_prefix("//") {
         let cut = after_slashes
-            .find(|c| c == '/' || c == '?' || c == '#')
+            .find(['/', '?', '#'])
             .unwrap_or(after_slashes.len());
         validate_netloc_pub(&after_slashes[..cut])?;
     }
@@ -219,7 +231,7 @@ pub fn check_url_impl(
         }
     };
     let auth_end = after
-        .find(|c| c == '/' || c == '?' || c == '#')
+        .find(['/', '?', '#'])
         .unwrap_or(after.len());
     let authority = &after[..auth_end];
     let hostport = authority.rsplit('@').next().unwrap_or("");
@@ -318,7 +330,7 @@ fn system_resolve(host: &str, port: u16) -> Result<Vec<IpAddr>, String> {
 #[pyfunction]
 #[pyo3(signature = (url, allow_private = false))]
 pub fn ssrf_check_url(py: Python, url: &str, allow_private: bool) -> PyResult<()> {
-    py.allow_threads(|| check_url_impl(url, allow_private, &system_resolve))
+    py.detach(|| check_url_impl(url, allow_private, &system_resolve))
         .map_err(PyValueError::new_err)
 }
 

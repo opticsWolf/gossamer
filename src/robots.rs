@@ -21,7 +21,7 @@ pub fn url_path_impl(url: &str) -> String {
     let after = if let Some(i) = url.find("://") {
         // scheme://host… → drop the host part.
         let rest = &url[i + 3..];
-        match rest.find(|c| c == '/' || c == '?' || c == '#') {
+        match rest.find(['/', '?', '#']) {
             Some(j) => &rest[j..],
             None => "/",
         }

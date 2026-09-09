@@ -43,14 +43,12 @@ fn setext_title_ok(title: &str) -> bool {
         return false;
     }
     let mut chars = title.chars();
-    match (chars.next(), chars.next()) {
+    // Third guard: not a list item (`- `/`* `/`+ ` prefix).
+    !matches!(
+        (chars.next(), chars.next()),
         (Some(a), Some(b))
-            if matches!(a, '-' | '*' | '+') && (b == ' ' || b == '\t') =>
-        {
-            false
-        }
-        _ => true,
-    }
+            if matches!(a, '-' | '*' | '+') && (b == ' ' || b == '\t')
+    )
 }
 
 static ASCII_TOKEN_RE: OnceLock<Regex> = OnceLock::new();
@@ -298,7 +296,6 @@ pub fn select_relevant_sections_impl(
             picked.push((i, text.clone()));
         } else if remaining > 0 {
             picked.push((i, char_head(text, remaining).to_string()));
-            remaining = 0;
             break;
         }
     }

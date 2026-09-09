@@ -189,7 +189,7 @@ fn split_validated(san: &str) -> Result<(String, Option<String>), String> {
     };
     if let Some(after) = rest.strip_prefix("//") {
         let cut = after
-            .find(|c| c == '/' || c == '?' || c == '#')
+            .find(['/', '?', '#'])
             .unwrap_or(after.len());
         let netloc = after[..cut].to_string();
         validate_netloc(&netloc)?;
@@ -268,8 +268,7 @@ fn port_value(port_raw: Option<&str>) -> Result<Option<u16>, String> {
 }
 
 fn authority_end(s: &str) -> usize {
-    s.find(|c| c == '/' || c == '?' || c == '#')
-        .unwrap_or(s.len())
+    s.find(['/', '?', '#']).unwrap_or(s.len())
 }
 
 pub fn normalize_url_impl(raw: Option<&str>, base: Option<&str>) -> Result<String, String> {
@@ -428,7 +427,7 @@ pub fn canonical_url_impl(url: &str, query_mode: &str) -> Result<String, String>
         .ok_or_else(|| format!("Cannot parse {url} as a URL (no host)"))?;
     let scheme = scheme_raw.to_ascii_lowercase();
     let after = rest.strip_prefix("//").unwrap_or(rest);
-    let cut = after.find(|c| c == '/' || c == '?').unwrap_or(after.len());
+    let cut = after.find(['/', '?']).unwrap_or(after.len());
     let authority = &after[..cut];
     let remainder = &after[cut..];
     let (path, query) = match remainder.find('?') {
@@ -441,8 +440,8 @@ pub fn canonical_url_impl(url: &str, query_mode: &str) -> Result<String, String>
     // fresh `urlparse(normalized)` — including `.port`, which raises).
     let (hostname_raw, port_raw) = hostinfo_parts(authority);
     let host = hostname_value(&hostname_raw).unwrap_or_default();
-    let host = if host.starts_with("www.") {
-        host["www.".len()..].to_string()
+    let host = if let Some(stripped) = host.strip_prefix("www.") {
+        stripped.to_string()
     } else {
         host
     };
