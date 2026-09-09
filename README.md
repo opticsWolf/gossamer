@@ -826,7 +826,7 @@ gossamer/
 ├── pyproject.toml                    # Build config (maturin) + dependency metadata
 ├── requirements.txt                  # Dev/test dependencies (runtime deps live in pyproject)
 ├── README.md                         # This file
-├── docs/                             # QUICKREV.md (orientation) + ARCHITECTURE.md (system design)
+├── docs/                             # QUICKREF.md (quick reference) + ARCHITECTURE.md (system design)
 ├── planning/                         # Local-only audits/plans (gitignored, unsynced)
 ├── src/                              # Rust core: parsing kernels behind a JSON-string boundary
 │   ├── lib.rs                        # PyO3 surface + shared Tokio runtime

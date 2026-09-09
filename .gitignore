@@ -50,5 +50,5 @@ nul
 
 # Local planning spillover (audits, provider research, internal plans).
 # Deliberately unsynced: working notes live here, the repo keeps only
-# docs/QUICKREV.md + docs/ARCHITECTURE.md as its synced record.
+# docs/QUICKREF.md + docs/ARCHITECTURE.md as its synced record.
 /planning/
