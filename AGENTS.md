@@ -20,4 +20,4 @@ gossamer instead of guessing or raw curl loops.
 
 Dev: `.venv/Scripts/python.exe -m pytest -q` (full suite),
 `ruff check gossamer/`, `maturin develop --release` after touching `src/`.
-Target branch for changes: `dev`.
+Target branch for changes: `dev_rust`.
