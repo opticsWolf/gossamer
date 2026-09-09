@@ -4,15 +4,6 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [0.9.1] — Clippy-strict (Rust 1.98, zero behavior change)
-
-- `cargo clippy --all-targets -- -D warnings` clean: pyo3
-  `with_gil`/`allow_threads` → `attach`/`detach`, quick-xml
-  `unescape_value` → identical `normalized_value(Implicit1_0)`,
-  dead helpers removed (`py_scalar_str`, `non_empty`), unreachable
-  arm trimmed, lifetime/type-alias/closure idioms. Full parity
-  suite re-run: no output changed.
-
 ## [0.9.0] — Minor milestone: Rust port complete, PyPI unblocked
 
 - Rolls up M1–M24 (pure kernels, all 35 adapter parsers, stateful-
@@ -20,6 +11,8 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   behavior change over 0.8.24. First minor: the Python surface is
   stable (toolbox/MCP/CLI 1:1), `_core` carries the parsing load,
   and the PyPI blocker is gone.
+- Clippy-strict clean on Rust 1.98 (`-D warnings`, zero behavior
+  change — full parity suite re-run with no output changed).
 
 ## [0.8.24] — Document gaps: PDF images flag, tables-by-default
 
