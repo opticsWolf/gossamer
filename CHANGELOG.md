@@ -4,6 +4,14 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.0] — Minor milestone: Rust port complete, PyPI unblocked
+
+- Rolls up M1–M24 (pure kernels, all 35 adapter parsers, stateful-
+  adjacent helpers, meta-oxide in-core, PDF images flag) with no
+  behavior change over 0.8.24. First minor: the Python surface is
+  stable (toolbox/MCP/CLI 1:1), `_core` carries the parsing load,
+  and the PyPI blocker is gone.
+
 ## [0.8.24] — Document gaps: PDF images flag, tables-by-default
 
 - `extract_document(..., include_images=False)`: PDF-only, requires
