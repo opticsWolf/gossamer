@@ -22,6 +22,7 @@ use pyo3::prelude::*;
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    crate::pycompat::note_runtime_minor(m.py().version_info().minor as u32);
     m.add_function(wrap_pyfunction!(bridge::fetch_and_extract, m)?)?;
     m.add_function(wrap_pyfunction!(bridge::batch_research, m)?)?;
     m.add_function(wrap_pyfunction!(bridge::process_rendered_html, m)?)?;

@@ -369,3 +369,21 @@ fn batch6_scholarly_shapes() {
     let out = doaj_parse_search_impl(body, 5).unwrap();
     assert_eq!(out[0]["doi"], Value::Null);
 }
+
+#[test]
+fn version_gated_error_spellings() {
+    // `d[slice]`: TypeError through 3.11, KeyError from 3.12.
+    assert_eq!(dict_slice_error(5, Some(10)), "TypeError: unhashable type: 'slice'");
+    assert_eq!(dict_slice_error(5, Some(11)), "TypeError: unhashable type: 'slice'");
+    assert_eq!(dict_slice_error(5, Some(12)), "KeyError: slice(None, 5, None)");
+    assert_eq!(dict_slice_error(5, Some(13)), "KeyError: slice(None, 5, None)");
+    assert_eq!(dict_slice_error(5, None), "KeyError: slice(None, 5, None)");
+    // `re.sub` suffix added in 3.11.
+    assert_eq!(re_sub_type_error("int", Some(10)), "TypeError: expected string or bytes-like object");
+    assert_eq!(re_sub_type_error("int", Some(11)), "TypeError: expected string or bytes-like object, got 'int'");
+    assert_eq!(re_sub_type_error("int", None), "TypeError: expected string or bytes-like object, got 'int'");
+    // `s[str]` suffix added in 3.11.
+    assert_eq!(str_subscript_error(Some(10)), "TypeError: string indices must be integers");
+    assert_eq!(str_subscript_error(Some(11)), "TypeError: string indices must be integers, not 'str'");
+    assert_eq!(str_subscript_error(None), "TypeError: string indices must be integers, not 'str'");
+}

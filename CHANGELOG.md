@@ -4,6 +4,20 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## Unreleased
+
+- CI matrix green again: ruff clean (78 errors cleared, test
+  seams kept as `noqa`), Rust error spellings gated on the running
+  interpreter's minor version (`d[slice]`, `re.sub`, `s[str]`,
+  `urlsplit` scheme rules — one abi3 binary matches 3.10–3.13),
+  hermetic URL corpus (`/root/relative` → unstatable path),
+  platform-independent `_sanitize_filename`, mtime-cache test
+  fixed (bump after the final write), CI pins current Python
+  patches (stale preinstalled interpreters carry old `ipaddress`
+  tables), test seams restored (`agent_tools.Path/httpx/
+  _init_rust_logging`), `citeproc-py-styles` declared in
+  requirements.
+
 ## [0.9.1] — Refactor release: adapters/ + lib.rs splits, no behavior change
 
 - Split `src/adapters.rs` (7.5k lines) into `src/adapters/`:

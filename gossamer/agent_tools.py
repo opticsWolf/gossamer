@@ -7,12 +7,15 @@ import threading
 import time
 import warnings
 from collections import OrderedDict
+from pathlib import Path  # noqa: F401  # test seam (patched by tests)
 from typing import Optional
 from urllib.parse import urlparse
 
+import httpx  # noqa: F401  # test seam (patched by tests)
 
 from gossamer._core import (
     configure_http as _configure_http,
+    init_rust_logging as _init_rust_logging,  # noqa: F401  # test seam
 )
 from gossamer.search_providers import (
     DuckDuckGoProvider,

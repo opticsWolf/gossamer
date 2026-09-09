@@ -160,7 +160,14 @@ CORPUS_URLS = [
     "gopher://x/", "https://exa mple.com/", "https://",
     "http://", "https://example.com:abc/", "https://example.com:99999/",
     "https://example.com/a#b#c", "https://example.com#frag",
-    "/root/relative", "relative/path", "a?b=c",
+    # Absolute path with no scheme/host (must stay hermetic: probing a
+    # real root-owned path like `/root/relative` raises PermissionError
+    # from `Path.exists()` on locked-down machines instead of the
+    # pinned ValueError — and unreadable paths are a documented
+    # divergence anyway: Rust `exists()` is false-on-error, so an
+    # unreadable absolute path is "not a URL" (ValueError), while
+    # v0.8.0 Python leaks the PermissionError.
+    "/gossamer-no-such-dir-7f3a/relative", "relative/path", "a?b=c",
     "https://example.com/%41%42", "https://example.com/a?x=%2F%3F",
     "https://example.com/a?caf%C3%A9=1", "https://example.com/;param",
     "https://user@example.com/", "https://example.com./",

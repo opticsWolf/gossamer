@@ -74,9 +74,12 @@ class TestDiscovery:
         assert settings.load_config_file() == {"a": 1}
         import time
 
-        # Ensure the mtime actually advances (coarse filesystems).
-        os.utime(cfg, (time.time() + 5, time.time() + 5))
         _write(cfg, {"a": 2})
+        # Bump the mtime *after* the final write: bumping before it is
+        # erased by the write itself, leaving same-mtime collisions to
+        # coarse filesystems (stale cache hit). The cache contract is
+        # mtime-equality, so the test must guarantee the advance.
+        os.utime(cfg, (time.time() + 5, time.time() + 5))
         assert settings.load_config_file() == {"a": 2}
 
 

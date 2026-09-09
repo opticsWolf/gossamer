@@ -42,7 +42,10 @@ logger = logging.getLogger(__name__)
 
 def _sanitize_filename(name: str, fallback: str = "document") -> str:
     """Collapse ``name`` to a single safe basename (no separators, no ``..``)."""
-    stem = Path(name).stem or ""
+    # Split on both separators explicitly: `Path.stem` only honors the
+    # platform separator, so backslash names would leak through on POSIX
+    # (and vice versa) — stored filenames must not depend on the OS.
+    stem = Path(str(name).replace("\\", "/").rsplit("/", 1)[-1]).stem or ""
     stem = stem.replace("/", "_").replace("\\", "_").replace("..", "_").strip()
     stem = "".join(ch if (ch.isalnum() or ch in "-_ ") else "_" for ch in stem)
     stem = stem.strip("._-")

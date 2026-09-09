@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use serde_json::Value;
 use crate::pycompat::{char_head};
 use crate::cite::py_value_repr;
-use super::common::{attr_error, type_error_not_subscriptable, json_type, is_truthy, to_py_err, type_error_not_iterable, subscript_keyerror, sequence_item_error, subscript_hits, slice_refs, strip_tags_impl, py_str_value};
+use super::common::{attr_error, type_error_not_subscriptable, json_type, is_truthy, to_py_err, type_error_not_iterable, subscript_keyerror, sequence_item_error, subscript_hits, slice_refs, strip_tags_impl, py_str_value, str_subscript_error};
 
 /// Mirror of `ZenodoAdapter._names`: falsy input → `""`; dicts via
 /// `name` / `person_or_org.name`; anything else truthy stringified;
@@ -948,7 +948,7 @@ pub fn crossref_parse_fetch_impl(
             );
         }
         Value::String(_) => {
-            return Err("TypeError: string indices must be integers, not 'str'".to_string());
+            return Err(str_subscript_error(crate::pycompat::runtime_minor()));
         }
         other => return Err(type_error_not_subscriptable(json_type(other))),
     };
@@ -1578,7 +1578,7 @@ pub fn pubmed_parse_search_impl(
             );
         }
         Value::String(_) => {
-            return Err("TypeError: string indices must be integers, not 'str'".to_string());
+            return Err(str_subscript_error(crate::pycompat::runtime_minor()));
         }
         other => return Err(type_error_not_subscriptable(json_type(other))),
     };

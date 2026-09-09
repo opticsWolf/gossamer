@@ -134,6 +134,23 @@ delegating to collaborator objects, all returning JSON strings.
    time, randomness, and network stay Python. Known crossings that
    cannot work: lone surrogates (invalid UTF-8), NaN payloads,
    non-JSON-native ids (arrive `str()`-rendered).
+6. **Error spellings follow the running interpreter.** A few CPython
+   messages changed across versions (`d[slice]`: `TypeError` through
+   3.11, `KeyError` from 3.12; `re.sub` and `s[str]` suffixes from
+   3.11; `urlsplit` scheme rules from 3.11). `#[pymodule]` records
+   `sys.version_info.minor` once (`pycompat::note_runtime_minor`)
+   and the affected kernels gate on it, so one `abi3` binary matches
+   3.10–3.13 exactly. Rust unit tests (no interpreter) follow the
+   newest spelling.
+7. **Environment-dependent behavior is not pinned.** `Path.exists()`
+   raises `PermissionError` on unreadable paths (all versions), while
+   Rust `exists()` is false-on-error — so an unreadable absolute path
+   is "not a URL" (`ValueError`) from `_core` where v0.8.0 Python
+   leaked the `PermissionError`. The corpus uses hermetic paths only.
+   Likewise the SSRF tables track current CPython IANA data: ancient
+   micro-releases (e.g. 3.10.11) disagree on a handful of ranges —
+   CI pins current patches (see `ci.yml`), upgrade rather than
+   report.
 
 ## 5. Provider system
 
@@ -218,6 +235,12 @@ is absent (`risk: None`). No import, no latency when disabled.
   assert on the Rust transport source itself (client singleton,
   retry-after branch) — they read `src/fetch.rs` since the `lib.rs`
   split (registry / transport / bridge).
+- **Optional oracle deps**: `test_rust_parity_metaextract.py` needs a
+  `meta_oxide` build from the local fork (same rev `src/metaextract.rs`
+  pins) and `test_citations.py` needs `citeproc-py` +
+  `citeproc-py-styles` (styles are a separate package — without them
+  the tests silently take the fallback and fail); both skip
+  gracefully when absent (see `requirements.txt`).
 - **Live smoke**: opt-in real-request drift detection, key-optional.
 - **Hermetic default**: no network, SSRF guard on; full run
   `pytest -q -n auto --ignore=tests/test_live_smoke.py`.

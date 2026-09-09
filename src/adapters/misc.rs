@@ -31,7 +31,7 @@ pub fn openmeteo_parse_search_impl(
         // raise TypeError. Strings slice fine and then fail per
         // character (empty-after-slice iterates zero times).
         Some(Value::Object(_)) => {
-            return Err(format!("KeyError: slice(None, {max_results}, None)"));
+            return Err(subscript_keyerror(max_results));
         }
         Some(Value::String(s)) => {
             let chars: Vec<char> = s.chars().collect();

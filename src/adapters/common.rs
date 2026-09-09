@@ -112,8 +112,22 @@ pub(crate) fn type_error_not_iterable(t: &str) -> String {
     format!("TypeError: '{t}' object is not iterable")
 }
 
+/// `d[slice]` error by interpreter age: `TypeError: unhashable` through
+/// 3.11, `KeyError` from 3.12. `minor` is `None` outside a live
+/// interpreter (Rust unit tests), which follows the newest spelling.
+pub(crate) fn dict_slice_error(max_results: i64, minor: Option<u32>) -> String {
+    if minor.is_none_or(|m| m >= 12) {
+        format!("KeyError: slice(None, {max_results}, None)")
+    } else {
+        "TypeError: unhashable type: 'slice'".to_string()
+    }
+}
+
 pub(crate) fn subscript_keyerror(max_results: i64) -> String {
-    format!("KeyError: slice(None, {max_results}, None)")
+    dict_slice_error(
+        max_results,
+        crate::pycompat::runtime_minor(),
+    )
 }
 
 pub(crate) fn sequence_item_error(index: usize, t: &str) -> String {
@@ -123,7 +137,8 @@ pub(crate) fn sequence_item_error(index: usize, t: &str) -> String {
 /// Mirror `seq[:max_results]` + iteration for response lists: missing →
 /// empty; lists sliced (negatives clip); strings sliced then failed per
 /// character (empty-after-slice iterates zero times); dicts raise
-/// `KeyError(slice)`; anything else raises TypeError.
+/// `KeyError(slice)` on 3.12+ (`TypeError: unhashable` before — see
+/// `dict_slice_error`); anything else raises TypeError.
 pub(crate) fn subscript_hits(v: Option<&Value>, max_results: i64) -> Result<Vec<&Value>, String> {
     match v {
         None => Ok(Vec::new()),
@@ -162,6 +177,26 @@ pub(crate) fn strip_tags_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"<[^>]+>").expect("strip-tags regex"))
 }
 
+/// `re.sub` string-type error by interpreter age: the `, got '<type>'`
+/// suffix exists from 3.11; 3.10 reports the bare message.
+pub(crate) fn re_sub_type_error(t: &str, minor: Option<u32>) -> String {
+    if minor.is_none_or(|m| m >= 11) {
+        format!("TypeError: expected string or bytes-like object, got '{t}'")
+    } else {
+        "TypeError: expected string or bytes-like object".to_string()
+    }
+}
+
+/// `s[str]` error by interpreter age: the `, not 'str'` suffix exists
+/// from 3.11; 3.10 reports the bare message.
+pub(crate) fn str_subscript_error(minor: Option<u32>) -> String {
+    if minor.is_none_or(|m| m >= 11) {
+        "TypeError: string indices must be integers, not 'str'".to_string()
+    } else {
+        "TypeError: string indices must be integers".to_string()
+    }
+}
+
 /// Mirror of `_strip_tags`: falsy → `""`, else regex-substitute.
 /// Non-string truthy values raise TypeError like `re.sub` does.
 pub(crate) fn strip_tags_impl(text: &Value) -> Result<String, String> {
@@ -170,9 +205,9 @@ pub(crate) fn strip_tags_impl(text: &Value) -> Result<String, String> {
     }
     match text {
         Value::String(s) => Ok(strip_tags_re().replace_all(s, " ").to_string()),
-        _ => Err(format!(
-            "TypeError: expected string or bytes-like object, got '{}'",
-            json_type(text)
+        _ => Err(re_sub_type_error(
+            json_type(text),
+            crate::pycompat::runtime_minor(),
         )),
     }
 }
