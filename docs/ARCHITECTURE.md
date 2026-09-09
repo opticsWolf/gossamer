@@ -93,7 +93,7 @@ delegating to collaborator objects, all returning JSON strings.
 
 | Module | Kernels |
 |---|---|
-| `adapters.rs` | all 35 provider row-builders (`*_parse_search/fetch`) + shared error/type helpers |
+| `adapters/` | all 35 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
 | `metaextract.rs` | HTML metadata via the `meta_oxide` crate FFI + `sparse()`/normalizers matching `to_py_dict` shapes |
 | `xmlatom.rs` | ATOM/XML traversal (arXiv/PubMed), SDMX-ML (Bundesbank/BIS), namespace-URI resolution |
 | `ssrf.rs` | IP/DNS allow-list logic mirroring CPython `ipaddress` tables |
