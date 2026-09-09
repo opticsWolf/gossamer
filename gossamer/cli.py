@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("source")
     p.add_argument("--pages", default=None, help="PDF page range, e.g. 10-20")
     p.add_argument("--structured", action="store_true")
+    p.add_argument("--store", action="store_true",
+                   help="Write original + markdown under --store-dir")
+    p.add_argument("--store-dir", default=None)
+    p.add_argument("--include-images", action="store_true",
+                   help="PDF only, needs --store: also save figures")
     _common(p)
 
     p = sub.add_parser("check", help="Probe URL reachability")
@@ -155,7 +160,9 @@ def main(argv=None) -> int:
             args.url, use_smart=args.use_smart, query=args.query),
         "batch": lambda: toolbox.batch_inspect_pages(args.urls),
         "extract": lambda: toolbox.extract_document(
-            args.source, pages=args.pages, structured=args.structured),
+            args.source, pages=args.pages, structured=args.structured,
+            store=args.store, store_dir=args.store_dir,
+            include_images=args.include_images),
         "check": lambda: toolbox.check_sources(args.urls, mode=args.mode),
         "discover": lambda: toolbox.discover_resources(args.url),
         "crawl": lambda: toolbox.crawl(

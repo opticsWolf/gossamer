@@ -1,18 +1,25 @@
 """
 HTML metadata extraction via meta-oxide.
 
-Wraps the meta-oxide Rust library to extract 13 metadata formats
-(Open Graph, Twitter Cards, JSON-LD, Microdata, Dublin Core, etc.)
-from raw HTML.  Falls back gracefully if meta-oxide is unavailable.
+Wraps the meta-oxide Rust crate (through ``gossamer._core``) to
+extract 13 metadata formats (Open Graph, Twitter Cards, JSON-LD,
+Microdata, Dublin Core, etc.) from raw HTML. Falls back to the
+legacy ``meta_oxide`` Python package when present, else to empty
+results — metadata is always best-effort.
 """
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
+
+from gossamer import _core as _rust
 
 logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────────────────────
-# Lazy import — meta-oxide is optional
+# Extraction lives in Rust (`src/metaextract.rs`, meta_oxide crate).
+# The legacy `meta_oxide` Python package is an optional last-resort
+# fallback (kept for lone-surrogate inputs, which cannot cross PyO3).
 # ────────────────────────────────────────────────────────────────
 
 _meta_oxide = None
@@ -43,21 +50,28 @@ def extract_all(html: str, base_url: Optional[str] = None) -> Dict[str, Any]:
       - oembed: oEmbed endpoint discovery
       - manifest: Web App Manifest link
 
-    If meta-oxide is unavailable returns empty dicts.
+    If extraction is unavailable returns empty dicts.
     """
-    if _meta_oxide is None:
-        logger.debug("meta-oxide not installed — returning empty metadata")
-        return _empty_result()
-
     try:
-        return _meta_oxide.extract_all(html, base_url)
+        return json.loads(_rust.meta_extract_all(html, base_url))
     except Exception as e:
-        logger.warning("meta-oxide extraction failed: %s", e)
-        return _empty_result()
+        logger.debug("Rust meta extraction failed: %s", e)
+    if _meta_oxide is not None:
+        try:
+            return _meta_oxide.extract_all(html, base_url)
+        except Exception as e:
+            logger.warning("meta-oxide extraction failed: %s", e)
+    else:
+        logger.debug("meta-oxide not installed — returning empty metadata")
+    return _empty_result()
 
 
 def extract_meta(html: str, base_url: Optional[str] = None) -> Dict[str, Any]:
     """Extract only standard HTML meta tags."""
+    try:
+        return json.loads(_rust.meta_extract_meta(html, base_url))
+    except Exception:
+        pass
     if _meta_oxide is None:
         return {}
     try:
@@ -68,6 +82,10 @@ def extract_meta(html: str, base_url: Optional[str] = None) -> Dict[str, Any]:
 
 def extract_opengraph(html: str, base_url: Optional[str] = None) -> Dict[str, Any]:
     """Extract Open Graph metadata."""
+    try:
+        return json.loads(_rust.meta_extract_opengraph(html, base_url))
+    except Exception:
+        pass
     if _meta_oxide is None:
         return {}
     try:
@@ -77,17 +95,30 @@ def extract_opengraph(html: str, base_url: Optional[str] = None) -> Dict[str, An
 
 
 def extract_twitter(html: str, base_url: Optional[str] = None) -> Dict[str, Any]:
-    """Extract Twitter Card metadata."""
+    """Extract Twitter Card metadata.
+
+    Uses the with-fallback mapping (missing fields filled from Open
+    Graph), matching what `extract_all` always returned — see
+    ``src/metaextract.rs``.
+    """
+    try:
+        return json.loads(_rust.meta_extract_twitter(html, base_url))
+    except Exception:
+        pass
     if _meta_oxide is None:
         return {}
     try:
-        return _meta_oxide.extract_twitter(html, base_url)
+        return _meta_oxide.extract_twitter_with_fallback(html, base_url)
     except Exception:
         return {}
 
 
 def extract_jsonld(html: str, base_url: Optional[str] = None) -> List[Dict[str, Any]]:
     """Extract JSON-LD structured data."""
+    try:
+        return json.loads(_rust.meta_extract_jsonld(html, base_url))
+    except Exception:
+        pass
     if _meta_oxide is None:
         return []
     try:

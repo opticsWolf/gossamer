@@ -8,7 +8,7 @@ the web-research toolbox directly:
 
 Requires the optional ``mcp`` dependency (v2):
 
-    pip install "gossamer[mcp]"   # or: uv pip install "mcp>=2"
+    pip install "gossamer-web[mcp]"   # or: uv pip install "mcp>=2"
 
 Configuration via environment variables (all optional):
     GOSSAMER_CACHE_DIR            (default ".gossamer_cache")

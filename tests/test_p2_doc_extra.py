@@ -15,7 +15,7 @@ from gossamer import structured_parser
 from gossamer.agent_tools import WebResearcherToolbox
 from gossamer.token_budget import count_tokens
 
-EXTRA_RE = r"gossamer\[documents\]"
+EXTRA_RE = r"gossamer-web\[documents\]"
 
 
 def _toolbox(tmp_path) -> WebResearcherToolbox:

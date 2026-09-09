@@ -39,10 +39,11 @@ category carries no trigger keywords and is always the implicit fallback.
 
 from __future__ import annotations
 
-import re
 import threading
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
+
+from gossamer import _core as _rust
 
 __all__ = [
     "Category",
@@ -343,19 +344,11 @@ def classify(query: str) -> Category:
     category (no keywords) is the implicit fallback and is never matched
     directly.
     """
-    text = (query or "").lower()
-    best = DEFAULT_CATEGORY
-    best_score = 0
-    for category in CATEGORIES:
-        if category.is_fallback:
-            continue
-        score = sum(
-            1 for kw in category.keywords
-            if re.search(rf"\b{re.escape(kw)}\b", text)
-        )
-        if score > best_score:
-            best, best_score = category, score
-    return best
+    # Scoring kernel in Rust (src/categories.rs); the name re-resolves
+    # through the table below so descriptions/providers stay single-sourced
+    # here. Pinned by tests/test_rust_parity_categories.py.
+    name = _rust.classify_query(query or "")
+    return _find_category(name) or DEFAULT_CATEGORY
 
 
 # Public alias -- "resolve a query to its category".

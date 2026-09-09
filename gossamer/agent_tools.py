@@ -965,14 +965,19 @@ class WebResearcherToolbox:
         *,
         store: bool = False,
         store_dir: Optional[str] = None,
+        include_images: bool = False,
     ) -> str:
         """Extract text content from documents (PDF/DOCX/XLSX/PPTX, JSON,
         XML/RSS feeds, and text-like bodies). Thin delegation to
         ``DocumentExtractor``; see that method for the full contract. With
         ``store=true`` the original bytes and extracted markdown are written
-        to disk and the result's ``stored`` field reports the paths."""
+        to disk and the result's ``stored`` field reports the paths. With
+        ``store=true, include_images=true`` (PDF only) embedded raster
+        images land in ``<stem>.files/`` with a ``## Figures`` section.
+        Tables need no flag: they render as markdown tables by default."""
         return self._doc.extract_document(
-            source, pages, structured, store=store, store_dir=store_dir
+            source, pages, structured, store=store, store_dir=store_dir,
+            include_images=include_images,
         )
 
     def extract_document_structured(self, source: str) -> str:

@@ -4,6 +4,411 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.0] — Minor milestone: Rust port complete, PyPI unblocked
+
+- Rolls up M1–M24 (pure kernels, all 35 adapter parsers, stateful-
+  adjacent helpers, meta-oxide in-core, PDF images flag) with no
+  behavior change over 0.8.24. First minor: the Python surface is
+  stable (toolbox/MCP/CLI 1:1), `_core` carries the parsing load,
+  and the PyPI blocker is gone.
+
+## [0.8.24] — Document gaps: PDF images flag, tables-by-default
+
+- `extract_document(..., include_images=False)`: PDF-only, requires
+  `store=True` (in-band JSON errors otherwise, like store+pages).
+  Collects `extract_image_bytes` per page (`page{i}_{j}.png`, capped
+  at 200) into `<stem>.files/` via the previously caller-less
+  `ResourceStore.extract_embedded` (new `## Figures` section, reported
+  under `stored.resources.embedded`). Threaded through toolbox +
+  MCP `ToolSpec` + CLI (`extract --store --store-dir
+  --include-images`).
+- Tables: verified they already render as markdown tables by default
+  on both converters (pdf-oxide `to_markdown`, office-oxide sheets)
+  — locked in with a fixture test, no flag added. Noted upstream
+  behavior: pdf-oxide ignores tiny images below its size floor;
+  vector-only figures have no raster bytes.
+- Stale comments fixed (`document.py`, `resource_store.py` claimed
+  image bytes were unretrievable); `SKILL.md` gains the
+  Config/cache section + PDF limits from
+  `docs/GOSSAMER_PDF_IMAGE_EXTRACTION.md` (repo + installed copy).
+
+## [0.8.23] — Rust port M23: upstream RDFa fix integrated
+
+- `meta_oxide` fork rev `81bdb53` → `a55c09f`
+  (`fix/rdfa-property-typeof-recursion`, pushed to
+  `opticsWolf/meta_oxide`): the item root's `NodeId` is threaded
+  through RDFa property/value extraction, so a `property`+`typeof`
+  element falls back to its text value instead of recursing without
+  bound. Adds `ego-tree = "0.6"` over there + 2 regression tests
+  (664 passed over there).
+- Gossamer side: the `[typeof][property]` section-skip guard is
+  removed (it would now drop valid data); cycle fixtures assert the
+  fixed output instead of oracle equality (the installed 81bdb53
+  bridge still crashes on them, so the fuzz oracle-skip stays).
+
+## [0.8.22] — Rust port M22: meta-oxide as a Rust crate
+
+- New `src/metaextract.rs` on the `meta_oxide` Rust crate (fork rev
+  `81bdb53`, `default-features = false` — the fork fixed the
+  feature gating so it builds without pyo3; crates.io 0.1.1 does
+  not). Section extractors are reached through the crate's C-ABI
+  (`ffi::meta_oxide_extract_*`); outputs pass through `sparse()`
+  plus per-section normalizers so they match the Python
+  `to_py_dict` shape exactly (absent `None`s, no empty vecs,
+  single-element microdata/RDFa arrays unwrapped, `type_` back to
+  `type`, oembed `Json|Xml` to `json|xml`). `meta_extractor.py`
+  now prefers the kernels (legacy package = last-resort fallback),
+  and the `meta-oxide @ git+...` line is gone from
+  `pyproject.toml` — **PyPI publishing is unblocked**.
+- Two documented refinements: `twitter` uses the with-fallback
+  mapping everywhere (as `extract_all` always did), and
+  `microformats` uses the combined parser (any `h-*` class, the
+  crate's C-API shape; key presence preserved) instead of the 9
+  named-field extractors, whose modules are not public API.
+- Upstream bug found + guarded: an element bearing BOTH `property`
+  and `typeof` sends the RDFa extractor into infinite mutual
+  recursion (process-killing stack overflow in the OLD bridge too
+  — same native code). The kernel skips the rdfa section when
+  `[typeof][property]` matches; `merge`/`compact` never touch rdfa
+  shapes, and the existing test only asserts key presence.
+- NUL boundary: HTML NULs pre-replaced with U+FFFD (what the HTML
+  tokenizer does anyway); a NUL-bearing base becomes NULL.
+- Caught by parity: FFI `extract_twitter` already bakes in the
+  fallback (plain is Python-only); `parse_html` aborts on
+  `Some("")` bases while individuals keep raw URLs (None-retry).
+
+## [0.8.21] — Rust port M21: models/structured_parser pure kernels
+
+- New `src/miscutils.rs`: `models._domain_of` (manual netloc
+  extraction — `//`/valid-`scheme://` only, case/userinfo/port
+  preserved, empty falls back to input), `models._sha256_hex`
+  (`sha2` crate), `structured_parser.classify_link` (query/fragment
+  stripped before the extension check — the bug that bit on the
+  first test run), `structured_parser.parse_page_range` (1-based
+  inclusive ranges, byte-identical `ValueError` texts via
+  `py_repr`, own `py_int` so the module stays independent).
+  Wrappers keep the original gates/fallbacks (non-`str` inputs use
+  the verbatim logic; `_parse_page_range_py` remains as the parity
+  oracle). Pydantic models, oxide orchestration, wall-clock
+  provenance, and the `urljoin` absolutizer stay Python by design.
+- Caught by parity: `url_path` must strip `?`/`#` *before*
+  authority-splitting; 23-digit pages fit `i128` on both sides.
+
+## [0.8.20] — Rust port M20: stateful-adjacent pure kernels
+
+- New `src/cacheutils.rs` (`blake2 0.11`): `Cache._disk_key`
+  (blake2b-128 hex — fixed-output `Blake2b128`, since truncating a
+  full blake2b-512 would give a *different* digest), `Cache._human_size`
+  (`nan`/`inf` casing matches Python `.1f`), `resource_store`
+  content-type sniffing and `_safe_name` slugger. `Cache` and
+  `ResourceStore` objects stay Python (locks, file I/O, wall-clock
+  TTL, byte payloads); only the layout helpers port so the on-disk
+  format stays readable whichever side wrote it. Wrappers keep the
+  original type gates (`encode`/`split`/`re.sub` run first) so exotic
+  inputs raise byte-identical errors.
+- Caught by parity: Rust `{:.1}` renders `NaN` vs Python `nan`;
+  `Blake2bVar` does not exist in blake2 0.11 (use `Blake2b128`);
+  parity tests must use `_outcome` for always-raising inputs.
+
+## [0.8.19] — Rust port M19: register/patent/financial-XML kernels
+
+- `src/xmlatom.rs`: namespace-URI resolution for prefixed attribute
+  keys (`{uri}local`, ElementTree spelling; implicitly-bound `xml:`
+  pre-seeded; `xmlns` declarations excluded) plus
+  `descendant_text` (`.//{*}name`); `py_strip_chars` in
+  `src/pycompat.rs` (`.strip(" —")`). Wrappers run `ET.fromstring`
+  first, so malformed payloads keep raising `ParseError` in Python
+  and `raw` stays byte-identical via re-attachment.
+- `src/adapters.rs`: eCFR part DFS (zero-stripped two-pass walk,
+  reversible-sequence errors) + part/title records (retired
+  `_find_part`/`_sections`); Bundesbank generic-data `Obs` walk
+  (keep-previous period, root-inclusive pre-order, out-of-check
+  limit break; retired `_observations`); BIS structure-specific
+  walk (eager TIME/OBS double-pops, `dim_` spread, embedded raw;
+  retired `_observations`); EPO exchange-documents (last-doc-id
+  wins, descendant names, lang-prefixed titles, charset-stripped
+  snippets; retired `_text`/`_row`); KIPRIS items (duplicate-tag
+  last-wins, eager get-chains, `ensure_ascii=False` raw; retired
+  `_items`/`_item_to_dict`/`_row`).
+- Caught by parity: dict children iterating keys in `_sections`,
+  the stray `@staticmethod` on `_part`, KIPRIS fail-fast precedence.
+
+## [0.8.18] — Rust port M18: XML feed kernels
+
+- New `src/xmlatom.rs` (on `quick-xml` 0.42): ElementTree-shaped
+  subset — namespace-ignoring local names, direct-text-only `.text`
+  (grandchild tails invisible), predefined/char entity refs as
+  `GeneralRef` events, XML 1.0 EOL normalization, unqualified-only
+  attribute gets; plus `py_collapse_ws` in `src/pycompat.rs`.
+  Wrappers run `ET.fromstring` first, so malformed feeds keep
+  raising `ParseError` in Python and `raw` stays byte-identical
+  (`ET.tostring` / verbatim text) via re-attachment.
+- `src/adapters.rs`: arXiv Atom search (append-then-break slicing)
+  + fetch (`abs/` validity gate, error record) with doi/category
+  fallback chains and `_bare_arxiv_id`; PubMed esearch (direct
+  `["esearchresult"]` indexing, per-char string idlists) + efetch
+  (`MedlineCitation`/`Article` gating, collapsed titles, raw author
+  parts).
+- Caught by parity: entity refs arriving as separate events (the
+  `&amp;` drop), PubMed string idlists iterating chars.
+
+## [0.8.17] — Rust port M17: misc/geo/financial kernels
+
+- `src/adapters.rs`: WorldBank retired-search note + indicator fetch
+  (list-shape protocol, `or record_id` fallbacks, dated-pair join);
+  FRED official observations + graph-CSV fallback (new
+  `py_splitlines` in `src/pycompat.rs` with exact splitlines
+  boundaries, shared `_record` builder with `[-10:]`/`[-50:]`
+  windows); GitHub repo search + fetch (`str()` ids, url chains);
+  Congress member search + fetch (dead `loc` skipped, em-dash
+  snippet); NASA NeoWs search + fetch (ca/diam protocols, exact
+  field evaluation order, fetch-ignores-ca); Software Heritage
+  origin + SWEET-id rows (retired `_origin_row`); Overpass elements
+  (6-tag cap, `name or type:id`); Census decoded rows (header
+  lowering, dict-key iteration, empty-dict folding, `str()` id
+  match, `raw` re-dumped from the rebuilt record).
+  New `py_str_value` helper (Python-`str()` rendering incl.
+  `1e+300`/`1.5e-07` float exponents); `_json_fallback` shared by
+  all fetch fallbacks (`_yahoo_fallback` kept as alias).
+- Caught by parity: container `str()` quoting (`['d']` not `[d]`),
+  float exponent style, dict `rows[0]` iterating keys, empty-dict
+  rows skipping the index filter, `.lower` (not `.get`) method
+  names, header iteration (not indexing) errors, NASA ca-before-diam
+  order, Census int `rows[0]` subscript errors.
+
+## [0.8.16] — Rust port M16: scholarly JSON kernels
+
+- `src/adapters.rs`: OpenAlex work search + fetch (author-display-name
+  folding, `doi or id` url asymmetry, short fetch shape);
+  Crossref work search + fetch (`(title or [""])[0]` first-char
+  rule, nested-family/name authors, `date-parts` head, abstract
+  head-or-list preservation, direct `["message"]` indexing with
+  list/str integer-index errors, exact title → author-listcomp →
+  published → author-join → snippet evaluation order); OpenLibrary
+  doc search (guarded url, strict author/isbn joins, joined-then-
+  sliced isbn snippet) + edition/work fetch (three-shape authors,
+  falsy-filtered join, unconditional url, `key` fallback);
+  DOAJ article search (doi hunt skipping non-dict identifiers,
+  raw-`id` doi hits, list-only authors, `str()` fallback names).
+  Shared `_json_fallback` helper (with `_yahoo_fallback` kept as an
+  alias) for the fetch DOI-fallback protocol.
+- Caught by parity: Crossref field evaluation order (title/authors
+  before published before the author join), dict/str authorships
+  iterating keys/chars in OpenAlex/OpenLibrary, Crossref fetch
+  `string indices must be integers` vs list message.
+
+## [0.8.15] — Rust port M15: financial JSON kernels
+
+- `src/adapters.rs`: Eurostat JSON-stat unpacking (dimension index
+  inversion with `sorted(index, key=index.get)` ordering incl.
+  TimSort-comparison simulation for mixed orders, stride/float-lane
+  indexing with the `idx < len` guard, `int()` flat-key parsing,
+  strict id joins) with `(record, dims, payload)` triples so the
+  wrapper rebuilds native-dim `fields` + `raw`; CoinGecko coin
+  search + market fetch (raw-`.upper()`, `?` vs `""` rank defaults,
+  top-level falsy → empty); AlphaVantage match search (4-key note
+  or-chain, `note or query` title) + OHLCV fetch (note rows marked
+  with Null meta).
+- Caught by parity: Eurostat id joins raise on non-string codes,
+  `.items()` errors name `items` (new `attr_error_attr` helper),
+  float indices raise only when the length guard passes, dict
+  `sizes` reverse fine, and single-element sorts never compare.
+- `EurostatAdapter`/`CoinGeckoAdapter`/`AlphaVantageAdapter`
+  search/fetch delegate to Rust and re-attach `raw`; retired
+  `_unpack`. Bundesbank/BIS SDMX-ML stays Python pending `quick-xml`.
+- Parity proof: `tests/test_rust_parity_adapters.py` (~5800 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 11 Rust
+  unit tests.
+
+## [0.8.14] — Rust port M14: German-legal / register / preprint kernels
+
+- `src/adapters.rs`: OLDP case rows (court-name rendering, `…`
+  snippet join with per-snippet `[:200]`, statute fetch branch),
+  Federal Register documents (agency lazy to fields time,
+  results/documents envelope fallback), BioRxiv papers (server
+  threaded into flat fields, DOI/interval shapes share one
+  collection kernel), ChemRxiv items (truthiness-filtered author
+  join vs unfiltered topics join, dict-key/char iteration,
+  data-or-body fetch shapes).
+- Caught by parity: OLDP string snippets slice to chars (the shared
+  `subscript_hits` helper was wrong there), `agency.get` must not
+  raise before the snippet, and non-list ChemRxiv authors render
+  whole via `str()` (no `name` lookup).
+- `OldpAdapter`/`FederalRegisterAdapter`/`BioRxivAdapter`/
+  `ChemRxivAdapter` search/fetch delegate to Rust and re-attach
+  `raw`; retired `_court_name`/`_case_row`/`_doc`/`_paper`/`_item`.
+  eCFR's multi-HTTP orchestration stays Python for a later pass.
+- Parity proof: `tests/test_rust_parity_adapters.py` (~3900 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 10 Rust
+  unit tests.
+
+## [0.8.13] — Rust port M13: legal/patent JSON kernels
+
+- `src/adapters.rs`: CourtListener opinion/cluster rows (tag-strip
+  *before* slicing the snippet), GovInfo package rows + summary
+  fetch (download-link preference, `str()` published), HUDOC ECtHR
+  rows (search applies no result cap), PatentsView rows (nested
+  patent_number/title/date defaults, `error` → `RuntimeError`);
+  new `RuntimeError` arm in `to_py_err`. All four keep flat `fields`
+  (no adapter-namespaced sub-object — unlike the M12 batch).
+- Caught by parity: the CL snippet slice sits outside `_strip_tags`,
+  HUDOC search iterates results with no truthiness check, and
+  `GovInfoAdapter.fetch` reads `.get("download", {})` (missing →
+  `{}`) while `_row` uses `or {}`.
+- `CourtListenerAdapter`/`GovInfoAdapter`/`HudocAdapter`/
+  `PatentsViewAdapter` search/fetch delegate to Rust and re-attach
+  `raw`; retired `_row` helpers (EPO/KIPRIS XML adapters untouched).
+- Parity proof: `tests/test_rust_parity_adapters.py` (~2900 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 9 Rust
+  unit tests.
+
+## [0.8.12] — Rust port M12: Yahoo / NVD / Zenodo parse kernels
+
+- `src/adapters.rs`: Yahoo quote-search + chart-meta fetch (incl. the
+  `record_id` fallback spelling protocol), NVD CVE-id routing +
+  vuln-search/fetch rows (CVSS bucket preference, raw-id/title kept
+  unrendered, `published` dict slices raise `KeyError`), Zenodo
+  hit building (`_names` join-`TypeError` index, `resource_type`
+  navigation, `_strip_tags`), plus an `IndexError` arm in `to_py_err`
+  and shared `subscript_hits`/`slice_refs` slice helpers.
+- Caught by parity: NVD routing must not strip (the wrapper strips),
+  Python `$` matches before trailing `\n`, dict `title`-missing
+  reads `id`, truthy non-dict `resource_type` is kept, and the pilot
+  Open-Meteo path must slice exactly once.
+- `NvdAdapter`/`ZenodoAdapter`/`YahooFinanceAdapter` search/fetch
+  delegate to Rust and re-attach `raw`; retired `_row`/`_hit`/`_names`.
+  Boundary note: non-JSON-native `record_id`s (tuples/sets/objects)
+  arrive `str()`-rendered (`_yahoo_fallback`).
+- Parity proof: `tests/test_rust_parity_adapters.py` (~1900 checks
+  incl. seeded fuzz + stubbed-HTTP end-to-end seam tests) + 8 Rust
+  unit tests.
+
+## [0.8.11] — Rust port M11: adapter pilot (parse kernels)
+
+- `src/adapters.rs`: Open-Meteo geocoding/forecast parsing and
+  Frankfurter pair-splitting/rate parsing (v2 + map shapes) with
+  exact values, defaults, and error paths (incl. `KeyError(slice)`
+  and the id/url `0` vs `None` default asymmetry).
+- Deliberate split: URL/params/HTTP/keys/rate/retry stay Python, so
+  all existing httpx-mock tests pass unchanged; parsing (where the
+  historical bugs lived) is Rust. Records cross minus `raw`.
+- Parity proof: `tests/test_rust_parity_adapters.py` (136 checks) +
+  3 Rust unit tests.
+
+## [0.8.10] — Rust port M10: budget kernels
+
+- `src/budget.rs`: two-pass truncation, JSON-fit testing, links
+  reserve split, research shrinking (incl. crash paths + tail drop),
+  payload shrinking — with `json.dumps(indent=2, ensure_ascii=True)`
+  vs pydantic raw-UTF-8 serialization kept distinct per path.
+- `ContentBudget` keeps `_fit_json` (Python build-callback) and
+  delegates the rest.
+- Parity proof: `tests/test_rust_parity_budget.py` (210 checks incl.
+  seeded fuzz) + 4 Rust unit tests.
+
+## [0.8.9] — Rust port M9: robots.txt
+
+- `src/robots.rs`: path extraction, rule compilation (wildcards,
+  anchors), group parsing/selection (exact/substring/star, delay
+  fallback), longest-match-wins evaluation with faithful
+  `splitlines` semantics.
+- `RobotsChecker` keeps cache/TTL/threading/fetch; rules cross as
+  plain tuples.
+- Parity proof: `tests/test_rust_parity_robots.py` (594 checks incl.
+  seeded fuzz) + 4 Rust unit tests.
+
+## [0.8.8] — Rust port M8: SSRF guard
+
+- `src/ssrf.rs`: `ssrf_check_url` replicating CPython `ipaddress`
+  tables exactly (v4/v6 private lists minus exceptions, v6 reserved
+  list, mapped-unwrap delegation, `%zone` scoping, bracket/NFKC
+  validation, port-0 defaulting) with identical messages.
+- `gossamer/ssrf.py` keeps `SsrfBlockedError`, the env bypass, and
+  the wrapper (−100 lines).
+- Parity proof: `tests/test_rust_parity_ssrf.py` (every probed IANA
+  boundary × schemes/ports/userinfo, exact messages, DNS shapes,
+  wrapper type) + 4 Rust unit tests.
+
+## [0.8.7] — Rust port M7: citations
+
+- `src/cite.rs`: `BibliographicRecord` PyO3 class (get/set, kwarg
+  constructor), record building over JSON snapshots (incl. the
+  propagating AttributeError/TypeError/IndexError/KeyError paths and
+  the string-indexed `date-parts` quirks), BibTeX/CSL-JSON(order-
+  preserving)/APA/MLA formatters, raw venue/abstract extractors.
+  `enrich_with_doi`, `dedupe_records`, `format_citations` and the
+  citeproc branch stay Python.
+- `gossamer/citations.py` keeps the public surface (incl. private
+  `_apa_approx`/`_mla_approx` aliases used by tests).
+- Parity proof: `tests/test_rust_parity_citations.py` (vendored v0.8.6
+  originals, exact-format strings, error paths, 150-round fuzz) +
+  4 Rust unit tests.
+
+## [0.8.6] — Rust port M6: token budgets (tiktoken-rs)
+
+- `src/tokens.rs`: model→encoding resolution (vendored registry +
+  local table + prefix + default), BPE counting/truncation/packing
+  over six embedded encodings, byte-exact special-token errors.
+  `gpt2` resolves by name but counts via the Python fallback
+  (`embedded_encodings()` draws the line); char fallback stays Python.
+- Parity proof: `tests/test_rust_parity_tokens.py` (live-map
+  resolution battery, exact counts/truncations, error messages,
+  fallback contract) + 4 Rust unit tests.
+
+## [0.8.5] — Rust port M5: category routing
+
+- `src/categories.rs`: `classify_query` (verbatim keyword tables,
+  word-boundary matching, distinct-hit scoring, table-order ties).
+  `Category` objects/descriptions/providers/factories stay Python.
+- Parity proof: `tests/test_rust_parity_categories.py` (every keyword
+  in isolation = table-drift guard, mixed queries, 500 seeded fuzz
+  rounds) + 2 Rust unit tests.
+
+## [0.8.4] — Rust port M4: guard kernels
+
+- `src/guard.rs` (+ shared `src/pycompat.rs`): scope/config validation
+  with identical messages, overlapping chunking, untrusted-text
+  normalization (C* strip + NFKC via `unic-ucd-category`), span
+  redaction, untrusted wrapping. ML-backed `JailGuardGuard` and
+  orchestration (`evaluate`/`merge_reports`) stay Python.
+- Documented boundary: lone surrogates cannot cross PyO3 (invalid
+  UTF-8) — Python strips them, Rust raises at conversion.
+- Parity proof: `tests/test_rust_parity_guard.py` (vendored v0.8.3
+  originals + 500 seeded fuzz rounds over hostile Unicode) + 5 Rust
+  unit tests.
+
+## [0.8.3] — Rust port M3: sections + BM25
+
+- `src/sections.rs`: heading splitting (ATX + Setext, lookaheads as
+  proven-equivalent post-filters), tokenization, BM25 (bit-identical
+  f64), budget selection with char-based slicing and tuple `anchors`.
+- `gossamer/sections.py` is now re-exports of the PyO3 classes/functions.
+- Parity proof: `tests/test_rust_parity_sections.py` (vendored v0.8.2
+  original + seeded markdown fuzz, 477 checks incl. exact float
+  equality) + 4 Rust unit tests.
+
+## [0.8.2] — Rust port M2: dedupe matching core
+
+- `src/dedupe.rs`: `dedupe_plan` (DOI/URL/hash key computation +
+  first-seen collision loop over pre-extracted fields; Python keeps
+  attribute extraction and outcome reassembly with live objects).
+- `gossamer/dedup.py` shrunk by 74 lines of dead matching code.
+- Parity proof: `tests/test_rust_parity_dedupe.py` (vendored v0.8.1
+  original, 12 cases × 8 `by` permutations + 300 seeded fuzz rounds
+  over dicts/objects/non-string values) + 4 Rust unit tests.
+
+## [0.8.1] — Rust port M1: URL identity + text-link primitives
+
+- `src/urls.rs`: `normalize_url` / `canonical_url` / `content_hash`
+  (operation-for-operation `urllib.parse` parity incl. `;params` drop,
+  bracket/NFKC validation, `parse_qsl`/`urlencode` query semantics).
+- `src/textlinks.rs`: `text_links_scan` (Unicode-aware stop class,
+  trailing-punct strip, `www.` promotion, ordered dedup).
+- Python `config` / `dedup` / `text_links` delegate to `_core`.
+- Parity proof: `tests/test_rust_parity_urls.py` (vendored v0.8.0
+  originals + seeded fuzz, 276 checks) + 8 Rust unit tests + full
+  suite green (1599 passed).
+
 ## [0.8.0] — direct harness integration
 
 - `gossamer` CLI (`python -m gossamer.cli`, `gossamer` console script):

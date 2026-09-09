@@ -5,7 +5,7 @@ High-Performance Web Researcher – Rust core + Oxide extractors.
 from importlib.metadata import version as _pkg_version
 
 try:
-    __version__ = _pkg_version("gossamer")
+    __version__ = _pkg_version("gossamer-web")
 except Exception:  # pragma: no cover - fallback when installed without metadata
     __version__ = "0.0.0"
 

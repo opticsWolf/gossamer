@@ -22,6 +22,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from gossamer import _core as _rust
+
 logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────────────────────
@@ -98,27 +100,10 @@ def resolve_encoding(model_name: str) -> str:
     ``gpt-4o -> o200k_base``); otherwise the local table is used.  Unknown
     models fall back to ``cl100k_base``.
     """
-    # Normalize
-    key = model_name.lower().strip()
-    # M5: prefer tiktoken's own model->encoding map; it tracks OpenAI
-    # releases (the local table below was stale: gpt-4o was mapped to
-    # cl100k_base, which over-counts tokens vs o200k_base).
-    if _tiktoken_available:
-        try:
-            import tiktoken
-
-            return tiktoken.encoding_for_model(key).name
-        except Exception:
-            pass  # model unknown to tiktoken -> fall back to the table
-    # Exact match first
-    if key in _MODEL_ENCODING:
-        return _MODEL_ENCODING[key]
-    # Longest prefix match (e.g. "gpt-4o-2024-08-06" must hit "gpt-4o",
-    # not the shorter "gpt-4" key that precedes it in the table). (M5)
-    for known in sorted(_MODEL_ENCODING, key=len, reverse=True):
-        if key.startswith(known):
-            return _MODEL_ENCODING[known]
-    return _DEFAULT_ENCODING
+    # Resolution lives in Rust (src/tokens.rs: vendored registry, then
+    # the local table + longest-prefix match, then the default) — pinned
+    # by tests/test_rust_parity_tokens.py against the live tiktoken map.
+    return _rust.resolve_encoding(model_name)
 
 
 def count_tokens(text: str, model_name: str = "gpt-4o") -> int:
@@ -138,8 +123,15 @@ def count_tokens(text: str, model_name: str = "gpt-4o") -> int:
         Token count.  Falls back to ``len(text) / 4`` if tiktoken
         is unavailable.
     """
-    encoding_name = resolve_encoding(model_name)
-    encoder = _get_encoder(encoding_name)
+    encoder = None
+    if _tiktoken_available:
+        encoding_name = resolve_encoding(model_name)
+        if encoding_name in _rust.embedded_encodings():
+            # BPE path in Rust (src/tokens.rs); raises ValueError on
+            # special-token input exactly like Encoding.encode.
+            return _rust.count_tokens(text, model_name)
+        # Non-embedded encoding (gpt2): Python tiktoken path.
+        encoder = _get_encoder(encoding_name)
     if encoder is not None:
         return len(encoder.encode(text))
 
@@ -179,8 +171,12 @@ def truncate_to_tokens(
     if not text:
         return text
 
-    encoding_name = resolve_encoding(model_name)
-    encoder = _get_encoder(encoding_name)
+    encoder = None
+    if _tiktoken_available:
+        encoding_name = resolve_encoding(model_name)
+        if encoding_name in _rust.embedded_encodings():
+            return _rust.truncate_to_tokens(text, max_tokens, model_name, ellipsis)
+        encoder = _get_encoder(encoding_name)
 
     if encoder is not None:
         tokens = encoder.encode(text)
@@ -233,8 +229,12 @@ def fit_context_window(
     if not pieces:
         return []
 
-    encoding_name = resolve_encoding(model_name)
-    encoder = _get_encoder(encoding_name)
+    encoder = None
+    if _tiktoken_available:
+        encoding_name = resolve_encoding(model_name)
+        if encoding_name in _rust.embedded_encodings():
+            return _rust.fit_context_window(pieces, max_tokens, model_name)
+        encoder = _get_encoder(encoding_name)
 
     result: list[str] = []
     remaining = max_tokens

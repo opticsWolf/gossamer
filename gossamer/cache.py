@@ -7,7 +7,6 @@ Provides:
   - Configurable max entries, TTL, and cache directory
 """
 
-import hashlib
 import json
 import logging
 import os
@@ -17,6 +16,8 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from gossamer import _core as _rust
 
 logger = logging.getLogger(__name__)
 
@@ -253,9 +254,12 @@ class Cache:
 
         S7: blake2b instead of MD5 -- same 16-byte digest length, but
         MD5 trips security scanners and FIPS-mode interpreters even
-        when it is not used as a security boundary.
+        when it is not used as a security boundary. Digest computation
+        in Rust (``src/cacheutils.rs``); the ``encode`` call doubles as
+        the type gate so exotic keys raise exactly as before.
         """
-        return hashlib.blake2b(key.encode("utf-8"), digest_size=16).hexdigest()
+        key.encode("utf-8")
+        return _rust.cache_disk_key(key)
 
     def _disk_get(self, key: str) -> Optional[str]:
         """Retrieve from file-based cache if not expired."""
@@ -450,9 +454,15 @@ class Cache:
 
     @staticmethod
     def _human_size(nbytes: int) -> str:
-        """Format bytes as human-readable string."""
-        for unit in ("B", "KB", "MB", "GB"):
-            if nbytes < 1024:
-                return f"{nbytes:.1f} {unit}"
-            nbytes /= 1024
-        return f"{nbytes:.1f} TB"
+        """Format bytes as human-readable string (Rust kernel)."""
+        if isinstance(nbytes, bool):
+            nbytes = int(nbytes)
+        if not isinstance(nbytes, (int, float)):
+            # Exotic inputs keep the original loop verbatim so the
+            # TypeError at `<` matches exactly.
+            for unit in ("B", "KB", "MB", "GB"):
+                if nbytes < 1024:
+                    return f"{nbytes:.1f} {unit}"
+                nbytes /= 1024
+            return f"{nbytes:.1f} TB"
+        return _rust.cache_human_size(float(nbytes))
