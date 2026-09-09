@@ -35,7 +35,7 @@ import hashlib
 import logging
 import re
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import httpx
 from gossamer import _core as _rust
@@ -254,7 +254,7 @@ class ResourceStore:
         md = markdown or ""
         if injected:
             md = md.rstrip() + "\n\n"
-            md += f"## Figures\n\n"
+            md += "## Figures\n\n"
             for idx, fname in injected:
                 md += f"![figure {idx}](./{stem}.files/{fname})\n\n"
 

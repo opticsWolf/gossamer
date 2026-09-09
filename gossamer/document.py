@@ -29,7 +29,6 @@ from gossamer.models import ExtractionResult, _sha256_hex, _utc_now_iso
 from gossamer.ssrf import SsrfBlockedError
 from gossamer.structured_parser import (
     StructuredOxideParser,
-    ParsedDocumentPayload,
     build_follow_up_candidates,
     require_office_oxide,
     require_pdf_oxide,

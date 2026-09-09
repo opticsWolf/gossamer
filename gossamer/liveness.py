@@ -27,7 +27,7 @@ from typing import Callable, Optional
 
 import httpx
 
-from gossamer.ssrf import SsrfBlockedError, validate_public_url
+from gossamer.ssrf import validate_public_url
 
 __all__ = ["check_liveness", "LIVENESS_TIMEOUT"]
 

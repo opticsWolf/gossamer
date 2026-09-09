@@ -8,22 +8,45 @@ used to live on ``WebResearcherToolbox`` are added in a later phase.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import time
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 from gossamer import meta_extractor
 from gossamer.resource_store import ResourceStore
 from gossamer._core import (
+    batch_research,
     extract_main_content_markdown,
     extract_links_from_html as _extract_links_from_html,
+    fetch_html_conditional,
     fetch_html_full,
     process_rendered_html as _process_rendered_html,
     init_rust_logging as _init_rust_logging,
 )
-from gossamer.models import (_browser_provenance, _provenance_from_fetch_meta)
+from gossamer.models import (
+    _browser_provenance,
+    _provenance_from_fetch_meta,
+    _absolutize_markdown_links,
+    _domain_of,
+    _normalize_batch_results,
+    _sha256_hex,
+    InspectionResult,
+)
 from gossamer.ssrf import validate_public_url
+from gossamer.token_budget import count_tokens
+from gossamer.structured_parser import build_follow_up_candidates
+from gossamer.sections import select_relevant_sections
+from gossamer.guard import evaluate, wrap_untrusted
+from gossamer.config import (
+    _coerce_fetch_mode,
+    _resolve_fetch_strategy,
+    FetchMode,
+    ensure_str_list,
+)
 
 logger = logging.getLogger(__name__)
 # ── Rust `tracing` -> Python `logging` bridge (opt-in) ─────────
@@ -134,31 +157,6 @@ def fetch_smart_page(url: str) -> tuple[str, list[str], dict]:
         metadata["hidden_blocks_removed"] = removed
     metadata["provenance"] = _provenance_from_fetch_meta(prov, url)
     return md, links, metadata
-
-# Imports for FetchService (Phase 3 composition):
-import asyncio
-import json
-import time
-from typing import Optional
-
-from gossamer._core import batch_research, fetch_html_conditional
-from gossamer.token_budget import count_tokens
-from gossamer.structured_parser import build_follow_up_candidates
-from gossamer.sections import select_relevant_sections
-from gossamer.guard import evaluate, wrap_untrusted
-from gossamer.config import (
-    _coerce_fetch_mode,
-    _resolve_fetch_strategy,
-    FetchMode,
-    ensure_str_list,
-)
-from gossamer.models import (
-    _absolutize_markdown_links,
-    _domain_of,
-    _normalize_batch_results,
-    _sha256_hex,
-    InspectionResult,
-)
 
 
 def _html_store_stem(url: str) -> str:
