@@ -10,7 +10,7 @@ description = "High-Performance LLM Web Researcher — Rust core, Oxide extracto
 readme = "README.md"
 license = {text = "MIT OR Apache-2.0"}
 authors = [
-    {name = "gossamer contributors"},
+    {name = "opticsWolf"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
