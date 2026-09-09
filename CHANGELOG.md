@@ -12,6 +12,12 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   stale section banners dropped); `mod.rs` re-exports keep every
   `crate::adapters::*` path stable. No behavior change (full suite
   identical: 10983 passed).
+- Split `src/lib.rs` (1.6k lines) into `lib.rs` (pymodule registry
+  only) + `fetch.rs` (transport/machinery) + `bridge.rs` (the 10
+  fetch wrappers). Whole-item moves; cross-file names auto-upgraded
+  to `pub(crate)`; the two source-pinning tests now read
+  `src/fetch.rs`. No behavior change (full suite identical:
+  10983 passed).
 
 ## [0.9.0] — Minor milestone: Rust port complete, PyPI unblocked
 

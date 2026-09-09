@@ -109,7 +109,9 @@ delegating to collaborator objects, all returning JSON strings.
 | `cacheutils.rs` | disk-key (blake2b-128), human sizes, content-type ext, safe names |
 | `miscutils.rs` | domain-of, sha256-hex, link classification, page ranges |
 | `pycompat.rs` | `py_strip`/`py_repr`/`char_head`/`char_slice`/splitlines — CPython string semantics Rust lacks |
-| `lib.rs` | PyO3 surface + shared Tokio runtime (`block_on`) |
+| `lib.rs` | `#[pymodule] _core` registry only (all paths explicit) |
+| `fetch.rs` | blocking HTTP transport: shared Tokio runtime (`block_on`), client singleton, overrides, SSRF-net, HTML stripping, retry |
+| `bridge.rs` | the 10 fetch `#[pyfunction]` wrappers + logging/tables served through `_core` |
 
 ### Boundary rules (normative for new ports)
 
