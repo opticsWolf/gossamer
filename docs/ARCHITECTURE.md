@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.9.0)
+# gossamer — architecture (v0.9.1)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -214,6 +214,10 @@ is absent (`risk: None`). No import, no latency when disabled.
   shape tests. The suite is the port contract.
 - **Behavioral suites**: one file per surface, auto-grouped into
   `area_*` markers by filename (`tests/conftest.py`).
+- **Source pins** (`test_m9_http_pool.py`, `test_m15_retry_after.py`):
+  assert on the Rust transport source itself (client singleton,
+  retry-after branch) — they read `src/fetch.rs` since the `lib.rs`
+  split (registry / transport / bridge).
 - **Live smoke**: opt-in real-request drift detection, key-optional.
 - **Hermetic default**: no network, SSRF guard on; full run
   `pytest -q -n auto --ignore=tests/test_live_smoke.py`.

@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## Unreleased
+## [0.9.1] — Refactor release: adapters/ + lib.rs splits, no behavior change
 
 - Split `src/adapters.rs` (7.5k lines) into `src/adapters/`:
   `common` + `finance`/`legal`/`scholar`/`patents`/`misc` + `tests`.
