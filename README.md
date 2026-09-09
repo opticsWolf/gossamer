@@ -79,7 +79,7 @@
 - **Sitemap-Aware Discovery**: `discover_resources(url)` finds a site's structured resources without crawling the link graph — feed declarations (`<link rel=alternate>` RSS/Atom/Feed-JSON) plus a bounded `/sitemap.xml` probe (sitemap indexes followed up to 3 hops, deduplicated and capped at 1000 URLs)
 - **Research Orchestration**: `web_search(query, search_only=False, depth=5, max_tokens=0)` plans, fans out, and dedupes a small research run in one call — search the topic, keep the top *depth* validated URLs (hard cap 10), fetch each through the normal cache/robots/rate-limit/provenance pipeline, and return per-source status, content, and provenance for a cited synthesis by the calling agent. With `search_only=True` it is a pure multi-provider search (no page fetches)
 - **Document Link Detection (v0.4.5)**: `extract_document` (and `extract_document(structured=True)` for a validated `ParsedDocumentPayload`) also surface the URLs *written inside* the document text (bare `www.` promoted to `http://`, trailing Latin and CJK punctuation stripped, deduped, capped) — so reports and PDFs yield follow-up targets even though their hyperlink annotations are not exposed by the extractor
-- **Crawl (v0.4.6 as focused_discovery, semantic v0.4.8; renamed to `crawl` in v0.8.0)**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
+- **Crawl**: `crawl(root_url, ...)` runs a bounded BFS over the site's link graph with a relevance-ranked frontier (`score × 0.7^depth`; score = query coverage + containing-page topic coverage computed from the page's full delivered text). Since v0.4.8 the scoring is semantic: term weights are BM25 idfs over the pages fetched so far (flat until the traversal has read a few pages), the query is expanded with an offline thesaurus (expansions weigh half), the link's surrounding page text joins its label, and documentation-ish URL paths get a mild prior. The page budget therefore goes to the most relevant links, and with flat scores the order degrades to plain BFS. Per-page 300-char skims are returned while the full page stays in the page cache for a later in-full `inspect_html_page` re-read; document links are collected, never fetched
 - **Patent Providers**: `patent` category — EPO OPS (worldwide via INPADOC), KIPRIS (Korea), PatentsView (USPTO), all key-gated with fail-fast errors naming the exact variable
 - **HTML Metadata Extraction**: the in-core `meta_oxide` Rust crate extracts 13 metadata formats (OG, Twitter, JSON-LD, Microdata, Dublin Core, RDFa, etc.) at ~233x BeautifulSoup speed — no separate package, no PyPI blocker
 - **Rust-Core Milestone (v0.9.0)**: every response parser and pure kernel lives in `_core` behind a JSON-string boundary, verified by differential parity tests with vendored oracles + seeded fuzz; Python keeps orchestration, harness adaptation, and state
@@ -720,7 +720,7 @@ print(res["documents"])  # PDFs to read via extract_document
 print(res["stop"])       # max_pages reached | frontier exhausted
 ```
 
-### Semantic Discovery (v0.4.8)
+### Semantic Discovery
 
 The v0.4.6 frontier score was purely lexical and treated every term
 and every page the same. v0.4.8 makes it adapt to the site it is
@@ -755,7 +755,7 @@ better ranking. Discovery seeds (search prior, seed URLs, and the
 cross-modal loop) shipped in the same version — see Focused Crawl
 above. Optional local embeddings land in v0.4.9.
 
-### Document Link Detection (v0.4.5)
+### Document Link Detection
 
 `extract_document` (and `_structured`) parse documents with the Oxide
 family, which does not expose PDF hyperlink annotations. Many reports
