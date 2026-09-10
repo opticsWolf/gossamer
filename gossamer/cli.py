@@ -72,6 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--search-only", action="store_true")
     p.add_argument("--provider", default=None)
     p.add_argument("--depth", type=int, default=5)
+    p.add_argument("--max-tokens", type=int, default=0,
+                   help="Token budget for the fetched-page corpus")
     _common(p)
 
     p = sub.add_parser("research", help="Domain-routed research (patents, law, finance, …)")
@@ -88,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("url")
     p.add_argument("--query", default=None)
     p.add_argument("--use-smart", default="auto", choices=("auto", "browser", "static"))
+    p.add_argument("--offset", type=int, default=0,
+                   help="Skip the first N follow-up links when paging")
+    p.add_argument("--max-chunks", type=int, default=1,
+                   help="Follow-up link chunks to return after the page")
+    p.add_argument("--structured", action="store_true",
+                   help="Return structured payload (metadata/tables/links)")
     _common(p)
 
     p = sub.add_parser("batch", help="Fetch several pages at once")
@@ -120,6 +128,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--max-pages", type=int, default=15)
     p.add_argument("--same-host", action="store_true")
+    p.add_argument("--min-score", type=float, default=0.05,
+                   help="Minimum relevance score to keep a page")
     p.add_argument("--excerpts", action="store_true")
     p.add_argument("--search-prior", action="store_true")
     p.add_argument("--seed-urls", nargs="*", default=None)
@@ -151,13 +161,15 @@ def main(argv=None) -> int:
         "search": lambda: toolbox.web_search(
             args.query, search_only=args.search_only,
             max_results=args.max_results, depth=args.depth,
-            provider=args.provider),
+            max_tokens=args.max_tokens, provider=args.provider),
         "research": lambda: toolbox.research_by_category(
             args.query, max_results=args.max_results,
             category=args.category, provider=args.provider),
         "categories": lambda: toolbox.research_categories(),
         "inspect": lambda: toolbox.inspect_html_page(
-            args.url, use_smart=args.use_smart, query=args.query),
+            args.url, use_smart=args.use_smart, query=args.query,
+            offset=args.offset, max_chunks=args.max_chunks,
+            structured=args.structured),
         "batch": lambda: toolbox.batch_inspect_pages(args.urls),
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,
@@ -168,6 +180,7 @@ def main(argv=None) -> int:
         "crawl": lambda: toolbox.crawl(
             args.root_url, query=args.query, max_depth=args.max_depth,
             max_pages=args.max_pages, same_host=args.same_host,
+            min_score=args.min_score,
             excerpts=args.excerpts, search_prior=args.search_prior,
             seed_urls=args.seed_urls, use_smart=args.use_smart),
         "cache": lambda: toolbox.manage_cache(args.action),

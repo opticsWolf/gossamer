@@ -18,10 +18,18 @@ per-domain rate-limited, and token-budgeted.
   `batch_inspect_pages`, `extract_document`, `discover_resources`,
   `crawl`, `manage_cache`, `research_by_category`,
   `export_citations`, `check_sources`.
-- **CLI** (identical JSON, no MCP setup): `gossamer search QUERY`,
-  `gossamer research QUERY [--provider P]`, `gossamer inspect URL`,
-  `gossamer batch URL…`, `gossamer extract FILE|URL`, `gossamer check URL…`,
-  `gossamer categories`. Run via the project venv
+- **CLI** (identical JSON, no MCP setup; 11 commands — all 10 MCP tools
+  1:1 plus `categories`): `search QUERY [--max-results N --max-tokens T
+  --search-only --provider P --depth D]` · `research QUERY [--category C
+  --provider P --max-results N]` · `inspect URL [--query Q --offset N
+  --max-chunks N --structured --use-smart auto|browser|static]` ·
+  `batch URL…` · `extract FILE|URL [--pages A-B --structured --store
+  --store-dir D --include-images]` · `check URL… [--mode status|content]` ·
+  `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N
+  --min-score S --same-host --excerpts --search-prior --seed-urls U…
+  --use-smart auto|browser|static]` · `cache [--action prune|clear|reset]` ·
+  `cite DOI|URL… [--style bibtex|csl-json|apa|mla --enrich --no-dedupe]` ·
+  `categories`. Run via the project venv
   (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows).
 
 ## Routing (don't guess — classify first)
@@ -38,7 +46,7 @@ per-domain rate-limited, and token-budgeted.
 - `geo` → `open-meteo` / `overpass` (weather, places, coordinates)
 - anything else → general web search (`duckduckgo`)
 
-`gossamer categories` (or `research_categories`) prints this table live —
+`gossamer categories` prints this table live —
 prefer it over memory when unsure.
 
 ## Budgets (avoid harness timeouts)
@@ -58,7 +66,7 @@ Keyed providers raise an actionable error naming the exact variable
 
 - Cache: `GOSSAMER_CACHE_DIR` (see `mcp.json`) > `gossamer.json:cache_dir` > `./.gossamer_cache`.
 - Keys: `$GOSSAMER_KEYSTORE` > `gossamer.json:keystore` > `~/.gossamer/keys.json` (created only via `keystore --init`; absent = normal, not a broken install).
-- Check effective paths in `mcp.json` + `gossamer keystore --check`, not `~/.gossamer`.
+- Check effective paths in `mcp.json` + `python -m gossamer.keystore --check`, not `~/.gossamer`.
 
 ## Documents (PDF limits that matter)
 
