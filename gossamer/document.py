@@ -30,6 +30,7 @@ from gossamer.ssrf import SsrfBlockedError
 from gossamer.structured_parser import (
     StructuredOxideParser,
     build_follow_up_candidates,
+    office_ir_tables,
     require_office_oxide,
     require_pdf_oxide,
 )
@@ -102,6 +103,7 @@ class DocumentExtractor:
         store: bool = False,
         store_dir: Optional[str] = None,
         include_images: bool = False,
+        tables_as: str = "markdown",
     ) -> str:
         """Extract text content from documents.
 
@@ -140,7 +142,17 @@ class DocumentExtractor:
             under ``embedded``/``files``. Vector-only figures have no
             raster bytes and are skipped. Tables need no flag: detected
             tables are rendered as markdown tables by default.
+        tables_as : str
+            Rendering of spreadsheet tables in the returned content:
+            ``"markdown"`` (default, pipe tables) or ``"csv"``
+            (comma-separated, one ``## <sheet>`` block per sheet).
+            Applies to the flat whole-document path for XLSX; other
+            formats keep their markdown rendering.
         """
+        if tables_as not in ("markdown", "csv"):
+            return json.dumps(
+                {"error": "tables_as must be 'markdown' or 'csv'"}, indent=2
+            )
         if include_images and not store:
             return json.dumps(
                 {
@@ -204,6 +216,10 @@ class DocumentExtractor:
             return self._extract_document_pages(source, str(pages).strip(), is_url)
 
         cache_key = self._tb._cache_key(source) if is_url else source
+        if tables_as == "csv":
+            # The cache stores the rendered content; a csv read must not
+            # collide with a cached markdown read of the same source.
+            cache_key = f"{cache_key}#tables=csv"
         raw_bytes: Optional[bytes] = None
         prov: dict = {}
         cached = self._tb.cache.get(cache_key)
@@ -222,13 +238,15 @@ class DocumentExtractor:
                 if is_url:
                     if store:
                         content, prov, raw_bytes = self._download_and_extract(
-                            source, with_bytes=True
+                            source, tables_as=tables_as, with_bytes=True
                         )
                     else:
-                        content, prov = self._download_and_extract(source)
+                        content, prov = self._download_and_extract(
+                            source, tables_as=tables_as
+                        )
                     full_content = content
                 else:
-                    full_content = self._extract_local(source)
+                    full_content = self._extract_local(source, tables_as=tables_as)
                     prov = {"fetched_at": _utc_now_iso()}
             except Exception as e:
                 logger.error("Document extraction failed for %s: %s", source, e)
@@ -517,7 +535,7 @@ class DocumentExtractor:
         return b"".join(chunks), prov
 
     def _download_and_extract(
-        self, url: str, *, with_bytes: bool = False
+        self, url: str, *, with_bytes: bool = False, tables_as: str = "markdown"
     ) -> tuple:
         """Download a document from URL; return (content, prov[, raw_bytes]).
 
@@ -530,14 +548,14 @@ class DocumentExtractor:
         """
         data, prov = self._fetch_document_url(url)
         try:
-            content = self._extract_from_bytes(data, url)
+            content = self._extract_from_bytes(data, url, tables_as=tables_as)
         except ValueError:
             ct = (prov.get("content_type") or "").split(";", 1)[0].strip().lower()
             # Binary document (PDF/OOXML) at an extensionless URL -- arXiv's
             # /pdf/<id> is the common case -- routes by Content-Type.
             doc_fmt = self._CONTENT_TYPE_FORMAT.get(ct)
             if doc_fmt is not None:
-                content = self._parse_document_bytes(data, doc_fmt)
+                content = self._parse_document_bytes(data, doc_fmt, tables_as=tables_as)
             else:
                 kind = self._TEXT_LIKE_CONTENT_TYPES.get(ct)
                 if kind is None:
@@ -552,7 +570,7 @@ class DocumentExtractor:
             return content, prov, data
         return content, prov
 
-    def _parse_document_bytes(self, data: bytes, fmt: str) -> str:
+    def _parse_document_bytes(self, data: bytes, fmt: str, tables_as: str = "markdown") -> str:
         """Parse document bytes dispatched by canonical format name.
 
         Used when a URL gives no usable extension and the response
@@ -564,6 +582,8 @@ class DocumentExtractor:
         if fmt == "pdf":
             return require_pdf_oxide().from_bytes(data).to_markdown_all()
         if fmt in ("docx", "xlsx", "pptx"):
+            if fmt == "xlsx" and tables_as == "csv":
+                return self._spreadsheet_csv(data)
             return require_office_oxide().from_bytes(data, fmt).to_markdown()
         # Known-but-unsupported legacy office formats: actionable error.
         suffix = {
@@ -733,7 +753,7 @@ class DocumentExtractor:
                 except OSError:
                     pass
 
-    def _extract_local(self, path: str) -> str:
+    def _extract_local(self, path: str, tables_as: str = "markdown") -> str:
         """Extract content from a local document file."""
         file_path = Path(path)
         if not file_path.exists():
@@ -752,7 +772,7 @@ class DocumentExtractor:
         content = file_path.read_bytes()
         if len(content) > cap:
             raise ValueError(f"Document too large: exceeds {cap} bytes")
-        return self._extract_from_bytes(content, str(file_path))
+        return self._extract_from_bytes(content, str(file_path), tables_as=tables_as)
 
     # M16: plain-text formats the extractor can really deliver — these are
     # exactly what DOCUMENT_EXTENSIONS (structured_parser) may advertise in
@@ -789,7 +809,34 @@ class DocumentExtractor:
         ".epub": "convert the file to PDF",
     }
 
-    def _extract_from_bytes(self, data: bytes, source: str) -> str:
+    def _spreadsheet_csv(self, data: bytes) -> str:
+        """Render spreadsheet bytes as per-sheet CSV blocks.
+
+        Uses the office IR (via ``office_ir_tables``) so the output keeps
+        sheet headings and the original row order. Sheet titles become
+        ``## <title>`` headings; every table is written with the csv
+        module (proper quoting/escaping).
+        """
+        import csv
+        import io
+
+        doc = require_office_oxide().from_bytes(data, "xlsx")
+        try:
+            ir = json.loads(doc.to_ir_json())
+        except Exception:
+            ir = {}
+        blocks: list = []
+        if isinstance(ir, dict):
+            for title, rows in office_ir_tables(ir):
+                buf = io.StringIO()
+                writer = csv.writer(buf, lineterminator="\n")
+                writer.writerows(rows)
+                blocks.append(f"## {title}\n\n{buf.getvalue().rstrip(chr(10))}")
+        return "\n\n".join(blocks)
+
+    def _extract_from_bytes(
+        self, data: bytes, source: str, tables_as: str = "markdown"
+    ) -> str:
         """Extract text from document bytes based on file type."""
         suffix = Path(source).suffix.lower()
 
@@ -797,6 +844,8 @@ class DocumentExtractor:
             doc = require_pdf_oxide().from_bytes(data)
             return doc.to_markdown_all()
         elif suffix in (".docx", ".xlsx", ".pptx"):
+            if suffix == ".xlsx" and tables_as == "csv":
+                return self._spreadsheet_csv(data)
             # office-oxide >= 0.1.10 requires the format explicitly.
             doc = require_office_oxide().from_bytes(data, suffix.lstrip("."))
             return doc.to_markdown()

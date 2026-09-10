@@ -111,6 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--store-dir", default=None)
     p.add_argument("--include-images", action="store_true",
                    help="PDF only, needs --store: also save figures")
+    p.add_argument("--tables-as", default="markdown",
+                   choices=("markdown", "csv"),
+                   help="Rendering of spreadsheet (XLSX) tables")
     _common(p)
 
     p = sub.add_parser("check", help="Probe URL reachability")
@@ -174,7 +177,7 @@ def main(argv=None) -> int:
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,
             store=args.store, store_dir=args.store_dir,
-            include_images=args.include_images),
+            include_images=args.include_images, tables_as=args.tables_as),
         "check": lambda: toolbox.check_sources(args.urls, mode=args.mode),
         "discover": lambda: toolbox.discover_resources(args.url),
         "crawl": lambda: toolbox.crawl(

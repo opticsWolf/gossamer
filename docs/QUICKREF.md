@@ -12,7 +12,7 @@ Planning history: local `planning/` (unsynced).
 | `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`, `--max-results 5`; empty query prints the live taxonomy |
 | `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static`, `--offset 0`, `--max-chunks 1`, `--structured` |
 | `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
-| `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
+| `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as markdown\|csv` (XLSX tables; csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
 | `discover_resources` | `gossamer discover URL` | feeds + bounded `/sitemap.xml` probe |
 | `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--min-score 0.05`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls`, `--use-smart` |
 | `manage_cache` | `gossamer cache` | `prune` (default) \| `clear` \| `reset` |

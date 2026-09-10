@@ -15,6 +15,15 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `research_categories` tool parenthetical (CLI-only, not an MCP tool).
 - README/QUICKREF: tool lists corrected to ten MCP tools + CLI-only
   `categories`; QUICKREF table updated with the new flags.
+- `extract_document` gained `tables_as` (`markdown` | `csv`): spreadsheet
+  (XLSX) tables render as comma-separated blocks — one `## <sheet>` per
+  sheet — instead of markdown pipe tables. MCP param, CLI
+  `--tables-as`, and registry all aligned.
+- Fixed two dormant office-oxide 0.1.10 API breaks: `from_bytes` now
+  requires an explicit format (every DOCX/XLSX/PPTX flat extraction
+  failed) and `to_ir_json` returns a serialized JSON string whose tables
+  moved under `sections[].elements` (structured XLSX payloads failed).
+  Both are covered by new real-bytes tests (`test_xlsx_csv.py`).
 
 ## [0.9.3] — Directory rename, review
 

@@ -934,6 +934,7 @@ class WebResearcherToolbox:
         store: bool = False,
         store_dir: Optional[str] = None,
         include_images: bool = False,
+        tables_as: str = "markdown",
     ) -> str:
         """Extract text content from documents (PDF/DOCX/XLSX/PPTX, JSON,
         XML/RSS feeds, and text-like bodies). Thin delegation to
@@ -942,10 +943,17 @@ class WebResearcherToolbox:
         to disk and the result's ``stored`` field reports the paths. With
         ``store=true, include_images=true`` (PDF only) embedded raster
         images land in ``<stem>.files/`` with a ``## Figures`` section.
-        Tables need no flag: they render as markdown tables by default."""
+        Tables need no flag: they render as markdown tables by default.
+        With ``tables_as="csv"`` spreadsheet (XLSX) tables are rendered
+        as comma-separated blocks (one ``## <sheet>`` per sheet) instead.
+        """
+        if tables_as not in ("markdown", "csv"):
+            return json.dumps(
+                {"error": "tables_as must be 'markdown' or 'csv'"}, indent=2
+            )
         return self._doc.extract_document(
             source, pages, structured, store=store, store_dir=store_dir,
-            include_images=include_images,
+            include_images=include_images, tables_as=tables_as,
         )
 
     def extract_document_structured(self, source: str) -> str:

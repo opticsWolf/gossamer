@@ -57,7 +57,7 @@ class TestExtractDocumentLocalRouting:
         tb = WebResearcherToolbox()
         called = {}
 
-        def fake_extract_local(source):
+        def fake_extract_local(source, tables_as="markdown"):
             called["source"] = source
             return "LOCAL CONTENT"
 

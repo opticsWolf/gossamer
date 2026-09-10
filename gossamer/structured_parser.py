@@ -10,10 +10,11 @@ this module imports fine without them and raises an actionable error
 at parse time instead.
 """
 
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -59,6 +60,46 @@ def require_office_oxide():
 
 
 logger = logging.getLogger(__name__)
+
+
+def _office_cell_text(cell: Dict[str, Any]) -> str:
+    """Flatten one IR table cell (content → paragraphs → text runs) to text."""
+    parts: List[str] = []
+    for block in cell.get("content") or []:
+        if not isinstance(block, dict) or block.get("type") != "paragraph":
+            continue
+        for run in block.get("content") or []:
+            if isinstance(run, dict) and run.get("text"):
+                parts.append(str(run["text"]).strip())
+    return " ".join(p for p in parts if p)
+
+
+def office_ir_tables(ir: Dict[str, Any]) -> List[Tuple[str, List[List[str]]]]:
+    """All tables in an office IR dict as ``(section_title, rows)`` pairs.
+
+    Rows keep their original order (the first row is the header row when
+    the document has one). Works for every office format: office-oxide
+    >= 0.1.10 renders DOCX/XLSX/PPTX tables uniformly under
+    ``sections[].elements``.
+    """
+    out: List[Tuple[str, List[List[str]]]] = []
+    for i, section in enumerate(ir.get("sections") or [], 1):
+        if not isinstance(section, dict):
+            continue
+        title = str(section.get("title") or f"Section {i}")
+        for element in section.get("elements") or []:
+            if not isinstance(element, dict) or element.get("type") != "table":
+                continue
+            rows = [
+                [_office_cell_text(c) for c in row.get("cells") or []
+                 if isinstance(c, dict)]
+                for row in element.get("rows") or []
+                if isinstance(row, dict)
+            ]
+            rows = [r for r in rows if r]
+            if rows:
+                out.append((title, rows))
+    return out
 
 
 class FollowUpCandidate(BaseModel):
@@ -433,27 +474,27 @@ class StructuredOxideParser:
         to file-level info and the IR (internal representation)
         JSON for any extra keys.
         """
-        # Try to get title/author from the IR JSON tree
+        # Try to get title/author from the IR (JSON string in
+        # office-oxide >= 0.1.10; older versions returned a dict).
         ir: Dict[str, Any] = {}
         try:
-            ir = doc.to_ir_json()
+            parsed = json.loads(doc.to_ir_json())
+            if isinstance(parsed, dict):
+                ir = parsed
         except Exception:
             pass  # to_ir_json may not be available for all formats
 
-        title = ir.get("title") or ir.get("properties", {}).get("title")
-        author = ir.get("author") or ir.get("properties", {}).get("author")
+        meta = ir.get("metadata") if isinstance(ir.get("metadata"), dict) else {}
+        title = meta.get("title") or ir.get("title")
+        author = meta.get("author") or ir.get("author")
 
-        # Page count: for PPTX = slide count, XLSX = sheet count, DOCX = 1
+        # Page count: for PPTX = slide count, XLSX = sheet count, DOCX = 1.
+        # In the sections-shaped IR each slide/sheet is one section.
         page_count = 1
-        if format_type in ("xlsx", "xls"):
-            # Count sheets from IR if available
-            sheets = ir.get("sheets")
-            if isinstance(sheets, list):
-                page_count = len(sheets)
-        elif format_type in ("pptx", "ppt"):
-            slides = ir.get("slides")
-            if isinstance(slides, list):
-                page_count = len(slides)
+        if format_type in ("xlsx", "xls", "pptx", "ppt"):
+            sections = ir.get("sections")
+            if isinstance(sections, list):
+                page_count = max(1, len(sections))
 
         return DocumentMetadata(
             file_name=path.name,
@@ -464,7 +505,7 @@ class StructuredOxideParser:
             page_count=page_count,
             extra_meta={
                 k: str(v)
-                for k, v in (ir.get("properties") or {}).items()
+                for k, v in meta.items()
                 if k not in ("title", "author")
             },
         )
@@ -643,87 +684,31 @@ class StructuredOxideParser:
     # ── Office IR table extraction ─────────────────────────────
 
     @staticmethod
-    def _sheet_to_table(sheet: Any) -> Optional[ExtractedTable]:
-        """Convert one XLSX sheet IR node into an ExtractedTable.
-
-        Returns None for sheets that are structurally unusable. Valid sheets
-        always yield a table entry, even when no rows were found.
-        """
-        if not isinstance(sheet, dict):
-            return None
-        rows = sheet.get("rows", sheet.get("data", []))
-        if not isinstance(rows, list):
-            return None
-
-        headers: List[str] = []
-        data_rows: List[List[Any]] = []
-
-        for row in rows:
-            if not isinstance(row, (list, dict)):
-                continue
-            if isinstance(row, list):
-                cells = [str(c) if c else "" for c in row]
-            else:
-                cells = [
-                    str(row.get(f"col_{i}", row.get(str(i), ""))) or ""
-                    for i in range(
-                        max(
-                            (
-                                int(k.replace("col_", ""))
-                                for k in row
-                                if k.startswith("col_")
-                            ),
-                            default=0,
-                        )
-                        + 1
-                    )
-                ]
-            if not cells:
-                continue
-            if not headers:
-                headers = cells
-            else:
-                data_rows.append(cells)
-
-        return ExtractedTable(
-            name=sheet.get("name", "unnamed"),
-            headers=headers,
-            rows=data_rows,
-        )
-
-    @staticmethod
     def _tables_from_office_ir(
         doc: OfficeDoc, format_type: str
     ) -> List[ExtractedTable]:
         """
-        Best-effort table extraction from office_oxide IR JSON.
-
-        The IR structure varies by format. For XLSX we look for
-        sheet arrays; for DOCX/PPTX we look for table nodes.
+        Best-effort table extraction from office_oxide IR (JSON string in
+        office-oxide >= 0.1.10). Tables live uniformly under
+        ``sections[].elements`` for every office format; the first row of
+        each table is treated as the header row.
         """
         tables: List[ExtractedTable] = []
-
         try:
-            ir = doc.to_ir_json()
+            ir = json.loads(doc.to_ir_json())
         except Exception:
             return tables
-
         if not isinstance(ir, dict):
             return tables
 
-        # ── Excel: look for sheets with cell grids ─────────────
-        if format_type in ("xlsx", "xls"):
-            sheets = ir.get("sheets", [])
-            if isinstance(sheets, list):
-                tables.extend(
-                    sheet_table
-                    for sheet_table in map(StructuredOxideParser._sheet_to_table, sheets)
-                    if sheet_table is not None
+        for idx, (sheet_title, rows) in enumerate(office_ir_tables(ir)):
+            tables.append(
+                ExtractedTable(
+                    name=f"{sheet_title}_table_{idx}",
+                    headers=rows[0],
+                    rows=rows[1:],
                 )
-
-        # ── DOCX / PPTX: look for table nodes ─────────────────
-        else:
-            _walk_tables(ir, tables, f"{format_type}_table")
+            )
 
         return tables
 
@@ -825,70 +810,3 @@ class StructuredOxideParser:
             links=candidates,
         )
 
-
-def _cells_from_row(row: Any) -> List[str]:
-    """Convert one IR table row (dict or list) into a list of cell strings.
-
-    Returns an empty list for rows that carry no usable cells.
-    """
-    if isinstance(row, dict):
-        return [
-            str(c.get("text", c.get("value", "")))
-            for c in row.get("cells", row.get("children", []))
-            if isinstance(c, dict)
-        ]
-    if isinstance(row, list):
-        return [str(c) if c else "" for c in row]
-    return []
-
-
-def _table_from_node(node: Any) -> Optional[ExtractedTable]:
-    """Build an ExtractedTable from an IR dict node that looks like a table.
-
-    Returns None when the node is not table-like or carries no usable rows.
-    The caller is responsible for assigning the final table name.
-    """
-    if node.get("type") not in ("table",) and "rows" not in node:
-        return None
-    rows = node.get("rows", [])
-    if not isinstance(rows, list):
-        return None
-
-    headers: List[str] = []
-    data_rows: List[List[str]] = []
-    for row in rows:
-        cells = _cells_from_row(row)
-        if not cells:
-            continue
-        if not headers:
-            headers = cells
-        else:
-            data_rows.append(cells)
-
-    if not headers and not data_rows:
-        return None
-    return ExtractedTable(name="", headers=headers, rows=data_rows)
-
-
-def _walk_tables(
-    node: Any,
-    tables: List[ExtractedTable],
-    prefix: str,
-    idx_ref: Optional[List[int]] = None,
-) -> None:
-    """Recursively walk an IR dict/list looking for table structures."""
-    if idx_ref is None:
-        # Fresh counter per top-level call; numbering restarts per document.
-        idx_ref = [0]
-    if isinstance(node, dict):
-        table = _table_from_node(node)
-        if table is not None:
-            idx_ref[0] += 1
-            table.name = f"{prefix}_{idx_ref[0]}"
-            tables.append(table)
-        # Recurse into children
-        for child in node.values():
-            _walk_tables(child, tables, prefix, idx_ref)
-    elif isinstance(node, list):
-        for item in node:
-            _walk_tables(item, tables, prefix, idx_ref)

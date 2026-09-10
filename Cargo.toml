@@ -33,6 +33,8 @@ serde = "1.0.229"
 quick-xml = "0.42.0"
 blake2 = "0.11.0"
 meta_oxide = { git = "https://github.com/opticsWolf/meta_oxide.git", rev = "a55c09f", default-features = false }
+pdf_oxide = "0.3.78"
+office_oxide = "0.1.10"
 
 [profile.release]
 strip = true   # Remove debug symbols
