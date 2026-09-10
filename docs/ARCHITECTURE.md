@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.9.3)
+# gossamer — architecture (v0.9.4)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for

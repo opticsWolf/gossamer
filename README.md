@@ -98,13 +98,14 @@ results = await tools.search_web_async("rust programming")
 > the loop; call the sync methods otherwise. Full model:
 > [Architecture](./docs/ARCHITECTURE.md#12-async--threading-model).
 
-### Tools (all ten, everywhere)
+### Tools (ten MCP tools, everywhere)
 
 MCP tools, CLI commands (`gossamer …`), and `execute_tool(name, args)`
-are the same surface: `web_search`, `research_by_category`,
-`research_categories`, `inspect_html_page`, `batch_inspect_pages`,
-`extract_document`, `discover_resources`, `crawl`, `manage_cache`,
-`export_citations`, `check_sources`. Parameters:
+are the same surface, param-for-param: `web_search`,
+`inspect_html_page`, `batch_inspect_pages`, `extract_document`,
+`discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
+`export_citations`, `check_sources`. The CLI adds `gossamer categories`
+(routing table; not an MCP tool). Parameters:
 [Quick reference](./docs/QUICKREF.md#tools-mcp--cli--execute_tool).
 
 ```python

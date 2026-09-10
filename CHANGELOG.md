@@ -4,6 +4,18 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.4] — CLI/MCP param parity completed, docs/skill sync
+
+- CLI gained the missing MCP parameters: `search --max-tokens`,
+  `inspect --offset/--max-chunks/--structured`, `crawl --min-score` —
+  all ten MCP tools now mirrored param-for-param (defaults match the
+  registry exactly).
+- SKILL.md: complete 11-command shorthand with flags, corrected keystore
+  check command (`python -m gossamer.keystore --check`), dropped the
+  `research_categories` tool parenthetical (CLI-only, not an MCP tool).
+- README/QUICKREF: tool lists corrected to ten MCP tools + CLI-only
+  `categories`; QUICKREF table updated with the new flags.
+
 ## [0.9.3] — Directory rename, review
 
 - Working directory renamed `stitch-web-researcher` → `gossamer`;
