@@ -9,8 +9,10 @@ The from_bytes break killed every DOCX/XLSX/PPTX flat extraction; the IR
 break killed structured XLSX payloads. Neither was caught by the suite
 because no test pushed real office bytes through. These fixtures do.
 
-``tables_as="csv"`` renders spreadsheet tables as comma-separated blocks
-(one ``## <sheet>`` heading per sheet) instead of markdown pipe tables.
+``tables_as`` selects the rendering for spreadsheet tables: ``json``
+(default; array of ``{sheet, headers, rows}``), ``markdown`` (pipe
+tables), or ``csv`` (comma-separated, one ``## <sheet>`` block per
+sheet).
 """
 
 import csv
@@ -79,11 +81,27 @@ def _toolbox(tmp_path) -> WebResearcherToolbox:
     )
 
 
-class TestXlsxMarkdownDefault:
-    def test_flat_extract_renders_markdown_tables(self, tmp_path):
+class TestXlsxRenderings:
+    def test_default_is_json_tables(self, tmp_path):
         src = tmp_path / "data.xlsx"
         src.write_bytes(_write_xlsx(src))
         res = json.loads(_toolbox(tmp_path).extract_document(str(src)))
+        assert "error" not in res
+        tables = json.loads(res["content"])
+        assert tables == [
+            {
+                "sheet": "Data",
+                "headers": ["Region", "GDP"],
+                "rows": [["Eurozone", "15.3"], ["Euro, zone", '"quoted"']],
+            }
+        ]
+
+    def test_markdown_option_renders_pipe_tables(self, tmp_path):
+        src = tmp_path / "data.xlsx"
+        src.write_bytes(_write_xlsx(src))
+        res = json.loads(
+            _toolbox(tmp_path).extract_document(str(src), tables_as="markdown")
+        )
         assert "error" not in res
         assert "| Region | GDP |" in res["content"]
         assert "| Eurozone | 15.3 |" in res["content"]
@@ -115,7 +133,20 @@ class TestXlsxMarkdownDefault:
         res = json.loads(
             _toolbox(tmp_path).extract_document(str(src), tables_as="tsv")
         )
-        assert "tables_as must be 'markdown' or 'csv'" in res["error"]
+        assert "tables_as must be 'markdown', 'csv' or 'json'" in res["error"]
+
+    def test_renderings_do_not_collide_in_cache(self, tmp_path):
+        src = tmp_path / "data.xlsx"
+        src.write_bytes(_write_xlsx(src))
+        tb = _toolbox(tmp_path)
+        csv_res = json.loads(tb.extract_document(str(src), tables_as="csv"))
+        md_res = json.loads(
+            tb.extract_document(str(src), tables_as="markdown")
+        )
+        json_res = json.loads(tb.extract_document(str(src)))
+        assert "Region,GDP" in csv_res["content"]
+        assert "| Region | GDP |" in md_res["content"]
+        assert json.loads(json_res["content"])[0]["headers"] == ["Region", "GDP"]
 
 
 class TestStructuredXlsxRegression:
@@ -171,12 +202,12 @@ class TestRegistryAndCli:
     def test_registry_has_tables_as_param(self):
         spec = next(t for t in TOOL_REGISTRY if t.name == "extract_document")
         param = next(p for p in spec.params if p.name == "tables_as")
-        assert param.default == "markdown"
-        assert param.enum == ["markdown", "csv"]
+        assert param.default == "json"
+        assert param.enum == ["markdown", "csv", "json"]
 
     def test_cli_flag_parses(self):
         args = build_parser().parse_args(
             ["extract", "data.xlsx", "--tables-as", "csv"]
         )
         assert args.tables_as == "csv"
-        assert build_parser().parse_args(["extract", "x.xlsx"]).tables_as == "markdown"
+        assert build_parser().parse_args(["extract", "x.xlsx"]).tables_as == "json"

@@ -15,10 +15,12 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `research_categories` tool parenthetical (CLI-only, not an MCP tool).
 - README/QUICKREF: tool lists corrected to ten MCP tools + CLI-only
   `categories`; QUICKREF table updated with the new flags.
-- `extract_document` gained `tables_as` (`markdown` | `csv`): spreadsheet
-  (XLSX) tables render as comma-separated blocks — one `## <sheet>` per
-  sheet — instead of markdown pipe tables. MCP param, CLI
-  `--tables-as`, and registry all aligned.
+- `extract_document` gained `tables_as` (`json` | `markdown` | `csv`): spreadsheet
+  (XLSX) tables render as a JSON array of `{sheet, headers, rows}`
+  objects by default (new default), with pipe-table markdown and
+  comma-separated blocks (one `## <sheet>` per sheet) as options. MCP
+  param, CLI `--tables-as`, and registry all aligned; cache keys
+  distinguish renderings.
 - Fixed two dormant office-oxide 0.1.10 API breaks: `from_bytes` now
   requires an explicit format (every DOCX/XLSX/PPTX flat extraction
   failed) and `to_ir_json` returns a serialized JSON string whose tables

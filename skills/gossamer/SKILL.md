@@ -23,7 +23,7 @@ per-domain rate-limited, and token-budgeted.
   --search-only --provider P --depth D]` · `research QUERY [--category C
   --provider P --max-results N]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
-  `batch URL…` · `extract FILE|URL [--pages A-B --structured --tables-as markdown|csv --store
+  `batch URL…` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
   --store-dir D --include-images]` · `check URL… [--mode status|content]` ·
   `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N
   --min-score S --same-host --excerpts --search-prior --seed-urls U…

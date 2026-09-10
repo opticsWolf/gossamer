@@ -290,9 +290,9 @@ TOOL_REGISTRY = (
             ToolParam(
                 "tables_as",
                 str,
-                "markdown",
-                "Rendering of spreadsheet (XLSX) tables in the returned content: 'markdown' (default, pipe tables) or 'csv' (comma-separated, one ## <sheet> block per sheet). Other formats keep markdown rendering.",
-                enum=["markdown", "csv"],
+                "json",
+                "Rendering of spreadsheet (XLSX) tables in the returned content: 'json' (default; array of {sheet, headers, rows}), 'markdown' (pipe tables), or 'csv' (comma-separated, one ## <sheet> block per sheet). Other formats keep markdown rendering.",
+                enum=["markdown", "csv", "json"],
             ),
         ),
     ),

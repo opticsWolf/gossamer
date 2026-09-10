@@ -111,9 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--store-dir", default=None)
     p.add_argument("--include-images", action="store_true",
                    help="PDF only, needs --store: also save figures")
-    p.add_argument("--tables-as", default="markdown",
-                   choices=("markdown", "csv"),
-                   help="Rendering of spreadsheet (XLSX) tables")
+    p.add_argument("--tables-as", default="json",
+                   choices=("markdown", "csv", "json"),
+                   help="Rendering of spreadsheet (XLSX) tables (default: json)")
     _common(p)
 
     p = sub.add_parser("check", help="Probe URL reachability")
