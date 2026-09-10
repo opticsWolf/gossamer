@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [0.9.4] — CLI/MCP param parity completed, docs/skill sync
+## [0.9.5] — CLI/MCP param parity, tables_as, office-oxide 0.1.10 fixes
 
 - CLI gained the missing MCP parameters: `search --max-tokens`,
   `inspect --offset/--max-chunks/--structured`, `crawl --min-score` —
