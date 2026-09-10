@@ -564,7 +564,7 @@ class DocumentExtractor:
         if fmt == "pdf":
             return require_pdf_oxide().from_bytes(data).to_markdown_all()
         if fmt in ("docx", "xlsx", "pptx"):
-            return require_office_oxide().from_bytes(data).to_markdown()
+            return require_office_oxide().from_bytes(data, fmt).to_markdown()
         # Known-but-unsupported legacy office formats: actionable error.
         suffix = {
             "doc": ".doc", "xls": ".xls", "ppt": ".ppt", "xlsb": ".xlsb",
@@ -797,7 +797,8 @@ class DocumentExtractor:
             doc = require_pdf_oxide().from_bytes(data)
             return doc.to_markdown_all()
         elif suffix in (".docx", ".xlsx", ".pptx"):
-            doc = require_office_oxide().from_bytes(data)
+            # office-oxide >= 0.1.10 requires the format explicitly.
+            doc = require_office_oxide().from_bytes(data, suffix.lstrip("."))
             return doc.to_markdown()
         elif suffix in self._TEXT_SUFFIXES:
             # M16: plain text is trivial to support and covers the
