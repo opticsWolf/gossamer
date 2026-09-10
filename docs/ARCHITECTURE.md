@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.9.3)
+# gossamer — architecture (v0.9.5)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -256,8 +256,10 @@ under the same cap. Bytes route by suffix (`classify_link` must stay
 in sync): PDF via `pdf_oxide`, office via `office_oxide`, plain text
 (CSV/TXT/MD, pretty-printed JSON), XML/RSS/Atom (feeds become entry
 lists, other XML falls back to raw text), extension-less URLs via
-Content-Type sniffing. Tables render as markdown tables by default on
-both converters — no flag exists or is needed.
+Content-Type sniffing. Spreadsheet (XLSX) tables default to a JSON
+array of ``{sheet, headers, rows}`` (``tables_as="json"``); pipe-table
+markdown and CSV blocks are options on the same flag. DOCX/PPTX/PDF
+render tables inline as markdown — no flag needed there.
 
 - `pages="10-20"` selects PDF pages / XLSX sheets through the
   structured parser (per-page blocks); cached under a range-specific

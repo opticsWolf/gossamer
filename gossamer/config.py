@@ -287,6 +287,13 @@ TOOL_REGISTRY = (
                 False,
                 "PDF only; requires store=true. Also extract embedded raster images into <stem>.files/ with a ## Figures section (reported under stored.resources). Vector-only figures are skipped; tables render by default.",
             ),
+            ToolParam(
+                "tables_as",
+                str,
+                "json",
+                "Rendering of spreadsheet (XLSX) tables in the returned content: 'json' (default; array of {sheet, headers, rows}), 'markdown' (pipe tables), or 'csv' (comma-separated, one ## <sheet> block per sheet). Other formats keep markdown rendering.",
+                enum=["markdown", "csv", "json"],
+            ),
         ),
     ),
     ToolSpec(

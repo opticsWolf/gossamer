@@ -4,6 +4,29 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.5] — CLI/MCP param parity, tables_as, office-oxide 0.1.10 fixes
+
+- CLI gained the missing MCP parameters: `search --max-tokens`,
+  `inspect --offset/--max-chunks/--structured`, `crawl --min-score` —
+  all ten MCP tools now mirrored param-for-param (defaults match the
+  registry exactly).
+- SKILL.md: complete 11-command shorthand with flags, corrected keystore
+  check command (`python -m gossamer.keystore --check`), dropped the
+  `research_categories` tool parenthetical (CLI-only, not an MCP tool).
+- README/QUICKREF: tool lists corrected to ten MCP tools + CLI-only
+  `categories`; QUICKREF table updated with the new flags.
+- `extract_document` gained `tables_as` (`json` | `markdown` | `csv`): spreadsheet
+  (XLSX) tables render as a JSON array of `{sheet, headers, rows}`
+  objects by default (new default), with pipe-table markdown and
+  comma-separated blocks (one `## <sheet>` per sheet) as options. MCP
+  param, CLI `--tables-as`, and registry all aligned; cache keys
+  distinguish renderings.
+- Fixed two dormant office-oxide 0.1.10 API breaks: `from_bytes` now
+  requires an explicit format (every DOCX/XLSX/PPTX flat extraction
+  failed) and `to_ir_json` returns a serialized JSON string whose tables
+  moved under `sections[].elements` (structured XLSX payloads failed).
+  Both are covered by new real-bytes tests (`test_xlsx_csv.py`).
+
 ## [0.9.3] — Directory rename, review
 
 - Working directory renamed `stitch-web-researcher` → `gossamer`;

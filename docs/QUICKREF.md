@@ -4,21 +4,23 @@ Command-level companion to [Architecture](./ARCHITECTURE.md). Full manual:
 [README](../README.md). Per-version history: [Changelog](../CHANGELOG.md).
 Planning history: local `planning/` (unsynced).
 
-## Tools (MCP = CLI = `execute_tool`)
+## Tools (ten MCP tools; CLI = MCP 1:1 plus `categories`)
 
 | Tool | CLI | Essentials |
 |---|---|---|
-| `web_search` | `gossamer search QUERY` | `--search-only` (no fetch), `--max-results`, `--depth`, `--provider` |
-| `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`; empty query prints the live taxonomy |
-| `research_categories` | `gossamer categories` | routing table, no args |
-| `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static` |
+| `web_search` | `gossamer search QUERY` | `--search-only` (no fetch), `--max-results 5`, `--max-tokens`, `--depth 5`, `--provider` |
+| `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`, `--max-results 5`; empty query prints the live taxonomy |
+| `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static`, `--offset 0`, `--max-chunks 1`, `--structured` |
 | `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
-| `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
+| `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as json\|markdown\|csv` (XLSX tables; default json, csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
 | `discover_resources` | `gossamer discover URL` | feeds + bounded `/sitemap.xml` probe |
-| `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls` |
+| `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--min-score 0.05`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls`, `--use-smart` |
 | `manage_cache` | `gossamer cache` | `prune` (default) \| `clear` \| `reset` |
-| `export_citations` | `gossamer cite` | `--results`, `--style bibtex\|csl-json\|apa\|mla` |
+| `export_citations` | `gossamer cite` | `--style bibtex\|csl-json\|apa\|mla`, `--enrich`, `--no-dedupe` |
 | `check_sources` | `gossamer check URL…` | `--mode status\|content` |
+
+CLI-only: `gossamer categories` prints the routing table (not an MCP
+tool; the toolbox method `research_categories()` backs it).
 
 `extract --pages` cannot combine with `--store`. `include_images` is PDF-only.
 
