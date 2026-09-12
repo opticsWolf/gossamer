@@ -274,6 +274,16 @@ fn batch9_register_shapes() {
         lens_parse_search_impl(r#"{"error": "bad key"}"#, 5).unwrap_err(),
         "RuntimeError: Lens error: bad key"
     );
+    // Google Patents: meta/section extraction; soft-404 is null.
+    let html = r#"<html><head><link rel="canonical" href="https://patents.google.com/patent/US1A/en"><meta name="DC.title" content="T &amp; U"><meta name="DC.date" content="2020-01-02" scheme="issue"><meta name="DC.contributor" content="A" scheme="inventor"></head><body><dd itemprop="publicationNumber">US1A</dd><section itemprop="abstract" itemscope><div class="abstract">Ab</div><section itemprop="claims" itemscope><span itemprop="count">3</span></body></html>"#;
+    let (rec, meta) = google_patents_parse_fetch_impl(html, "US1A").unwrap();
+    assert_eq!(rec["id"], "US1A");
+    assert_eq!(rec["title"], "T & U");
+    assert_eq!(rec["fields"]["claims_count"], 3);
+    assert_eq!(meta["publication_number"], "US1A");
+    let (rec, meta) = google_patents_parse_fetch_impl("<html></html>", "US1A").unwrap();
+    assert!(rec.is_null());
+    assert_eq!(meta["not_found"], true);
 }
 
 #[test]

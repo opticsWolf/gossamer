@@ -40,7 +40,8 @@ per-domain rate-limited, and token-budgeted.
 - `legal` → `courtlistener` (US case law) · `oldp` (German cases) ·
   `hudoc` (ECtHR) · `ecfr`/`federalregister`/`govinfo` (US regs)
 - `patent` → `epo` (worldwide via INPADOC) · `kipris` (Korea) ·
-  `patentsview` (USPTO) — all key-gated, fail fast without keys
+  `patentsview` (USPTO) · `lens` (WO/EP/DE/CN/US aggregator) — key-gated, fail fast without keys ·
+  `google-patents` (keyless number lookup; free text via `site:patents.google.com` search)
 - `financial` → `yahoo` (quotes) · `frankfurter` (FX) · `eurostat` /
   `bundesbank` / `bis` (EU macro) · `coingecko` (crypto)
 - `geo` → `open-meteo` / `overpass` (weather, places, coordinates)
@@ -51,6 +52,9 @@ prefer it over memory when unsure.
 
 ## Budgets (avoid harness timeouts)
 
+- `use_smart="browser"` (JS rendering) needs the `gossamer-web[browser]`
+  extra, Windows/macOS only — without it only static fetch runs, and even
+  with it bot-walled sites (Cloudflare challenges, CAPTCHAs) still fail.
 - Keep `max_pages` ≤ 15 on crawls; set an explicit `max_tokens` budget.
 - Long extractions: `extract … --pages 10-20` instead of whole documents.
 - `check` URLs with `--mode status` before fetching the shaky ones.

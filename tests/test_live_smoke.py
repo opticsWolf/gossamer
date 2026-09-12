@@ -34,6 +34,7 @@ from gossamer.research_providers import (
     FrankfurterAdapter,
     FredAdapter,
     GitHubAdapter,
+    GooglePatentsAdapter,
     GovInfoAdapter,
     HudocAdapter,
     KiprisAdapter,
@@ -367,7 +368,7 @@ def test_live_flag_on():
 
 
 # ────────────────────────────────────────────────────────────────
-# Wave-4 patent adapters (all key-gated; skipped without keys)
+# Wave-4 patent adapters (key-gated ones skip without keys; Google Patents is keyless)
 # ────────────────────────────────────────────────────────────────
 
 def _need_keys(*names):
@@ -395,6 +396,16 @@ def test_kipris_search(live):
     results = prov.search("quantum", max_results=2)
     assert results, "KIPRIS returned no results"
     _assert_common_result(results[0], source="kipris")
+
+
+@pytest.mark.live
+def test_google_patents_fetch(live):
+    # Keyless (robots-Allowed /patent/ detail page); no keys needed.
+    prov = GooglePatentsAdapter(delay=0.0)
+    results = prov.fetch("US5000575A")
+    assert results, "Google Patents returned no results"
+    _assert_common_result(results[0], source="google-patents")
+    assert results[0]["id"] == "US5000575A"
 
 
 @pytest.mark.live

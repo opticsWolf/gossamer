@@ -2734,11 +2734,13 @@ class CoinGeckoAdapter(ResourceAdapter):
 
 
 # ────────────────────────────────────────────────────────────────
-# Wave 4 — patent offices (2026-09) + Lens aggregator (2026-09).
-# All key-gated: there is no keyless patent search API left
-# (see docs/PATENT_LANDSCAPE_2026-09-05.md). Shapes follow the
-# offices' public documentation; authed live paths are covered by
-# key-gated smoke tests, not the offline suite.
+# Wave 4 — patent offices (2026-09) + Lens aggregator (2026-09) +
+# Google Patents lookup (2026-09, keyless).
+# EPO/KIPRIS/PatentsView/Lens are key-gated (no keyless patent *search*
+# API remains — Google's search page is robots-Disallowed, so only detail
+# lookup is built); google-patents resolves publication numbers without a
+# key. Shapes follow the offices' public documentation; authed live paths
+# are covered by key-gated smoke tests, not the offline suite.
 # ────────────────────────────────────────────────────────────────
 
 class EpoOpsAdapter(ResourceAdapter):
@@ -3301,3 +3303,95 @@ class LensAdapter(ResourceAdapter):
         else:
             records[0]["raw"] = json.dumps(payload)
         return records
+
+
+class GooglePatentsAdapter(ResourceAdapter):
+    """Keyless Google Patents lookup by publication number.
+
+    No API key and no registration: ``fetch`` GETs the server-rendered
+    detail page (``/patent/{number}/en``) and parses the Dublin Core /
+    citation meta tags plus the ``itemprop`` abstract/claims sections in
+    Rust. This is the only keyless ``patent`` provider.
+
+    Deliberately lookup-only: ``robots.txt`` Allows ``/patent/`` but
+    Disallows ``/`` (search), so there is no search-page scraper —
+    ``search`` resolves a publication number (``US5000575A``,
+    ``WO2024155532A1``; spaces/commas/slashes are stripped) exactly like
+    ``FredAdapter`` resolves series ids. Free-text discovery stays on
+    ``site:patents.google.com`` web search; unknown numbers answer ``[]``.
+    """
+
+    name = "google-patents"
+    domain = "patent"
+    requires_key = False
+    BASE = "https://patents.google.com"
+    # Detail pages are bot-sensitive; send the same browser UA family
+    # the toolbox itself uses (see WebResearcherToolbox.USER_AGENTS).
+    _UA = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+
+    def __init__(
+        self,
+        delay=None,
+        fetch_delay=None,
+    ):
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
+        )
+
+    @staticmethod
+    def _normalize_number(query) -> str:
+        """``US 5,000,575 A1`` -> ``US5000575A1`` (upper, alnum only)."""
+        return re.sub(r"[^A-Z0-9]", "", str(query or "").strip().upper())
+
+    def _search_impl(self, query, max_results=5):
+        num = self._normalize_number(query)
+        if not num:
+            raise ValueError(
+                "GooglePatentsAdapter search needs a publication number "
+                "(e.g. US5000575A); free-text goes via "
+                "site:patents.google.com web search"
+            )
+        return self.fetch(num)
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        num = self._normalize_number(record_id)
+        if not num:
+            raise ValueError(
+                "GooglePatentsAdapter fetch needs a publication number "
+                "(e.g. US5000575A)"
+            )
+        headers = {"User-Agent": self._UA, "Accept": "text/html"}
+        html = None
+        for path in (f"/patent/{num}/en", f"/patent/{num}"):
+            try:
+                resp = httpx.get(
+                    f"{self.BASE}{path}",
+                    headers=headers,
+                    timeout=25.0,
+                    follow_redirects=True,
+                )
+                resp.raise_for_status()
+                html = resp.text
+                break
+            except Exception as exc:  # noqa: BLE001 - 404 falls through, rest retry
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status == 404:
+                    continue
+                raise
+        if html is None:
+            return []
+        # Row building in Rust (src/adapters/patents.rs: the kernel
+        # returns {"record", "meta"}); `raw` is the compact meta map,
+        # never the 150KB page HTML.
+        payload = json.loads(_rust.google_patents_parse_fetch(html, num))
+        rec, meta = payload.get("record"), payload.get("meta") or {}
+        if not isinstance(rec, dict) or not rec:
+            return []
+        rec["raw"] = json.dumps(meta)
+        return [rec]

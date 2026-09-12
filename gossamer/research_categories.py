@@ -16,8 +16,11 @@ model controls which source it queries.
                      ``oldp`` / ``hudoc`` / ``govinfo``
                      (``eurlex`` / ``german`` were retired — no public
                      endpoint; see the provider docs)
-  * ``patent``      -> ``epo`` / ``kipris`` / ``patentsview`` / ``lens``
-                     (all key-gated — no keyless patent API remains)
+  * ``patent``      -> ``epo`` / ``kipris`` / ``patentsview`` / ``lens`` /
+                     ``google-patents`` (keyless lookup; listed last so the
+                     full-text `epo` default is kept)
+                     (key-gated except google-patents — no keyless patent
+                     *search* API remains; Google search is robots-Disallowed)
   * ``financial`` -> ``yahoo`` / ``frankfurter`` / ``eurostat`` /
                      ``bundesbank`` / ``bis`` / ``coingecko`` / ``alphavantage``
   * ``geo``       -> ``open-meteo`` (place/coordinate lookup) / ``overpass``
@@ -177,11 +180,15 @@ CATEGORIES: Tuple[Category, ...] = (
         name="patent",
         description=(
             "Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA; "
-            "Lens aggregates WO/EP/DE/CN/US). "
-            "All providers key-gated — no keyless patent API remains."
+            "Lens aggregates WO/EP/DE/CN/US; Google Patents lookup is "
+            "keyless). EPO/KIPRIS/PatentsView/Lens need keys; "
+            "google-patents resolves publication numbers without one "
+            "(free-text: site:patents.google.com web search)."
         ),
         keywords=_PATENT,
-        providers=("epo", "kipris", "patentsview", "lens"),
+        # google-patents stays last: it is lookup-only (numbers, not
+        # free text), so the full-text epo default is kept.
+        providers=("epo", "kipris", "patentsview", "lens", "google-patents"),
         kind="adapter",
     ),
     Category(
@@ -239,6 +246,7 @@ _PROVIDER_DISPLAY: Dict[str, str] = {
     "kipris": "KIPRIS",
     "patentsview": "PatentsView",
     "lens": "Lens",
+    "google-patents": "Google Patents",
     "open-meteo": "Open-Meteo",
     "duckduckgo": "DuckDuckGo",
 }
@@ -294,6 +302,7 @@ _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "kipris": "gossamer.research_providers.KiprisAdapter",
     "patentsview": "gossamer.research_providers.PatentsViewAdapter",
     "lens": "gossamer.research_providers.LensAdapter",
+    "google-patents": "gossamer.research_providers.GooglePatentsAdapter",
     "open-meteo": "gossamer.research_providers.OpenMeteoAdapter",
 }
 

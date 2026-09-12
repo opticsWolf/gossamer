@@ -1,7 +1,10 @@
-"""Wave-4 patent adapters (EPO OPS, KIPRIS, PatentsView) + Lens aggregator.
+"""Wave-4 patent adapters (EPO OPS, KIPRIS, PatentsView) + Lens aggregator
++ keyless Google Patents lookup.
 
-All four are key-gated (there is no keyless patent API left), so these tests
-pin request construction (URLs, auth placement, params) and parsing against
+EPO/KIPRIS/PatentsView/Lens are key-gated; Google Patents resolves
+publication numbers without a key (its search page is robots-Disallowed,
+so there is no search scraper — only detail lookup). These tests pin
+request construction (URLs, auth placement, params) and parsing against
 the offices' documented response shapes with mocked HTTP. Live paths are
 covered by key-gated smoke tests, not the offline suite.
 """
@@ -10,8 +13,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import httpx
+
 from gossamer.research_providers import (
     EpoOpsAdapter,
+    GooglePatentsAdapter,
     KiprisAdapter,
     LensAdapter,
     PatentsViewAdapter,
@@ -303,3 +309,103 @@ class TestLensAdapter:
     def test_fetch_empty_id_raises(self):
         with pytest.raises(ValueError, match="Lens ID"):
             LensAdapter(delay=0.0, api_key="K").fetch("  ")
+
+
+GP_HTML = """<html><head>
+<link rel="canonical" href="https://patents.google.com/patent/US5000575A/en">
+<meta name="DC.title" content="Method of fabricating gradient index optical films">
+<meta name="DC.date" content="1989-09-06" scheme="dateSubmitted">
+<meta name="DC.date" content="1991-03-19" scheme="issue">
+<meta name="citation_patent_application_number" content="US:07/403,649">
+<meta name="citation_pdf_url" content="https://patentimages.storage.googleapis.com/f4/95/ec/bea32afc772968/US5000575.pdf">
+<meta name="citation_patent_number" content="US:5000575">
+<meta name="DC.contributor" content="William H. Southwell" scheme="inventor">
+<meta name="DC.contributor" content="Randolph L. Hall" scheme="inventor">
+<meta name="DC.contributor" content="Rockwell International Corp" scheme="assignee">
+<meta name="DC.relation" content="US:3892490" scheme="references">
+<meta name="DC.relation" content="US:4555767" scheme="references">
+</head><body>
+<h2>Info</h2><dl><dt>Publication number</dt>
+<dd itemprop="publicationNumber">US5000575A</dd>
+<meta itemprop="kindCode" content="A">
+<section itemprop="abstract" itemscope><h2>Abstract</h2>
+<div class="abstract">A method is provided for monitoring &amp; controlling deposition.</div>
+<section itemprop="claims" itemscope><h2>Claims (<span itemprop="count">2</span>)</h2>
+</body></html>"""
+
+
+def _html_resp(html):
+    r = MagicMock()
+    r.text = html
+    r.raise_for_status.return_value = None
+    return r
+
+
+def _http_404(url):
+    req = httpx.Request("GET", url)
+    return httpx.HTTPStatusError(
+        "not found", request=req, response=httpx.Response(404, request=req)
+    )
+
+
+class TestGooglePatentsAdapter:
+    def test_metadata_keyless(self):
+        a = GooglePatentsAdapter(delay=0.0)
+        assert (a.name, a.domain, a.requires_key) == ("google-patents", "patent", False)
+
+    def test_normalize_number(self):
+        assert GooglePatentsAdapter._normalize_number("US 5,000,575 A") == "US5000575A"
+        assert GooglePatentsAdapter._normalize_number("wo2024/155532a1") == "WO2024155532A1"
+        assert GooglePatentsAdapter._normalize_number("  ") == ""
+
+    def test_search_empty_raises_actionable(self):
+        with pytest.raises(ValueError, match="publication number"):
+            GooglePatentsAdapter(delay=0.0).search("  ")
+
+    def test_fetch_empty_raises(self):
+        with pytest.raises(ValueError, match="publication number"):
+            GooglePatentsAdapter(delay=0.0).fetch(",,,")
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_resolves_number_and_parses_biblio(self, mock_get):
+        mock_get.return_value = _html_resp(GP_HTML)
+        out = GooglePatentsAdapter(delay=0.0).search("US 5,000,575 A")
+        assert mock_get.call_args.args[0].endswith("/patent/US5000575A/en")
+        assert len(out) == 1
+        rec = out[0]
+        assert rec["source"] == "google-patents"
+        assert rec["id"] == "US5000575A"
+        assert rec["title"] == "Method of fabricating gradient index optical films"
+        assert rec["url"] == "https://patents.google.com/patent/US5000575A/en"
+        assert rec["published"] == "1991-03-19"
+        assert "Southwell" in rec["snippet"]
+        assert rec["fields"]["kind"] == "A"
+        assert rec["fields"]["application_number"] == "US:07/403,649"
+        assert rec["fields"]["filing_date"] == "1989-09-06"
+        assert rec["fields"]["inventors"] == "William H. Southwell, Randolph L. Hall"
+        assert rec["fields"]["assignee"] == "Rockwell International Corp"
+        assert rec["fields"]["pdf_url"].endswith("US5000575.pdf")
+        assert rec["fields"]["claims_count"] == 2
+        assert rec["fields"]["refs_count"] == 2
+        assert rec["fields"]["abstract"].startswith("A method is provided for monitoring & controlling")
+        assert "raw" in rec
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_falls_back_to_bare_path(self, mock_get):
+        mock_get.side_effect = [
+            _http_404("https://patents.google.com/patent/US5000575A/en"),
+            _html_resp(GP_HTML),
+        ]
+        out = GooglePatentsAdapter(delay=0.0).fetch("US5000575A")
+        assert out[0]["id"] == "US5000575A"
+        assert mock_get.call_args.args[0].endswith("/patent/US5000575A")
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_unknown_number_returns_empty(self, mock_get):
+        mock_get.side_effect = lambda url, **kw: (_ for _ in ()).throw(_http_404(url))
+        assert GooglePatentsAdapter(delay=0.0).fetch("XX0000000Z") == []
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_soft_404_returns_empty(self, mock_get):
+        mock_get.return_value = _html_resp("<html><body>nothing here</body></html>")
+        assert GooglePatentsAdapter(delay=0.0).fetch("US5000575A") == []

@@ -1,4 +1,4 @@
-//! Adapter kernels: Patent kernels (PatentsView, EPO OPS, KIPRIS, Lens).
+//! Adapter kernels: Patent kernels (PatentsView, EPO OPS, KIPRIS, Lens, Google Patents).
 
 use pyo3::prelude::*;
 use serde_json::Value;
@@ -763,5 +763,286 @@ pub fn lens_parse_search(
 pub fn lens_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
     lens_parse_fetch_impl(response_json)
         .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ────────────────────────────────────────────────────────────────
+// Google Patents (patents.google.com) — keyless lookup.
+//
+// robots.txt Allows `/patent/` (detail pages) but Disallows `/`
+// (search), so there is deliberately NO search-page scraper here:
+// `search()` resolves publication numbers (FredAdapter pattern) and
+// `fetch()` reads the server-rendered detail HTML — Dublin Core /
+// citation meta tags plus `itemprop` abstract/claims sections.
+// Free-text discovery stays on `site:patents.google.com` web search.
+// ────────────────────────────────────────────────────────────────
+
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+/// Minimal HTML-entity decode for meta/section text (the five
+/// predefined entities plus decimal/hex character references).
+fn gp_unescape(s: &str) -> String {
+    let mut out = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'");
+    // Numeric references: `&#123;` / `&#x1F;` (invalid ones pass through).
+    while let Some(start) = out.find("&#") {
+        let rest = &out[start + 2..];
+        let end = match rest.find(';') {
+            Some(i) if i <= 8 => i,
+            _ => break,
+        };
+        let body = &rest[..end];
+        let ch = if let Some(hex) = body.strip_prefix('x').or_else(|| body.strip_prefix('X')) {
+            u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+        } else {
+            body.parse::<u32>().ok().and_then(char::from_u32)
+        };
+        match ch {
+            Some(c) => out.replace_range(start..start + 2 + end + 1, &c.to_string()),
+            None => break,
+        }
+    }
+    out
+}
+
+/// Collapse + strip + unescape: one readable string out of raw HTML text.
+fn gp_text(raw: &str) -> String {
+    crate::pycompat::py_collapse_ws(gp_unescape(raw).as_str())
+}
+
+fn gp_regex(pattern: &str) -> regex::Regex {
+    regex::Regex::new(pattern).expect("google-patents kernel regex")
+}
+
+/// One attribute out of a single tag string (order-tolerant).
+fn gp_attr(tag: &str, key: &str) -> String {
+    static COMPILED: OnceLock<HashMap<&'static str, regex::Regex>> = OnceLock::new();
+    let map = COMPILED.get_or_init(|| {
+        let mut m = HashMap::new();
+        for k in ["name", "content", "scheme", "href"] {
+            let p = match k {
+                "name" => "(?s)\\bname\\s*=\\s*\"([\\s\\S]*?)\"",
+                "content" => "(?s)\\bcontent\\s*=\\s*\"([\\s\\S]*?)\"",
+                "scheme" => "(?s)\\bscheme\\s*=\\s*\"([\\s\\S]*?)\"",
+                _ => "(?s)\\bhref\\s*=\\s*\"([\\s\\S]*?)\"",
+            };
+            m.insert(k, gp_regex(p));
+        }
+        m
+    });
+    map.get(key)
+        .and_then(|re| re.captures(tag))
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default()
+}
+
+/// All `<meta ...>` tags as `(name, content, scheme)`; missing attrs
+/// read as "". `content` may span lines (lazy match).
+fn gp_metas(html: &str) -> Vec<(String, String, String)> {
+    static TAG: OnceLock<regex::Regex> = OnceLock::new();
+    let tag = TAG.get_or_init(|| gp_regex("<meta\\b[^<>]*>"));
+    tag.find_iter(html)
+        .map(|m| {
+            let t = m.as_str();
+            (gp_attr(t, "name"), gp_attr(t, "content"), gp_attr(t, "scheme"))
+        })
+        .collect()
+}
+
+/// First capture of `pattern` over `html`, text-cleaned.
+fn gp_first(html: &str, pattern: &str) -> String {
+    gp_text(
+        gp_regex(pattern)
+            .captures(html)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str())
+            .unwrap_or_default(),
+    )
+}
+
+/// Strip tags + collapse: readable text out of an HTML fragment.
+fn gp_fragment_text(fragment: &str) -> String {
+    let no_tags = super::common::strip_tags_re().replace_all(fragment, " ");
+    crate::pycompat::py_collapse_ws(gp_unescape(no_tags.as_ref()).as_str())
+}
+
+fn google_patents_row_impl(html: &str, rid: &str) -> Result<(Value, Value), String> {
+    let metas = gp_metas(html);
+    let mut title = String::new();
+    let mut filing = String::new();
+    let mut issue = String::new();
+    let mut app_no = String::new();
+    let mut pdf = String::new();
+    let mut cite_no = String::new();
+    let mut inventors: Vec<String> = Vec::new();
+    let mut assignees: Vec<String> = Vec::new();
+    let mut refs_count: u64 = 0;
+    for (name, content, scheme) in metas.iter() {
+        match (name.as_str(), scheme.as_str()) {
+            ("DC.title", _) if title.is_empty() => title = gp_text(content),
+            ("DC.date", "dateSubmitted") if filing.is_empty() => {
+                filing = crate::pycompat::char_head(content.as_str(), 10).to_string()
+            }
+            ("DC.date", _) if issue.is_empty() && scheme != "dateSubmitted" => {
+                issue = crate::pycompat::char_head(content.as_str(), 10).to_string()
+            }
+            ("citation_patent_application_number", _) if app_no.is_empty() => {
+                app_no = gp_text(content)
+            }
+            ("citation_pdf_url", _) if pdf.is_empty() => pdf = content.trim().to_string(),
+            ("citation_patent_number", _) if cite_no.is_empty() => {
+                cite_no = gp_text(content)
+            }
+            ("DC.contributor", "inventor") => {
+                let n = gp_text(content);
+                if !n.is_empty() {
+                    inventors.push(n);
+                }
+            }
+            ("DC.contributor", "assignee") => {
+                let n = gp_text(content);
+                if !n.is_empty() {
+                    assignees.push(n);
+                }
+            }
+            ("DC.relation", "references") => refs_count += 1,
+            _ => {}
+        }
+    }
+    let pubnum = gp_first(
+        html,
+        "(?s)<dd\\b[^<>]*\\bitemprop=\"publicationNumber\"[^<>]*>([^<>]*)</dd>",
+    );
+    let kind = gp_first(
+        html,
+        "(?s)<meta\\b[^<>]*\\bitemprop=\"kindCode\"[^<>]*\\bcontent=\"([^\"]*)\"",
+    );
+    // Canonical link (order-tolerant: find the tag, then its href).
+    let mut canonical = String::new();
+    {
+        static TAG: OnceLock<regex::Regex> = OnceLock::new();
+        let tag = TAG.get_or_init(|| gp_regex("<link\\b[^<>]*>"));
+        for m in tag.find_iter(html) {
+            let t = m.as_str();
+            if t.contains("rel=\"canonical\"") {
+                canonical = gp_attr(t, "href").trim().to_string();
+                break;
+            }
+        }
+    }
+    let abstract_text = {
+        static RE: OnceLock<regex::Regex> = OnceLock::new();
+        let re = RE.get_or_init(|| {
+            gp_regex("(?s)<section\\b[^<>]*\\bitemprop=\"abstract\"[\\s\\S]*?<div\\s+class=\"abstract\">([\\s\\S]*?)</div>")
+        });
+        gp_fragment_text(
+            re.captures(html)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str())
+                .unwrap_or_default(),
+        )
+    };
+    let claims_count: u64 = {
+        static RE: OnceLock<regex::Regex> = OnceLock::new();
+        let re = RE.get_or_init(|| {
+            gp_regex("(?s)<section\\b[^<>]*\\bitemprop=\"claims\"[\\s\\S]*?<span\\s+itemprop=\"count\">(\\d+)</span>")
+        });
+        re.captures(html)
+            .and_then(|c| c.get(1))
+            .and_then(|m| m.as_str().parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    // Not-found: a 200 with none of the biblio markers (soft 404).
+    if pubnum.is_empty() && title.is_empty() && cite_no.is_empty() {
+        let mut raw = serde_json::Map::new();
+        raw.insert("id".to_string(), Value::String(rid.to_string()));
+        raw.insert("not_found".to_string(), Value::Bool(true));
+        return Ok((Value::Null, Value::Object(raw)));
+    }
+    let id = if !pubnum.is_empty() {
+        pubnum.clone()
+    } else if !cite_no.is_empty() {
+        cite_no.clone()
+    } else {
+        rid.to_string()
+    };
+    if title.is_empty() {
+        title = id.clone();
+    }
+    let url = if !canonical.is_empty() {
+        canonical.clone()
+    } else if !id.is_empty() {
+        format!("https://patents.google.com/patent/{id}/en")
+    } else {
+        String::new()
+    };
+    // EPO-style snippet: `title — inventors/assignee[:3]`.
+    let parties = if !inventors.is_empty() {
+        &inventors
+    } else {
+        &assignees
+    };
+    let joined = parties.iter().take(3).cloned().collect::<Vec<String>>().join(", ");
+    let snippet = crate::pycompat::py_strip_chars(
+        format!("{title} \u{2014} {joined}").as_str(),
+        &[' ', '\u{2014}'],
+    )
+    .to_string();
+    let mut fields = serde_json::Map::new();
+    fields.insert("publication_number".to_string(), Value::String(pubnum.clone()));
+    fields.insert("kind".to_string(), Value::String(kind));
+    fields.insert("application_number".to_string(), Value::String(app_no));
+    fields.insert("filing_date".to_string(), Value::String(filing));
+    fields.insert(
+        "inventors".to_string(),
+        Value::String(inventors.iter().take(5).cloned().collect::<Vec<String>>().join(", ")),
+    );
+    fields.insert(
+        "assignee".to_string(),
+        Value::String(assignees.iter().take(5).cloned().collect::<Vec<String>>().join(", ")),
+    );
+    fields.insert("pdf_url".to_string(), Value::String(pdf.clone()));
+    fields.insert("claims_count".to_string(), Value::Number(claims_count.into()));
+    fields.insert("refs_count".to_string(), Value::Number(refs_count.into()));
+    fields.insert(
+        "abstract".to_string(),
+        Value::String(crate::pycompat::char_head(abstract_text.as_str(), 240).to_string()),
+    );
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("google-patents".to_string()));
+    rec.insert("id".to_string(), Value::String(id.clone()));
+    rec.insert("title".to_string(), Value::String(title.clone()));
+    rec.insert("url".to_string(), Value::String(url));
+    rec.insert("published".to_string(), Value::String(issue.clone()));
+    rec.insert("snippet".to_string(), Value::String(snippet));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    let mut raw = serde_json::Map::new();
+    raw.insert("publication_number".to_string(), Value::String(pubnum));
+    raw.insert("title".to_string(), Value::String(title));
+    raw.insert("date".to_string(), Value::String(issue));
+    raw.insert("pdf_url".to_string(), Value::String(pdf));
+    Ok((Value::Object(rec), Value::Object(raw)))
+}
+
+pub fn google_patents_parse_fetch_impl(html: &str, rid: &str) -> Result<(Value, Value), String> {
+    google_patents_row_impl(html, rid)
+}
+
+#[pyfunction]
+pub fn google_patents_parse_fetch(py: Python, html: &str, rid: &str) -> PyResult<String> {
+    google_patents_parse_fetch_impl(html, rid)
+        .and_then(|(rec, meta)| {
+            let mut both = serde_json::Map::new();
+            both.insert("record".to_string(), rec);
+            both.insert("meta".to_string(), meta);
+            serde_json::to_string(&Value::Object(both)).map_err(|e| e.to_string())
+        })
         .map_err(|e| to_py_err(py, e))
 }
