@@ -4,6 +4,26 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [Unreleased] (still 0.9.6 — no version bump)
+
+- Keyless `google-patents` lookup provider in the `patent` category
+  (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
+  full-text `epo` default is kept): resolves publication numbers
+  (`US5000575A`) against the server-rendered `/patent/` detail pages
+  (Dublin Core/citation meta + abstract/claims sections, parsed by the
+  new `google_patents_parse_fetch` Rust kernel). Deliberately
+  lookup-only — Google's `robots.txt` Allows `/patent/` but Disallows
+  `/` (search), verified live, so there is no search-page scraper;
+  free-text discovery stays on `site:patents.google.com` web search.
+  Mocked-shape tests + keyless live smoke test; full suite now
+  11016 passed / 32 skipped (the +2 past the new tests: the
+  `test_m17` real-browser tests un-skip once `browser-oxide` is
+  installed).
+- Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
+  (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
+  so it stays an extra and static fetch remains the default; SKILL.md
+  patent routing now lists `lens` + `google-patents`.
+
 ## [0.9.6] — Lens patent aggregator
 
 - New `lens` provider in the `patent` category (`epo` default, `kipris`,

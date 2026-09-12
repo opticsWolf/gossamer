@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11006%20passing%2C%2033%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11016%20passing%2C%2032%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -25,7 +25,7 @@ WebResearcherToolbox (agent_tools.py) — facade, no logic
        │  TOOL_REGISTRY (config.py): one source of truth
        ▼
 Collaborators (Python: HTTP, keys, rate limits, orchestration)
-fetch · search · crawl · document · discovery · 35 domain adapters
+fetch · search · crawl · document · discovery · 37 domain adapters
        │  JSON strings down, JSON strings up
        ▼
 _core (Rust): all response parsers, HTML metadata (in-core meta_oxide

@@ -72,7 +72,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Documents | `document.py` | bytes → text via oxide converters, `pages=` slicing, `store=` persistence, figure extraction |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
-| Domain adapters | `research_providers.py` | 35 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
+| Domain adapters | `research_providers.py` | 37 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
 | Routing | `research_categories.py` | keyword classifier (Euro terms folded in, no separate category) + provider factories |
 | HTML meta | `meta_extractor.py` | `_core` kernels first, legacy `meta_oxide` package as last-resort fallback, then empty |
 | Structured docs | `structured_parser.py` | Pydantic v2 schemas + `StructuredOxideParser` (PDF/office/HTML) |
@@ -93,7 +93,7 @@ delegating to collaborator objects, all returning JSON strings.
 
 | Module | Kernels |
 |---|---|
-| `adapters/` | all 35 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
+| `adapters/` | all 37 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
 | `metaextract.rs` | HTML metadata via the `meta_oxide` crate FFI + `sparse()`/normalizers matching `to_py_dict` shapes |
 | `xmlatom.rs` | ATOM/XML traversal (arXiv/PubMed), SDMX-ML (Bundesbank/BIS), namespace-URI resolution |
 | `ssrf.rs` | IP/DNS allow-list logic mirroring CPython `ipaddress` tables |
@@ -162,7 +162,8 @@ jitter per domain, retry with backoff, SSRF-checked URLs, and a
 `requires_key` contract — keyed adapters fail fast naming the exact
 `GOSSAMER_*` variable instead of burning retries. Fail-fast credential
 checks run before any network. Categories (`research_categories.py`)
-map free text to a provider list, keyless-first; `patent` is
+map free text to a provider list, keyless-first (except lookup-only
+providers, which sort last regardless of key); `patent` is
 `epo` → `kipris` → `patentsview` → `lens` → `google-patents` (lookup-only, listed last so the full-text `epo` default is kept). Retired fictional endpoints stay
 deleted (no guessing); endpoint drift is caught by the opt-in live
 smoke suite (`GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py`).
