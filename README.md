@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-10982%20passing%2C%203%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11016%20passing%2C%2032%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -25,7 +25,7 @@ WebResearcherToolbox (agent_tools.py) — facade, no logic
        │  TOOL_REGISTRY (config.py): one source of truth
        ▼
 Collaborators (Python: HTTP, keys, rate limits, orchestration)
-fetch · search · crawl · document · discovery · 35 domain adapters
+fetch · search · crawl · document · discovery · 37 domain adapters
        │  JSON strings down, JSON strings up
        ▼
 _core (Rust): all response parsers, HTML metadata (in-core meta_oxide
@@ -41,7 +41,7 @@ Python decides, Rust parses. Details: [Architecture](./docs/ARCHITECTURE.md).
 - **Zero API Keys**: DuckDuckGo plus 20+ keyless domain adapters (OpenAlex, Eurostat, Bundesbank, HUDOC, …)
 - **Multi-Provider Search**: Google, Bing, Exa alongside DuckDuckGo with failover or merged results
 - **Domain Providers**: `research_by_category` classifies queries (incl. German/EU terms like *Leitzins*, *BVerfG*, *HICP*) into scholarly / legal / patent / financial / geo — keyless-first
-- **Patent Providers**: EPO OPS, KIPRIS, PatentsView — all key-gated, fail fast with the exact variable name
+- **Patent Providers**: EPO OPS, KIPRIS, PatentsView, Lens (all key-gated, fail fast with the exact variable name; Lens aggregates WO/EP/DE/CN/US, trial is non-commercial/academic) + keyless Google Patents number lookup
 - **Documents**: PDF/DOCX/XLSX/PPTX plus TXT/MD/CSV/JSON/XML/feeds; tables render as markdown by default; `store=True, include_images=True` saves PDF figures
 - **Crawl**: bounded relevance-ranked BFS (BM25 idfs + thesaurus + anchor context); documents collected, never fetched
 - **Citations**: BibTeX / CSL-JSON / APA / MLA from search results, no extra network calls
@@ -63,6 +63,11 @@ Python decides, Rust parses. Details: [Architecture](./docs/ARCHITECTURE.md).
 git clone https://github.com/opticsWolf/gossamer && cd gossamer
 pip install -r requirements.txt
 maturin develop --release
+# Optional: headless-browser rendering for JS-heavy pages
+# (`use_smart="browser"`). Windows/macOS only — no Linux wheels exist,
+# so this stays an extra (never a hard dependency) and static fetch
+# remains the default.
+pip install -e ".[browser]"
 ```
 
 ### Basic Usage
@@ -121,7 +126,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 |----------|------------------------------|
 | scholarly | OpenAlex, Crossref, arXiv, Zenodo |
 | legal | CourtListener, eCFR, Federal Register, Open Legal Data, HUDOC (ECtHR), GovInfo |
-| patent | EPO OPS, KIPRIS, PatentsView 🔑 (all key-gated) |
+| patent | EPO OPS, KIPRIS, PatentsView, Lens 🔑 + keyless Google Patents lookup |
 | financial | Yahoo, Frankfurter (FX), Eurostat, Bundesbank, BIS, CoinGecko, AlphaVantage 🔑 |
 | geo | Open-Meteo, Overpass |
 | general | DuckDuckGo (Google/Bing/Exa 🔑 opt-in) |

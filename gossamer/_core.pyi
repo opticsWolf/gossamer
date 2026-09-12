@@ -807,6 +807,21 @@ def kipris_parse_fetch(response_xml: str) -> str:
     """First KIPRIS item rows, as JSON (src/adapters.rs)."""
     ...
 
+def lens_parse_search(
+    response_json: str,
+    max_results: int = 5,
+) -> str:
+    """Lens patent rows minus raw, as JSON (src/adapters/patents.rs)."""
+    ...
+
+def lens_parse_fetch(response_json: str) -> str:
+    """Lens patent row(s) minus raw, as JSON (src/adapters/patents.rs)."""
+    ...
+
+def google_patents_parse_fetch(html: str, rid: str) -> str:
+    """`{"record", "meta"}` as JSON; Python attaches raw (src/adapters/patents.rs)."""
+    ...
+
 def cache_disk_key(key: str) -> str:
     """blake2b-128 hex of the UTF-8 key (src/cacheutils.rs)."""
     ...

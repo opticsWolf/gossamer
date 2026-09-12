@@ -1,6 +1,6 @@
 [package]
 name = "gossamer-core"
-version = "0.9.5"
+version = "0.9.6"
 edition = "2021"
 description = "Rust parsing core for the gossamer LLM web researcher (PyO3)"
 authors = ["opticsWolf"]

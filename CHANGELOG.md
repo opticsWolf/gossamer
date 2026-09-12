@@ -4,6 +4,48 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [Unreleased] (still 0.9.6 — no version bump)
+
+- Keyless `google-patents` lookup provider in the `patent` category
+  (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
+  full-text `epo` default is kept): resolves publication numbers
+  (`US5000575A`) against the server-rendered `/patent/` detail pages
+  (Dublin Core/citation meta + abstract/claims sections, parsed by the
+  new `google_patents_parse_fetch` Rust kernel). Deliberately
+  lookup-only — Google's `robots.txt` Allows `/patent/` but Disallows
+  `/` (search), verified live, so there is no search-page scraper;
+  free-text discovery stays on `site:patents.google.com` web search.
+  Mocked-shape tests + keyless live smoke test; full suite now
+  11016 passed / 32 skipped (the +2 past the new tests: the
+  `test_m17` real-browser tests un-skip once `browser-oxide` is
+  installed).
+- Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
+  (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
+  so it stays an extra and static fetch remains the default; SKILL.md
+  patent routing now lists `lens` + `google-patents`.
+
+## [0.9.6] — Lens patent aggregator
+
+- New `lens` provider in the `patent` category (`epo` default, `kipris`,
+  `patentsview`, `lens`): global patents via The Lens API
+  (`POST api.lens.org/patent/search`, `GET /patent/{lens_id}`) with
+  `Authorization: Bearer GOSSAMER_LENS_API_KEY` (request at
+  `lens.org/lens/user/subscriptions`; self-serve trial is non-commercial /
+  academic, so opt-in, never default). Covers WO/EP/DE/CN/US in one schema
+  (DOCDB simple + INPADOC extended families) for CN/DE/WO where OPS family
+  data is thin.
+- `LensAdapter` (key-gated, fail fast): plain text becomes a `bool should`
+  across `title`/`abstract`/`claim`; Lens IDs and bare publication numbers
+  become exact `terms` lookups; dicts with `"query"` pass through as the
+  full request body. `fetch` GETs by Lens ID with an `ids`-search fallback
+  for publication numbers. `GOSSAMER_LENS_BASE` overrides the host (same
+  pattern as PatentsView).
+- Rust kernels `lens_parse_search/fetch` (`src/adapters/patents.rs`) plus
+  mocked-shape regression tests (`tests/test_patent_adapters.py`,
+  12 new) and Rust shape pins (`src/adapters/tests.rs`); `LENS_API_KEY`
+  added to the keystore template; README/QUICKREF/ARCHITECTURE patent
+  tables updated.
+
 ## [0.9.5] — CLI/MCP param parity, tables_as, office-oxide 0.1.10 fixes
 
 - CLI gained the missing MCP parameters: `search --max-tokens`,

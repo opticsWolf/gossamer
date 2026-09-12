@@ -262,6 +262,28 @@ fn batch9_register_shapes() {
     // KIPRIS: duplicate tags keep first position, last value.
     let out = kipris_parse_search_impl("<item><a>1</a><a>2</a></item>", 5).unwrap();
     assert_eq!(out[0]["raw"]["a"], "2");
+    // Lens: envelope `data` rows; single-record fetch; error envelopes.
+    let body = r#"{"data": [{"lens_id": "186-488-232-022-055", "jurisdiction": "US", "doc_number": "1", "kind": "A1", "date_published": "2013-02-28", "doc_key": "US_1_A1", "biblio": {"invention_title": [{"text": "T"}], "parties": {"applicants": [{"extracted_name": {"value": "ACME"}}]}}}]}"#;
+    let out = lens_parse_search_impl(body, 5).unwrap();
+    assert_eq!(out[0]["id"], "186-488-232-022-055");
+    assert_eq!(out[0]["fields"]["jurisdiction"], "US");
+    let single = r#"{"lens_id": "186-488-232-022-055", "jurisdiction": "US"}"#;
+    assert_eq!(lens_parse_fetch_impl(single).unwrap().len(), 1);
+    assert!(lens_parse_fetch_impl(r#"{"data": []}"#).unwrap().is_empty());
+    assert_eq!(
+        lens_parse_search_impl(r#"{"error": "bad key"}"#, 5).unwrap_err(),
+        "RuntimeError: Lens error: bad key"
+    );
+    // Google Patents: meta/section extraction; soft-404 is null.
+    let html = r#"<html><head><link rel="canonical" href="https://patents.google.com/patent/US1A/en"><meta name="DC.title" content="T &amp; U"><meta name="DC.date" content="2020-01-02" scheme="issue"><meta name="DC.contributor" content="A" scheme="inventor"></head><body><dd itemprop="publicationNumber">US1A</dd><section itemprop="abstract" itemscope><div class="abstract">Ab</div><section itemprop="claims" itemscope><span itemprop="count">3</span></body></html>"#;
+    let (rec, meta) = google_patents_parse_fetch_impl(html, "US1A").unwrap();
+    assert_eq!(rec["id"], "US1A");
+    assert_eq!(rec["title"], "T & U");
+    assert_eq!(rec["fields"]["claims_count"], 3);
+    assert_eq!(meta["publication_number"], "US1A");
+    let (rec, meta) = google_patents_parse_fetch_impl("<html></html>", "US1A").unwrap();
+    assert!(rec.is_null());
+    assert_eq!(meta["not_found"], true);
 }
 
 #[test]
