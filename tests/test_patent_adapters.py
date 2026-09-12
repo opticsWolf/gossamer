@@ -1,6 +1,6 @@
-"""Wave-4 patent adapters (EPO OPS, KIPRIS, PatentsView).
+"""Wave-4 patent adapters (EPO OPS, KIPRIS, PatentsView) + Lens aggregator.
 
-All three are key-gated (there is no keyless patent API left), so these tests
+All four are key-gated (there is no keyless patent API left), so these tests
 pin request construction (URLs, auth placement, params) and parsing against
 the offices' documented response shapes with mocked HTTP. Live paths are
 covered by key-gated smoke tests, not the offline suite.
@@ -13,6 +13,7 @@ import pytest
 from gossamer.research_providers import (
     EpoOpsAdapter,
     KiprisAdapter,
+    LensAdapter,
     PatentsViewAdapter,
 )
 
@@ -169,3 +170,136 @@ class TestPatentsViewAdapter:
         out = PatentsViewAdapter(delay=0.0, api_key="K").fetch("12345678")
         assert out[0]["id"] == "12345678"
         assert mock_get.call_args.args[0].endswith("/api/v1/patents/12345678/")
+
+
+LENS_SEARCH = {
+    "data": [
+        {
+            "lens_id": "186-488-232-022-055",
+            "jurisdiction": "US",
+            "doc_number": "20130227762",
+            "kind": "A1",
+            "date_published": "2013-02-28",
+            "doc_key": "US_20130227762_A1_20130228",
+            "biblio": {
+                "invention_title": [{"text": "Quantum widget", "lang": "EN"}],
+                "parties": {
+                    "applicants": [{"extracted_name": {"value": "ACME Corp"}}],
+                    "inventors": [{"extracted_name": {"value": "Smith J"}}],
+                },
+            },
+            "abstract": [{"text": "A quantum widget for testing.", "lang": "EN"}],
+            "legal_status": {"patent_status": "ACTIVE"},
+        }
+    ],
+    "results": 1,
+    "total": 1,
+}
+
+LENS_SINGLE = LENS_SEARCH["data"][0]
+
+
+class TestLensAdapter:
+    def test_metadata_requires_key(self):
+        a = LensAdapter(delay=0.0)
+        assert (a.name, a.domain, a.requires_key) == ("lens", "patent", True)
+
+    def test_search_without_key_raises_actionable(self):
+        with pytest.raises(RuntimeError, match="GOSSAMER_LENS_API_KEY"):
+            LensAdapter(delay=0.0).search("quantum", max_results=2)
+
+    def test_search_empty_query_raises(self):
+        with pytest.raises(ValueError, match="text query"):
+            LensAdapter(delay=0.0, api_key="K").search("  ", max_results=2)
+
+    def test_build_text_query_shapes(self):
+        assert LensAdapter._build_text_query("186-488-232-022-055") == {
+            "terms": {"lens_id": ["186-488-232-022-055"]}
+        }
+        assert LensAdapter._build_text_query("US7654321") == {
+            "terms": {"ids": ["US7654321"]}
+        }
+        q = LensAdapter._build_text_query("quantum widget")
+        should = q["bool"]["should"]
+        got = {tuple(sorted(m["match"].items())) for m in should}
+        assert got == {
+            (("title", "quantum widget"),),
+            (("abstract", "quantum widget"),),
+            (("claim", "quantum widget"),),
+        }
+
+    @patch("gossamer.research_providers.httpx.post")
+    def test_search_posts_bearer_and_bool_query(self, mock_post):
+        mock_post.return_value = _resp(LENS_SEARCH)
+        out = LensAdapter(delay=0.0, api_key="K").search("quantum", max_results=2)
+        assert mock_post.call_args.args[0].endswith("/patent/search")
+        headers = mock_post.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer K"
+        body = mock_post.call_args.kwargs["json"]
+        assert body["size"] == 2
+        assert "title" in str(body["query"])
+        assert out[0]["id"] == "186-488-232-022-055"
+        assert out[0]["title"] == "Quantum widget"
+        assert out[0]["url"] == "https://www.lens.org/lens/patent/186-488-232-022-055"
+        assert out[0]["published"] == "2013-02-28"
+        assert "ACME Corp" in out[0]["snippet"]
+        assert out[0]["fields"]["jurisdiction"] == "US"
+        assert out[0]["fields"]["legal_status"] == "ACTIVE"
+        assert "raw" in out[0]
+
+    @patch("gossamer.research_providers.httpx.post")
+    def test_search_lens_id_uses_terms(self, mock_post):
+        mock_post.return_value = _resp(LENS_SEARCH)
+        LensAdapter(delay=0.0, api_key="K").search("186-488-232-022-055")
+        body = mock_post.call_args.kwargs["json"]
+        assert body["query"] == {"terms": {"lens_id": ["186-488-232-022-055"]}}
+
+    @patch("gossamer.research_providers.httpx.post")
+    def test_search_dict_passthrough(self, mock_post):
+        mock_post.return_value = _resp(LENS_SEARCH)
+        q = {"bool": {"must": [{"term": {"jurisdiction": "CN"}}]}}
+        LensAdapter(delay=0.0, api_key="K").search({"query": q}, max_results=3)
+        body = mock_post.call_args.kwargs["json"]
+        assert body["query"] == q
+        assert body["size"] == 3
+
+    @patch("gossamer.research_providers.httpx.post")
+    def test_search_bare_dict_becomes_query(self, mock_post):
+        mock_post.return_value = _resp(LENS_SEARCH)
+        q = {"term": {"jurisdiction": "DE"}}
+        LensAdapter(delay=0.0, api_key="K").search(q)
+        body = mock_post.call_args.kwargs["json"]
+        assert body["query"] == q
+
+    @patch("gossamer.research_providers.httpx.post")
+    def test_api_error_envelope_raises(self, mock_post):
+        mock_post.return_value = _resp({"error": "bad key"})
+        with pytest.raises(RuntimeError, match="Lens error"):
+            LensAdapter(delay=0.0, api_key="K").search("quantum")
+        mock_post.return_value = _resp({"message": "Unauthorized", "status": 401})
+        with pytest.raises(RuntimeError, match="Unauthorized"):
+            LensAdapter(delay=0.0, api_key="K").search("quantum")
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_by_lens_id(self, mock_get):
+        mock_get.return_value = _resp(LENS_SINGLE)
+        out = LensAdapter(delay=0.0, api_key="K").fetch("186-488-232-022-055")
+        assert out[0]["id"] == "186-488-232-022-055"
+        assert out[0]["title"] == "Quantum widget"
+        assert mock_get.call_args.args[0].endswith("/patent/186-488-232-022-055")
+
+    @patch("gossamer.research_providers.httpx.post")
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_pub_number_falls_back_to_ids_search(self, mock_get, mock_post):
+        err = RuntimeError("not found")
+        err.response = MagicMock(status_code=404)
+        mock_get.side_effect = err
+        mock_post.return_value = _resp(LENS_SEARCH)
+        out = LensAdapter(delay=0.0, api_key="K").fetch("US20130227762A1")
+        assert out[0]["id"] == "186-488-232-022-055"
+        body = mock_post.call_args.kwargs["json"]
+        assert body["query"] == {"terms": {"ids": ["US20130227762A1"]}}
+
+    def test_fetch_empty_id_raises(self):
+        with pytest.raises(ValueError, match="Lens ID"):
+            LensAdapter(delay=0.0, api_key="K").fetch("  ")

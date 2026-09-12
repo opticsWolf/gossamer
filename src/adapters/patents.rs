@@ -1,4 +1,4 @@
-//! Adapter kernels: Patent kernels (PatentsView, EPO OPS, KIPRIS).
+//! Adapter kernels: Patent kernels (PatentsView, EPO OPS, KIPRIS, Lens).
 
 use pyo3::prelude::*;
 use serde_json::Value;
@@ -455,5 +455,313 @@ pub fn kipris_parse_search(
 pub fn kipris_parse_fetch(py: Python, response_xml: &str) -> PyResult<String> {
     kipris_parse_fetch_impl(response_xml)
         .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+// ────────────────────────────────────────────────────────────────
+// Lens (api.lens.org) — cross-office aggregator (WO/EP/DE/CN/US).
+//
+// Search envelope: `{"data": [...], "results": N, ...}` (`results`
+// is the int hit count; `data` is the record array). Single fetch
+// (`GET /patent/{lens_id}`) answers the record object directly
+// (with `lens_id`). Both shapes are accepted by the fetch kernel.
+// Record shape (docs.api.lens.org): top-level `lens_id` /
+// `jurisdiction` / `doc_number` / `kind` / `date_published` /
+// `doc_key`, nested `biblio.invention_title: [{text}]`,
+// `biblio.parties.{applicants,inventors}: [{extracted_name:
+// {value}}]`, `abstract: [{text}]`, `legal_status.patent_status`.
+// ────────────────────────────────────────────────────────────────
+
+/// `str` of a Lens text holder: plain string, `{text}`, or
+/// `{value}` (party names); containers contribute "".
+fn lens_text_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Object(m) => {
+            if let Some(t) = m.get("text") {
+                if let Value::String(s) = t {
+                    return s.clone();
+                }
+                if !matches!(t, Value::Object(_) | Value::Array(_)) {
+                    return py_str_value(t);
+                }
+            }
+            if let Some(t) = m.get("value") {
+                if let Value::String(s) = t {
+                    return s.clone();
+                }
+                if !matches!(t, Value::Object(_) | Value::Array(_)) {
+                    return py_str_value(t);
+                }
+            }
+            String::new()
+        }
+        Value::Null => String::new(),
+        _ => String::new(),
+    }
+}
+
+/// First text of a Lens list-or-single field (`invention_title`,
+/// `abstract`): array -> first item's text; single -> its text.
+fn lens_first_text(v: Option<&Value>) -> String {
+    match v {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(a)) => match a.first() {
+            None => String::new(),
+            Some(first) => lens_text_value(first),
+        },
+        Some(Value::Object(_)) => lens_text_value(v.unwrap()),
+        _ => String::new(),
+    }
+}
+
+/// Party names (`applicants` / `inventors`): each item carries
+/// `extracted_name: {value}` (or a bare string); fall back to
+/// `name: {value}` for forward-compat shapes.
+fn lens_party_names(parties: Option<&Value>, key: &str) -> Vec<String> {
+    let arr = match parties {
+        Some(Value::Object(m)) => match m.get(key) {
+            Some(Value::Array(a)) => a,
+            _ => return Vec::new(),
+        },
+        _ => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for item in arr.iter() {
+        let name = match item {
+            Value::Object(im) => {
+                let ex = im.get("extracted_name").or_else(|| im.get("name"));
+                match ex {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(Value::Object(em)) => match em.get("value") {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(v) if !matches!(v, Value::Object(_) | Value::Array(_)) => {
+                            py_str_value(v)
+                        }
+                        _ => continue,
+                    },
+                    Some(v) if !matches!(v, Value::Object(_) | Value::Array(_) | Value::Null) => {
+                        py_str_value(v)
+                    }
+                    _ => continue,
+                }
+            }
+            Value::String(s) => s.clone(),
+            _ => continue,
+        };
+        let trimmed = crate::pycompat::py_strip(name.as_str()).to_string();
+        if !trimmed.is_empty() {
+            out.push(trimmed);
+        }
+    }
+    out
+}
+
+fn lens_row_impl(p: &Value) -> Result<Value, String> {
+    let m = match p {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(p))),
+    };
+    let lens_id = match m.get("lens_id") {
+        Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+        _ => String::new(),
+    };
+    let jurisdiction = match m.get("jurisdiction") {
+        Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+        _ => String::new(),
+    };
+    let doc_number = match m.get("doc_number") {
+        Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+        _ => String::new(),
+    };
+    let kind = match m.get("kind") {
+        Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+        _ => String::new(),
+    };
+    let doc_key = match m.get("doc_key") {
+        Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+        _ => String::new(),
+    };
+    let date_raw = match m.get("date_published") {
+        Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+        _ => String::new(),
+    };
+    let date = char_head(date_raw.as_str(), 10).to_string();
+    // Title: `biblio.invention_title` (list/single/string), else a
+    // readable publication ref, else the id itself.
+    let biblio = m.get("biblio");
+    let mut title = String::new();
+    if let Some(Value::Object(bm)) = biblio {
+        title = lens_first_text(bm.get("invention_title"));
+    }
+    if title.is_empty() {
+        let pubref = format!("{jurisdiction} {doc_number} {kind}");
+        let pubref = crate::pycompat::py_strip(pubref.as_str()).to_string();
+        title = if pubref.is_empty() {
+            if !doc_key.is_empty() {
+                doc_key.clone()
+            } else if !lens_id.is_empty() {
+                lens_id.clone()
+            } else {
+                String::new()
+            }
+        } else {
+            pubref
+        };
+    }
+    let parties = biblio.and_then(|b| match b {
+        Value::Object(bm) => bm.get("parties"),
+        _ => None,
+    });
+    let applicants = lens_party_names(parties, "applicants");
+    let inventors = lens_party_names(parties, "inventors");
+    let abstract_text = lens_first_text(m.get("abstract"));
+    let legal_status = match m.get("legal_status") {
+        Some(Value::Object(lm)) => match lm.get("patent_status") {
+            Some(v) if !matches!(v, Value::Null) => py_str_value(v),
+            _ => String::new(),
+        },
+        Some(Value::String(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let id = if !lens_id.is_empty() {
+        lens_id.clone()
+    } else if !doc_key.is_empty() {
+        doc_key.clone()
+    } else {
+        format!("{jurisdiction}{doc_number}{kind}")
+    };
+    let url = if lens_id.is_empty() {
+        Value::String(String::new())
+    } else {
+        Value::String(format!("https://www.lens.org/lens/patent/{lens_id}"))
+    };
+    // EPO-style snippet: `title — applicants[:3]`.
+    let joined = applicants.iter().take(3).cloned().collect::<Vec<String>>().join(", ");
+    let snippet = crate::pycompat::py_strip_chars(
+        format!("{title} \u{2014} {joined}").as_str(),
+        &[' ', '\u{2014}'],
+    )
+    .to_string();
+    let mut fields = serde_json::Map::new();
+    fields.insert("jurisdiction".to_string(), Value::String(jurisdiction.clone()));
+    fields.insert("doc_number".to_string(), Value::String(doc_number.clone()));
+    fields.insert("kind".to_string(), Value::String(kind.clone()));
+    fields.insert("doc_key".to_string(), Value::String(doc_key.clone()));
+    fields.insert("lens_id".to_string(), Value::String(lens_id.clone()));
+    fields.insert(
+        "applicants".to_string(),
+        Value::String(applicants.iter().take(5).cloned().collect::<Vec<String>>().join(", ")),
+    );
+    fields.insert(
+        "inventors".to_string(),
+        Value::String(inventors.iter().take(5).cloned().collect::<Vec<String>>().join(", ")),
+    );
+    fields.insert("legal_status".to_string(), Value::String(legal_status));
+    fields.insert(
+        "abstract".to_string(),
+        Value::String(crate::pycompat::char_head(abstract_text.as_str(), 240).to_string()),
+    );
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("lens".to_string()));
+    rec.insert("id".to_string(), Value::String(id));
+    rec.insert("title".to_string(), Value::String(title));
+    rec.insert("url".to_string(), url);
+    rec.insert("published".to_string(), Value::String(date));
+    rec.insert("snippet".to_string(), Value::String(snippet));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+fn lens_api_error(obj: &serde_json::Map<String, Value>) -> Option<String> {
+    if let Some(err) = obj.get("error") {
+        if is_truthy(err) {
+            return Some(format!("RuntimeError: Lens error: {0}", py_value_repr(err)));
+        }
+    }
+    // `{"message": ..., "status": 4xx}` without `data`/`lens_id` is
+    // an error envelope, not a record (records never carry `message`).
+    if obj.get("data").is_none() && obj.get("lens_id").is_none() {
+        if let Some(msg) = obj.get("message") {
+            if is_truthy(msg) {
+                return Some(format!("RuntimeError: Lens error: {0}", py_value_repr(msg)));
+            }
+        }
+    }
+    None
+}
+
+pub fn lens_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    if let Some(err) = lens_api_error(obj) {
+        return Err(err);
+    }
+    // `body.get("data", [])[:max_results]` (`results` is the int hit
+    // count, not the rows).
+    let hits: Vec<&Value> = match obj.get("data") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results)?,
+    };
+    let mut out = Vec::new();
+    for p in hits {
+        out.push(lens_row_impl(p)?);
+    }
+    Ok(out)
+}
+
+pub fn lens_parse_fetch_impl(response_json: &str) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Ok(Vec::new()),
+    };
+    if let Some(err) = lens_api_error(obj) {
+        return Err(err);
+    }
+    // Single-record answer (`GET /patent/{lens_id}`) carries `lens_id`.
+    if obj.get("lens_id").is_some() {
+        return Ok(vec![lens_row_impl(&body)?]);
+    }
+    // Envelope answer (`POST /patent/search`): first of `data`.
+    match obj.get("data") {
+        Some(Value::Array(a)) => match a.first() {
+            Some(first) => Ok(vec![lens_row_impl(first)?]),
+            None => Ok(Vec::new()),
+        },
+        Some(Value::String(s)) if !s.is_empty() => Err(attr_error("str")),
+        Some(Value::Object(_)) => Err("KeyError: 0".to_string()),
+        Some(other) if is_truthy(other) => {
+            Err(type_error_not_subscriptable(json_type(other)))
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn lens_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    lens_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn lens_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    lens_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }

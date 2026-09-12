@@ -634,6 +634,6 @@ def test_patent_category_taxonomy():
                               ddgs_delay=0.0, respect_robots=False)
         .research_categories()
     )}
-    assert data["patent"]["providers"] == ["epo", "kipris", "patentsview"]
+    assert data["patent"]["providers"] == ["epo", "kipris", "patentsview", "lens"]
     assert data["patent"]["default_provider"] == "epo"
     assert data["patent"]["provider_kind"] == "adapter"

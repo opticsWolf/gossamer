@@ -163,7 +163,7 @@ jitter per domain, retry with backoff, SSRF-checked URLs, and a
 `GOSSAMER_*` variable instead of burning retries. Fail-fast credential
 checks run before any network. Categories (`research_categories.py`)
 map free text to a provider list, keyless-first; `patent` is
-`epo` → `kipris` → `patentsview`. Retired fictional endpoints stay
+`epo` → `kipris` → `patentsview` → `lens`. Retired fictional endpoints stay
 deleted (no guessing); endpoint drift is caught by the opt-in live
 smoke suite (`GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py`).
 

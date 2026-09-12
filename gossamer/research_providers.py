@@ -2734,10 +2734,11 @@ class CoinGeckoAdapter(ResourceAdapter):
 
 
 # ────────────────────────────────────────────────────────────────
-# Wave 4 — patent offices (2026-09). All key-gated: there is no keyless
-# patent search API left (see docs/PATENT_LANDSCAPE_2026-09-05.md).
-# Shapes follow the offices' public documentation; authed live paths
-# are covered by key-gated smoke tests, not the offline suite.
+# Wave 4 — patent offices (2026-09) + Lens aggregator (2026-09).
+# All key-gated: there is no keyless patent search API left
+# (see docs/PATENT_LANDSCAPE_2026-09-05.md). Shapes follow the
+# offices' public documentation; authed live paths are covered by
+# key-gated smoke tests, not the offline suite.
 # ────────────────────────────────────────────────────────────────
 
 class EpoOpsAdapter(ResourceAdapter):
@@ -3053,3 +3054,250 @@ class PatentsViewAdapter(ResourceAdapter):
         return records
 
 
+
+class LensAdapter(ResourceAdapter):
+    """Global patents via The Lens patent API (https://api.lens.org).
+
+    Requires ``GOSSAMER_LENS_API_KEY`` (``Authorization: Bearer``; request
+    access at ``lens.org/lens/user/subscriptions`` then create a token from
+    the user profile — the self-serve trial is for non-commercial or limited
+    academic use under the Lens Terms of Use, so this stays an opt-in
+    provider, never the default). Covers 140M+ records across WO/EP/DE/CN/US
+    in one schema (DOCDB simple + INPADOC extended families), which makes it
+    the cross-office aggregator for CN/DE/WO where OPS family data is thin.
+
+    ``search`` POSTs a Lens query DSL to ``/patent/search`` (plain text
+    becomes a ``bool should`` across ``title``/``abstract``/``claim``;
+    a Lens ID or bare publication number becomes an exact ``terms`` lookup;
+    a dict with ``\"query\"`` passes through as the full request body).
+    ``fetch`` GETs one record by Lens ID (``/patent/{lens_id}``) with an
+    ``ids``-search fallback for publication numbers. Base URL is
+    configurable (``GOSSAMER_LENS_BASE``) like PatentsView.
+    """
+
+    name = "lens"
+    domain = "patent"
+    requires_key = True
+    DEFAULT_BASE = "https://api.lens.org"
+    INCLUDE = [
+        "lens_id",
+        "jurisdiction",
+        "doc_number",
+        "kind",
+        "date_published",
+        "doc_key",
+        "biblio",
+        "abstract",
+        "legal_status",
+    ]
+    _LENS_ID_RE = re.compile(r"^\d{3}-\d{3}-\d{3}-\d{3}-\d{3}$")
+    _PUB_ID_RE = re.compile(
+        r"^(US|EP|WO|CN|DE|JP|KR|GB|FR|EA|AP|OA|BR|IN|CA|AU)"
+        r"\s?\d[\d\s/,.\-]*[A-Z]?\d*$",
+        re.IGNORECASE,
+    )
+
+    def __init__(
+        self,
+        delay=None,
+        fetch_delay=None,
+        *,
+        api_key=None,
+        base_url=None,
+    ):
+        self.api_key = api_key or _env_get("GOSSAMER_LENS_API_KEY", "")
+        self.base_url = (
+            base_url or _env_get("GOSSAMER_LENS_BASE", "") or self.DEFAULT_BASE
+        ).rstrip("/")
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
+        )
+
+    def _headers(self) -> dict:
+        if not self.api_key:
+            raise RuntimeError(
+                "LensAdapter needs GOSSAMER_LENS_API_KEY "
+                "(request at lens.org/lens/user/subscriptions; "
+                "trial is non-commercial/academic)."
+            )
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def parse_headers(self, status, headers):
+        def _get(*names):
+            lowered = {}
+            try:
+                items = list(headers.items()) if hasattr(headers, "items") else []
+            except Exception:
+                items = []
+            for k, v in items:
+                try:
+                    lowered[str(k).lower()] = v
+                except Exception:
+                    continue
+            for n in names:
+                try:
+                    v = headers.get(n)  # type: ignore[union-attr]
+                except Exception:
+                    v = None
+                if v is not None:
+                    return v
+                v = lowered.get(n.lower())
+                if v is not None:
+                    return v
+            return None
+
+        remaining = _get(
+            "x-rate-limit-remaining-request-per-minute",
+            "x-rate-limit-remaining-request-per-month",
+            "X-RateLimit-Remaining",
+            "X-Rate-Limit-Remaining",
+        )
+        retry_after = _get(
+            "x-rate-limit-retry-after-seconds",
+            "Retry-After",
+        )
+        state = RateState(
+            retry_after=float(retry_after) if retry_after else None,
+        )
+        if remaining is not None:
+            try:
+                state.remaining = int(str(remaining).split()[0])
+            except (TypeError, ValueError):
+                pass
+        return state
+
+    @classmethod
+    def _build_text_query(cls, text: str) -> dict:
+        if cls._LENS_ID_RE.match(text):
+            return {"terms": {"lens_id": [text]}}
+        if len(text) <= 40 and cls._PUB_ID_RE.match(text):
+            return {"terms": {"ids": [text]}}
+        return {
+            "bool": {
+                "should": [
+                    {"match": {"title": text}},
+                    {"match": {"abstract": text}},
+                    {"match": {"claim": text}},
+                ]
+            }
+        }
+
+    def search(self, query, max_results=5):
+        # Fail fast without credentials (see EpoOpsAdapter).
+        self._headers()
+        return super().search(query, max_results)
+
+    def _search_impl(self, query, max_results=5):
+        self._enforce_delay()
+        headers = self._headers()
+        size = min(max(1, max_results), 100)
+        if isinstance(query, dict):
+            if "query" in query:
+                body = dict(query)
+                body["size"] = size
+            else:
+                body = {
+                    "query": query,
+                    "size": size,
+                    "include": list(self.INCLUDE),
+                }
+        else:
+            text = (query or "").strip()
+            if not text:
+                raise ValueError(
+                    "LensAdapter search needs a text query "
+                    "(or a Lens query dict with 'query')"
+                )
+            body = {
+                "query": self._build_text_query(text),
+                "size": size,
+                "include": list(self.INCLUDE),
+            }
+        resp = httpx.post(
+            f"{self.base_url}/patent/search",
+            json=body,
+            headers=headers,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        # Row building in Rust (src/adapters/patents.rs); `raw`
+        # re-attached here so it stays byte-identical `json.dumps`.
+        records = json.loads(
+            _rust.lens_parse_search(json.dumps(payload), max_results)
+        )
+        data = payload.get("data", []) if isinstance(payload, dict) else []
+        if not isinstance(data, list):
+            data = []
+        for rec, hit in zip(records, data[:max_results]):
+            rec["raw"] = json.dumps(hit)
+        return records
+
+    def fetch(self, record_id, params=None):
+        self._enforce_delay()
+        headers = self._headers()
+        rid = str(record_id or "").strip()
+        if not rid:
+            raise ValueError("LensAdapter fetch needs a Lens ID (or publication number)")
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/patent/{rid}",
+                headers=headers,
+                timeout=25.0,
+            )
+            resp.raise_for_status()
+        except Exception as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status == 404 and not self._LENS_ID_RE.match(rid):
+                return self._fetch_by_ids(rid, headers)
+            raise
+        payload = resp.json()
+        # Row building in Rust (src/adapters/patents.rs).
+        records = json.loads(_rust.lens_parse_fetch(json.dumps(payload)))
+        if not records:
+            return []
+        if isinstance(payload, dict) and payload.get("lens_id"):
+            records[0]["raw"] = json.dumps(payload)
+        elif (
+            isinstance(payload, dict)
+            and isinstance(payload.get("data"), list)
+            and payload["data"]
+        ):
+            records[0]["raw"] = json.dumps(payload["data"][0])
+        else:
+            records[0]["raw"] = json.dumps(payload)
+        return records
+
+    def _fetch_by_ids(self, rid: str, headers: dict):
+        # Publication-number fallback: exact `ids` lookup via search.
+        body = {
+            "query": {"terms": {"ids": [rid]}},
+            "size": 1,
+            "include": list(self.INCLUDE),
+        }
+        resp = httpx.post(
+            f"{self.base_url}/patent/search",
+            json=body,
+            headers=headers,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        records = json.loads(_rust.lens_parse_fetch(json.dumps(payload)))
+        if not records:
+            return []
+        if (
+            isinstance(payload, dict)
+            and isinstance(payload.get("data"), list)
+            and payload["data"]
+        ):
+            records[0]["raw"] = json.dumps(payload["data"][0])
+        else:
+            records[0]["raw"] = json.dumps(payload)
+        return records

@@ -28,7 +28,7 @@ tool; the toolbox method `research_categories()` backs it).
 
 - **scholarly** → `openalex`, `crossref`, `arxiv`, `zenodo`
 - **legal** → `courtlistener`, `ecfr`, `federalregister`, `oldp` (DE), `hudoc` (ECtHR), `govinfo`
-- **patent** → `epo` 🔑, `kipris` 🔑, `patentsview` 🔑 (all key-gated, fail fast)
+- **patent** → `epo` 🔑, `kipris` 🔑, `patentsview` 🔑, `lens` 🔑 (all key-gated, fail fast; `lens` aggregates WO/EP/DE/CN/US, trial is non-commercial/academic)
 - **financial** → `yahoo`, `frankfurter`, `eurostat`, `bundesbank`, `bis`, `coingecko`, `alphavantage` 🔑
 - **geo** → `open-meteo`, `overpass`
 - **general** → `duckduckgo` (Google/Bing/Exa 🔑 opt-in via `search_providers=`)

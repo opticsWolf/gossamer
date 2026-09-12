@@ -207,6 +207,7 @@ KNOWN_KEYS: List[str] = [
     "EPO_SECRET",
     "KIPRIS_KEY",
     "PATENTSVIEW_API_KEY",
+    "LENS_API_KEY",
     "JPO_USERNAME",
     "JPO_PASSWORD",
 ]

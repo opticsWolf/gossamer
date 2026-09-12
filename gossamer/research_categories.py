@@ -16,7 +16,7 @@ model controls which source it queries.
                      ``oldp`` / ``hudoc`` / ``govinfo``
                      (``eurlex`` / ``german`` were retired — no public
                      endpoint; see the provider docs)
-  * ``patent``      -> ``epo`` / ``kipris`` / ``patentsview``
+  * ``patent``      -> ``epo`` / ``kipris`` / ``patentsview`` / ``lens``
                      (all key-gated — no keyless patent API remains)
   * ``financial`` -> ``yahoo`` / ``frankfurter`` / ``eurostat`` /
                      ``bundesbank`` / ``bis`` / ``coingecko`` / ``alphavantage``
@@ -176,11 +176,12 @@ CATEGORIES: Tuple[Category, ...] = (
     Category(
         name="patent",
         description=(
-            "Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA). "
+            "Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA; "
+            "Lens aggregates WO/EP/DE/CN/US). "
             "All providers key-gated — no keyless patent API remains."
         ),
         keywords=_PATENT,
-        providers=("epo", "kipris", "patentsview"),
+        providers=("epo", "kipris", "patentsview", "lens"),
         kind="adapter",
     ),
     Category(
@@ -237,6 +238,7 @@ _PROVIDER_DISPLAY: Dict[str, str] = {
     "epo": "EPO OPS",
     "kipris": "KIPRIS",
     "patentsview": "PatentsView",
+    "lens": "Lens",
     "open-meteo": "Open-Meteo",
     "duckduckgo": "DuckDuckGo",
 }
@@ -291,6 +293,7 @@ _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "epo": "gossamer.research_providers.EpoOpsAdapter",
     "kipris": "gossamer.research_providers.KiprisAdapter",
     "patentsview": "gossamer.research_providers.PatentsViewAdapter",
+    "lens": "gossamer.research_providers.LensAdapter",
     "open-meteo": "gossamer.research_providers.OpenMeteoAdapter",
 }
 
