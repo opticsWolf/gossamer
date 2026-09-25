@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.7 — no version bump)
+## [Unreleased] (still 0.9.8 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -23,6 +23,13 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.8] — Status-aware Python HTTP retries
+
+- Retry only transient transport errors and HTTP 408/425/429/5xx; permanent
+  HTTP and application errors fail immediately. Honor bounded `Retry-After`
+  delta/date values and avoid retrying when the requested wait exceeds the cap.
+  Add deterministic retry-policy tests.
 
 ## [0.9.7] — UTF-8-safe CLI output
 

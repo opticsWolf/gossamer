@@ -12,6 +12,7 @@ real 1s/2s backoff, so failure-path tests cost ~3s each.
 import json
 import time
 
+import httpx
 import pytest
 
 from gossamer.agent_tools import WebResearcherToolbox
@@ -34,7 +35,7 @@ class _FlakyProvider(SearchProvider):
         self._enforce_delay()
         self.calls += 1
         if self.calls <= self.fail_times:
-            raise RuntimeError(f"transient failure #{self.calls}")
+            raise httpx.ConnectError(f"transient failure #{self.calls}")
         return [{"title": "ok", "url": "https://example.com/ok", "snippet": "s"}]
 
 
@@ -50,7 +51,7 @@ class _AlwaysDownProvider(SearchProvider):
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         self.calls += 1
-        raise RuntimeError("provider down")
+        raise httpx.ConnectError("provider down")
 
 
 class TestProviderSearchRetry:
@@ -64,7 +65,7 @@ class TestProviderSearchRetry:
     def test_gives_up_after_three_attempts(self):
         """All 3 attempts fail -> the exception propagates (M3)."""
         prov = _AlwaysDownProvider()
-        with pytest.raises(RuntimeError, match="provider down"):
+        with pytest.raises(httpx.ConnectError, match="provider down"):
             prov.search("query")
         assert prov.calls == 3
 
@@ -105,7 +106,7 @@ class TestProviderSearchRetry:
             nonlocal attempts
             attempts += 1
             if attempts < 2:
-                raise ValueError("nope")
+                raise httpx.ConnectError("nope")
             return "ok"
 
         assert flaky() == "ok"
@@ -124,6 +125,6 @@ class TestProviderSearchRetry:
             real_enforce()
 
         prov._enforce_delay = counting_enforce
-        with pytest.raises(RuntimeError):
+        with pytest.raises(httpx.ConnectError):
             prov.search("q")
         assert calls == 3  # once per attempt, including the retries
