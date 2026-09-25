@@ -18,13 +18,17 @@ Planning history: local `planning/` (unsynced).
 | `discover_resources` | `gossamer discover URL` | feeds + bounded `/sitemap.xml` probe |
 | `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--min-score 0.05`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls`, `--use-smart` |
 | `manage_cache` | `gossamer cache` | `prune` (default) \| `clear` \| `reset` |
-| `export_citations` | `gossamer cite` | `--style bibtex\|csl-json\|apa\|mla`, `--enrich`, `--no-dedupe` |
+| `export_citations` | `gossamer cite` | `--style bibtex\|csl-json\|apa\|mla`, `--enrich`, `--no-dedupe`, `--from-pdf` (cite local PDFs via detected DOI) |
 | `check_sources` | `gossamer check URL…` | `--mode status\|content` |
 
 CLI-only: `gossamer categories` prints the routing table (not an MCP
 tool; the toolbox method `research_categories()` backs it).
 
 `extract --pages` cannot combine with `--store`. `include_images` is PDF-only. `download --resume` continues a partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges preserve the partial file); without `--resume`, unexpected partial-content responses are rejected.
+
+## Cache behavior
+
+`inspect`/`extract` responses carry `cache_hit: true` on cache reads; paging re-reads the cached full text. `search` results are cached per query for the TTL. `check`, `download`, `locate-pdf`, and `cite` are never cached. `cache prune` keeps valid entries, `clear` wipes caches plus visited URLs, `reset` forgets visited URLs only. No PATH shim is shipped; run the CLI from the project venv.
 
 ## Providers (keyless unless 🔑)
 

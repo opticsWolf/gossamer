@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.22 — no version bump)
+## [Unreleased] (still 0.9.23 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,16 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.23] — Cache-behavior docs and workflow close-out
+
+- Document cache behavior in the skill and Quickref: per-response `cache_hit`
+  on page/document reads, TTL search-result caching, uncached
+  check/download/lookup/cite tools, and `prune`/`clear`/`reset` semantics.
+  Sync CLI synopses for OpenAlex title/author, download resume, and cite
+  `--from-pdf`. No PATH shim is shipped; the project-venv invocation remains
+  the supported path. This closes the remaining plan workflow items; live
+  arXiv/download successes stay upstream-dependent.
 
 ## [0.9.22] — Cite-from-PDF via detected DOI
 

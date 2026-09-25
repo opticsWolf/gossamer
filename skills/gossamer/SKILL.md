@@ -21,15 +21,15 @@ per-domain rate-limited, and token-budgeted.
 - **CLI** (identical JSON, no MCP setup; 13 commands — all 12 MCP tools
   1:1 plus `categories`): `search QUERY [--max-results N --max-tokens T
   --search-only --provider P --depth D]` · `research QUERY [--category C
-  --provider P --providers P… --max-results N --filter F --select F]` · `inspect URL [--query Q --offset N
+  --provider P --providers P… --max-results N --filter F --select F --title T --author A]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
-  `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --try-mirrors URL…]` ·
+  `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --resume --try-mirrors URL…]` ·
   `locate-pdf DOI` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
   --store-dir D --include-images]` · `check URL… [--mode status|content]` ·
   `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N
   --min-score S --same-host --excerpts --search-prior --seed-urls U…
   --use-smart auto|browser|static]` · `cache [--action prune|clear|reset]` ·
-  `cite DOI|URL… [--style bibtex|csl-json|apa|mla --enrich --no-dedupe]` ·
+  `cite DOI|URL|PDF… [--style bibtex|csl-json|apa|mla --enrich --no-dedupe --from-pdf]` ·
   `categories`. Run via the project venv
   (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows).
 
@@ -91,6 +91,14 @@ wait or set that exact variable rather than looping retries.
 - Cache: `GOSSAMER_CACHE_DIR` (see `mcp.json`) > `gossamer.json:cache_dir` > `./.gossamer_cache`.
 - Keys: `$GOSSAMER_KEYSTORE` > `gossamer.json:keystore` > `~/.gossamer/keys.json` (created only via `keystore --init`; absent = normal, not a broken install).
 - Check effective paths in `mcp.json` + `python -m gossamer.keystore --check`, not `~/.gossamer`.
+
+## Cache behavior (when a result is cached)
+
+- Page/document reads are cached: `inspect`/`extract` responses carry `cache_hit: true` when served from cache; repeat reads within the TTL skip the network. Paging (`--offset`/`--max-chunks`, `--pages`) reads the cached full text, so re-reads stay cheap.
+- `search` results are cached per query for the configured TTL; repeats do not re-query the provider. Provider adapters (`research --provider …`) are live calls with per-domain rate limits, not result caches.
+- `check`, `download`, `locate-pdf`, and `cite` are never cached: `check` probes liveness, `download` writes files, `locate-pdf` resolves current OA state, and `cite` formats on demand.
+- Maintenance: `cache --action prune` drops expired/over-cap entries (keeps valid ones and visited URLs); `clear` wipes caches plus visited URLs for fully fresh fetches; `reset` forgets visited URLs only, to retry a failed page without clearing caches.
+- No global PATH shim is provided: run the CLI from the project venv (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows) or via MCP tools.
 
 ## Documents (PDF limits that matter)
 
