@@ -1,6 +1,10 @@
 """CLI smoke tests: parsing, offline commands, error paths."""
 
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import gossamer.cli as cli
 
@@ -61,6 +65,31 @@ def test_common_flags_propagate(tmp_path):
     assert args.cache_dir == str(tmp_path)
     assert args.keystore == "k.json"
     assert args.config == "g.json"
+
+
+def test_cli_emits_unicode_json_under_legacy_windows_encoding():
+    script = r'''
+import json
+import sys
+import gossamer.cli as cli
+assert sys.stdout.encoding.lower().replace("-", "") == "cp1252"
+class Stub:
+    def web_search(self, *args, **kwargs):
+        return json.dumps({"results": [{"snippet": "gradient index μ"}]}, ensure_ascii=False)
+cli._build_toolbox = lambda args: Stub()
+raise SystemExit(cli.main(["search", "q", "--search-only"]))
+'''
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "cp1252:strict"
+    root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-c", script], cwd=root, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", errors="replace")
+    payload = json.loads(proc.stdout.decode("utf-8"))
+    assert payload["results"][0]["snippet"] == "gradient index μ"
 
 
 def test_tool_error_returns_exit_1(capsys, tmp_path):

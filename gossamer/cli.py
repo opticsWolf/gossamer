@@ -157,7 +157,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_utf8_stdio() -> None:
+    """Prefer UTF-8 CLI text output without breaking embedded/captured streams."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, TypeError, ValueError):
+            # Some wrapped/closed streams cannot be reconfigured. Leave those
+            # streams alone; normal terminals and redirected Python streams
+            # support reconfigure().
+            continue
+
+
 def main(argv=None) -> int:
+    _configure_utf8_stdio()
     args = build_parser().parse_args(argv)
     toolbox = _build_toolbox(args)
     commands = {
