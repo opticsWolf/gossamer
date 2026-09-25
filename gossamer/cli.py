@@ -116,6 +116,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Replace an existing destination")
     _common(p)
 
+    p = sub.add_parser("locate-pdf", help="Find OA PDF/landing-page candidates for a DOI")
+    p.add_argument("doi")
+    _common(p)
+
     p = sub.add_parser("extract", help="Extract a document (PDF/DOCX/XLSX/…) or feed")
     p.add_argument("source")
     p.add_argument("--pages", default=None, help="PDF page range, e.g. 10-20")
@@ -208,6 +212,7 @@ def main(argv=None) -> int:
             args.source, args.output_path, min_bytes=args.min_bytes,
             max_bytes=args.max_bytes, expected_format=args.expect_format,
             overwrite=args.overwrite),
+        "locate-pdf": lambda: toolbox.locate_pdf(args.doi),
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,
             store=args.store, store_dir=args.store_dir,
@@ -232,7 +237,7 @@ def main(argv=None) -> int:
         print(f"gossamer: error: {exc}", file=sys.stderr)
         return 1
 
-    if args.command in {"research", "download"}:
+    if args.command in {"research", "download", "locate-pdf"}:
         try:
             payload = json.loads(output) if isinstance(output, str) else output
         except (TypeError, json.JSONDecodeError):

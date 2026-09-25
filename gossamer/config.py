@@ -267,6 +267,18 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
+        "locate_pdf",
+        "Resolve a DOI through OpenAlex and return inspectable open-access PDF or landing-page candidates with source/license/version provenance. This locates but does not download; use download_file separately. Returns not_found, closed_access, open_access, or a top-level error status.",
+        "locate_pdf",
+        (
+            ToolParam(
+                "doi",
+                str,
+                description="Bare DOI, doi: prefixed value, or https://doi.org/ resolver URL",
+            ),
+        ),
+    ),
+    ToolSpec(
         "extract_document",
         "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats (TXT, MD, CSV, JSON, XML) and RSS/Atom feeds. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
         "extract_document",

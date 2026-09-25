@@ -35,6 +35,7 @@ def test_parsers_accept_all_subcommands():
     )
     assert _parse(["check", "https://x.example", "--mode", "content"]).mode == "content"
     assert _parse(["discover", "https://x.example"]).url == "https://x.example"
+    assert _parse(["locate-pdf", "10.1234/example"]).doi == "10.1234/example"
     crawl = _parse(["crawl", "https://x.example", "--query", "q",
                     "--max-pages", "10", "--same-host"])
     assert (crawl.query, crawl.max_pages, crawl.same_host) == ("q", 10, True)
@@ -135,6 +136,22 @@ def test_download_dispatch_and_error_exit_status(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert rc == 1
     assert payload["error"]["code"] == "not_found"
+
+
+def test_locate_pdf_dispatch_and_error_exit_status(monkeypatch, capsys):
+    class Stub:
+        def locate_pdf(self, doi):
+            return json.dumps({
+                "doi": doi,
+                "status": "error",
+                "error": {"code": "provider_error", "message": "offline"},
+            })
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    rc = main(["locate-pdf", "10.1234/example"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert payload["error"]["code"] == "provider_error"
 
 
 def test_research_success_payload_returns_exit_0(monkeypatch, capsys):

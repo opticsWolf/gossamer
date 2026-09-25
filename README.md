@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11046%20passing%2C%2032%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11063%20passing%2C%2032%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -103,15 +103,16 @@ results = await tools.search_web_async("rust programming")
 > the loop; call the sync methods otherwise. Full model:
 > [Architecture](./docs/ARCHITECTURE.md#12-async--threading-model).
 
-### Tools (eleven MCP tools, everywhere)
+### Tools (thirteen MCP tools, everywhere)
 
 MCP tools, CLI commands (`gossamer …`), and `execute_tool(name, args)`
 are the same surface, param-for-param: `web_search`,
-`inspect_html_page`, `batch_inspect_pages`, `download_file`, `extract_document`,
-`discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
+`inspect_html_page`, `batch_inspect_pages`, `download_file`, `locate_pdf`,
+`extract_document`, `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
 `export_citations`, `check_sources`. `download_file` saves an opaque remote file
 without requiring extraction; use `extract_document` when you also want parsed
-text. The CLI adds `gossamer categories`
+text. `locate_pdf` resolves a DOI to OpenAlex OA PDF/landing-page candidates
+without downloading them. The CLI adds `gossamer categories`
 (routing table; not an MCP tool). Parameters:
 [Quick reference](./docs/QUICKREF.md#tools-mcp--cli--execute_tool).
 
@@ -166,7 +167,7 @@ identify your client by email, set `GOSSAMER_OPENALEX_EMAIL`; it is sent as
 
 Same stdio server everywhere (`python -m gossamer.mcp_server`); keys stay
 in the keystore, never in client configs. Shallowest first: direct CLI
-(`gossamer search|research|inspect|download|extract|…`, 1:1 with MCP) → MCP
+(`gossamer search|research|inspect|download|locate-pdf|extract|…`, 1:1 with MCP) → MCP
 (`directTools`) → `skills/gossamer/SKILL.md`.
 
 **pi** (`mcp.json`, then reload):

@@ -56,6 +56,7 @@ from gossamer.search_providers import (
     RateLimit,
     RateState,
     ResourceAdapter,
+    retry,
     retry_after_seconds,
 )
 
@@ -162,6 +163,25 @@ class OpenAlexAdapter(ResourceAdapter):
         rec = json.loads(_rust.openalex_parse_fetch(json.dumps(body)))
         rec["raw"] = json.dumps(body)
         return [rec]
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def fetch_by_doi(self, doi: str):
+        """Resolve one DOI through OpenAlex's documented works DOI filter."""
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/works",
+            {"filter": f"doi:https://doi.org/{doi}", "per_page": 1},
+            {},
+        )
+        response = httpx.get(url, params=params, headers=headers, timeout=15.0)
+        response.raise_for_status()
+        works = response.json().get("results", [])
+        records = []
+        for work in works[:1]:
+            record = json.loads(_rust.openalex_parse_fetch(json.dumps(work)))
+            record["raw"] = json.dumps(work)
+            records.append(record)
+        return records
 
 class OpenMeteoAdapter(ResourceAdapter):
     """Open-Meteo weather/climate + place lookup (https://open-meteo.com).

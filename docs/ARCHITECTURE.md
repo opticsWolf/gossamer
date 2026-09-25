@@ -41,7 +41,7 @@ toolbox singleton is configured from `GOSSAMER_*` env
 ### CLI (`gossamer/cli.py`)
 
 `argparse` over subcommands 1:1 with the registry
-(`search research categories inspect batch download extract check discover
+(`search research categories inspect batch download locate-pdf extract check discover
 crawl cache cite`). Entry points: `gossamer`, `python -m
 gossamer.cli`. Prints the same JSON the MCP tools return.
 
@@ -71,6 +71,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
 | Documents | `document.py` | bytes → text via oxide converters, `pages=` slicing, `store=` persistence, figure extraction |
 | Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, classified failures |
+| Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution; no automatic download |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
 | Domain adapters | `research_providers.py` | 37 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |

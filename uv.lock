@@ -451,7 +451,7 @@ wheels = [
 
 [[package]]
 name = "gossamer-web"
-version = "0.9.12"
+version = "0.9.13"
 source = { editable = "." }
 dependencies = [
     { name = "ddgs" },

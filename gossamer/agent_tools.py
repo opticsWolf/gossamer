@@ -86,6 +86,7 @@ from gossamer.liveness import check_liveness, LIVENESS_TIMEOUT  # noqa: F401  # 
 from gossamer.fetch import FetchService  # noqa: F401
 from gossamer.document import DocumentExtractor  # noqa: F401
 from gossamer.downloader import DownloadService
+from gossamer.open_access import OpenAccessLocator
 from gossamer.budget import ContentBudget  # noqa: F401
 from gossamer.discovery import ResourceDiscovery  # noqa: F401
 from gossamer.research_categories import CATEGORIES, search_category  # noqa: F401
@@ -245,6 +246,7 @@ class WebResearcherToolbox:
 
         self._doc = DocumentExtractor(self)
         self._download = DownloadService(self)
+        self._oa_locator = OpenAccessLocator()
 
         self._crawler = Crawler(self)
 
@@ -952,6 +954,13 @@ class WebResearcherToolbox:
             expected_format=format_hint,
             overwrite=overwrite,
         )
+
+    def locate_pdf(self, doi: str) -> str:
+        """Locate OA PDF/landing-page candidates for a DOI via OpenAlex.
+
+        This reports candidates and provenance; it never downloads the file.
+        """
+        return json.dumps(self._oa_locator.locate(doi), indent=2, ensure_ascii=False)
 
     def extract_document(
         self,

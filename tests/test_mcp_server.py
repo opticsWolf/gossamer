@@ -16,6 +16,7 @@ EXPECTED_TOOLS = {
     "inspect_html_page",
     "batch_inspect_pages",
     "download_file",
+    "locate_pdf",
     "extract_document",
     "discover_resources",
     "crawl",
@@ -78,6 +79,17 @@ class TestToolCalls:
         data = json.loads(text)
         assert data["status"] == "downloaded"
         assert data["source"] == "https://example.com/paper.pdf"
+
+    def test_locate_pdf_via_mcp(self, server):
+        tb = mcp_server.get_toolbox()
+        tb._oa_locator.locate = lambda doi: {
+            "doi": doi, "status": "not_found", "candidates": [],
+        }
+        result = _run(server.call_tool("locate_pdf", {"doi": "10.1234/example"}))
+        text = result[0][0].text if isinstance(result, tuple) else result.content[0].text
+        data = json.loads(text)
+        assert data["doi"] == "10.1234/example"
+        assert data["status"] == "not_found"
 
     def test_inspect_page_via_mcp(self, server):
         from unittest.mock import patch

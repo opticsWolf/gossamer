@@ -4,7 +4,7 @@ Command-level companion to [Architecture](./ARCHITECTURE.md). Full manual:
 [README](../README.md). Per-version history: [Changelog](../CHANGELOG.md).
 Planning history: local `planning/` (unsynced).
 
-## Tools (eleven MCP tools; CLI = MCP 1:1 plus `categories`)
+## Tools (thirteen MCP tools; CLI = MCP 1:1 plus `categories`)
 
 | Tool | CLI | Essentials |
 |---|---|---|
@@ -13,6 +13,7 @@ Planning history: local `planning/` (unsynced).
 | `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static`, `--offset 0`, `--max-chunks 1`, `--structured` |
 | `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
 | `download_file` | `gossamer download URL -o PATH` | `--min-bytes 1`, `--max-bytes 0` (configured cap), `--expect-format auto\|pdf`, `--overwrite`; streams to an atomic file, does not extract |
+| `locate_pdf` | `gossamer locate-pdf DOI` | Returns OpenAlex OA PDF/landing-page candidates and source/license/version provenance; does not download |
 | `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as json\|markdown\|csv` (XLSX tables; default json, csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
 | `discover_resources` | `gossamer discover URL` | feeds + bounded `/sitemap.xml` probe |
 | `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--min-score 0.05`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls`, `--use-smart` |
