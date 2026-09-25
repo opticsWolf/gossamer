@@ -81,9 +81,11 @@ def _parse_lat_lon(lat_lon: Union[str, Tuple[float, float], List[float]]) -> Tup
 class OpenAlexAdapter(ResourceAdapter):
     """OpenAlex scholarly-works search (https://docs.openalex.org).
 
-    Keyless, but always send a polite ``Contact-Agent`` / ``User-Agent``
-    carrying an email so the pool reserves you a slot; a free API key gives
-    ~10x the daily budget. The documented safe ceiling is <100 rps.
+    Works without a key for casual use; an optional free API key increases
+    the daily budget. If the operator configures ``GOSSAMER_OPENALEX_EMAIL``,
+    it is sent as ``mailto`` and in the client identification headers. No
+    placeholder contact address is fabricated. The documented request-rate
+    ceiling is 100 requests per second.
     """
 
     name = "openalex"
@@ -99,7 +101,9 @@ class OpenAlexAdapter(ResourceAdapter):
         email: Optional[str] = None,
         api_key: Optional[str] = None,
     ):
-        self.email = email or _env_get("GOSSAMER_OPENALEX_EMAIL", "") or "research@example.org"
+        self.email = (
+            email if email is not None else _env_get("GOSSAMER_OPENALEX_EMAIL", "")
+        ).strip()
         self.api_key = api_key or _env_get("GOSSAMER_OPENALEX_KEY", "")
         self._last_search = 0.0
         self._last_fetch = 0.0
@@ -110,11 +114,16 @@ class OpenAlexAdapter(ResourceAdapter):
         )
 
     def inject_auth(self, url, params=None, headers=None):
-        ua = f"{_UA}?email={self.email}"
         h = dict(headers or {})
-        h.setdefault("User-Agent", ua)
-        h.setdefault("Contact-Agent", ua)
         p = dict(params or {})
+        ua = _UA
+        if self.email:
+            # OpenAlex recommends identifying the client with mailto in the
+            # User-Agent; its API also accepts the conventional query param.
+            ua = f"{_UA} (mailto:{self.email})"
+            h.setdefault("Contact-Agent", ua)
+            p.setdefault("mailto", self.email)
+        h.setdefault("User-Agent", ua)
         if self.api_key:
             p.setdefault("api_key", self.api_key)
         return url, p, h

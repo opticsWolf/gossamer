@@ -187,18 +187,60 @@ class TestOpenAlexAdapter:
         assert results[0]["doi"] == "doi:10.1/x"
         assert results[0]["authors"] == "Ada Lovelace"
         assert results[0]["citations"] == 5
+        assert mock_get.call_args.kwargs["params"]["mailto"] == "me@example.org"
 
-    def test_inject_auth_sets_polite_email_ua(self):
+    def test_inject_auth_sets_configured_mailto_and_contact_headers(self):
         prov = OpenAlexAdapter(delay=0.0, email="me@example.org")
         url, params, headers = prov.inject_auth("https://api.openalex.org/works", {}, {})
-        assert "email=me@example.org" in headers["User-Agent"]
-        assert "email=me@example.org" in headers["Contact-Agent"]
+        assert params["mailto"] == "me@example.org"
+        assert "mailto:me@example.org" in headers["User-Agent"]
+        assert headers["Contact-Agent"] == headers["User-Agent"]
         assert url == "https://api.openalex.org/works"
+
+    def test_inject_auth_does_not_fabricate_contact_email(self):
+        prov = OpenAlexAdapter(delay=0.0, email="")
+        _, params, headers = prov.inject_auth("https://api.openalex.org/works", {}, {})
+        assert "mailto" not in params
+        assert "research@example.org" not in str(headers)
+        assert headers["User-Agent"].startswith("gossamer/")
+        assert "Contact-Agent" not in headers
+
+    def test_email_is_loaded_from_environment(self, monkeypatch):
+        monkeypatch.setenv("GOSSAMER_OPENALEX_EMAIL", "env@example.org")
+        prov = OpenAlexAdapter(delay=0.0)
+        _, params, _ = prov.inject_auth("https://api.openalex.org/works", {}, {})
+        assert params["mailto"] == "env@example.org"
 
     def test_inject_auth_adds_api_key_when_set(self):
         prov = OpenAlexAdapter(delay=0.0, api_key="secret")
         _, params, _ = prov.inject_auth("https://x", {}, {})
         assert params["api_key"] == "secret"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_429_retry_after_is_honored_by_openalex(self, mock_get, monkeypatch):
+        request = httpx.Request("GET", f"{OpenAlexAdapter.BASE}/works")
+        error_response = httpx.Response(
+            429, headers={"Retry-After": "2"}, request=request,
+        )
+        error = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=request, response=error_response,
+        )
+        limited = MagicMock()
+        limited.raise_for_status.side_effect = error
+        success = MagicMock()
+        success.json.return_value = {"results": [{"id": "W123", "title": "A Paper"}]}
+        success.raise_for_status.return_value = None
+        mock_get.side_effect = [limited, success]
+        waits = []
+        monkeypatch.setattr("gossamer.search_providers.time.sleep", waits.append)
+
+        results = OpenAlexAdapter(delay=0.0, email="me@example.org").search(
+            "quantum", max_results=1,
+        )
+
+        assert results[0]["id"] == "W123"
+        assert mock_get.call_count == 2
+        assert len(waits) == 1 and 2.0 <= waits[0] <= 2.25
 
     @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):

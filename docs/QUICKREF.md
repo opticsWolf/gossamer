@@ -68,3 +68,4 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - Guard is off by default (`GuardConfig(enabled=True)` + `gossamer-web[guard]` extra to arm).
 - `use_smart="browser"` needs the `gossamer-web[browser]` extra (Windows/macOS only, no Linux wheels); without it browser requests fail and only static fetch runs.
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).
+- OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.

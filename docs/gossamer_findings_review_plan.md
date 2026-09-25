@@ -16,13 +16,13 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), and the stable provider-error envelope/CLI status fix (current `0.9.10` implementation). The arXiv service is still returning an upstream 406 from this network; code now identifies it and avoids repeated requests rather than pretending headers solved the edge limit. OpenAlex `mailto`/provider retry guidance and the collection features remain pending.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), and configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work includes standalone acquisition, DOI resolution, the confirmed Semantic Scholar adapter, OpenAlex precision controls, and multi-provider merge.
 
 Several findings need qualification:
 
 - `extract URL --store` already downloads and saves the original bytes together with extracted Markdown. The missing feature is a standalone, opaque-file download command with reliable validation and failure reporting—not all ability to save a fetched document.
 - The arXiv live smoke test already existed and remains opt-in. It is now a single default-paced `id_list` call and skips only on the typed upstream 406 rate-limit result; offline tests cover header/parser behavior.
-- OpenAlex already sends an email in its `User-Agent` and `Contact-Agent` headers and recognizes `GOSSAMER_OPENALEX_EMAIL`; it does not send the `mailto` parameter and uses a placeholder fallback email. Generic HTTP `Retry-After` handling is now implemented, but OpenAlex-specific body guidance and an operator-supplied real contact remain to be wired and verified.
+- OpenAlex now sends an operator-supplied `GOSSAMER_OPENALEX_EMAIL` as `mailto` and client-identification headers (`0.9.11`); no placeholder contact is fabricated. A free `GOSSAMER_OPENALEX_KEY` remains optional for casual use and raises the daily budget. Generic `Retry-After` and exponential backoff are implemented; current official guidance does not document a response-body `retryAfter` field, so do not invent a parser for one.
 - There is no Semantic Scholar provider in gossamer today. The classification keyword is not provider support; no Semantic Scholar key variable or adapter contract currently exists. **Integration is now confirmed and is included as a build milestone below**; the exact upstream endpoint/auth/field contract must be verified before coding.
 - F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
@@ -54,11 +54,11 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 **Implementation status:** Fixed in `0.9.10` (current change set). Adapter and engine failures now use `results: []` plus a top-level string `error`; normal guarded-engine metadata is preserved outside the result list. The `research` CLI parses its JSON response and returns 1 when the top-level error is set, while still printing parseable JSON. Tests cover adapter failures, engine error envelopes, guarded success metadata, and CLI success/failure status.
 
-### OpenAlex anonymous throttling: partially addressed
+### OpenAlex anonymous throttling: contact and retry behavior improved; quotas remain provider-controlled
 
-**Current code:** `OpenAlexAdapter` (`gossamer/research_providers.py`) reads `GOSSAMER_OPENALEX_EMAIL` and includes it in `User-Agent` and `Contact-Agent`; the setting is recognized by the keystore. If unset, the adapter still uses the placeholder `research@example.org`. Requests include only `search` and `per_page`, not `mailto`, and the adapter does not interpret OpenAlex-specific retry guidance.
+**Current code:** `OpenAlexAdapter` reads `GOSSAMER_OPENALEX_EMAIL`; when configured, it sends that address as the `mailto` query parameter and in `User-Agent`/`Contact-Agent`. If unset, no email is fabricated. The optional `GOSSAMER_OPENALEX_KEY` continues to be sent as `api_key`.
 
-**Implementation status:** The shared Python retry decorator is now status-aware (`0.9.8`): it does not retry permanent 4xx/application errors and honors bounded `Retry-After` on retryable HTTP errors. The OpenAlex-specific `mailto` parameter, choice of a valid project contact/default, and any documented response-body `retryAfter` format remain pending. Do not invent a project email or parse undocumented free text.
+**Implementation status:** The generic retry decorator is status-aware (`0.9.8`), honors bounded `Retry-After`, and uses exponential backoff for retryable 429/5xx and transport errors. Configured `mailto`/headers and omission of a default contact are covered in `0.9.11`. Current official OpenAlex docs describe 429 responses, rate-limit headers, and exponential backoff; they do not establish the free-text/body `retryAfter` field described in the findings, so no undocumented parser is added. An API key is the supported way to increase the current daily budget; `mailto` identifies the client but should not be described as authentication or a guaranteed quota bypass.
 
 ### Semantic Scholar: integration confirmed; adapter does not exist yet
 
@@ -106,6 +106,7 @@ The document download path uses a static `httpx.Client`; it does not download bi
 ### Milestone A — make CLI output and HTTP failures reliable
 
 **Priority:** P0  
+**Status:** Core CLI/retry/arXiv failure reporting and configured OpenAlex mailto are implemented in `0.9.7`–`0.9.11`; a successful arXiv live response is still upstream-dependent.
 **Scope:** B1, B2, OpenAlex throttling  
 **Likely files:** `gossamer/cli.py`, `gossamer/search_providers.py`, `gossamer/research_providers.py`, `gossamer/settings.py` (only if a new contact setting is needed), `tests/test_cli.py`, `tests/test_research_providers.py`, `tests/test_live_smoke.py`.
 
@@ -129,11 +130,11 @@ The document download path uses a static `httpx.Client`; it does not download bi
 
 #### A3. Make Python HTTP retries status-aware
 
-1. Replace the current “retry every exception” behavior with explicit retry eligibility: transient connection/timeouts and appropriate 408/429/5xx responses; permanent 4xx responses should fail immediately.
-2. Parse `Retry-After` seconds and HTTP-date forms, clamp waits to a documented maximum, and add jitter without retrying sooner than the server asks. Reuse tested semantics where appropriate, but do not assume the Rust page-fetch retry implementation handles Python API calls.
-3. For OpenAlex, send `mailto` from `GOSSAMER_OPENALEX_EMAIL` alongside contact headers, provided the parameter is confirmed against the API contract. Decide on a valid package contact before adding any default; never ship a fabricated email as a polite-pool identity.
-4. Handle structured provider retry guidance when present. Prefer documented response fields/headers; only parse a free-text wait message if tests pin the real observed format. Keep API-key/quota errors and permanent failures out of retry loops.
-5. Add unit tests using mocked `httpx` responses for 429 + Retry-After, retry exhaustion, permanent 406/400, and OpenAlex email/parameter construction. Use a local test server for timing behavior rather than real provider throttling.
+1. **Done (`0.9.8`):** Retry only transport errors and HTTP 408/425/429/5xx; permanent 4xx/application errors fail immediately.
+2. **Done (`0.9.8`):** Parse `Retry-After` seconds and HTTP-date forms, enforce a bounded wait, and add jitter without retrying before the requested wait. Python API calls use this policy independently of the Rust page-fetch retry code.
+3. **Done (`0.9.11`):** Send configured `GOSSAMER_OPENALEX_EMAIL` as a `mailto` query and contact header; do not fabricate a default. OpenAlex's published [API mailto guidance](https://github.com/ourresearch/openalex-docs/blob/main/how-to-use-the-api/rate-limits-and-authentication.md) supports contact by `mailto` or User-Agent. Current [authentication docs](https://developers.openalex.org/guides/authentication) describe optional free API keys that increase the daily budget; email is identification, not authentication.
+4. **Partially done:** Honor documented response headers. Current OpenAlex docs describe 429, rate-limit headers, and exponential backoff, but do not establish the free-text `retryAfter` response-body field seen in the findings; do not add an undocumented parser. If a future official response contract exposes a structured delay, add it with a fixture.
+5. **Done for shared retry and OpenAlex contact (`0.9.8`, `0.9.11`):** Mocked tests cover 429 + Retry-After, retry exhaustion, permanent 406/400, and OpenAlex email/parameter construction. Use local servers/mocks rather than real provider throttling.
 
 **Risk:** `retry()` is shared across many provider implementations. Changing its semantics can change request counts and error timing widely. Run the full adapter/offline suite and add explicit tests for quota fail-fast and retryable/non-retryable status classes.
 

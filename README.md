@@ -153,6 +153,11 @@ python -m gossamer.keystore --check         # validate, never prints secrets
 { "max_tokens": 4000, "model_name": "gpt-4o", "fetch_mode": "auto" }
 ```
 
+OpenAlex works without a key for casual use. Set `GOSSAMER_OPENALEX_KEY`
+(in the keystore or environment) for the higher daily budget. If you want to
+identify your client by email, set `GOSSAMER_OPENALEX_EMAIL`; it is sent as
+`mailto` and in the request headers. No placeholder email is sent when unset.
+
 ---
 
 ## Harness Integration (pi, Codex, Claude Code)

@@ -70,6 +70,9 @@ API keys live in the keystore (`~/.gossamer/keys.json`;
 `python -m gossamer.keystore --init`), never in harness configs or prompts.
 Keyed providers raise an actionable error naming the exact variable
 (e.g. `GOSSAMER_EPO_KEY`) — surface it to the user instead of retrying.
+OpenAlex works keyless for casual use; `GOSSAMER_OPENALEX_KEY` is optional
+and raises the API's daily budget. Set `GOSSAMER_OPENALEX_EMAIL` to send your
+own `mailto` contact; gossamer does not invent a default email.
 
 ## Config / cache (where stuff actually is)
 
