@@ -277,7 +277,7 @@ def describe_categories() -> str:
         "pass category=<name> to skip classification. No automatic fallback "
         "between providers -- the caller chooses. Pass providers=[...] for an "
         "explicit scholarly multi-search merged by DOI/arXiv ID. OpenAlex-only "
-        "filter/select options pass through to that API. Returns the chosen category, provider, "
+        "filter/select/title/author options pass through to that API. Returns the chosen category, provider, "
         "and results as JSON. Provider failures keep results as an "
         "empty list and add a top-level error field."
     )
@@ -417,6 +417,8 @@ def _search_multiple_scholarly(
     max_results: int,
     filter: Optional[str],
     select: Optional[str],
+    title: Optional[str] = None,
+    author: Optional[str] = None,
 ) -> dict:
     """Search an explicit scholarly provider list sequentially and merge IDs."""
     empty = {"query": query, "results": []}
@@ -425,10 +427,10 @@ def _search_multiple_scholarly(
             **empty,
             "error": "use either provider= or providers=, not both",
         }
-    if filter is not None or select is not None:
+    if filter is not None or select is not None or title is not None or author is not None:
         return {
             **empty,
-            "error": "OpenAlex filter/select options cannot be combined with providers=",
+            "error": "OpenAlex filter/select/title/author options cannot be combined with providers=",
         }
     if not isinstance(providers, (list, tuple)) or not providers:
         return {**empty, "error": "providers= must be a non-empty list"}
@@ -524,6 +526,8 @@ def search_category(
     filter: Optional[str] = None,
     select: Optional[str] = None,
     providers: Optional[List[str]] = None,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
 ) -> dict:
     """Trigger **one** provider via *tb* for *query*.
 
@@ -580,6 +584,8 @@ def search_category(
             max_results=max_results,
             filter=filter,
             select=select,
+            title=title,
+            author=author,
         )
 
     # Resolve the category: explicit, reverse-resolved from the provider, or
@@ -633,14 +639,14 @@ def search_category(
             "results": [],
         }
 
-    if (filter is not None or select is not None) and provider != "openalex":
+    if (filter is not None or select is not None or title is not None or author is not None) and provider != "openalex":
         return {
             "query": query,
             "category": category_obj.name,
             "provider": provider,
             "available_providers": list(category_obj.providers),
             "provider_kind": category_obj.kind,
-            "error": "OpenAlex filter/select options require provider='openalex'",
+            "error": "OpenAlex filter/select/title/author options require provider='openalex'",
             "results": [],
         }
 
@@ -649,9 +655,18 @@ def search_category(
     try:
         if category_obj.kind == "adapter":
             adapter = _make_adapter(provider)
-            if provider == "openalex" and (filter is not None or select is not None):
+            if provider == "openalex" and (filter is not None or select is not None or title is not None or author is not None):
+                native_kwargs = {}
+                if filter is not None:
+                    native_kwargs["filter"] = filter
+                if select is not None:
+                    native_kwargs["select"] = select
+                if title is not None:
+                    native_kwargs["title"] = title
+                if author is not None:
+                    native_kwargs["author"] = author
                 provider_result = adapter.search(
-                    query, max_results=max_results, filter=filter, select=select,
+                    query, max_results=max_results, **native_kwargs,
                 )
             else:
                 provider_result = adapter.search(query, max_results=max_results)

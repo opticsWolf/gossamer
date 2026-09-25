@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.18 — no version bump)
+## [Unreleased] (still 0.9.19 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,14 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.19] — OpenAlex fielded title/author search
+
+- Add verified OpenAlex `title`/`author` controls through the adapter, category
+  facade, toolbox/MCP tool, and `gossamer research --title/--author`. They map
+  to the live-verified `title.search` and `raw_author_name.search` filters and
+  combine with `filter=`; blank values and embedded commas are rejected locally.
+  Valid only with `provider='openalex'` and rejected with `providers=`.
 
 ## [0.9.18] — Collection and routing documentation
 

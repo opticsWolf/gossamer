@@ -178,6 +178,47 @@ def test_search_category_rejects_openalex_options_for_other_providers(monkeypatc
     assert "require provider='openalex'" in out["error"]
 
 
+def test_search_category_plumbs_title_author_to_openalex(monkeypatch):
+    seen = {}
+
+    class _FakeAdapter:
+        def search(self, query, max_results=5, *, filter=None, select=None, title=None, author=None):
+            seen.update({
+                "query": query,
+                "max_results": max_results,
+                "filter": filter,
+                "title": title,
+                "author": author,
+            })
+            return [{"source": "openalex"}]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda _provider: _FakeAdapter())
+    out = rc.search_category(
+        object(), "peer reviewed paper", provider="openalex",
+        title="gradient index", author="Smith",
+    )
+
+    assert out["provider"] == "openalex"
+    assert seen["title"] == "gradient index"
+    assert seen["author"] == "Smith"
+
+
+def test_search_category_rejects_title_author_for_other_providers(monkeypatch):
+    monkeypatch.setattr(rc, "_make_adapter", lambda _p: (_ for _ in ()).throw(AssertionError("must fail before dispatch")))
+    out = rc.search_category(object(), "paper", provider="crossref", title="optics")
+    assert out["results"] == []
+    assert "require provider='openalex'" in out["error"]
+
+
+def test_search_category_rejects_title_author_with_providers(monkeypatch):
+    out = rc.search_category(
+        object(), "a peer reviewed paper", providers=["openalex", "arxiv"],
+        title="optics",
+    )
+    assert out["results"] == []
+    assert "cannot be combined with providers=" in out["error"]
+
+
 def test_search_category_multi_provider_merges_explicit_scholarly_sources(monkeypatch):
     rows = {
         "openalex": [{"source": "openalex", "doi": "https://doi.org/10.1234/x", "title": "A"}],

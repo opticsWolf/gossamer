@@ -51,9 +51,10 @@ per-domain rate-limited, and token-budgeted.
 `gossamer categories` prints this table live —
 prefer it over memory when unsure.
 
-`research --filter F --select F` passes OpenAlex-native controls and is valid
+`research --filter F --select F --title T --author A` passes OpenAlex-native controls and is valid
 only with `--provider openalex`; gossamer rejects these options for other
-providers rather than silently ignoring them. `--providers` explicitly runs a
+providers rather than silently ignoring them. `--title`/`--author` map to the verified
+`title.search`/`raw_author_name.search` filters and combine with `--filter`. `--providers` explicitly runs a
 sequential scholarly merge by DOI/arXiv ID; it never runs by default and keeps
 all per-provider source records.
 

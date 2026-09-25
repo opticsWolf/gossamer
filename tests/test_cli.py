@@ -21,8 +21,10 @@ def test_parsers_accept_all_subcommands():
     advanced = _parse([
         "research", "q", "--provider", "openalex",
         "--filter", "type:article", "--select", "id,title",
+        "--title", "gradient index", "--author", "Smith",
     ])
     assert (advanced.filter, advanced.select) == ("type:article", "id,title")
+    assert (advanced.title, advanced.author) == ("gradient index", "Smith")
     assert _parse([
         "research", "q", "--providers", "openalex", "arxiv",
     ]).providers == ["openalex", "arxiv"]
@@ -142,10 +144,13 @@ def test_research_native_options_dispatch(monkeypatch, capsys):
     assert main([
         "research", "q", "--provider", "openalex",
         "--filter", "type:article", "--select", "id,title",
+        "--title", "gradient index", "--author", "Smith",
     ]) == 0
     capsys.readouterr()
     assert calls["filter"] == "type:article"
     assert calls["select"] == "id,title"
+    assert calls["title"] == "gradient index"
+    assert calls["author"] == "Smith"
 
 
 def test_research_multi_provider_dispatch(monkeypatch, capsys):

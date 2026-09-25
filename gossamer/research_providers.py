@@ -134,16 +134,45 @@ class OpenAlexAdapter(ResourceAdapter):
         # OpenAlex exposes no X-RateLimit headers; report the documented ceiling.
         return RateState(rps=100.0)
 
-    def _search_impl(self, query, max_results=5, *, filter=None, select=None):
-        if filter is not None and not filter.strip():
-            raise ValueError("OpenAlex filter must not be blank")
+    @staticmethod
+    def _fielded_filter(base_filter=None, title=None, author=None) -> Optional[str]:
+        """Combine a native filter with verified fielded title/author clauses.
+
+        Verified live against the OpenAlex works API: ``title.search:`` and
+        ``raw_author_name.search:`` are valid filter fields; clauses combine
+        with commas (AND). Commas inside values would split the filter, so
+        they are rejected rather than guessed at.
+        """
+        clauses = []
+        if base_filter is not None:
+            if not base_filter.strip():
+                raise ValueError("OpenAlex filter must not be blank")
+            clauses.append(base_filter.strip())
+        if title is not None:
+            if not title.strip():
+                raise ValueError("OpenAlex title must not be blank")
+            if "," in title:
+                raise ValueError("OpenAlex title must not contain a comma; use filter= for advanced syntax")
+            clauses.append(f"title.search:{title.strip()}")
+        if author is not None:
+            if not author.strip():
+                raise ValueError("OpenAlex author must not be blank")
+            if "," in author:
+                raise ValueError("OpenAlex author must not contain a comma; use filter= for advanced syntax")
+            clauses.append(f"raw_author_name.search:{author.strip()}")
+        if not clauses:
+            return None
+        return ",".join(clauses)
+
+    def _search_impl(self, query, max_results=5, *, filter=None, select=None, title=None, author=None):
         if select is not None and not select.strip():
             raise ValueError("OpenAlex select must not be blank")
+        combined_filter = self._fielded_filter(filter, title, author)
         self._enforce_delay()
         url = f"{self.BASE}/works"
         query_params = {"search": query, "per_page": min(max_results, 100)}
-        if filter is not None:
-            query_params["filter"] = filter
+        if combined_filter is not None:
+            query_params["filter"] = combined_filter
         if select is not None:
             query_params["select"] = select
         url, params, headers = self.inject_auth(url, query_params, {})
@@ -161,10 +190,10 @@ class OpenAlexAdapter(ResourceAdapter):
         return records
 
     @retry(max_attempts=3, delay=1.0, backoff=2.0)
-    def search(self, query, max_results=5, *, filter=None, select=None):
-        """Search OpenAlex works with optional native filter/select controls."""
+    def search(self, query, max_results=5, *, filter=None, select=None, title=None, author=None):
+        """Search OpenAlex works with optional native filter/select/title/author."""
         return self._search_impl(
-            query, max_results, filter=filter, select=select,
+            query, max_results, filter=filter, select=select, title=title, author=author,
         )
 
     def fetch(self, record_id, params=None):

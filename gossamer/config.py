@@ -475,6 +475,18 @@ TOOL_REGISTRY = (
                 "OpenAlex-native comma-separated field projection; valid only with provider='openalex'.",
             ),
             ToolParam(
+                "title",
+                str,
+                None,
+                "OpenAlex title search; maps to verified title.search filter. Valid only with provider='openalex'.",
+            ),
+            ToolParam(
+                "author",
+                str,
+                None,
+                "OpenAlex author search; maps to verified raw_author_name.search filter. Valid only with provider='openalex'.",
+            ),
+            ToolParam(
                 "providers",
                 list[str],
                 [],

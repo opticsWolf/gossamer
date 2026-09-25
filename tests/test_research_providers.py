@@ -216,6 +216,46 @@ class TestOpenAlexAdapter:
             OpenAlexAdapter(delay=0.0).search("q", filter="  ")
         mock_get.assert_not_called()
 
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_maps_title_author_to_verified_filters(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"results": [{"id": "W123", "title": "A paper"}]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        OpenAlexAdapter(delay=0.0, email="").search(
+            "quantum", max_results=5, title="gradient index", author="Smith",
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["filter"] == "title.search:gradient index,raw_author_name.search:Smith"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_combines_filter_with_title_author(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"results": [{"id": "W123", "title": "A paper"}]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        OpenAlexAdapter(delay=0.0, email="").search(
+            "q", max_results=5, filter="type:article", title="optics",
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["filter"] == "type:article,title.search:optics"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_rejects_blank_or_comma_title_author(self, mock_get):
+        with pytest.raises(ValueError, match="title must not be blank"):
+            OpenAlexAdapter(delay=0.0).search("q", title="  ")
+        with pytest.raises(ValueError, match="author must not be blank"):
+            OpenAlexAdapter(delay=0.0).search("q", author="  ")
+        with pytest.raises(ValueError, match="must not contain a comma"):
+            OpenAlexAdapter(delay=0.0).search("q", title="a,b")
+        with pytest.raises(ValueError, match="must not contain a comma"):
+            OpenAlexAdapter(delay=0.0).search("q", author="a,b")
+        mock_get.assert_not_called()
+
     def test_inject_auth_sets_configured_mailto_and_contact_headers(self):
         prov = OpenAlexAdapter(delay=0.0, email="me@example.org")
         url, params, headers = prov.inject_auth("https://api.openalex.org/works", {}, {})

@@ -555,6 +555,8 @@ class WebResearcherToolbox:
         filter: Optional[str] = None,
         select: Optional[str] = None,
         providers: Optional[list[str]] = None,
+        title: Optional[str] = None,
+        author: Optional[str] = None,
     ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
@@ -580,10 +582,10 @@ class WebResearcherToolbox:
         if providers == []:
             providers = None
         if not (query or "").strip():
-            if filter is not None or select is not None or providers is not None:
+            if filter is not None or select is not None or providers is not None or title is not None or author is not None:
                 return json.dumps({
                     "results": [],
-                    "error": "filter/select/providers options require a research query",
+                    "error": "filter/select/title/author/providers options require a research query",
                 }, indent=2)
             return self.research_categories()
         return json.dumps(
@@ -596,6 +598,8 @@ class WebResearcherToolbox:
                 filter=filter,
                 select=select,
                 providers=providers,
+                title=title,
+                author=author,
             ),
             indent=2,
             default=str,
