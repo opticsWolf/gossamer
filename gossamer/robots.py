@@ -24,7 +24,6 @@ Design notes
 """
 
 import logging
-import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -62,18 +61,6 @@ def _url_path(url: str) -> str:
     """Path (+ query string) that robots.txt rules are matched against."""
     # Implemented in Rust (src/robots.rs).
     return _rust.robots_url_path(url)
-
-
-def _path_regex(path: str):
-    """Compile one robots path rule (kept for import compat).
-
-    Matching itself runs in Rust (``src/robots.rs``); this returns the
-    pattern source the Rust side builds, for inspection only.
-    """
-    anchored = path.endswith("$")
-    body = path[:-1] if anchored else path
-    pattern = "".join(".*" if ch == "*" else re.escape(ch) for ch in body)
-    return re.compile(f"^{pattern}" + ("$" if anchored else ""))
 
 
 def _parse_robots(

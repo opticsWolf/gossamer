@@ -430,10 +430,6 @@ class OpenMeteoAdapter(ResourceAdapter):
 # Phase 2 adapters (scholarly / library / financial / tech)
 # ────────────────────────────────────────────────────────────────
 
-def _join(*parts):
-    """Join path parts, dropping empties."""
-    return "/".join(str(p).strip("/") for p in parts if p not in (None, ""))
-
 def _rate_state_from_headers(headers, default_rps=None):
     """Build a :class:`RateState` from ``X-RateLimit-*`` style headers.
 
@@ -1199,13 +1195,6 @@ def _today_iso() -> str:
     """YYYY-MM-DD for date-indexed endpoints (e.g. NASA NeoWs)."""
     return _date.today().isoformat()
 
-def _first_desc(cve: dict, limit: int = 240) -> str:
-    """First English description string of a CVE doc, collapsed + truncated."""
-    for d in cve.get("descriptions", []) or []:
-        if d.get("lang") == "en" or not d.get("lang"):
-            return " ".join((d.get("value") or "").split())[:limit]
-    return ""
-
 def _parse_census_query(query) -> Tuple[str, dict]:
     """Split a Census spec into ``(dataset, extra_params)``.
 
@@ -1809,12 +1798,6 @@ class CensusAdapter(ResourceAdapter):
         for rec in recs:
             rec["raw"] = json.dumps(rec.pop("raw"))
         return recs
-
-def _strip_tags(text: str) -> str:
-    """Strip HTML tags from a description string (Zenodo descriptions are HTML)."""
-    if not text:
-        return ""
-    return re.sub(r"<[^>]+>", " ", text)
 
 # ── Phase 3 (second wave): legal, science, financial ────────────────────
 

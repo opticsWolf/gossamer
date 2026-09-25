@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.23 — no version bump)
+## [Unreleased] (still 0.9.24 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,16 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.24] — Remove dead helpers left by the Rust ports
+
+- Delete six unreferenced routines found by a CodeRadar call-graph scan:
+  `guard._normalize_scopes` (M4), `robots._path_regex` (M9),
+  `research_providers._first_desc`/`_strip_tags` (M12),
+  `research_providers._join` and `research_categories._display` plus its
+  `_PROVIDER_DISPLAY` table (0.6.0 overhaul), and the now-unused `import re`
+  in `robots.py`. Parity suites vendor their own `_v_` copies and stay
+  green; full suite unchanged at 11102 passed / 33 skipped.
 
 ## [0.9.23] — Cache-behavior docs and workflow close-out
 

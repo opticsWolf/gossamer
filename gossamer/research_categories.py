@@ -223,41 +223,6 @@ CATEGORIES: Tuple[Category, ...] = (
 
 DEFAULT_CATEGORY: Category = CATEGORIES[-1]
 
-# provider id -> display name used in the LLM-facing description.
-_PROVIDER_DISPLAY: Dict[str, str] = {
-    "openalex": "OpenAlex",
-    "crossref": "Crossref",
-    "arxiv": "ArXiv",
-    "courtlistener": "CourtListener",
-    "ecfr": "eCFR",
-    "federalregister": "Federal Register",
-    "alphavantage": "AlphaVantage",
-    "yahoo": "Yahoo Finance",
-    "frankfurter": "Frankfurter",
-    "eurostat": "Eurostat",
-    "bundesbank": "Bundesbank",
-    "bis": "BIS",
-    "coingecko": "CoinGecko",
-    "zenodo": "Zenodo",
-    "semanticscholar": "Semantic Scholar",
-    "overpass": "Overpass",
-    "oldp": "Open Legal Data",
-    "hudoc": "HUDOC (ECtHR)",
-    "govinfo": "GovInfo",
-    "epo": "EPO OPS",
-    "kipris": "KIPRIS",
-    "patentsview": "PatentsView",
-    "lens": "Lens",
-    "google-patents": "Google Patents",
-    "open-meteo": "Open-Meteo",
-    "duckduckgo": "DuckDuckGo",
-}
-
-
-def _display(provider: str) -> str:
-    return _PROVIDER_DISPLAY.get(provider, provider)
-
-
 def describe_categories() -> str:
     """LLM-facing tool description, auto-generated from ``CATEGORIES``.
 

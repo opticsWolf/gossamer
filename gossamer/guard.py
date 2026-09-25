@@ -53,21 +53,6 @@ _UNTRUSTED_DIRECTIVE = (
 _UNTRUSTED_CLOSE = "</untrusted-web-content>"
 
 
-def _normalize_scopes(scopes) -> frozenset:
-    """Accept a frozenset, a set/list, or a comma string; validate it.
-
-    Shorthands ``all`` / ``none`` / ``off`` expand or clear the set. Unknown
-    scope names raise (fail fast at config time, not mid-call).
-    """
-    # Implemented in Rust (src/guard.rs); parity-pinned by
-    # tests/test_rust_parity_guard.py (messages included).
-    if scopes is None:
-        return frozenset(_rust.normalize_scopes(None))
-    if isinstance(scopes, str):
-        return frozenset(_rust.normalize_scopes([scopes]))
-    return frozenset(_rust.normalize_scopes([str(s) for s in scopes]))
-
-
 @dataclass
 class GuardConfig:
     """Tunable for the guard layer. Off by default."""
