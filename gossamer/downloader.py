@@ -41,6 +41,66 @@ class DownloadService:
     def __init__(self, toolbox) -> None:
         self._tb = toolbox
 
+    def _download_candidates(
+        self,
+        source: str,
+        fallback_urls: list[str],
+        output_path: str,
+        **kwargs,
+    ) -> str:
+        if not isinstance(source, str) or not source.strip():
+            return self._error(str(source), "invalid_argument", "source must be a URL string")
+        if not isinstance(fallback_urls, (list, tuple)) or any(
+            not isinstance(url, str) or not url.strip() for url in fallback_urls
+        ):
+            return self._error(
+                str(source), "invalid_argument",
+                "fallback_urls must be a list of non-empty URL strings",
+            )
+        candidates = list(dict.fromkeys([source, *fallback_urls]))
+        attempts = []
+        for candidate in candidates:
+            result = json.loads(self.download_file(
+                candidate, output_path, fallback_urls=None, **kwargs,
+            ))
+            attempt = {
+                "url": candidate,
+                "status": result.get("status"),
+                "error": result.get("error"),
+            }
+            attempts.append(attempt)
+            if result.get("status") == "downloaded":
+                result["requested_source"] = source
+                result["attempts"] = attempts
+                result["mirror_fallback_used"] = candidate != source
+                return json.dumps(result, indent=2)
+            error = result.get("error")
+            if isinstance(error, dict) and error.get("code") in {
+                "invalid_argument", "file_exists",
+            }:
+                result["attempts"] = attempts
+                return json.dumps(result, indent=2)
+
+        human_needed = any(
+            isinstance(attempt.get("error"), dict)
+            and attempt["error"].get("code") in {"bot_wall", "access_denied"}
+            for attempt in attempts
+        )
+        code = "human_action_needed" if human_needed else "all_sources_failed"
+        message = (
+            "All candidates were blocked by access controls or anti-bot challenges; "
+            "human action is needed. No bypass was attempted."
+            if human_needed
+            else "All caller-supplied download candidates failed."
+        )
+        return self._error(
+            source,
+            code,
+            message,
+            attempted_urls=[attempt["url"] for attempt in attempts],
+            attempts=attempts,
+        )
+
     @staticmethod
     def _error(source: str, code: str, message: str, **details) -> str:
         error = {"code": code, "message": message}
@@ -92,14 +152,33 @@ class DownloadService:
         max_bytes: Optional[int] = None,
         expected_format: Optional[str] = None,
         overwrite: bool = False,
+        fallback_urls: Optional[list[str]] = None,
     ) -> str:
         """Download *source* atomically to *output_path* and return JSON.
 
         PDF validation is enabled by ``expected_format="pdf"`` or a ``.pdf``
         destination suffix. A configured maximum response size is always
         enforced; callers may lower/raise it per download with ``max_bytes``.
-        Existing files are not replaced unless ``overwrite=True``.
+        Existing files are not replaced unless ``overwrite=True``. Optional
+        ``fallback_urls`` are caller-supplied, tried sequentially, and each is
+        independently checked against robots/SSRF policy.
         """
+        if fallback_urls is not None:
+            if not isinstance(fallback_urls, (list, tuple)):
+                return self._error(
+                    str(source), "invalid_argument",
+                    "fallback_urls must be a list of non-empty URL strings",
+                )
+            if fallback_urls:
+                return self._download_candidates(
+                    source,
+                    fallback_urls,
+                    output_path,
+                    min_bytes=min_bytes,
+                    max_bytes=max_bytes,
+                    expected_format=expected_format,
+                    overwrite=overwrite,
+                )
         try:
             url = normalize_url(source)
         except (TypeError, ValueError) as exc:

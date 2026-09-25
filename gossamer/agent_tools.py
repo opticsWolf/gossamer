@@ -954,6 +954,7 @@ class WebResearcherToolbox:
         max_bytes: int = 0,
         expected_format: str = "auto",
         overwrite: bool = False,
+        fallback_urls: Optional[list[str]] = None,
     ) -> str:
         """Download a remote file to a local path without parsing it.
 
@@ -969,6 +970,7 @@ class WebResearcherToolbox:
             max_bytes=max_bytes,
             expected_format=format_hint,
             overwrite=overwrite,
+            fallback_urls=fallback_urls,
         )
 
     def locate_pdf(self, doi: str) -> str:

@@ -143,6 +143,68 @@ def test_download_classifies_http_and_bot_wall_errors(file_server, monkeypatch, 
     assert not (tmp_path / "challenge.pdf").exists()
 
 
+def test_download_tries_explicit_mirrors_sequentially_and_keeps_provenance(
+    file_server, monkeypatch, tmp_path,
+):
+    base, hits = file_server
+    tb, validated = _toolbox(monkeypatch, tmp_path, max_bytes=512)
+    primary = f"{base}/missing.pdf"
+    challenge = f"{base}/challenge.pdf"
+    mirror = f"{base}/paper.pdf"
+    output = tmp_path / "mirror.pdf"
+
+    result = _download(
+        tb, primary, output, fallback_urls=[challenge, mirror],
+    )
+
+    assert result["status"] == "downloaded"
+    assert result["source"] == mirror
+    assert result["requested_source"] == primary
+    assert result["final_url"] == mirror
+    assert result["mirror_fallback_used"] is True
+    assert [attempt["url"] for attempt in result["attempts"]] == [
+        primary, challenge, mirror,
+    ]
+    assert result["attempts"][0]["error"]["code"] == "not_found"
+    assert result["attempts"][1]["error"]["code"] == "bot_wall"
+    assert output.read_bytes() == _PDF
+    assert hits == ["/missing.pdf", "/challenge.pdf", "/paper.pdf"]
+    assert len(validated) >= 3  # every caller-supplied candidate is validated
+
+
+def test_download_rejects_malformed_mirror_list(file_server, monkeypatch, tmp_path):
+    base, hits = file_server
+    tb, _ = _toolbox(monkeypatch, tmp_path)
+
+    result = _download(
+        tb, f"{base}/paper.pdf", tmp_path / "bad-mirrors.pdf",
+        fallback_urls="https://mirror.example/paper.pdf",
+    )
+
+    assert result["error"]["code"] == "invalid_argument"
+    assert hits == []
+
+
+def test_download_reports_all_mirror_failures(file_server, monkeypatch, tmp_path):
+    base, _ = file_server
+    tb, _ = _toolbox(monkeypatch, tmp_path, max_bytes=512)
+    output = tmp_path / "no-mirror.pdf"
+
+    result = _download(
+        tb,
+        f"{base}/missing.pdf",
+        output,
+        fallback_urls=[f"{base}/challenge.pdf"],
+    )
+
+    assert result["error"]["code"] == "human_action_needed"
+    assert "human action is needed" in result["error"]["message"]
+    assert [attempt["error"]["code"] for attempt in result["error"]["attempts"]] == [
+        "not_found", "bot_wall",
+    ]
+    assert not output.exists()
+
+
 def test_download_validates_minimum_size_and_pdf_magic(file_server, monkeypatch, tmp_path):
     base, _ = file_server
     tb, _ = _toolbox(monkeypatch, tmp_path)

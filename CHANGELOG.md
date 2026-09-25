@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.16 — no version bump)
+## [Unreleased] (still 0.9.17 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -16,12 +16,24 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `/` (search), verified live, so there is no search-page scraper;
   free-text discovery stays on `site:patents.google.com` web search.
   Mocked-shape tests + keyless live smoke test; latest full suite now
-  reports 11083 passed / 33 skipped, including tests skipped when the
+  reports 11086 passed / 33 skipped, including tests skipped when the
   optional `browser-oxide` extra is unavailable.
 - Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.17] — Compliant caller-supplied PDF mirrors
+
+- Add `fallback_urls` / `--try-mirrors` to `download_file`. Caller-supplied
+  OA/repository candidates are tried sequentially; every candidate is checked
+  independently against SSRF and robots policy, and attempts/selected source
+  are returned with provenance. No mirror discovery or access-control bypass is
+  performed automatically.
+- If all candidates fail due to bot walls/access denial, return
+  `human_action_needed` with each attempted URL and error; otherwise return
+  `all_sources_failed`. Add local-server tests for fallback success, challenge
+  failure, ordered attempts, and malformed mirror lists.
 
 ## [0.9.16] — Explicit scholarly merge by DOI/arXiv ID
 

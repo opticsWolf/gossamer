@@ -23,7 +23,7 @@ per-domain rate-limited, and token-budgeted.
   --search-only --provider P --depth D]` · `research QUERY [--category C
   --provider P --providers P… --max-results N --filter F --select F]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
-  `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite]` ·
+  `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --try-mirrors URL…]` ·
   `locate-pdf DOI` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
   --store-dir D --include-images]` · `check URL… [--mode status|content]` ·
   `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N
@@ -96,4 +96,4 @@ wait or set that exact variable rather than looping retries.
 - Tables render as markdown tables by default — no flag needed.
 - Figures need `extract … --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.
 - Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).
-- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and do not resume or bypass bot walls.
+- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and do not resume or bypass bot walls. `--try-mirrors` accepts only caller-supplied, known OA/repository URLs; each is checked independently and attempts are returned with provenance.

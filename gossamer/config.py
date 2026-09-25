@@ -249,7 +249,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "download_file",
-        "Download a remote file to an explicit local path without requiring document extraction. Streams under the configured/per-call byte cap, follows and revalidates redirects, respects robots.txt and SSRF protections, and validates PDF magic when expected_format='pdf' or the output ends in .pdf. Existing destinations are preserved unless overwrite=true. Returns provenance or a classified error; bot walls are not bypassed.",
+        "Download a remote file to an explicit local path without requiring document extraction. Streams under the configured/per-call byte cap, follows and revalidates redirects, respects robots.txt and SSRF protections, and validates PDF magic when expected_format='pdf' or the output ends in .pdf. Existing destinations are preserved unless overwrite=true. Optional fallback_urls are caller-supplied OA/repository candidates tried sequentially; every URL is checked independently and bot walls are never bypassed.",
         "download_file",
         (
             ToolParam("source", str, description="Remote HTTP(S) URL to download"),
@@ -264,6 +264,12 @@ TOOL_REGISTRY = (
                 enum=["auto", "pdf"],
             ),
             ToolParam("overwrite", bool, False, "Replace an existing destination only when true."),
+            ToolParam(
+                "fallback_urls",
+                list[str],
+                [],
+                "Optional caller-supplied ordered OA/repository mirrors to try sequentially after the primary URL; every candidate still obeys robots/SSRF checks.",
+            ),
         ),
     ),
     ToolSpec(

@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11083%20passing%2C%2033%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11086%20passing%2C%2033%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -110,8 +110,9 @@ are the same surface, param-for-param: `web_search`,
 `inspect_html_page`, `batch_inspect_pages`, `download_file`, `locate_pdf`,
 `extract_document`, `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
 `export_citations`, `check_sources`. `download_file` saves an opaque remote file
-without requiring extraction; use `extract_document` when you also want parsed
-text. `locate_pdf` resolves a DOI to OpenAlex OA PDF/landing-page candidates
+without requiring extraction; caller-supplied `fallback_urls` are tried
+sequentially with normal robots/SSRF checks. Use `extract_document` when you
+also want parsed text. `locate_pdf` resolves a DOI to OpenAlex OA PDF/landing-page candidates
 without downloading them. The CLI adds `gossamer categories`
 (routing table; not an MCP tool). Parameters:
 [Quick reference](./docs/QUICKREF.md#tools-mcp--cli--execute_tool).

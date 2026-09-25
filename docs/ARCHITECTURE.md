@@ -70,7 +70,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Search | `search.py` | provider failover/merge, result-level cache, within-provider dedup |
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
 | Documents | `document.py` | bytes → text via oxide converters, `pages=` slicing, `store=` persistence, figure extraction |
-| Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, classified failures |
+| Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, caller-supplied sequential mirror attempts, classified failures |
 | Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution; no automatic download |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |

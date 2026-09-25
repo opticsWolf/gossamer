@@ -120,6 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Validate PDF magic when set to pdf (auto infers from .pdf output)")
     p.add_argument("--overwrite", action="store_true",
                    help="Replace an existing destination")
+    p.add_argument("--try-mirrors", nargs="+", default=None, metavar="URL",
+                   help="Try caller-supplied alternate URLs sequentially after the primary URL fails")
     _common(p)
 
     p = sub.add_parser("locate-pdf", help="Find OA PDF/landing-page candidates for a DOI")
@@ -218,7 +220,7 @@ def main(argv=None) -> int:
         "download": lambda: toolbox.download_file(
             args.source, args.output_path, min_bytes=args.min_bytes,
             max_bytes=args.max_bytes, expected_format=args.expect_format,
-            overwrite=args.overwrite),
+            overwrite=args.overwrite, fallback_urls=args.try_mirrors),
         "locate-pdf": lambda: toolbox.locate_pdf(args.doi),
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,

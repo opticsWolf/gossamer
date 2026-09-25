@@ -36,11 +36,12 @@ def test_parsers_accept_all_subcommands():
     download = _parse([
         "download", "https://example.org/paper.pdf", "-o", "paper.pdf",
         "--min-bytes", "100", "--max-bytes", "1000000",
-        "--expect-format", "pdf",
+        "--expect-format", "pdf", "--try-mirrors", "https://mirror.example/paper.pdf",
     ])
     assert (download.output_path, download.min_bytes, download.max_bytes) == (
         "paper.pdf", 100, 1000000,
     )
+    assert download.try_mirrors == ["https://mirror.example/paper.pdf"]
     assert _parse(["check", "https://x.example", "--mode", "content"]).mode == "content"
     assert _parse(["discover", "https://x.example"]).url == "https://x.example"
     assert _parse(["locate-pdf", "10.1234/example"]).doi == "10.1234/example"

@@ -16,7 +16,7 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), the opt-in Semantic Scholar adapter (`0.9.15`), and explicit scholarly DOI/arXiv merge (`0.9.16`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is compliant mirror handling and the collection workflow; OpenAlex fielded search remains a follow-up pending a verified mapping.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), the opt-in Semantic Scholar adapter (`0.9.15`), explicit scholarly DOI/arXiv merge (`0.9.16`), and compliant caller-supplied mirrors (`0.9.17`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is collection workflow polish, the stale patent-routing instruction, and deferred OpenAlex fielded search/resume.
 
 Several findings need qualification:
 
@@ -93,9 +93,9 @@ Implemented in `0.9.16`. `research_by_category` accepts an explicit `providers=[
 
 `skills/gossamer/SKILL.md` gives the Windows venv invocation (`…/.venv/Scripts/python.exe -m gossamer.cli …`). A global PATH shim may be convenient, but it is not required to address the documentation gap described in the finding.
 
-### F6 — bot walls and binary acquisition: confirmed
+### F6 — bot walls and binary acquisition: compliant caller-supplied fallback implemented
 
-The document download path uses a static `httpx.Client`; it does not download binary files through a browser session. Browser-backed fetch options are not wired into `extract`'s `_fetch_document_url`. There is also no automated mirror chain or structured “human needed” response listing candidate URLs. The sensible first step is a compliant, provenance-preserving mirror chain and clear failure report—not bypassing a site's bot wall or access controls.
+`download_file` now accepts caller-supplied `fallback_urls`/`--try-mirrors` and tries them sequentially, recording each URL and outcome plus the successful source. Every candidate is independently checked against SSRF, robots policy, and rate limits. It does not discover/scrape mirrors automatically, use browser sessions for binaries, or bypass access controls. If all candidates fail with bot walls/access denials, the result is `human_action_needed` with attempted URLs; otherwise it is `all_sources_failed`. Implemented in `0.9.17` with local tests for fallback success, challenge receipts, ordered attempts, and malformed candidate lists.
 
 ### Smaller workflow items
 
@@ -228,11 +228,12 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 ### Milestone F — compliant mirror handling and workflow/documentation
 
 **Priority:** P2/P3  
+**Status:** Caller-supplied mirror fallback implemented in `0.9.17`; collection recipe and remaining docs polish are pending.
 **Scope:** F6, F5 follow-up, small workflow items  
-**Likely files:** document/download orchestration, docs/README/QUICKREF/SKILL, `AGENTS.md`.
+**Likely files:** `gossamer/downloader.py`, document/download orchestration, docs/README/QUICKREF/SKILL, `AGENTS.md`.
 
-1. Add an optional `--try-mirrors`/candidate-chain mode only from known, sourced OA/repository URLs (for example, locations returned by the resolver or supplied by the caller). Record each attempted URL and response outcome.
-2. If an endpoint returns a bot wall or access denial, stop that source and report “human action needed” with the exact URL and cause. Do not use browser automation to evade access controls or disregard site policy. Browser-based binary download should remain a separate, explicit future design.
+1. **Done (`0.9.17`):** `--try-mirrors` accepts caller-supplied, known OA/repository candidates (including `locate_pdf` results), tries them sequentially, and records each URL/outcome plus the selected source.
+2. **Done (`0.9.17`):** Every candidate is independently checked against SSRF, robots, and rate limits. Exhausted bot-wall/access-denied chains return `human_action_needed` with attempts. No browser automation or access-control bypass is used.
 3. Update the skill with a collection recipe: **search → check → locate → download → extract/store → cite**. Include current commands, max-pages/budget guidance, and the role of `cache --action`.
 4. **Done:** Document the distinction: `download URL -o PATH` saves an opaque file; `extract URL --store` also parses and stores supported documents. Keep that separation clear in future workflow docs.
 5. Defer `cite --from-pdf` until download and metadata extraction are stable; then add PDF metadata/DOI detection and tests rather than guessing citations from arbitrary text.
@@ -266,6 +267,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 5. **E1:** completed in `0.9.14` — OpenAlex-native filter/select.
 6. **E2:** completed in `0.9.15` — opt-in Semantic Scholar adapter; OpenAlex remains the default.
 7. **E3:** completed in `0.9.16` — explicit identifier-based scholarly merge.
-8. **F:** compliant mirror handling and collection-recipe/docs synchronization.
+8. **F6:** completed in `0.9.17` — caller-supplied policy-checked mirror attempts.
+9. **Docs follow-up:** collection recipe, patent-key wording, and cache visibility; resume/fielded search remain deferred.
 
 This order fixes tool-breaking defects before adding the acquisition and precision features that motivated the hunt, while keeping external API work opt-in and policy-compliant.
