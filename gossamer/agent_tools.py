@@ -554,6 +554,7 @@ class WebResearcherToolbox:
         provider: Optional[str] = None,
         filter: Optional[str] = None,
         select: Optional[str] = None,
+        providers: Optional[list[str]] = None,
     ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
@@ -569,17 +570,20 @@ class WebResearcherToolbox:
         reverse-resolved, so the query is still not reclassified. When both
         ``category=`` and ``provider=`` are given, the provider must belong to
         that category. ``filter``/``select`` pass through only to OpenAlex and
-        are rejected for other providers. There is no automatic fallback
-        between providers -- the caller chooses which source to query. Returns
-        a JSON payload naming the chosen category, provider, and results.
+        are rejected for other providers. Pass ``providers=[...]`` for an
+        explicit sequential scholarly multi-search; results merge only on DOI
+        or arXiv ID and retain per-source records. Single-provider calls do not
+        fan out. Returns a JSON payload naming the chosen category/provider(s).
         Provider failures keep ``results`` as a list and add a top-level
         ``error`` field.
         """
+        if providers == []:
+            providers = None
         if not (query or "").strip():
-            if filter is not None or select is not None:
+            if filter is not None or select is not None or providers is not None:
                 return json.dumps({
                     "results": [],
-                    "error": "OpenAlex filter/select options require a research query",
+                    "error": "filter/select/providers options require a research query",
                 }, indent=2)
             return self.research_categories()
         return json.dumps(
@@ -591,6 +595,7 @@ class WebResearcherToolbox:
                 max_results=max_results,
                 filter=filter,
                 select=select,
+                providers=providers,
             ),
             indent=2,
             default=str,

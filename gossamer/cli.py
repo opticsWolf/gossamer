@@ -86,6 +86,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="OpenAlex-native filter (only with --provider openalex)")
     p.add_argument("--select", default=None,
                    help="OpenAlex-native field projection (only with --provider openalex)")
+    p.add_argument("--providers", nargs="+", default=None,
+                   help="Explicit sequential scholarly providers to merge (mutually exclusive with --provider)")
     _common(p)
 
     p = sub.add_parser("categories", help="List research categories + providers")
@@ -206,7 +208,7 @@ def main(argv=None) -> int:
         "research": lambda: toolbox.research_by_category(
             args.query, max_results=args.max_results,
             category=args.category, provider=args.provider,
-            filter=args.filter, select=args.select),
+            filter=args.filter, select=args.select, providers=args.providers),
         "categories": lambda: toolbox.research_categories(),
         "inspect": lambda: toolbox.inspect_html_page(
             args.url, use_smart=args.use_smart, query=args.query,

@@ -16,7 +16,7 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), and the opt-in Semantic Scholar adapter (`0.9.15`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is cross-provider merge and compliant mirror handling; OpenAlex fielded search remains a follow-up pending a verified mapping.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), the opt-in Semantic Scholar adapter (`0.9.15`), and explicit scholarly DOI/arXiv merge (`0.9.16`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is compliant mirror handling and the collection workflow; OpenAlex fielded search remains a follow-up pending a verified mapping.
 
 Several findings need qualification:
 
@@ -24,9 +24,10 @@ Several findings need qualification:
 - The arXiv live smoke test already existed and remains opt-in. It is now a single default-paced `id_list` call and skips only on the typed upstream 406 rate-limit result; offline tests cover header/parser behavior.
 - OpenAlex now sends an operator-supplied `GOSSAMER_OPENALEX_EMAIL` as `mailto` and client-identification headers (`0.9.11`); no placeholder contact is fabricated. A free `GOSSAMER_OPENALEX_KEY` remains optional for casual use and raises the daily budget. Generic `Retry-After` and exponential backoff are implemented; current official guidance does not document a response-body `retryAfter` field, so do not invent a parser for one.
 - Semantic Scholar integration is implemented in `0.9.15` as an opt-in provider; OpenAlex remains the scholarly default. `GOSSAMER_SEMANTICSCHOLAR_API_KEY` is optional but recommended to avoid the shared anonymous rate-limit pool; keyless 429 errors name the variable and do not retry the shared pool.
+- Cross-provider research is explicitly opt-in in `0.9.16`; it searches sequentially, merges only on DOI/arXiv identifiers, and retains per-provider raw records and conflicts.
 - F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
-Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex request correctness; (2) stable provider-error response and CLI exit status; (3) standalone download and DOI-to-OA resolution; (4) provider-native OpenAlex query controls and the confirmed Semantic Scholar adapter; (5) opt-in cross-provider merging, including Semantic Scholar; (6) mirror/human-needed behavior and collection-workflow documentation.
+Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) stable provider-error contract; (3) validated download; (4) DOI-to-OA lookup; (5) OpenAlex filter/select; (6) Semantic Scholar; (7) identifier-based scholarly merge. Remaining work: compliant mirror/human-needed handling, collection-workflow polish, and deferred OpenAlex fielded-search/resume features.
 
 ---
 
@@ -85,10 +86,9 @@ This first pass deliberately uses OpenAlex only. Unpaywall and repository fallba
 
 Implemented in `0.9.14`: `research_by_category` and `gossamer research` accept provider-native `filter` and `select`; they are passed to OpenAlex only and rejected for other providers rather than silently ignored. OpenAlex's current documented `per_page` ceiling is 100, so requests are capped accordingly. Offline tests assert exact request parameters, per-page cap, category/tool/CLI plumbing, and unsupported-provider errors. Fielded `title:`/`author:` search is deferred until its OpenAlex query grammar is verified and can be mapped without guessing. No arbitrary URL/query-string escape hatch was added.
 
-### F4 — cross-provider merge/dedupe: confirmed
+### F4 — cross-provider merge/dedupe: implemented as explicit opt-in
 
-`search_category()` invokes one provider per call. There is no explicit multi-provider scholarly fan-out, DOI/arXiv identifier normalization across sources, merge policy, or per-record source attribution. The existing single-provider behavior should remain the default to avoid unexpected quota usage and latency.
-
+Implemented in `0.9.16`. `research_by_category` accepts an explicit `providers=[...]` list; `gossamer research --providers ...` exposes the same mode. Calls are sequential, restricted to scholarly providers, mutually exclusive with `provider=`, and never run by default. Records merge only on canonical DOI or arXiv ID (matching arXiv versions through the versionless key); titles are not fuzzy-merged. Each merged result retains the first requested provider's canonical record, all source records, source names, and conflicting field values. Unkeyed records remain separate. Partial failures preserve successful results and expose per-provider errors plus a top-level error.
 ### F5 — shell invocation: documentation alternative already present
 
 `skills/gossamer/SKILL.md` gives the Windows venv invocation (`…/.venv/Scripts/python.exe -m gossamer.cli …`). A global PATH shim may be convenient, but it is not required to address the documentation gap described in the finding.
@@ -215,13 +215,15 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 
 **Acceptance:** Met by offline tests: `research <query> --provider semanticscholar` returns normalized records; optional auth uses the exact documented header/setting; keyless 429s name the exact setting and fail fast; OpenAlex remains the default; the live smoke is opt-in and key-gated.
 
-#### E3. Opt-in multi-provider search and merge (F4)
+#### E3. Opt-in multi-provider search and merge (F4; implemented)
 
-- Add an explicit provider list/merge mode; do not fan out by default. Make quotas, latency, and per-provider errors visible.
-- Normalize strong identifiers: canonical DOI (including DOI URLs and `doi:` prefixes) and arXiv ID. For arXiv, retain the original versioned ID while optionally using the versionless ID as a match key.
-- Merge only on a strong normalized identifier. Do not merge papers on title similarity alone in the first version.
-- Return a canonical presentation record plus all source records/source names and any conflicting field values. Keep partial provider results when one provider fails and report that provider’s error separately.
-- Test duplicate DOI across OpenAlex/Crossref/arXiv/Semantic Scholar, versioned arXiv IDs, no-identifier records, conflict preservation, provider failure, and deterministic ordering.
+**Status:** Implemented in `0.9.16`.
+
+- `providers=[...]` / `--providers` explicitly opts into sequential scholarly search; no default fan-out. The list is validated as scholarly and is mutually exclusive with `provider=`, `filter`, and `select`.
+- Normalize strong identifiers: DOI URLs and `doi:` forms map to one canonical DOI key; arXiv versions share a versionless match key while each exact version remains in its source record.
+- Merge only on DOI/arXiv keys, never on title similarity. Records without a strong key stay separate.
+- Each merged object contains the canonical first-provider record, all source records/provider names, and conflicting field values. Partial provider results are retained; failed providers appear in `provider_errors` and cause a top-level error.
+- Tests cover duplicate DOI across OpenAlex/Crossref/arXiv/Semantic Scholar, versioned arXiv IDs, unkeyed records, conflicts, partial errors, invalid provider combinations, and deterministic ordering.
 
 ### Milestone F — compliant mirror handling and workflow/documentation
 
@@ -232,7 +234,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 1. Add an optional `--try-mirrors`/candidate-chain mode only from known, sourced OA/repository URLs (for example, locations returned by the resolver or supplied by the caller). Record each attempted URL and response outcome.
 2. If an endpoint returns a bot wall or access denial, stop that source and report “human action needed” with the exact URL and cause. Do not use browser automation to evade access controls or disregard site policy. Browser-based binary download should remain a separate, explicit future design.
 3. Update the skill with a collection recipe: **search → check → locate → download → extract/store → cite**. Include current commands, max-pages/budget guidance, and the role of `cache --action`.
-4. Note that `extract URL --store` works for extractable sources before the new download command is available. Keep the standalone download and extract distinction clear.
+4. **Done:** Document the distinction: `download URL -o PATH` saves an opaque file; `extract URL --store` also parses and stores supported documents. Keep that separation clear in future workflow docs.
 5. Defer `cite --from-pdf` until download and metadata extraction are stable; then add PDF metadata/DOI detection and tests rather than guessing citations from arbitrary text.
 6. Fix the stale `AGENTS.md` patent statement: current patent providers are not all key-gated because `google-patents` is a keyless publication-number lookup. Keep the distinction that it is lookup-only, not free-text search.
 7. Do not add a PATH shim unless users still need it after the skill’s existing venv command is made prominent. Treat cache-hit visibility as a usability follow-up, not a blocker for download correctness.
@@ -263,7 +265,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 4. **D:** completed in `0.9.13` — DOI-to-OA candidate resolution via OpenAlex.
 5. **E1:** completed in `0.9.14` — OpenAlex-native filter/select.
 6. **E2:** completed in `0.9.15` — opt-in Semantic Scholar adapter; OpenAlex remains the default.
-7. **E3:** explicit cross-provider merge, including Semantic Scholar, only after individual provider behavior is stable.
+7. **E3:** completed in `0.9.16` — explicit identifier-based scholarly merge.
 8. **F:** compliant mirror handling and collection-recipe/docs synchronization.
 
 This order fixes tool-breaking defects before adding the acquisition and precision features that motivated the hunt, while keeping external API work opt-in and policy-compliant.

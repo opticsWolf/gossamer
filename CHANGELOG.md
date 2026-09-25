@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.15 — no version bump)
+## [Unreleased] (still 0.9.16 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -16,12 +16,27 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `/` (search), verified live, so there is no search-page scraper;
   free-text discovery stays on `site:patents.google.com` web search.
   Mocked-shape tests + keyless live smoke test; latest full suite now
-  reports 11074 passed / 33 skipped, including tests skipped when the
+  reports 11083 passed / 33 skipped, including tests skipped when the
   optional `browser-oxide` extra is unavailable.
 - Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.16] — Explicit scholarly merge by DOI/arXiv ID
+
+- Add opt-in `providers=[...]` to scholarly research and `--providers` to the
+  CLI. Multi-provider mode is sequential, never implicit, and currently only
+  accepts providers from the scholarly category; it is mutually exclusive
+  with a single `provider=`, OpenAlex `filter`, and `select`.
+- Normalize DOI forms and arXiv IDs (matching versioned IDs by versionless key)
+  and merge only on those strong identifiers. Preserve the first requested
+  provider's canonical record, all source records/source names, and conflicting
+  values. Records without a strong key remain separate; titles are not fuzzy-merged.
+  Partial provider failures retain successful results and return provider errors.
+- Add offline tests for DOI and arXiv-ID grouping, source/conflict preservation,
+  unkeyed records, invalid provider combinations, partial failure, CLI forwarding,
+  and deterministic order.
 
 ## [0.9.15] — Semantic Scholar Academic Graph adapter
 

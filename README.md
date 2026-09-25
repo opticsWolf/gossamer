@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11074%20passing%2C%2033%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11083%20passing%2C%2033%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -134,7 +134,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 | geo | Open-Meteo, Overpass |
 | general | DuckDuckGo (Google/Bing/Exa 🔑 opt-in) |
 
-Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi'` passes provider-native controls; those options are rejected for other providers.
+Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi'` passes provider-native controls; those options are rejected for other providers. Explicit scholarly multi-search is opt-in via `gossamer research QUERY --providers openalex arxiv`; it merges by DOI/arXiv ID, preserves each source record, and never fans out by default.
 
 ---
 

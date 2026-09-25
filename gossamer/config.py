@@ -468,6 +468,12 @@ TOOL_REGISTRY = (
                 None,
                 "OpenAlex-native comma-separated field projection; valid only with provider='openalex'.",
             ),
+            ToolParam(
+                "providers",
+                list[str],
+                [],
+                "Explicit providers for sequential scholarly search/merge, e.g. ['openalex', 'arxiv']. Mutually exclusive with provider= and supported only for scholarly.",
+            ),
         ),
     ),
     ToolSpec(

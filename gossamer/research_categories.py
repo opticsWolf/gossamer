@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from gossamer import _core as _rust
 
@@ -275,8 +275,9 @@ def describe_categories() -> str:
         "Omit the query to return the full taxonomy (category descriptions and "
         "provider ids) as JSON. Pass provider=<id> to call a specific source; "
         "pass category=<name> to skip classification. No automatic fallback "
-        "between providers -- the caller chooses. OpenAlex-only filter/select "
-        "options pass through to that API. Returns the chosen category, provider, "
+        "between providers -- the caller chooses. Pass providers=[...] for an "
+        "explicit scholarly multi-search merged by DOI/arXiv ID. OpenAlex-only "
+        "filter/select options pass through to that API. Returns the chosen category, provider, "
         "and results as JSON. Provider failures keep results as an "
         "empty list and add a top-level error field."
     )
@@ -407,6 +408,113 @@ def _parse_engine_results(raw: object) -> object:
     return raw
 
 
+def _search_multiple_scholarly(
+    query: str,
+    *,
+    category: Optional[str],
+    provider: Optional[str],
+    providers,
+    max_results: int,
+    filter: Optional[str],
+    select: Optional[str],
+) -> dict:
+    """Search an explicit scholarly provider list sequentially and merge IDs."""
+    empty = {"query": query, "results": []}
+    if provider is not None:
+        return {
+            **empty,
+            "error": "use either provider= or providers=, not both",
+        }
+    if filter is not None or select is not None:
+        return {
+            **empty,
+            "error": "OpenAlex filter/select options cannot be combined with providers=",
+        }
+    if not isinstance(providers, (list, tuple)) or not providers:
+        return {**empty, "error": "providers= must be a non-empty list"}
+    if any(not isinstance(item, str) or not item for item in providers):
+        return {**empty, "error": "providers= entries must be non-empty provider ids"}
+    requested = list(providers)
+    if len(set(requested)) != len(requested):
+        return {**empty, "error": "providers= cannot contain duplicate provider ids"}
+
+    if category is not None:
+        category_obj = _find_category(category)
+        if category_obj is None:
+            return {
+                **empty,
+                "category": category,
+                "error": f"unknown category {category!r}",
+            }
+    else:
+        owners = [_category_for_provider(item) for item in requested]
+        if any(owner is None for owner in owners):
+            unknown = [item for item, owner in zip(requested, owners) if owner is None]
+            return {
+                **empty,
+                "providers": requested,
+                "error": f"unknown provider(s): {', '.join(unknown)}",
+            }
+        owner_names = {owner.name for owner in owners if owner is not None}
+        if len(owner_names) != 1:
+            return {
+                **empty,
+                "providers": requested,
+                "error": "all providers= entries must belong to the same category",
+            }
+        category_obj = _find_category(next(iter(owner_names)))
+
+    if category_obj is None or category_obj.name != "scholarly" or category_obj.kind != "adapter":
+        return {
+            **empty,
+            "category": category_obj.name if category_obj else category,
+            "providers": requested,
+            "error": "multi-provider merge is currently supported only for scholarly",
+        }
+    unavailable = [item for item in requested if not category_obj.has_provider(item)]
+    if unavailable:
+        return {
+            **empty,
+            "category": category_obj.name,
+            "providers": requested,
+            "available_providers": list(category_obj.providers),
+            "error": f"provider(s) unavailable for scholarly: {', '.join(unavailable)}",
+        }
+
+    from gossamer.research_merge import merge_scholarly_records
+
+    provider_records = []
+    errors = []
+    for item in requested:
+        try:
+            result = _make_adapter(item).search(query, max_results=max_results)
+            if not isinstance(result, list):
+                raise ValueError("provider returned a non-list result")
+            provider_records.append((item, result))
+        except Exception as exc:  # noqa: BLE001 - preserve partial provider results
+            errors.append({"provider": item, "message": str(exc)})
+
+    merged = merge_scholarly_records(provider_records)
+    payload = {
+        "query": query,
+        "category": category_obj.name,
+        "provider": None,
+        "providers": requested,
+        "available_providers": list(category_obj.providers),
+        "provider_kind": category_obj.kind,
+        "description": category_obj.description,
+        "results": merged,
+    }
+    if errors:
+        payload["provider_errors"] = errors
+        payload["error"] = (
+            "All requested providers failed"
+            if not provider_records
+            else "One or more requested providers failed"
+        )
+    return payload
+
+
 def search_category(
     tb: object,
     query: str,
@@ -415,6 +523,7 @@ def search_category(
     max_results: int = 5,
     filter: Optional[str] = None,
     select: Optional[str] = None,
+    providers: Optional[List[str]] = None,
 ) -> dict:
     """Trigger **one** provider via *tb* for *query*.
 
@@ -451,6 +560,9 @@ def search_category(
         OpenAlex-native filter expression. Valid only with provider='openalex'.
     select : str, optional
         OpenAlex-native field projection. Valid only with provider='openalex'.
+    providers : list[str], optional
+        Explicit list for sequential scholarly search/merge. Valid only for the
+        scholarly category and mutually exclusive with provider=.
 
     Returns
     -------
@@ -459,6 +571,17 @@ def search_category(
         the provider actually called, its available providers, and a list-valued
         ``results`` field. Failures add a top-level string ``error``.
     """
+    if providers is not None:
+        return _search_multiple_scholarly(
+            query,
+            category=category,
+            provider=provider,
+            providers=providers,
+            max_results=max_results,
+            filter=filter,
+            select=select,
+        )
+
     # Resolve the category: explicit, reverse-resolved from the provider, or
     # by classifying the query (only when the caller left both unspecified).
     if category is not None:

@@ -178,6 +178,75 @@ def test_search_category_rejects_openalex_options_for_other_providers(monkeypatc
     assert "require provider='openalex'" in out["error"]
 
 
+def test_search_category_multi_provider_merges_explicit_scholarly_sources(monkeypatch):
+    rows = {
+        "openalex": [{"source": "openalex", "doi": "https://doi.org/10.1234/x", "title": "A"}],
+        "crossref": [{"source": "crossref", "doi": "doi:10.1234/x", "title": "A better title"}],
+    }
+
+    class FakeAdapter:
+        def __init__(self, name):
+            self.name = name
+
+        def search(self, query, max_results=5):
+            assert query == "a peer reviewed paper"
+            assert max_results == 3
+            return rows[self.name]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda name: FakeAdapter(name))
+    out = rc.search_category(
+        object(), "a peer reviewed paper", providers=["openalex", "crossref"],
+        max_results=3,
+    )
+
+    assert out["provider"] is None
+    assert out["providers"] == ["openalex", "crossref"]
+    assert out["results"][0]["key"] == "doi:10.1234/x"
+    assert out["results"][0]["sources"] == ["openalex", "crossref"]
+    assert len(out["results"][0]["source_records"]) == 2
+    assert out["results"][0]["conflicts"]["title"][1]["value"] == "A better title"
+    assert "error" not in out
+
+
+def test_search_category_multi_provider_preserves_partial_failures(monkeypatch):
+    class FakeAdapter:
+        def __init__(self, name):
+            self.name = name
+
+        def search(self, query, max_results=5):
+            if self.name == "crossref":
+                raise RuntimeError("temporarily unavailable")
+            return [{"source": self.name, "doi": "10.1234/x", "title": "A"}]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda name: FakeAdapter(name))
+    out = rc.search_category(
+        object(), "paper", providers=["openalex", "crossref"],
+    )
+
+    assert len(out["results"]) == 1
+    assert out["results"][0]["sources"] == ["openalex"]
+    assert out["provider_errors"] == [
+        {"provider": "crossref", "message": "temporarily unavailable"},
+    ]
+    assert out["error"] == "One or more requested providers failed"
+
+
+def test_search_category_multi_provider_requires_scholarly_only():
+    out = rc.search_category(
+        object(), "topic", providers=["openalex", "courtlistener"],
+    )
+    assert out["results"] == []
+    assert "same category" in out["error"]
+
+
+def test_search_category_rejects_provider_and_providers_together():
+    out = rc.search_category(
+        object(), "topic", provider="openalex", providers=["openalex", "arxiv"],
+    )
+    assert out["results"] == []
+    assert "either provider" in out["error"]
+
+
 def test_search_category_adapter_failure_is_surfaced_not_raised(monkeypatch):
     def boom(_provider):
         raise RuntimeError("network down")

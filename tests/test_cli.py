@@ -23,6 +23,9 @@ def test_parsers_accept_all_subcommands():
         "--filter", "type:article", "--select", "id,title",
     ])
     assert (advanced.filter, advanced.select) == ("type:article", "id,title")
+    assert _parse([
+        "research", "q", "--providers", "openalex", "arxiv",
+    ]).providers == ["openalex", "arxiv"]
     assert _parse(["categories"]).command == "categories"
     assert _parse(["inspect", "https://x.example"]).command == "inspect"
     assert _parse(["batch", "https://a.example", "https://b.example"]).urls == [
@@ -142,6 +145,23 @@ def test_research_native_options_dispatch(monkeypatch, capsys):
     capsys.readouterr()
     assert calls["filter"] == "type:article"
     assert calls["select"] == "id,title"
+
+
+def test_research_multi_provider_dispatch(monkeypatch, capsys):
+    calls = {}
+
+    class Stub:
+        def research_by_category(self, query, **kwargs):
+            calls.update(query=query, **kwargs)
+            return json.dumps({"query": query, "results": []})
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    assert main([
+        "research", "graph papers", "--providers", "openalex", "arxiv",
+    ]) == 0
+    capsys.readouterr()
+    assert calls["providers"] == ["openalex", "arxiv"]
+    assert calls["provider"] is None
 
 
 def test_download_dispatch_and_error_exit_status(monkeypatch, capsys):

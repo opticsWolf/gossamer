@@ -21,7 +21,7 @@ per-domain rate-limited, and token-budgeted.
 - **CLI** (identical JSON, no MCP setup; 13 commands — all 12 MCP tools
   1:1 plus `categories`): `search QUERY [--max-results N --max-tokens T
   --search-only --provider P --depth D]` · `research QUERY [--category C
-  --provider P --max-results N --filter F --select F]` · `inspect URL [--query Q --offset N
+  --provider P --providers P… --max-results N --filter F --select F]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
   `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite]` ·
   `locate-pdf DOI` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
@@ -53,7 +53,9 @@ prefer it over memory when unsure.
 
 `research --filter F --select F` passes OpenAlex-native controls and is valid
 only with `--provider openalex`; gossamer rejects these options for other
-providers rather than silently ignoring them.
+providers rather than silently ignoring them. `--providers` explicitly runs a
+sequential scholarly merge by DOI/arXiv ID; it never runs by default and keeps
+all per-provider source records.
 
 Provider failures from `research` keep `results` as an empty list and put the
 message in a top-level `error` field. The CLI exits nonzero for these failures.

@@ -76,6 +76,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
 | Domain adapters | `research_providers.py` | 38 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
 | Routing | `research_categories.py` | keyword classifier (Euro terms folded in, no separate category) + provider factories |
+| Scholarly merge | `research_merge.py` | explicit DOI/arXiv-ID dedupe with canonical record, conflicts, and per-provider source records |
 | HTML meta | `meta_extractor.py` | `_core` kernels first, legacy `meta_oxide` package as last-resort fallback, then empty |
 | Structured docs | `structured_parser.py` | Pydantic v2 schemas + `StructuredOxideParser` (PDF/office/HTML) |
 | Models | `models.py` | result models, provenance dicts, fetch stats, batch records |

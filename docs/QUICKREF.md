@@ -9,7 +9,7 @@ Planning history: local `planning/` (unsynced).
 | Tool | CLI | Essentials |
 |---|---|---|
 | `web_search` | `gossamer search QUERY` | `--search-only` (no fetch), `--max-results 5`, `--max-tokens`, `--depth 5`, `--provider` |
-| `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`, `--max-results 5`; OpenAlex-only `--filter` / `--select`; empty query prints the live taxonomy |
+| `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`, `--providers` (explicit scholarly merge), `--max-results 5`; OpenAlex-only `--filter` / `--select`; empty query prints taxonomy |
 | `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static`, `--offset 0`, `--max-chunks 1`, `--structured` |
 | `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
 | `download_file` | `gossamer download URL -o PATH` | `--min-bytes 1`, `--max-bytes 0` (configured cap), `--expect-format auto\|pdf`, `--overwrite`; streams to an atomic file, does not extract |
