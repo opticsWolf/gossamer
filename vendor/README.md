@@ -25,3 +25,11 @@
   `cargo update -p meta_oxide` + the metaextract parity suite
   (`tests/test_rust_parity_metaextract.py`, needs the local fork
   build) before committing.
+- **Nested-`.gitignore` trap:** the vendored crate's own `.gitignore`
+  contains a bare `MANIFEST` line (meant for packaging artifacts).
+  On case-insensitive checkouts this also matches
+  `src/extractors/manifest/` (and would silently drop it from `git
+  add`, breaking fresh clones with `E0583: file not found for module
+  'manifest'`). Those files were force-added (`git add -f`) and stay
+  tracked thereafter, but any fresh copy of this tree needs the same
+  treatment — verify with `git ls-files vendor/ | grep manifest`.
