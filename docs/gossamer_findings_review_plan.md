@@ -35,13 +35,15 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 **Conclusion:** The report is accurate: the user gets no valid JSON. The current CLI catches the encoding exception as a `ValueError`, so this is more precisely a failed command rather than an uncaught process crash.
 
-### B2 — arXiv HTTP 406: confirmed; suspected cause needs isolation
+### B2 — arXiv HTTP 406: confirmed; current evidence points to an upstream edge limit
 
-**Current code:** `ArxivAdapter` is in `gossamer/research_providers.py:469-542`. It requests `http://export.arxiv.org/api/query`, sets `_ARXIV_UA = "gossamer/0.5.3 (mailto:researcher@example.org)"`, and sends no explicit Atom `Accept` header (`_get`, lines 497-508). The generic Python retry decorator retries every exception three times with fixed 1s / 2s waits and does not inspect status or `Retry-After` (`gossamer/search_providers.py:112-144`).
+**Current code:** `ArxivAdapter` is in `gossamer/research_providers.py`. It calls `http://export.arxiv.org/api/query`, which redirects to HTTPS, and now sends an identifiable project/version User-Agent plus `Accept: application/atom+xml`. Earlier code used a stale `gossamer/0.5.3` UA with the fabricated contact `researcher@example.org`. The generic retry policy now retries transport errors and selected transient statuses, but not arbitrary 4xx responses.
 
-**Reproduction:** A live CLI query to arXiv returned 406 on all three attempts. Thus the report's observed failure is current. However, the explanation “httpx default User-Agent” is not exact: this adapter overrides httpx's default UA with a custom but stale value and placeholder contact. Missing/incorrect `Accept`, the placeholder identity, and/or the request scheme are candidates; they need a controlled request comparison before attributing the fix to one header.
+**Live evidence:** The adapter returned HTTP 406 on a one-request `id_list` call. A separate one-request probe with a plain `Mozilla/5.0` User-Agent and no explicit Accept also returned 406. The HTTPS response came from Varnish with an empty body and no `Retry-After`; the HTTP endpoint returned a 301 redirect to HTTPS. This weakens the initial theory that a particular User-Agent or `Accept` value is the cause. The official [arXiv API terms](https://info.arxiv.org/help/api/tou.html) require no more than one request every three seconds, one connection at a time, across the caller's machines. A recent [public report of the same 406 behavior](https://github.com/blazickjp/arxiv-mcp-server/issues/277) describes empty Varnish 406s across curl, urllib, and httpx from the same host, clearing only after a period with no traffic. That report is not an arXiv guarantee, but it is consistent with an IP/edge throttle or temporary upstream condition. The original curl success may have occurred outside the failure window; it does not establish that browser impersonation fixes the adapter.
 
-**Existing coverage:** `tests/test_live_smoke.py:102-110` already has an opt-in search-and-fetch test. It is gated by `GOSSAMER_LIVE`, so it does not run in the ordinary offline suite. It uses `ArxivAdapter(delay=0.0)` and makes two requests, despite the adapter's documented responsible-use interval of one request per three seconds. `tests/test_research_providers.py` checks the current User-Agent but not `Accept`.
+**Implementation conclusion:** Do not spoof a browser or retry 406 repeatedly. Keep the explicit Atom Accept and truthful project UA, map arXiv 406 to an actionable typed rate-limit error (include `Retry-After` if the service supplies one), and let the caller wait rather than extending a possible edge block. This improves failure handling; a successful live response remains dependent on arXiv availability and the source IP's quota state.
+
+**Existing coverage:** `tests/test_live_smoke.py` already has an opt-in test and is being changed to one default-paced `id_list` request. It should skip with a clear explanation only when the provider returns the typed 406 rate-limit result. Offline tests should pin headers, parsing, and exactly one attempt for the 406. Ordinary tests must remain offline.
 
 ### B3 — provider error shape and CLI status: confirmed
 
@@ -114,13 +116,13 @@ The document download path uses a static `httpx.Client`; it does not download bi
 
 #### A2. Fix and pin arXiv request behavior
 
-1. Compare request variants using the same query: current request, correct Atom `Accept`, a non-placeholder contact-bearing User-Agent, and HTTPS only if supported by the documented endpoint. Record the winning request shape; do not guess the endpoint or contact identity.
-2. Replace the stale `0.5.3`/placeholder UA with a versioned product UA and a real configurable contact. Reuse a shared contact setting if one is deliberately established; otherwise introduce and document a narrowly named arXiv contact setting.
-3. Send `Accept: application/atom+xml` if confirmed by the comparison/provider contract. Keep the parser on the documented Atom response.
-4. In offline tests, assert URL, query parameters, User-Agent, Accept, search parsing, and `id_list` fetch behavior. Assert that permanent 4xx errors are not retried.
-5. Repair the existing opt-in live smoke test rather than adding a duplicate. Prefer a single stable known-ID `id_list` request per live run; verify the ID before relying on it. If testing both search and fetch, preserve the adapter’s three-second request interval. Keep live tests opt-in, not a required default-suite network dependency.
+1. Keep a truthful project/version User-Agent and the Atom `Accept`; do not impersonate a browser. The official endpoint redirects HTTP to HTTPS. A 406 may be an IP/edge throttle, not a malformed request, so do not churn through header variants during a failure window.
+2. Map arXiv HTTP 406 specifically to `ProviderRateLimitError`, preserving status and parsed `Retry-After` when present. When no hint is supplied, say that it may be temporary edge/IP throttling and immediate retries should be avoided. Keep generic permanent 4xx responses non-retryable.
+3. Preserve the official arXiv request interval (one request per three seconds and one connection at a time). Keep this adapter's existing default pacing; do not set `delay=0` in live tests that make multiple calls.
+4. In offline tests, assert URL, query parameters, User-Agent, Atom Accept, search parsing, `id_list` fetch behavior, and exactly one request on 406. Test `Retry-After` parsing with mock responses only.
+5. Repair the existing opt-in live smoke test rather than adding a duplicate. Make one stable known-ID `id_list` request per live run. Skip only when the typed upstream 406 limit response occurs, with the reason visible; keep all live tests opt-in.
 
-**Acceptance:** A real, opt-in request returns a parsed arXiv record; a 406 is not retried blindly; the offline header tests remain deterministic.
+**Acceptance:** Offline tests pin request shape and verify an actionable typed 406 with no immediate retry. The opt-in live test parses a record when arXiv is available and otherwise reports a provider-rate-limit skip; a successful live request is not a release gate while the upstream edge is returning 406.
 
 #### A3. Make Python HTTP retries status-aware
 

@@ -33,6 +33,29 @@ class QuotaExhaustedError(RuntimeError):
     """
 
 
+class ProviderRateLimitError(RuntimeError):
+    """A provider-specific response indicates temporary rate limiting."""
+
+    def __init__(
+        self,
+        provider: str,
+        status_code: int,
+        *,
+        retry_after: Optional[float] = None,
+        message: Optional[str] = None,
+    ) -> None:
+        self.provider = provider
+        self.status_code = status_code
+        self.retry_after = retry_after
+        if message is None:
+            message = f"{provider} API is rate-limited (HTTP {status_code})"
+            if retry_after is not None:
+                message += f"; retry after at least {retry_after:g} seconds"
+            else:
+                message += "; upstream gave no Retry-After hint"
+        super().__init__(message)
+
+
 @dataclass
 class RateState:
     """Snapshot of an adapter's live politeness budget after a response.
@@ -113,7 +136,7 @@ _EXA_RATE_LIMIT = RateLimit(
 _MAX_RETRY_AFTER_SECONDS = 60.0
 
 
-def _retry_after_seconds(error: httpx.HTTPStatusError) -> Optional[float]:
+def retry_after_seconds(error: httpx.HTTPStatusError) -> Optional[float]:
     """Parse a Retry-After delta or HTTP date; return None if absent/invalid."""
     value = error.response.headers.get("Retry-After")
     if not value:
@@ -165,7 +188,7 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
                         raise
 
                     retry_after = (
-                        _retry_after_seconds(e)
+                        retry_after_seconds(e)
                         if isinstance(e, httpx.HTTPStatusError)
                         else None
                     )

@@ -51,7 +51,13 @@ import httpx
 
 from gossamer import _core as _rust
 from gossamer.env import getenv as _env_get
-from gossamer.search_providers import RateLimit, RateState, ResourceAdapter
+from gossamer.search_providers import (
+    ProviderRateLimitError,
+    RateLimit,
+    RateState,
+    ResourceAdapter,
+    retry_after_seconds,
+)
 
 def _package_version() -> str:
     """Installed dist version (single source: pyproject); never stale."""
@@ -472,16 +478,15 @@ class ArxivAdapter(ResourceAdapter):
     Keyless. Answers at ``http://export.arxiv.org/api/query`` with an Atom
     1.0 feed (not JSON). Responsible-use ceiling is 1 request / 3 s on a
     single connection; the documented hard cap is 30k results/query, sliced
-    in <=2k. arXiv asks callers to identify themselves with a contact-bearing
-    User-Agent (part of their acceptable-use expectation), so every request
-    carries one.
+    in <=2k. Requests identify this client with a project/version User-Agent
+    and explicitly accept the Atom response format.
     """
 
     name = "arxiv"
     domain = "scholarly"
     requires_key = False
     BASE = "http://export.arxiv.org/api/query"
-    _ARXIV_UA = "gossamer/0.5.3 (mailto:researcher@example.org)"
+    _ARXIV_UA = f"{_UA} (+https://github.com/opticsWolf/gossamer)"
 
     def __init__(
         self,
@@ -502,9 +507,28 @@ class ArxivAdapter(ResourceAdapter):
             params=params,
             timeout=20.0,
             follow_redirects=True,
-            headers={"User-Agent": self._ARXIV_UA},
+            headers={
+                "User-Agent": self._ARXIV_UA,
+                "Accept": "application/atom+xml",
+            },
         )
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if resp.status_code == 406:
+                retry_after = retry_after_seconds(exc)
+                detail = (
+                    "arXiv API returned HTTP 406; this may indicate temporary "
+                    "upstream edge/IP rate limiting."
+                )
+                if retry_after is None:
+                    detail += " No Retry-After was supplied; avoid immediate retries."
+                else:
+                    detail += f" Retry after at least {retry_after:g} seconds."
+                raise ProviderRateLimitError(
+                    "arxiv", 406, retry_after=retry_after, message=detail,
+                ) from exc
+            raise
         return resp.text
 
     def _search_impl(self, query, max_results=5):

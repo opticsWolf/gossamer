@@ -73,9 +73,9 @@ def test_retry_after_http_date_is_parsed():
     retry_at = datetime.now(timezone.utc) + timedelta(seconds=5)
     error = _status_error(503, {"Retry-After": format_datetime(retry_at, usegmt=True)})
 
-    from gossamer.search_providers import _retry_after_seconds
+    from gossamer.search_providers import retry_after_seconds
 
-    seconds = _retry_after_seconds(error)
+    seconds = retry_after_seconds(error)
     assert seconds is not None
     assert 3.0 <= seconds <= 5.0
 

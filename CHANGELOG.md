@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.8 — no version bump)
+## [Unreleased] (still 0.9.9 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -23,6 +23,14 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.9] — Reliable arXiv API requests
+
+- Replace the stale arXiv User-Agent/contact placeholder with an identifiable
+  project/version identity and explicitly accept Atom XML. Treat arXiv's empty
+  HTTP 406 edge response as a possible temporary rate limit (typed error, no
+  immediate retries); keep the opt-in smoke to one paced `id_list` request and
+  skip clearly when the upstream edge is rate-limiting the network.
 
 ## [0.9.8] — Status-aware Python HTTP retries
 

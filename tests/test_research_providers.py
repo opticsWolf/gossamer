@@ -8,10 +8,12 @@ their existing coverage in tests/test_providers.py and test_m3_retry.py.
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from gossamer.search_providers import (
     DuckDuckGoProvider,
+    ProviderRateLimitError,
     QuotaExhaustedError,
     RateLimit,
     RateState,
@@ -398,7 +400,30 @@ class TestArxivAdapter:
         assert r["fields"]["arxiv"]["primary_category"] == "cs.AI"
         # The request used the documented Atom query param, not "query".
         assert mock_get.call_args[1]["params"]["search_query"] == "quantum"
-        assert mock_get.call_args[1]["headers"]["User-Agent"] == ArxivAdapter._ARXIV_UA
+        headers = mock_get.call_args[1]["headers"]
+        assert headers["User-Agent"] == ArxivAdapter._ARXIV_UA
+        assert headers["User-Agent"].startswith("gossamer/")
+        assert "researcher@example.org" not in headers["User-Agent"]
+        assert headers["Accept"] == "application/atom+xml"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_406_is_not_retried(self, mock_get):
+        request = httpx.Request("GET", ArxivAdapter.BASE)
+        response = httpx.Response(406, request=request)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 406
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "406 Not Acceptable", request=request, response=response,
+        )
+        mock_get.return_value = mock_resp
+
+        with pytest.raises(ProviderRateLimitError, match="edge/IP rate limiting") as exc:
+            ArxivAdapter(delay=0.0).search("quantum", max_results=1)
+        assert exc.value.provider == "arxiv"
+        assert exc.value.status_code == 406
+        assert exc.value.retry_after is None
+        assert "avoid immediate retries" in str(exc.value)
+        assert mock_get.call_count == 1
 
     @patch("gossamer.research_providers.httpx.get")
     def test_fetch_accepts_abs_url(self, mock_get):

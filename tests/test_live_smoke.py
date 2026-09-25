@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 
+from gossamer.search_providers import ProviderRateLimitError
 from gossamer.research_providers import (
     ArxivAdapter,
     BisAdapter,
@@ -99,15 +100,17 @@ def test_crossref_search_and_fetch(live):
 
 
 @pytest.mark.live
-def test_arxiv_search_and_fetch(live):
-    prov = ArxivAdapter(delay=0.0)
-    results = prov.search("quantum", max_results=3)
-    assert results, "arXiv returned no results"
-    _assert_common_result(results[0], source="arxiv")
-    assert results[0]["title"]
-
-    one = prov.fetch(results[0]["id"])
-    assert one and one[0]["id"]
+def test_arxiv_id_list_fetch(live):
+    # One live call only: arXiv's official limit is one request per three
+    # seconds across the caller's machines, so this uses the default pacing.
+    prov = ArxivAdapter()
+    try:
+        one = prov.fetch("1707.06376")
+    except ProviderRateLimitError as exc:
+        pytest.skip(f"arXiv is temporarily rate-limiting this network: {exc}")
+    assert one and one[0]["id"].startswith("1707.06376")
+    _assert_common_result(one[0], source="arxiv")
+    assert one[0]["title"]
 
 
 @pytest.mark.live
