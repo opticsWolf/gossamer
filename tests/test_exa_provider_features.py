@@ -15,6 +15,7 @@ with ``httpx`` -- no third-party SDK. These tests mock the single
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from gossamer.search_providers import (
@@ -224,7 +225,7 @@ class TestQuotaAndRetry:
             calls["n"] += 1
             if calls["n"] == 1:
                 resp = MagicMock()
-                resp.raise_for_status.side_effect = Exception("boom")
+                resp.raise_for_status.side_effect = httpx.ConnectError("boom")
                 return resp
             return _mock_response()
 

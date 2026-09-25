@@ -9,6 +9,7 @@ custom provider at runtime.
 import logging
 import random
 import time
+from email.utils import parsedate_to_datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -30,6 +31,29 @@ class QuotaExhaustedError(RuntimeError):
     signal so it can fail over to another adapter instead of hammering an
     exhausted key or hitting a 429.
     """
+
+
+class ProviderRateLimitError(RuntimeError):
+    """A provider-specific response indicates temporary rate limiting."""
+
+    def __init__(
+        self,
+        provider: str,
+        status_code: int,
+        *,
+        retry_after: Optional[float] = None,
+        message: Optional[str] = None,
+    ) -> None:
+        self.provider = provider
+        self.status_code = status_code
+        self.retry_after = retry_after
+        if message is None:
+            message = f"{provider} API is rate-limited (HTTP {status_code})"
+            if retry_after is not None:
+                message += f"; retry after at least {retry_after:g} seconds"
+            else:
+                message += "; upstream gave no Retry-After hint"
+        super().__init__(message)
 
 
 @dataclass
@@ -109,12 +133,40 @@ _EXA_RATE_LIMIT = RateLimit(
     search_interval=0.1, jitter=0.05, quota=1000, quota_window="month"
 )
 
-def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
-    """Exponential-backoff retry decorator for Python-layer methods.
+_MAX_RETRY_AFTER_SECONDS = 60.0
 
-    Retries the wrapped call on any exception, sleeping ``delay``
-    seconds between attempts (multiplied by ``backoff`` after each
-    failure). The final attempt's exception propagates to the caller.
+
+def retry_after_seconds(error: httpx.HTTPStatusError) -> Optional[float]:
+    """Parse a Retry-After delta or HTTP date; return None if absent/invalid."""
+    value = error.response.headers.get("Retry-After")
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+
+def _is_retryable(error: Exception) -> bool:
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        return status in (408, 425, 429) or 500 <= status < 600
+    return isinstance(error, httpx.TransportError)
+
+
+def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
+    """Retry transient HTTP failures with bounded exponential backoff.
+
+    Transport errors and HTTP 408/425/429/5xx responses are retryable.
+    Permanent HTTP errors and application/parse exceptions propagate
+    immediately. ``Retry-After`` delta/date values are treated as a minimum
+    wait; values over one minute fail fast rather than being retried early.
     """
     def decorator(func):
         @wraps(func)
@@ -124,22 +176,36 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
                 try:
                     return func(*args, **kwargs)
                 except QuotaExhaustedError:
-                    # A hard quota stop must never be retried: the window
-                    # will not reset during backoff. Re-raise at once so the
-                    # harness can fail over to another adapter.
+                    # A hard local quota stop must never be retried.
                     raise
                 except Exception as e:
-                    if attempt == max_attempts - 1:
-                        logger.error(
-                            "Function %s failed after %d attempts: %s",
-                            func.__name__, max_attempts, e
+                    if not _is_retryable(e) or attempt == max_attempts - 1:
+                        if _is_retryable(e) and attempt == max_attempts - 1:
+                            logger.error(
+                                "Function %s failed after %d attempts: %s",
+                                func.__name__, max_attempts, e
+                            )
+                        raise
+
+                    retry_after = (
+                        retry_after_seconds(e)
+                        if isinstance(e, httpx.HTTPStatusError)
+                        else None
+                    )
+                    if retry_after is not None and retry_after > _MAX_RETRY_AFTER_SECONDS:
+                        logger.warning(
+                            "Not retrying %s: Retry-After %.1fs exceeds the %.0fs cap",
+                            func.__name__, retry_after, _MAX_RETRY_AFTER_SECONDS,
                         )
                         raise
+                    wait = max(_delay, retry_after or 0.0)
+                    jitter = random.uniform(0.0, min(0.25, wait * 0.1))
+                    wait = min(_MAX_RETRY_AFTER_SECONDS, wait + jitter)
                     logger.warning(
                         "Attempt %d/%d for %s failed: %s. Retrying in %.1fs",
-                        attempt + 1, max_attempts, func.__name__, e, _delay
+                        attempt + 1, max_attempts, func.__name__, e, wait
                     )
-                    time.sleep(_delay)
+                    time.sleep(wait)
                     _delay *= backoff
         return wrapper
     return decorator
@@ -283,10 +349,9 @@ class ResourceAdapter(ABC):
         """
         Execute a search and return a list of result dicts.
 
-        Public entry point: retries :meth:`_search_impl` with exponential
-        backoff on any exception (M3). A :class:`QuotaExhaustedError` is
-        never retried — the window will not reset during backoff — so the
-        harness can fail over to another adapter.
+        Public entry point: retries transient transport and HTTP failures
+        with bounded backoff. Permanent HTTP/application errors and local
+        quota stops propagate immediately so the harness can fail over.
         """
         return self._search_impl(query, max_results)
 

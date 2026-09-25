@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11016%20passing%2C%2032%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11102%20passing%2C%2033%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -25,7 +25,7 @@ WebResearcherToolbox (agent_tools.py) — facade, no logic
        │  TOOL_REGISTRY (config.py): one source of truth
        ▼
 Collaborators (Python: HTTP, keys, rate limits, orchestration)
-fetch · search · crawl · document · discovery · 37 domain adapters
+fetch · search · crawl · document · discovery · 38 domain adapters
        │  JSON strings down, JSON strings up
        ▼
 _core (Rust): all response parsers, HTML metadata (in-core meta_oxide
@@ -103,13 +103,18 @@ results = await tools.search_web_async("rust programming")
 > the loop; call the sync methods otherwise. Full model:
 > [Architecture](./docs/ARCHITECTURE.md#12-async--threading-model).
 
-### Tools (ten MCP tools, everywhere)
+### Tools (twelve MCP tools, everywhere)
 
 MCP tools, CLI commands (`gossamer …`), and `execute_tool(name, args)`
 are the same surface, param-for-param: `web_search`,
-`inspect_html_page`, `batch_inspect_pages`, `extract_document`,
-`discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
-`export_citations`, `check_sources`. The CLI adds `gossamer categories`
+`inspect_html_page`, `batch_inspect_pages`, `download_file`, `locate_pdf`,
+`extract_document`, `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
+`export_citations`, `check_sources`. `download_file` saves an opaque remote file
+without requiring extraction; caller-supplied `fallback_urls` are tried
+sequentially with normal robots/SSRF checks, and `resume=true` continues a
+partial file with Range/If-Range (restart when the server ignores Range). Use `extract_document` when you
+also want parsed text. `locate_pdf` resolves a DOI to OpenAlex OA PDF/landing-page candidates (plus Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is configured)
+without downloading them. The CLI adds `gossamer categories`
 (routing table; not an MCP tool). Parameters:
 [Quick reference](./docs/QUICKREF.md#tools-mcp--cli--execute_tool).
 
@@ -124,14 +129,16 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 
 | Category | Providers (first = default) |
 |----------|------------------------------|
-| scholarly | OpenAlex, Crossref, arXiv, Zenodo |
+| scholarly | OpenAlex (default), Crossref, arXiv, Zenodo, Semantic Scholar (opt-in; key recommended for rate limits) |
 | legal | CourtListener, eCFR, Federal Register, Open Legal Data, HUDOC (ECtHR), GovInfo |
 | patent | EPO OPS, KIPRIS, PatentsView, Lens 🔑 + keyless Google Patents lookup |
 | financial | Yahoo, Frankfurter (FX), Eurostat, Bundesbank, BIS, CoinGecko, AlphaVantage 🔑 |
 | geo | Open-Meteo, Overpass |
 | general | DuckDuckGo (Google/Bing/Exa 🔑 opt-in) |
 
-Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …).
+Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi' --title 'gradient index' --author 'Smith'` passes provider-native controls; those options are rejected for other providers. `--title`/`--author` map to the verified `title.search`/`raw_author_name.search` filters and combine with `--filter`. Explicit scholarly multi-search is opt-in via `gossamer research QUERY --providers openalex arxiv`; it merges by DOI/arXiv ID, preserves each source record, and never fans out by default.
+
+**Paper collection:** `research` → `check --mode status` → optional `locate-pdf DOI` → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` for a DOI detected from the file). Supplied mirror URLs are checked independently; gossamer respects robots/SSRF policy and does not bypass bot walls. The [skill](./skills/gossamer/SKILL.md) has the full recipe.
 
 ---
 
@@ -153,13 +160,21 @@ python -m gossamer.keystore --check         # validate, never prints secrets
 { "max_tokens": 4000, "model_name": "gpt-4o", "fetch_mode": "auto" }
 ```
 
+OpenAlex works without a key for casual use. Set `GOSSAMER_OPENALEX_KEY`
+(in the keystore or environment) for the higher daily budget. If you want to
+identify your client by email, set `GOSSAMER_OPENALEX_EMAIL`; it is sent as
+`mailto` and in the request headers. No placeholder email is sent when unset.
+Semantic Scholar is also callable without a key, but keyless requests share a
+pool and may receive 429s; set `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for its
+individual one-request-per-second allowance.
+
 ---
 
 ## Harness Integration (pi, Codex, Claude Code)
 
 Same stdio server everywhere (`python -m gossamer.mcp_server`); keys stay
 in the keystore, never in client configs. Shallowest first: direct CLI
-(`gossamer search|research|inspect|extract|…`, 1:1 with MCP) → MCP
+(`gossamer search|research|inspect|download|locate-pdf|extract|…`, 1:1 with MCP) → MCP
 (`directTools`) → `skills/gossamer/SKILL.md`.
 
 **pi** (`mcp.json`, then reload):

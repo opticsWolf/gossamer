@@ -11,7 +11,7 @@ one or more providers; the caller may pass ``provider=`` to :func:`search_catego
 to call any of them separately. There is **no implicit fallback chain** -- the
 model controls which source it queries.
 
-  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo``
+  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo`` / ``semanticscholar``
   * ``legal``     -> ``courtlistener`` / ``ecfr`` / ``federalregister`` /
                      ``oldp`` / ``hudoc`` / ``govinfo``
                      (``eurlex`` / ``german`` were retired — no public
@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from gossamer import _core as _rust
 
@@ -89,7 +89,8 @@ class Category:
         return provider in self.providers
 
 
-# Academic works / papers / citations / DOIs / journals.
+# Academic works / papers / citations / DOIs / journals. OpenAlex stays first
+# (the category default); Semantic Scholar is an explicit opt-in provider.
 _SCHOLARLY: Tuple[str, ...] = (
     "paper", "papers", "citation", "citations", "journal",
     "peer-reviewed", "peer reviewed", "arxiv", "e-print", "doi",
@@ -161,7 +162,7 @@ CATEGORIES: Tuple[Category, ...] = (
         name="scholarly",
         description="Academic works, papers, citations, DOIs, journals.",
         keywords=_SCHOLARLY,
-        providers=("openalex", "crossref", "arxiv", "zenodo"),
+        providers=("openalex", "crossref", "arxiv", "zenodo", "semanticscholar"),
         kind="adapter",
     ),
     Category(
@@ -222,40 +223,6 @@ CATEGORIES: Tuple[Category, ...] = (
 
 DEFAULT_CATEGORY: Category = CATEGORIES[-1]
 
-# provider id -> display name used in the LLM-facing description.
-_PROVIDER_DISPLAY: Dict[str, str] = {
-    "openalex": "OpenAlex",
-    "crossref": "Crossref",
-    "arxiv": "ArXiv",
-    "courtlistener": "CourtListener",
-    "ecfr": "eCFR",
-    "federalregister": "Federal Register",
-    "alphavantage": "AlphaVantage",
-    "yahoo": "Yahoo Finance",
-    "frankfurter": "Frankfurter",
-    "eurostat": "Eurostat",
-    "bundesbank": "Bundesbank",
-    "bis": "BIS",
-    "coingecko": "CoinGecko",
-    "zenodo": "Zenodo",
-    "overpass": "Overpass",
-    "oldp": "Open Legal Data",
-    "hudoc": "HUDOC (ECtHR)",
-    "govinfo": "GovInfo",
-    "epo": "EPO OPS",
-    "kipris": "KIPRIS",
-    "patentsview": "PatentsView",
-    "lens": "Lens",
-    "google-patents": "Google Patents",
-    "open-meteo": "Open-Meteo",
-    "duckduckgo": "DuckDuckGo",
-}
-
-
-def _display(provider: str) -> str:
-    return _PROVIDER_DISPLAY.get(provider, provider)
-
-
 def describe_categories() -> str:
     """LLM-facing tool description, auto-generated from ``CATEGORIES``.
 
@@ -273,8 +240,11 @@ def describe_categories() -> str:
         "Omit the query to return the full taxonomy (category descriptions and "
         "provider ids) as JSON. Pass provider=<id> to call a specific source; "
         "pass category=<name> to skip classification. No automatic fallback "
-        "between providers -- the caller chooses. Returns the chosen category, "
-        "provider, and results as JSON."
+        "between providers -- the caller chooses. Pass providers=[...] for an "
+        "explicit scholarly multi-search merged by DOI/arXiv ID. OpenAlex-only "
+        "filter/select/title/author options pass through to that API. Returns the chosen category, provider, "
+        "and results as JSON. Provider failures keep results as an "
+        "empty list and add a top-level error field."
     )
 
 # provider id -> adapter factory (imported lazily so this module stays
@@ -294,6 +264,7 @@ _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "bis": "gossamer.research_providers.BisAdapter",
     "coingecko": "gossamer.research_providers.CoinGeckoAdapter",
     "zenodo": "gossamer.research_providers.ZenodoAdapter",
+    "semanticscholar": "gossamer.research_providers.SemanticScholarAdapter",
     "overpass": "gossamer.research_providers.OverpassAdapter",
     "oldp": "gossamer.research_providers.OldpAdapter",
     "hudoc": "gossamer.research_providers.HudocAdapter",
@@ -402,12 +373,126 @@ def _parse_engine_results(raw: object) -> object:
     return raw
 
 
+def _search_multiple_scholarly(
+    query: str,
+    *,
+    category: Optional[str],
+    provider: Optional[str],
+    providers,
+    max_results: int,
+    filter: Optional[str],
+    select: Optional[str],
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+) -> dict:
+    """Search an explicit scholarly provider list sequentially and merge IDs."""
+    empty = {"query": query, "results": []}
+    if provider is not None:
+        return {
+            **empty,
+            "error": "use either provider= or providers=, not both",
+        }
+    if filter is not None or select is not None or title is not None or author is not None:
+        return {
+            **empty,
+            "error": "OpenAlex filter/select/title/author options cannot be combined with providers=",
+        }
+    if not isinstance(providers, (list, tuple)) or not providers:
+        return {**empty, "error": "providers= must be a non-empty list"}
+    if any(not isinstance(item, str) or not item for item in providers):
+        return {**empty, "error": "providers= entries must be non-empty provider ids"}
+    requested = list(providers)
+    if len(set(requested)) != len(requested):
+        return {**empty, "error": "providers= cannot contain duplicate provider ids"}
+
+    if category is not None:
+        category_obj = _find_category(category)
+        if category_obj is None:
+            return {
+                **empty,
+                "category": category,
+                "error": f"unknown category {category!r}",
+            }
+    else:
+        owners = [_category_for_provider(item) for item in requested]
+        if any(owner is None for owner in owners):
+            unknown = [item for item, owner in zip(requested, owners) if owner is None]
+            return {
+                **empty,
+                "providers": requested,
+                "error": f"unknown provider(s): {', '.join(unknown)}",
+            }
+        owner_names = {owner.name for owner in owners if owner is not None}
+        if len(owner_names) != 1:
+            return {
+                **empty,
+                "providers": requested,
+                "error": "all providers= entries must belong to the same category",
+            }
+        category_obj = _find_category(next(iter(owner_names)))
+
+    if category_obj is None or category_obj.name != "scholarly" or category_obj.kind != "adapter":
+        return {
+            **empty,
+            "category": category_obj.name if category_obj else category,
+            "providers": requested,
+            "error": "multi-provider merge is currently supported only for scholarly",
+        }
+    unavailable = [item for item in requested if not category_obj.has_provider(item)]
+    if unavailable:
+        return {
+            **empty,
+            "category": category_obj.name,
+            "providers": requested,
+            "available_providers": list(category_obj.providers),
+            "error": f"provider(s) unavailable for scholarly: {', '.join(unavailable)}",
+        }
+
+    from gossamer.research_merge import merge_scholarly_records
+
+    provider_records = []
+    errors = []
+    for item in requested:
+        try:
+            result = _make_adapter(item).search(query, max_results=max_results)
+            if not isinstance(result, list):
+                raise ValueError("provider returned a non-list result")
+            provider_records.append((item, result))
+        except Exception as exc:  # noqa: BLE001 - preserve partial provider results
+            errors.append({"provider": item, "message": str(exc)})
+
+    merged = merge_scholarly_records(provider_records)
+    payload = {
+        "query": query,
+        "category": category_obj.name,
+        "provider": None,
+        "providers": requested,
+        "available_providers": list(category_obj.providers),
+        "provider_kind": category_obj.kind,
+        "description": category_obj.description,
+        "results": merged,
+    }
+    if errors:
+        payload["provider_errors"] = errors
+        payload["error"] = (
+            "All requested providers failed"
+            if not provider_records
+            else "One or more requested providers failed"
+        )
+    return payload
+
+
 def search_category(
     tb: object,
     query: str,
     category: Optional[str] = None,
     provider: Optional[str] = None,
     max_results: int = 5,
+    filter: Optional[str] = None,
+    select: Optional[str] = None,
+    providers: Optional[List[str]] = None,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
 ) -> dict:
     """Trigger **one** provider via *tb* for *query*.
 
@@ -440,13 +525,34 @@ def search_category(
         used.
     max_results : int
         Maximum number of results to return.
+    filter : str, optional
+        OpenAlex-native filter expression. Valid only with provider='openalex'.
+    select : str, optional
+        OpenAlex-native field projection. Valid only with provider='openalex'.
+    providers : list[str], optional
+        Explicit list for sequential scholarly search/merge. Valid only for the
+        scholarly category and mutually exclusive with provider=.
 
     Returns
     -------
     dict
         A normalized, JSON-serialisable payload naming the chosen category,
-        the provider actually called, its available providers, and results.
+        the provider actually called, its available providers, and a list-valued
+        ``results`` field. Failures add a top-level string ``error``.
     """
+    if providers is not None:
+        return _search_multiple_scholarly(
+            query,
+            category=category,
+            provider=provider,
+            providers=providers,
+            max_results=max_results,
+            filter=filter,
+            select=select,
+            title=title,
+            author=author,
+        )
+
     # Resolve the category: explicit, reverse-resolved from the provider, or
     # by classifying the query (only when the caller left both unspecified).
     if category is not None:
@@ -498,23 +604,72 @@ def search_category(
             "results": [],
         }
 
-    if category_obj.kind == "adapter":
-        try:
-            adapter = _make_adapter(provider)
-            results: object = adapter.search(query, max_results=max_results)
-        except Exception as exc:  # noqa: BLE001 - surface as result, never raise
-            results = {"error": f"{provider} search failed: {exc}"}
-    else:
-        results = _parse_engine_results(
-            tb.search_web(query, max_results=max_results, provider=provider)
-        )
+    if (filter is not None or select is not None or title is not None or author is not None) and provider != "openalex":
+        return {
+            "query": query,
+            "category": category_obj.name,
+            "provider": provider,
+            "available_providers": list(category_obj.providers),
+            "provider_kind": category_obj.kind,
+            "error": "OpenAlex filter/select/title/author options require provider='openalex'",
+            "results": [],
+        }
 
-    return {
+    error = None
+    metadata = {}
+    try:
+        if category_obj.kind == "adapter":
+            adapter = _make_adapter(provider)
+            if provider == "openalex" and (filter is not None or select is not None or title is not None or author is not None):
+                native_kwargs = {}
+                if filter is not None:
+                    native_kwargs["filter"] = filter
+                if select is not None:
+                    native_kwargs["select"] = select
+                if title is not None:
+                    native_kwargs["title"] = title
+                if author is not None:
+                    native_kwargs["author"] = author
+                provider_result = adapter.search(
+                    query, max_results=max_results, **native_kwargs,
+                )
+            else:
+                provider_result = adapter.search(query, max_results=max_results)
+        else:
+            provider_result = _parse_engine_results(
+                tb.search_web(query, max_results=max_results, provider=provider)
+            )
+
+        if isinstance(provider_result, list):
+            results = provider_result
+        elif isinstance(provider_result, dict):
+            candidate_results = provider_result.get("results")
+            results = candidate_results if isinstance(candidate_results, list) else []
+            error = provider_result.get("error")
+            metadata = {
+                key: value
+                for key, value in provider_result.items()
+                if key not in {"results", "error"}
+            }
+            if error is None and not isinstance(candidate_results, list):
+                error = f"{provider} returned an invalid result payload"
+        else:
+            results = []
+            error = f"{provider} returned an invalid result payload"
+    except Exception as exc:  # noqa: BLE001 - surface as result, never raise
+        results = []
+        error = f"{provider} search failed: {exc}"
+
+    payload = {
         "query": query,
         "category": category_obj.name,
         "provider": provider,
         "available_providers": list(category_obj.providers),
         "provider_kind": category_obj.kind,
         "description": category_obj.description,
+        **metadata,
         "results": results,
     }
+    if error is not None:
+        payload["error"] = str(error)
+    return payload

@@ -41,7 +41,7 @@ toolbox singleton is configured from `GOSSAMER_*` env
 ### CLI (`gossamer/cli.py`)
 
 `argparse` over subcommands 1:1 with the registry
-(`search research categories inspect batch extract check discover
+(`search research categories inspect batch download locate-pdf extract check discover
 crawl cache cite`). Entry points: `gossamer`, `python -m
 gossamer.cli`. Prints the same JSON the MCP tools return.
 
@@ -70,10 +70,13 @@ delegating to collaborator objects, all returning JSON strings.
 | Search | `search.py` | provider failover/merge, result-level cache, within-provider dedup |
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
 | Documents | `document.py` | bytes → text via oxide converters, `pages=` slicing, `store=` persistence, figure extraction |
+| Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, caller-supplied sequential mirror attempts, classified failures |
+| Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution; no automatic download |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
-| Domain adapters | `research_providers.py` | 37 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
+| Domain adapters | `research_providers.py` | 38 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
 | Routing | `research_categories.py` | keyword classifier (Euro terms folded in, no separate category) + provider factories |
+| Scholarly merge | `research_merge.py` | explicit DOI/arXiv-ID dedupe with canonical record, conflicts, and per-provider source records |
 | HTML meta | `meta_extractor.py` | `_core` kernels first, legacy `meta_oxide` package as last-resort fallback, then empty |
 | Structured docs | `structured_parser.py` | Pydantic v2 schemas + `StructuredOxideParser` (PDF/office/HTML) |
 | Models | `models.py` | result models, provenance dicts, fetch stats, batch records |
@@ -93,7 +96,7 @@ delegating to collaborator objects, all returning JSON strings.
 
 | Module | Kernels |
 |---|---|
-| `adapters/` | all 37 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
+| `adapters/` | all 38 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
 | `metaextract.rs` | HTML metadata via the `meta_oxide` crate FFI + `sparse()`/normalizers matching `to_py_dict` shapes |
 | `xmlatom.rs` | ATOM/XML traversal (arXiv/PubMed), SDMX-ML (Bundesbank/BIS), namespace-URI resolution |
 | `ssrf.rs` | IP/DNS allow-list logic mirroring CPython `ipaddress` tables |

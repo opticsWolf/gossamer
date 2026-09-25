@@ -10,6 +10,7 @@ Built so far (Phase 2 — robust, low-risk, no / cheap keys):
   * :class:`OpenMeteoAdapter` — weather/climate + place lookup (geo)
   * :class:`CrossrefAdapter`  — works / DOI lookup (scholarly)
   * :class:`ArxivAdapter`     — preprint search (scholarly)
+  * :class:`SemanticScholarAdapter` — Academic Graph paper search/lookup (scholarly, optional key)
   * :class:`PubmedAdapter`    — biomedical literature search / fetch (scholarly)
   * :class:`DoajAdapter`      — open-access journals search (scholarly)
   * :class:`OpenLibraryAdapter` — book search / lookup (library)
@@ -45,13 +46,20 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import date as _date
 from typing import Dict, List, Optional, Tuple, Union
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 
 import httpx
 
 from gossamer import _core as _rust
 from gossamer.env import getenv as _env_get
-from gossamer.search_providers import RateLimit, RateState, ResourceAdapter
+from gossamer.search_providers import (
+    ProviderRateLimitError,
+    RateLimit,
+    RateState,
+    ResourceAdapter,
+    retry,
+    retry_after_seconds,
+)
 
 def _package_version() -> str:
     """Installed dist version (single source: pyproject); never stale."""
@@ -75,9 +83,11 @@ def _parse_lat_lon(lat_lon: Union[str, Tuple[float, float], List[float]]) -> Tup
 class OpenAlexAdapter(ResourceAdapter):
     """OpenAlex scholarly-works search (https://docs.openalex.org).
 
-    Keyless, but always send a polite ``Contact-Agent`` / ``User-Agent``
-    carrying an email so the pool reserves you a slot; a free API key gives
-    ~10x the daily budget. The documented safe ceiling is <100 rps.
+    Works without a key for casual use; an optional free API key increases
+    the daily budget. If the operator configures ``GOSSAMER_OPENALEX_EMAIL``,
+    it is sent as ``mailto`` and in the client identification headers. No
+    placeholder contact address is fabricated. The documented request-rate
+    ceiling is 100 requests per second.
     """
 
     name = "openalex"
@@ -93,7 +103,9 @@ class OpenAlexAdapter(ResourceAdapter):
         email: Optional[str] = None,
         api_key: Optional[str] = None,
     ):
-        self.email = email or _env_get("GOSSAMER_OPENALEX_EMAIL", "") or "research@example.org"
+        self.email = (
+            email if email is not None else _env_get("GOSSAMER_OPENALEX_EMAIL", "")
+        ).strip()
         self.api_key = api_key or _env_get("GOSSAMER_OPENALEX_KEY", "")
         self._last_search = 0.0
         self._last_fetch = 0.0
@@ -104,11 +116,16 @@ class OpenAlexAdapter(ResourceAdapter):
         )
 
     def inject_auth(self, url, params=None, headers=None):
-        ua = f"{_UA}?email={self.email}"
         h = dict(headers or {})
-        h.setdefault("User-Agent", ua)
-        h.setdefault("Contact-Agent", ua)
         p = dict(params or {})
+        ua = _UA
+        if self.email:
+            # OpenAlex recommends identifying the client with mailto in the
+            # User-Agent; its API also accepts the conventional query param.
+            ua = f"{_UA} (mailto:{self.email})"
+            h.setdefault("Contact-Agent", ua)
+            p.setdefault("mailto", self.email)
+        h.setdefault("User-Agent", ua)
         if self.api_key:
             p.setdefault("api_key", self.api_key)
         return url, p, h
@@ -117,12 +134,48 @@ class OpenAlexAdapter(ResourceAdapter):
         # OpenAlex exposes no X-RateLimit headers; report the documented ceiling.
         return RateState(rps=100.0)
 
-    def _search_impl(self, query, max_results=5):
+    @staticmethod
+    def _fielded_filter(base_filter=None, title=None, author=None) -> Optional[str]:
+        """Combine a native filter with verified fielded title/author clauses.
+
+        Verified live against the OpenAlex works API: ``title.search:`` and
+        ``raw_author_name.search:`` are valid filter fields; clauses combine
+        with commas (AND). Commas inside values would split the filter, so
+        they are rejected rather than guessed at.
+        """
+        clauses = []
+        if base_filter is not None:
+            if not base_filter.strip():
+                raise ValueError("OpenAlex filter must not be blank")
+            clauses.append(base_filter.strip())
+        if title is not None:
+            if not title.strip():
+                raise ValueError("OpenAlex title must not be blank")
+            if "," in title:
+                raise ValueError("OpenAlex title must not contain a comma; use filter= for advanced syntax")
+            clauses.append(f"title.search:{title.strip()}")
+        if author is not None:
+            if not author.strip():
+                raise ValueError("OpenAlex author must not be blank")
+            if "," in author:
+                raise ValueError("OpenAlex author must not contain a comma; use filter= for advanced syntax")
+            clauses.append(f"raw_author_name.search:{author.strip()}")
+        if not clauses:
+            return None
+        return ",".join(clauses)
+
+    def _search_impl(self, query, max_results=5, *, filter=None, select=None, title=None, author=None):
+        if select is not None and not select.strip():
+            raise ValueError("OpenAlex select must not be blank")
+        combined_filter = self._fielded_filter(filter, title, author)
         self._enforce_delay()
         url = f"{self.BASE}/works"
-        url, params, headers = self.inject_auth(
-            url, {"search": query, "per_page": min(max_results, 200)}, {}
-        )
+        query_params = {"search": query, "per_page": min(max_results, 100)}
+        if combined_filter is not None:
+            query_params["filter"] = combined_filter
+        if select is not None:
+            query_params["select"] = select
+        url, params, headers = self.inject_auth(url, query_params, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=15.0)
         resp.raise_for_status()
         # Row building in Rust (src/adapters.rs); `raw` re-attached here
@@ -136,6 +189,13 @@ class OpenAlexAdapter(ResourceAdapter):
             rec["raw"] = json.dumps(w)
         return records
 
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def search(self, query, max_results=5, *, filter=None, select=None, title=None, author=None):
+        """Search OpenAlex works with optional native filter/select/title/author."""
+        return self._search_impl(
+            query, max_results, filter=filter, select=select, title=title, author=author,
+        )
+
     def fetch(self, record_id, params=None):
         self._enforce_delay()
         url = f"{self.BASE}/works/{record_id}"
@@ -147,6 +207,154 @@ class OpenAlexAdapter(ResourceAdapter):
         rec = json.loads(_rust.openalex_parse_fetch(json.dumps(body)))
         rec["raw"] = json.dumps(body)
         return [rec]
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def fetch_by_doi(self, doi: str):
+        """Resolve one DOI through OpenAlex's documented works DOI filter."""
+        self._enforce_delay()
+        url, params, headers = self.inject_auth(
+            f"{self.BASE}/works",
+            {"filter": f"doi:https://doi.org/{doi}", "per_page": 1},
+            {},
+        )
+        response = httpx.get(url, params=params, headers=headers, timeout=15.0)
+        response.raise_for_status()
+        works = response.json().get("results", [])
+        records = []
+        for work in works[:1]:
+            record = json.loads(_rust.openalex_parse_fetch(json.dumps(work)))
+            record["raw"] = json.dumps(work)
+            records.append(record)
+        return records
+
+
+class SemanticScholarAdapter(ResourceAdapter):
+    """Semantic Scholar Academic Graph papers search/lookup.
+
+    API keys are optional but recommended: authenticated callers receive an
+    individual one-request-per-second allowance, while keyless callers share
+    a pool. A key is read from ``GOSSAMER_SEMANTICSCHOLAR_API_KEY`` and sent
+    in the documented ``x-api-key`` header.
+    """
+
+    name = "semanticscholar"
+    domain = "scholarly"
+    requires_key = False
+    BASE = "https://api.semanticscholar.org/graph/v1"
+    PAPER_FIELDS = (
+        "paperId,title,abstract,year,publicationDate,authors,citationCount,"
+        "referenceCount,venue,externalIds,url,openAccessPdf,fieldsOfStudy,"
+        "publicationTypes"
+    )
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+    ):
+        self.api_key = (
+            api_key if api_key is not None
+            else _env_get("GOSSAMER_SEMANTICSCHOLAR_API_KEY", "")
+        ).strip()
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        # An API key gives an individual 1 request/sec limit. Use the same
+        # minimum when keyless; the shared unauthenticated pool can throttle sooner.
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.1),
+            fetch_delay,
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        headers = dict(headers or {})
+        if self.api_key:
+            headers.setdefault("x-api-key", self.api_key)
+        return url, dict(params or {}), headers
+
+    def parse_headers(self, status, headers):
+        return RateState(rps=1.0)
+
+    def _request_json(self, path: str, params: dict) -> dict:
+        self._enforce_delay()
+        url, query, headers = self.inject_auth(f"{self.BASE}/{path}", params, {})
+        response = httpx.get(url, params=query, headers=headers, timeout=30.0)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if response.status_code == 429 and not self.api_key:
+                retry_after = retry_after_seconds(exc)
+                message = (
+                    "Semantic Scholar returned HTTP 429 for a keyless request; "
+                    "unauthenticated traffic shares a rate-limit pool. Set "
+                    "GOSSAMER_SEMANTICSCHOLAR_API_KEY for an individual "
+                    "one-request-per-second allowance, or wait before retrying."
+                )
+                if retry_after is not None:
+                    message += f" Retry after at least {retry_after:g} seconds."
+                raise ProviderRateLimitError(
+                    self.name, 429, retry_after=retry_after, message=message,
+                ) from exc
+            raise
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Semantic Scholar API returned a non-object JSON response")
+        return payload
+
+    def _search_impl(self, query, max_results=5):
+        total_limit = max(0, min(int(max_results), 1000))
+        records = []
+        offset = 0
+        while len(records) < total_limit:
+            page_limit = min(100, total_limit - len(records))
+            body = self._request_json(
+                "paper/search",
+                {
+                    "query": query,
+                    "fields": self.PAPER_FIELDS,
+                    "offset": offset,
+                    "limit": page_limit,
+                },
+            )
+            papers = body.get("data", [])
+            if not isinstance(papers, list):
+                raise ValueError("Semantic Scholar response field 'data' must be a list")
+            if not papers:
+                break
+            parsed = json.loads(
+                _rust.semanticscholar_parse_search(
+                    json.dumps({"data": papers}), len(papers),
+                )
+            )
+            for record, paper in zip(parsed, papers):
+                record["raw"] = json.dumps(paper)
+                records.append(record)
+            next_offset = body.get("next")
+            if "next" in body:
+                if next_offset is None:
+                    break
+                if not isinstance(next_offset, int) or next_offset <= offset:
+                    break
+                offset = next_offset
+            else:
+                offset += len(papers)
+            if len(papers) < page_limit:
+                break
+        return records[:total_limit]
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def fetch(self, record_id, params=None):
+        identifier = str(record_id).strip()
+        if re.fullmatch(r"10\.\d{4,9}/\S+", identifier, flags=re.IGNORECASE):
+            identifier = f"DOI:{identifier}"
+        url_identifier = quote(identifier, safe="")
+        query = {"fields": self.PAPER_FIELDS}
+        query.update(params or {})
+        body = self._request_json(f"paper/{url_identifier}", query)
+        record = json.loads(_rust.semanticscholar_parse_fetch(json.dumps(body)))
+        record["raw"] = json.dumps(body)
+        return [record]
 
 class OpenMeteoAdapter(ResourceAdapter):
     """Open-Meteo weather/climate + place lookup (https://open-meteo.com).
@@ -221,10 +429,6 @@ class OpenMeteoAdapter(ResourceAdapter):
 # ────────────────────────────────────────────────────────────────
 # Phase 2 adapters (scholarly / library / financial / tech)
 # ────────────────────────────────────────────────────────────────
-
-def _join(*parts):
-    """Join path parts, dropping empties."""
-    return "/".join(str(p).strip("/") for p in parts if p not in (None, ""))
 
 def _rate_state_from_headers(headers, default_rps=None):
     """Build a :class:`RateState` from ``X-RateLimit-*`` style headers.
@@ -472,16 +676,15 @@ class ArxivAdapter(ResourceAdapter):
     Keyless. Answers at ``http://export.arxiv.org/api/query`` with an Atom
     1.0 feed (not JSON). Responsible-use ceiling is 1 request / 3 s on a
     single connection; the documented hard cap is 30k results/query, sliced
-    in <=2k. arXiv asks callers to identify themselves with a contact-bearing
-    User-Agent (part of their acceptable-use expectation), so every request
-    carries one.
+    in <=2k. Requests identify this client with a project/version User-Agent
+    and explicitly accept the Atom response format.
     """
 
     name = "arxiv"
     domain = "scholarly"
     requires_key = False
     BASE = "http://export.arxiv.org/api/query"
-    _ARXIV_UA = "gossamer/0.5.3 (mailto:researcher@example.org)"
+    _ARXIV_UA = f"{_UA} (+https://github.com/opticsWolf/gossamer)"
 
     def __init__(
         self,
@@ -502,9 +705,28 @@ class ArxivAdapter(ResourceAdapter):
             params=params,
             timeout=20.0,
             follow_redirects=True,
-            headers={"User-Agent": self._ARXIV_UA},
+            headers={
+                "User-Agent": self._ARXIV_UA,
+                "Accept": "application/atom+xml",
+            },
         )
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if resp.status_code == 406:
+                retry_after = retry_after_seconds(exc)
+                detail = (
+                    "arXiv API returned HTTP 406; this may indicate temporary "
+                    "upstream edge/IP rate limiting."
+                )
+                if retry_after is None:
+                    detail += " No Retry-After was supplied; avoid immediate retries."
+                else:
+                    detail += f" Retry after at least {retry_after:g} seconds."
+                raise ProviderRateLimitError(
+                    "arxiv", 406, retry_after=retry_after, message=detail,
+                ) from exc
+            raise
         return resp.text
 
     def _search_impl(self, query, max_results=5):
@@ -972,13 +1194,6 @@ class PubmedAdapter(ResourceAdapter):
 def _today_iso() -> str:
     """YYYY-MM-DD for date-indexed endpoints (e.g. NASA NeoWs)."""
     return _date.today().isoformat()
-
-def _first_desc(cve: dict, limit: int = 240) -> str:
-    """First English description string of a CVE doc, collapsed + truncated."""
-    for d in cve.get("descriptions", []) or []:
-        if d.get("lang") == "en" or not d.get("lang"):
-            return " ".join((d.get("value") or "").split())[:limit]
-    return ""
 
 def _parse_census_query(query) -> Tuple[str, dict]:
     """Split a Census spec into ``(dataset, extra_params)``.
@@ -1583,12 +1798,6 @@ class CensusAdapter(ResourceAdapter):
         for rec in recs:
             rec["raw"] = json.dumps(rec.pop("raw"))
         return recs
-
-def _strip_tags(text: str) -> str:
-    """Strip HTML tags from a description string (Zenodo descriptions are HTML)."""
-    if not text:
-        return ""
-    return re.sub(r"<[^>]+>", " ", text)
 
 # ── Phase 3 (second wave): legal, science, financial ────────────────────
 

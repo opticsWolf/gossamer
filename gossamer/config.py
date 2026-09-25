@@ -248,6 +248,49 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
+        "download_file",
+        "Download a remote file to an explicit local path without requiring document extraction. Streams under the configured/per-call byte cap, follows and revalidates redirects, respects robots.txt and SSRF protections, and validates PDF magic when expected_format='pdf' or the output ends in .pdf. Existing destinations are preserved unless overwrite=true. Optional fallback_urls are caller-supplied OA/repository candidates tried sequentially; every URL is checked independently and bot walls are never bypassed.",
+        "download_file",
+        (
+            ToolParam("source", str, description="Remote HTTP(S) URL to download"),
+            ToolParam("output_path", str, description="Local destination file path"),
+            ToolParam("min_bytes", int, 1, "Minimum accepted file size in bytes (default: 1)."),
+            ToolParam("max_bytes", int, 0, "Maximum bytes (0 uses the configured max_response_bytes cap)."),
+            ToolParam(
+                "expected_format",
+                str,
+                "auto",
+                "'auto' validates PDF when output_path ends in .pdf; 'pdf' always validates the %PDF- signature.",
+                enum=["auto", "pdf"],
+            ),
+            ToolParam("overwrite", bool, False, "Replace an existing destination only when true."),
+            ToolParam(
+                "resume",
+                bool,
+                False,
+                "Continue an existing partial file with Range/If-Range; servers that ignore Range restart the file.",
+            ),
+            ToolParam(
+                "fallback_urls",
+                list[str],
+                [],
+                "Optional caller-supplied ordered OA/repository mirrors to try sequentially after the primary URL; every candidate still obeys robots/SSRF checks.",
+            ),
+        ),
+    ),
+    ToolSpec(
+        "locate_pdf",
+        "Resolve a DOI through OpenAlex (plus Unpaywall v2 when GOSSAMER_UNPAYWALL_EMAIL is configured) and return inspectable open-access PDF or landing-page candidates with source/license/version provenance. This locates but does not download; use download_file separately. Returns not_found, closed_access, open_access, or a top-level error status.",
+        "locate_pdf",
+        (
+            ToolParam(
+                "doi",
+                str,
+                description="Bare DOI, doi: prefixed value, or https://doi.org/ resolver URL",
+            ),
+        ),
+    ),
+    ToolSpec(
         "extract_document",
         "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats (TXT, MD, CSV, JSON, XML) and RSS/Atom feeds. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
         "extract_document",
@@ -425,6 +468,36 @@ TOOL_REGISTRY = (
                 "it must belong to that category. Omitted -> the category's "
                 "default provider. No automatic fallback.",
             ),
+            ToolParam(
+                "filter",
+                str,
+                None,
+                "OpenAlex-native filter expression; valid only with provider='openalex'.",
+            ),
+            ToolParam(
+                "select",
+                str,
+                None,
+                "OpenAlex-native comma-separated field projection; valid only with provider='openalex'.",
+            ),
+            ToolParam(
+                "title",
+                str,
+                None,
+                "OpenAlex title search; maps to verified title.search filter. Valid only with provider='openalex'.",
+            ),
+            ToolParam(
+                "author",
+                str,
+                None,
+                "OpenAlex author search; maps to verified raw_author_name.search filter. Valid only with provider='openalex'.",
+            ),
+            ToolParam(
+                "providers",
+                list[str],
+                [],
+                "Explicit providers for sequential scholarly search/merge, e.g. ['openalex', 'arxiv']. Mutually exclusive with provider= and supported only for scholarly.",
+            ),
         ),
     ),
     ToolSpec(
@@ -458,6 +531,12 @@ TOOL_REGISTRY = (
                 bool,
                 True,
                 "Collapse records that share a DOI or URL before formatting.",
+            ),
+            ToolParam(
+                "from_pdf",
+                bool,
+                False,
+                "Treat every string input as a local PDF path and cite its detected DOI; PDFs without a DOI return an error.",
             ),
         ),
     ),

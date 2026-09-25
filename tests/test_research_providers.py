@@ -6,12 +6,15 @@ domain adapters (OpenAlex scholarly, Open-Meteo geo). Search providers keep
 their existing coverage in tests/test_providers.py and test_m3_retry.py.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from gossamer.search_providers import (
     DuckDuckGoProvider,
+    ProviderRateLimitError,
     QuotaExhaustedError,
     RateLimit,
     RateState,
@@ -28,6 +31,7 @@ from gossamer.research_providers import (
     OpenLibraryAdapter,
     OpenMeteoAdapter,
     PubmedAdapter,
+    SemanticScholarAdapter,
     WorldBankAdapter,
     _parse_lat_lon,
     _rate_state_from_headers,
@@ -185,18 +189,125 @@ class TestOpenAlexAdapter:
         assert results[0]["doi"] == "doi:10.1/x"
         assert results[0]["authors"] == "Ada Lovelace"
         assert results[0]["citations"] == 5
+        assert mock_get.call_args.kwargs["params"]["mailto"] == "me@example.org"
 
-    def test_inject_auth_sets_polite_email_ua(self):
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_passes_filter_select_and_caps_per_page(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"results": [{"id": "W123", "title": "A paper"}]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        results = OpenAlexAdapter(delay=0.0, email="").search(
+            "quantum", max_results=250,
+            filter="type:article,open_access.is_oa:true",
+            select="id,title,doi",
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["per_page"] == 100
+        assert params["filter"] == "type:article,open_access.is_oa:true"
+        assert params["select"] == "id,title,doi"
+        assert results[0]["id"] == "W123"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_rejects_blank_native_options(self, mock_get):
+        with pytest.raises(ValueError, match="filter must not be blank"):
+            OpenAlexAdapter(delay=0.0).search("q", filter="  ")
+        mock_get.assert_not_called()
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_maps_title_author_to_verified_filters(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"results": [{"id": "W123", "title": "A paper"}]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        OpenAlexAdapter(delay=0.0, email="").search(
+            "quantum", max_results=5, title="gradient index", author="Smith",
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["filter"] == "title.search:gradient index,raw_author_name.search:Smith"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_combines_filter_with_title_author(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"results": [{"id": "W123", "title": "A paper"}]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        OpenAlexAdapter(delay=0.0, email="").search(
+            "q", max_results=5, filter="type:article", title="optics",
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["filter"] == "type:article,title.search:optics"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_rejects_blank_or_comma_title_author(self, mock_get):
+        with pytest.raises(ValueError, match="title must not be blank"):
+            OpenAlexAdapter(delay=0.0).search("q", title="  ")
+        with pytest.raises(ValueError, match="author must not be blank"):
+            OpenAlexAdapter(delay=0.0).search("q", author="  ")
+        with pytest.raises(ValueError, match="must not contain a comma"):
+            OpenAlexAdapter(delay=0.0).search("q", title="a,b")
+        with pytest.raises(ValueError, match="must not contain a comma"):
+            OpenAlexAdapter(delay=0.0).search("q", author="a,b")
+        mock_get.assert_not_called()
+
+    def test_inject_auth_sets_configured_mailto_and_contact_headers(self):
         prov = OpenAlexAdapter(delay=0.0, email="me@example.org")
         url, params, headers = prov.inject_auth("https://api.openalex.org/works", {}, {})
-        assert "email=me@example.org" in headers["User-Agent"]
-        assert "email=me@example.org" in headers["Contact-Agent"]
+        assert params["mailto"] == "me@example.org"
+        assert "mailto:me@example.org" in headers["User-Agent"]
+        assert headers["Contact-Agent"] == headers["User-Agent"]
         assert url == "https://api.openalex.org/works"
+
+    def test_inject_auth_does_not_fabricate_contact_email(self):
+        prov = OpenAlexAdapter(delay=0.0, email="")
+        _, params, headers = prov.inject_auth("https://api.openalex.org/works", {}, {})
+        assert "mailto" not in params
+        assert "research@example.org" not in str(headers)
+        assert headers["User-Agent"].startswith("gossamer/")
+        assert "Contact-Agent" not in headers
+
+    def test_email_is_loaded_from_environment(self, monkeypatch):
+        monkeypatch.setenv("GOSSAMER_OPENALEX_EMAIL", "env@example.org")
+        prov = OpenAlexAdapter(delay=0.0)
+        _, params, _ = prov.inject_auth("https://api.openalex.org/works", {}, {})
+        assert params["mailto"] == "env@example.org"
 
     def test_inject_auth_adds_api_key_when_set(self):
         prov = OpenAlexAdapter(delay=0.0, api_key="secret")
         _, params, _ = prov.inject_auth("https://x", {}, {})
         assert params["api_key"] == "secret"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_429_retry_after_is_honored_by_openalex(self, mock_get, monkeypatch):
+        request = httpx.Request("GET", f"{OpenAlexAdapter.BASE}/works")
+        error_response = httpx.Response(
+            429, headers={"Retry-After": "2"}, request=request,
+        )
+        error = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=request, response=error_response,
+        )
+        limited = MagicMock()
+        limited.raise_for_status.side_effect = error
+        success = MagicMock()
+        success.json.return_value = {"results": [{"id": "W123", "title": "A Paper"}]}
+        success.raise_for_status.return_value = None
+        mock_get.side_effect = [limited, success]
+        waits = []
+        monkeypatch.setattr("gossamer.search_providers.time.sleep", waits.append)
+
+        results = OpenAlexAdapter(delay=0.0, email="me@example.org").search(
+            "quantum", max_results=1,
+        )
+
+        assert results[0]["id"] == "W123"
+        assert mock_get.call_count == 2
+        assert len(waits) == 1 and 2.0 <= waits[0] <= 2.25
 
     @patch("gossamer.research_providers.httpx.get")
     def test_fetch_parses(self, mock_get):
@@ -208,6 +319,135 @@ class TestOpenAlexAdapter:
         out = OpenAlexAdapter(delay=0.0).fetch("W999")
         assert out[0]["id"] == "W999"
         assert out[0]["title"] == "Single"
+
+
+# ────────────────────────────────────────────────────────────────
+# SemanticScholarAdapter (scholarly)
+# ────────────────────────────────────────────────────────────────
+
+
+class TestSemanticScholarAdapter:
+    _paper = {
+        "paperId": "S2-P1",
+        "title": "Graph neural networks",
+        "abstract": "A paper abstract.",
+        "year": 2024,
+        "publicationDate": "2024-05-01",
+        "authors": [{"authorId": "A1", "name": "Ada"}],
+        "externalIds": {"DOI": "10.1234/example", "ArXiv": "2401.00001"},
+        "citationCount": 7,
+        "referenceCount": 11,
+        "venue": "Conference on Graphs",
+        "url": "https://www.semanticscholar.org/paper/S2-P1",
+        "openAccessPdf": {"url": "https://example.org/paper.pdf", "status": "GREEN"},
+        "fieldsOfStudy": [{"category": "Engineering"}],
+        "publicationTypes": ["JournalArticle"],
+    }
+
+    def test_metadata_and_optional_api_key(self):
+        adapter = SemanticScholarAdapter(delay=0.0)
+        assert adapter.name == "semanticscholar"
+        assert adapter.domain == "scholarly"
+        assert adapter.requires_key is False
+        assert adapter.rate_limit.search_interval == 0.0
+        _, params, headers = SemanticScholarAdapter(
+            delay=0.0, api_key="test-key",
+        ).inject_auth("https://example.org", {"q": "x"}, {})
+        assert params == {"q": "x"}
+        assert headers["x-api-key"] == "test-key"
+
+    def test_api_key_is_loaded_from_environment(self, monkeypatch):
+        monkeypatch.setenv("GOSSAMER_SEMANTICSCHOLAR_API_KEY", "env-key")
+        adapter = SemanticScholarAdapter(delay=0.0)
+        _, _, headers = adapter.inject_auth("https://example.org", {}, {})
+        assert headers["x-api-key"] == "env-key"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_maps_graph_api_fields(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"total": 1, "offset": 0, "data": [self._paper]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        result = SemanticScholarAdapter(delay=0.0, api_key="secret").search(
+            "graph neural networks", max_results=5,
+        )[0]
+
+        request = mock_get.call_args
+        assert request.args[0] == "https://api.semanticscholar.org/graph/v1/paper/search"
+        assert request.kwargs["headers"]["x-api-key"] == "secret"
+        assert request.kwargs["params"]["query"] == "graph neural networks"
+        assert request.kwargs["params"]["limit"] == 5
+        assert request.kwargs["params"]["offset"] == 0
+        assert "openAccessPdf" in request.kwargs["params"]["fields"]
+        assert result["source"] == "semanticscholar"
+        assert result["id"] == "S2-P1"
+        assert result["doi"] == "10.1234/example"
+        assert result["authors"] == "Ada"
+        assert result["citations"] == 7
+        assert result["fields"]["semanticscholar"]["open_access_pdf"]["url"] == (
+            "https://example.org/paper.pdf"
+        )
+        assert json.loads(result["raw"]) == self._paper
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_paginates_with_100_item_api_limit(self, mock_get):
+        first = MagicMock()
+        first.json.return_value = {
+            "total": 102, "offset": 0, "next": 100,
+            "data": [{"paperId": f"p{i}", "title": f"Paper {i}"} for i in range(100)],
+        }
+        first.raise_for_status.return_value = None
+        second = MagicMock()
+        second.json.return_value = {
+            "total": 102, "offset": 100, "next": None,
+            "data": [{"paperId": "p100", "title": "Paper 100"},
+                     {"paperId": "p101", "title": "Paper 101"}],
+        }
+        second.raise_for_status.return_value = None
+        mock_get.side_effect = [first, second]
+
+        result = SemanticScholarAdapter(delay=0.0, api_key="key").search(
+            "papers", max_results=102,
+        )
+
+        assert len(result) == 102
+        assert [call.kwargs["params"]["offset"] for call in mock_get.call_args_list] == [0, 100]
+        assert [call.kwargs["params"]["limit"] for call in mock_get.call_args_list] == [100, 2]
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_keyless_429_names_api_key_and_fails_without_retry(self, mock_get):
+        request = httpx.Request("GET", f"{SemanticScholarAdapter.BASE}/paper/search")
+        response = httpx.Response(429, headers={"Retry-After": "10"}, request=request)
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = response.headers
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=request, response=response,
+        )
+        mock_get.return_value = mock_response
+
+        with pytest.raises(ProviderRateLimitError, match="GOSSAMER_SEMANTICSCHOLAR_API_KEY") as exc:
+            SemanticScholarAdapter(delay=0.0).search("paper", max_results=1)
+        assert exc.value.retry_after == 10
+        assert "Retry after at least 10 seconds" in str(exc.value)
+        assert mock_get.call_count == 1
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_accepts_doi_and_parses_detail(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = self._paper
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        result = SemanticScholarAdapter(delay=0.0, api_key="key").fetch(
+            "10.1234/example",
+        )[0]
+
+        assert mock_get.call_args.args[0].endswith("/paper/DOI%3A10.1234%2Fexample")
+        assert mock_get.call_args.kwargs["headers"]["x-api-key"] == "key"
+        assert result["id"] == "S2-P1"
+        assert result["doi"] == "10.1234/example"
 
 
 # ────────────────────────────────────────────────────────────────
@@ -398,7 +638,30 @@ class TestArxivAdapter:
         assert r["fields"]["arxiv"]["primary_category"] == "cs.AI"
         # The request used the documented Atom query param, not "query".
         assert mock_get.call_args[1]["params"]["search_query"] == "quantum"
-        assert mock_get.call_args[1]["headers"]["User-Agent"] == ArxivAdapter._ARXIV_UA
+        headers = mock_get.call_args[1]["headers"]
+        assert headers["User-Agent"] == ArxivAdapter._ARXIV_UA
+        assert headers["User-Agent"].startswith("gossamer/")
+        assert "researcher@example.org" not in headers["User-Agent"]
+        assert headers["Accept"] == "application/atom+xml"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_406_is_not_retried(self, mock_get):
+        request = httpx.Request("GET", ArxivAdapter.BASE)
+        response = httpx.Response(406, request=request)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 406
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "406 Not Acceptable", request=request, response=response,
+        )
+        mock_get.return_value = mock_resp
+
+        with pytest.raises(ProviderRateLimitError, match="edge/IP rate limiting") as exc:
+            ArxivAdapter(delay=0.0).search("quantum", max_results=1)
+        assert exc.value.provider == "arxiv"
+        assert exc.value.status_code == 406
+        assert exc.value.retry_after is None
+        assert "avoid immediate retries" in str(exc.value)
+        assert mock_get.call_count == 1
 
     @patch("gossamer.research_providers.httpx.get")
     def test_fetch_accepts_abs_url(self, mock_get):

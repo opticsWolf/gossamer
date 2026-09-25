@@ -12,13 +12,15 @@ consuming rate budgets or asserting brittle exact values.
 
 Key-gated adapters (PubMed / GitHub / FRED) use their key automatically when
 the corresponding ``GOSSAMER_*`` env var is set; they still run keyless
-otherwise, so they do not require a key to smoke-test.
+otherwise, so they do not require a key to smoke-test. Semantic Scholar is
+keyless-capable, but its live smoke requires a key to avoid the shared pool.
 """
 
 from __future__ import annotations
 
 import pytest
 
+from gossamer.search_providers import ProviderRateLimitError
 from gossamer.research_providers import (
     ArxivAdapter,
     BisAdapter,
@@ -47,6 +49,7 @@ from gossamer.research_providers import (
     OverpassAdapter,
     PatentsViewAdapter,
     SoftwareHeritageAdapter,
+    SemanticScholarAdapter,
     YahooFinanceAdapter,
     ZenodoAdapter,
     PubmedAdapter,
@@ -86,6 +89,20 @@ def test_openalex_search_and_fetch(live):
 
 
 @pytest.mark.live
+@pytest.mark.parametrize(
+    "live_key", ["GOSSAMER_SEMANTICSCHOLAR_API_KEY"], indirect=True,
+)
+def test_semanticscholar_search(live_key):
+    # The API key is optional for normal operation but required for the live
+    # smoke so this test does not consume the shared anonymous quota.
+    prov = SemanticScholarAdapter(api_key=live_key)
+    results = prov.search("graph neural networks", max_results=1)
+    assert results, "Semantic Scholar returned no results"
+    _assert_common_result(results[0], source="semanticscholar")
+    assert results[0]["title"]
+
+
+@pytest.mark.live
 def test_crossref_search_and_fetch(live):
     prov = CrossrefAdapter(delay=0.0, email="probe@example.org")
     results = prov.search("quantum computing", max_results=3)
@@ -99,15 +116,17 @@ def test_crossref_search_and_fetch(live):
 
 
 @pytest.mark.live
-def test_arxiv_search_and_fetch(live):
-    prov = ArxivAdapter(delay=0.0)
-    results = prov.search("quantum", max_results=3)
-    assert results, "arXiv returned no results"
-    _assert_common_result(results[0], source="arxiv")
-    assert results[0]["title"]
-
-    one = prov.fetch(results[0]["id"])
-    assert one and one[0]["id"]
+def test_arxiv_id_list_fetch(live):
+    # One live call only: arXiv's official limit is one request per three
+    # seconds across the caller's machines, so this uses the default pacing.
+    prov = ArxivAdapter()
+    try:
+        one = prov.fetch("1707.06376")
+    except ProviderRateLimitError as exc:
+        pytest.skip(f"arXiv is temporarily rate-limiting this network: {exc}")
+    assert one and one[0]["id"].startswith("1707.06376")
+    _assert_common_result(one[0], source="arxiv")
+    assert one[0]["title"]
 
 
 @pytest.mark.live

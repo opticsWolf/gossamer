@@ -15,6 +15,8 @@ EXPECTED_TOOLS = {
     "web_search",
     "inspect_html_page",
     "batch_inspect_pages",
+    "download_file",
+    "locate_pdf",
     "extract_document",
     "discover_resources",
     "crawl",
@@ -64,6 +66,31 @@ class TestRegistration:
 
 
 class TestToolCalls:
+    def test_download_file_via_mcp(self, server, tmp_path):
+        tb = mcp_server.get_toolbox()
+        tb._download.download_file = lambda source, output_path, **kwargs: json.dumps({
+            "source": source, "output_path": output_path, "status": "downloaded",
+        })
+        result = _run(server.call_tool(
+            "download_file",
+            {"source": "https://example.com/paper.pdf", "output_path": str(tmp_path / "paper.pdf")},
+        ))
+        text = result[0][0].text if isinstance(result, tuple) else result.content[0].text
+        data = json.loads(text)
+        assert data["status"] == "downloaded"
+        assert data["source"] == "https://example.com/paper.pdf"
+
+    def test_locate_pdf_via_mcp(self, server):
+        tb = mcp_server.get_toolbox()
+        tb._oa_locator.locate = lambda doi: {
+            "doi": doi, "status": "not_found", "candidates": [],
+        }
+        result = _run(server.call_tool("locate_pdf", {"doi": "10.1234/example"}))
+        text = result[0][0].text if isinstance(result, tuple) else result.content[0].text
+        data = json.loads(text)
+        assert data["doi"] == "10.1234/example"
+        assert data["status"] == "not_found"
+
     def test_inspect_page_via_mcp(self, server):
         from unittest.mock import patch
 

@@ -137,6 +137,157 @@ def test_search_category_adapter_path_instantiates_and_searches(monkeypatch):
     assert seen == {"query": "a citation-heavy paper on graphs", "max_results": 2, "provider": "openalex"}
 
 
+def test_search_category_plumbs_openalex_native_options(monkeypatch):
+    seen = {}
+
+    class _FakeAdapter:
+        def search(self, query, max_results=5, *, filter=None, select=None):
+            seen.update({
+                "query": query,
+                "max_results": max_results,
+                "filter": filter,
+                "select": select,
+            })
+            return [{"source": "openalex"}]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda _provider: _FakeAdapter())
+    out = rc.search_category(
+        object(), "peer reviewed paper", filter="type:article", select="id,title",
+    )
+
+    assert out["provider"] == "openalex"
+    assert out["results"] == [{"source": "openalex"}]
+    assert seen == {
+        "query": "peer reviewed paper",
+        "max_results": 5,
+        "filter": "type:article",
+        "select": "id,title",
+    }
+
+
+def test_search_category_rejects_openalex_options_for_other_providers(monkeypatch):
+    def should_not_make_adapter(_provider):
+        raise AssertionError("unsupported native options must fail before dispatch")
+
+    monkeypatch.setattr(rc, "_make_adapter", should_not_make_adapter)
+    out = rc.search_category(
+        object(), "paper", provider="crossref", filter="type:article",
+    )
+    assert out["results"] == []
+    assert "error" in out
+    assert "require provider='openalex'" in out["error"]
+
+
+def test_search_category_plumbs_title_author_to_openalex(monkeypatch):
+    seen = {}
+
+    class _FakeAdapter:
+        def search(self, query, max_results=5, *, filter=None, select=None, title=None, author=None):
+            seen.update({
+                "query": query,
+                "max_results": max_results,
+                "filter": filter,
+                "title": title,
+                "author": author,
+            })
+            return [{"source": "openalex"}]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda _provider: _FakeAdapter())
+    out = rc.search_category(
+        object(), "peer reviewed paper", provider="openalex",
+        title="gradient index", author="Smith",
+    )
+
+    assert out["provider"] == "openalex"
+    assert seen["title"] == "gradient index"
+    assert seen["author"] == "Smith"
+
+
+def test_search_category_rejects_title_author_for_other_providers(monkeypatch):
+    monkeypatch.setattr(rc, "_make_adapter", lambda _p: (_ for _ in ()).throw(AssertionError("must fail before dispatch")))
+    out = rc.search_category(object(), "paper", provider="crossref", title="optics")
+    assert out["results"] == []
+    assert "require provider='openalex'" in out["error"]
+
+
+def test_search_category_rejects_title_author_with_providers(monkeypatch):
+    out = rc.search_category(
+        object(), "a peer reviewed paper", providers=["openalex", "arxiv"],
+        title="optics",
+    )
+    assert out["results"] == []
+    assert "cannot be combined with providers=" in out["error"]
+
+
+def test_search_category_multi_provider_merges_explicit_scholarly_sources(monkeypatch):
+    rows = {
+        "openalex": [{"source": "openalex", "doi": "https://doi.org/10.1234/x", "title": "A"}],
+        "crossref": [{"source": "crossref", "doi": "doi:10.1234/x", "title": "A better title"}],
+    }
+
+    class FakeAdapter:
+        def __init__(self, name):
+            self.name = name
+
+        def search(self, query, max_results=5):
+            assert query == "a peer reviewed paper"
+            assert max_results == 3
+            return rows[self.name]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda name: FakeAdapter(name))
+    out = rc.search_category(
+        object(), "a peer reviewed paper", providers=["openalex", "crossref"],
+        max_results=3,
+    )
+
+    assert out["provider"] is None
+    assert out["providers"] == ["openalex", "crossref"]
+    assert out["results"][0]["key"] == "doi:10.1234/x"
+    assert out["results"][0]["sources"] == ["openalex", "crossref"]
+    assert len(out["results"][0]["source_records"]) == 2
+    assert out["results"][0]["conflicts"]["title"][1]["value"] == "A better title"
+    assert "error" not in out
+
+
+def test_search_category_multi_provider_preserves_partial_failures(monkeypatch):
+    class FakeAdapter:
+        def __init__(self, name):
+            self.name = name
+
+        def search(self, query, max_results=5):
+            if self.name == "crossref":
+                raise RuntimeError("temporarily unavailable")
+            return [{"source": self.name, "doi": "10.1234/x", "title": "A"}]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda name: FakeAdapter(name))
+    out = rc.search_category(
+        object(), "paper", providers=["openalex", "crossref"],
+    )
+
+    assert len(out["results"]) == 1
+    assert out["results"][0]["sources"] == ["openalex"]
+    assert out["provider_errors"] == [
+        {"provider": "crossref", "message": "temporarily unavailable"},
+    ]
+    assert out["error"] == "One or more requested providers failed"
+
+
+def test_search_category_multi_provider_requires_scholarly_only():
+    out = rc.search_category(
+        object(), "topic", providers=["openalex", "courtlistener"],
+    )
+    assert out["results"] == []
+    assert "same category" in out["error"]
+
+
+def test_search_category_rejects_provider_and_providers_together():
+    out = rc.search_category(
+        object(), "topic", provider="openalex", providers=["openalex", "arxiv"],
+    )
+    assert out["results"] == []
+    assert "either provider" in out["error"]
+
+
 def test_search_category_adapter_failure_is_surfaced_not_raised(monkeypatch):
     def boom(_provider):
         raise RuntimeError("network down")
@@ -145,8 +296,37 @@ def test_search_category_adapter_failure_is_surfaced_not_raised(monkeypatch):
 
     out = rc.search_category(object(), "a paper on graphs")
     assert out["category"] == "scholarly"
-    assert isinstance(out["results"], dict)
-    assert "error" in out["results"]
+    assert out["results"] == []
+    assert isinstance(out["error"], str)
+    assert "openalex search failed: network down" == out["error"]
+
+
+def test_search_category_engine_error_uses_same_envelope():
+    class FailedEngine:
+        def search_web(self, *args, **kwargs):
+            return json.dumps({
+                "error": "search providers unavailable",
+                "available_providers": ["duckduckgo"],
+            })
+
+    out = rc.search_category(FailedEngine(), "latest breaking news")
+    assert out["results"] == []
+    assert out["error"] == "search providers unavailable"
+    assert out["available_providers"] == ["duckduckgo"]
+
+
+def test_search_category_engine_guard_metadata_preserves_result_list():
+    class GuardedEngine:
+        def search_web(self, *args, **kwargs):
+            return json.dumps({
+                "results": [{"title": "engine hit"}],
+                "guard": {"enabled": True},
+            })
+
+    out = rc.search_category(GuardedEngine(), "latest breaking news")
+    assert out["results"] == [{"title": "engine hit"}]
+    assert out["guard"] == {"enabled": True}
+    assert "error" not in out
 
 
 def test_search_category_default_provider_when_omitted(monkeypatch):
@@ -187,7 +367,9 @@ def test_search_category_explicit_provider_calls_that_source(monkeypatch):
     assert out["category"] == "scholarly"
     assert out["provider"] == "crossref"
     assert seen["provider"] == "crossref"
-    assert out["available_providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert out["available_providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
 
 
 def test_search_category_provider_mismatch_with_category_is_rejected():
@@ -230,7 +412,9 @@ def test_search_category_provider_only_reverse_resolves_owning_category(monkeypa
     assert out["provider"] == "arxiv"
     assert "error" not in out
     assert seen["provider"] == "arxiv"
-    assert out["available_providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert out["available_providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
 
 
 def test_search_category_unknown_provider_is_rejected_not_raised():
@@ -427,7 +611,9 @@ def test_facade_research_categories_returns_taxonomy():
     }
     by_name = {d["category"]: d for d in data}
     assert by_name["scholarly"]["default_provider"] == "openalex"
-    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert by_name["scholarly"]["providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
     assert by_name["legal"]["providers"] == [
         "courtlistener", "ecfr", "federalregister",
         "oldp", "hudoc", "govinfo",
@@ -588,7 +774,9 @@ def test_research_by_category_no_query_returns_taxonomy(tmp_path):
         "scholarly", "legal", "patent", "financial", "geo", "general",
     }
     by_name = {d["category"]: d for d in data}
-    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert by_name["scholarly"]["providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
     assert by_name["legal"]["providers"] == [
         "courtlistener", "ecfr", "federalregister",
         "oldp", "hudoc", "govinfo",

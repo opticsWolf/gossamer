@@ -85,6 +85,8 @@ from gossamer.dedup import dedupe  # noqa: F401  # Workstream 2
 from gossamer.liveness import check_liveness, LIVENESS_TIMEOUT  # noqa: F401  # Workstream 2
 from gossamer.fetch import FetchService  # noqa: F401
 from gossamer.document import DocumentExtractor  # noqa: F401
+from gossamer.downloader import DownloadService
+from gossamer.open_access import OpenAccessLocator
 from gossamer.budget import ContentBudget  # noqa: F401
 from gossamer.discovery import ResourceDiscovery  # noqa: F401
 from gossamer.research_categories import CATEGORIES, search_category  # noqa: F401
@@ -243,6 +245,8 @@ class WebResearcherToolbox:
         self._fetch = FetchService(self)
 
         self._doc = DocumentExtractor(self)
+        self._download = DownloadService(self)
+        self._oa_locator = OpenAccessLocator()
 
         self._crawler = Crawler(self)
 
@@ -548,6 +552,11 @@ class WebResearcherToolbox:
         max_results: int = 5,
         category: Optional[str] = None,
         provider: Optional[str] = None,
+        filter: Optional[str] = None,
+        select: Optional[str] = None,
+        providers: Optional[list[str]] = None,
+        title: Optional[str] = None,
+        author: Optional[str] = None,
     ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
@@ -562,11 +571,22 @@ class WebResearcherToolbox:
         ``provider=crossref``) -- given alone, its owning category is
         reverse-resolved, so the query is still not reclassified. When both
         ``category=`` and ``provider=`` are given, the provider must belong to
-        that category. There is no automatic fallback between providers -- the
-        caller chooses which source to query. Returns a JSON payload naming the
-        chosen category, the provider actually called, and results.
+        that category. ``filter``/``select`` pass through only to OpenAlex and
+        are rejected for other providers. Pass ``providers=[...]`` for an
+        explicit sequential scholarly multi-search; results merge only on DOI
+        or arXiv ID and retain per-source records. Single-provider calls do not
+        fan out. Returns a JSON payload naming the chosen category/provider(s).
+        Provider failures keep ``results`` as a list and add a top-level
+        ``error`` field.
         """
+        if providers == []:
+            providers = None
         if not (query or "").strip():
+            if filter is not None or select is not None or providers is not None or title is not None or author is not None:
+                return json.dumps({
+                    "results": [],
+                    "error": "filter/select/title/author/providers options require a research query",
+                }, indent=2)
             return self.research_categories()
         return json.dumps(
             search_category(
@@ -575,6 +595,11 @@ class WebResearcherToolbox:
                 category=category,
                 provider=provider,
                 max_results=max_results,
+                filter=filter,
+                select=select,
+                providers=providers,
+                title=title,
+                author=author,
             ),
             indent=2,
             default=str,
@@ -601,12 +626,42 @@ class WebResearcherToolbox:
         ]
         return json.dumps(payload, indent=2)
 
+    def _doi_from_pdf(self, path) -> tuple[Optional[str], Optional[str]]:
+        """Extract the first DOI from a local PDF; return (doi, error)."""
+        try:
+            data = Path(path).read_bytes()
+        except OSError as exc:
+            return None, f"cannot read PDF {path}: {exc}"
+        texts: list[str] = []
+        try:
+            raw = self._doc.extract_document(str(path))
+            try:
+                payload = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                payload = None
+            if isinstance(payload, dict) and isinstance(payload.get("content"), str):
+                texts.append(payload["content"])
+        except Exception:  # noqa: BLE001 - fall back to raw-byte scan
+            pass
+        try:
+            texts.append(data.decode("latin-1", errors="ignore"))
+        except Exception:  # noqa: BLE001 - unreadable bytes mean no DOI
+            pass
+        from gossamer.citations import find_doi_in_text
+
+        for text in texts:
+            doi = find_doi_in_text(text)
+            if doi:
+                return doi, None
+        return None, f"no DOI found in PDF {path}; pass a DOI explicitly"
+
     def export_citations(
         self,
         results,
         style: str = "bibtex",
         enrich: bool = False,
         dedupe: bool = True,
+        from_pdf: bool = False,
     ) -> str:
         """Reconstruct and export citations from results (Plan workstream 1).
 
@@ -630,6 +685,12 @@ class WebResearcherToolbox:
             in a missing venue / abstract (best-effort; never raises).
         dedupe:
             Collapse records sharing a DOI or URL before formatting.
+        from_pdf:
+            When true, every string input must be a local PDF path whose DOI
+            is detected from its text/metadata. When false (default), local
+            ``.pdf`` files are still detected automatically; other strings
+            keep the DOI/URL/JSON interpretation. PDFs without a detectable
+            DOI yield a JSON error rather than a guessed citation.
 
         Returns the formatted citations as text (empty-result case returns a
         JSON error dict so callers never branch on an empty string). Never
@@ -653,8 +714,27 @@ class WebResearcherToolbox:
                 indent=2,
             )
         parsed = []
+        pdf_errors: list[str] = []
         for item in results:
             if isinstance(item, str):
+                candidate = item.strip()
+                wants_pdf = bool(from_pdf) or (
+                    candidate.lower().endswith(".pdf") and Path(candidate).is_file()
+                )
+                if wants_pdf:
+                    pdf_path = Path(candidate)
+                    if not pdf_path.is_file():
+                        pdf_errors.append(f"PDF not found: {item}")
+                        continue
+                    if pdf_path.suffix.lower() != ".pdf":
+                        pdf_errors.append(f"not a PDF file: {item}")
+                        continue
+                    doi, error = self._doi_from_pdf(pdf_path)
+                    if error is not None:
+                        pdf_errors.append(error)
+                        continue
+                    parsed.append(doi)
+                    continue
                 try:
                     loaded = json.loads(item)
                 except (json.JSONDecodeError, TypeError):
@@ -663,6 +743,11 @@ class WebResearcherToolbox:
                     parsed.append(loaded)
                     continue
             parsed.append(item)
+        if pdf_errors:
+            return json.dumps(
+                {"error": "; ".join(pdf_errors), "count": 0},
+                indent=2,
+            )
         try:
             text = format_citations(
                 parsed, style=style, enrich=enrich, dedupe=dedupe
@@ -924,6 +1009,42 @@ class WebResearcherToolbox:
         return await loop.run_in_executor(
             None, self.batch_inspect_pages, urls
         )
+
+    def download_file(
+        self,
+        source: str,
+        output_path: str,
+        min_bytes: int = 1,
+        max_bytes: int = 0,
+        expected_format: str = "auto",
+        overwrite: bool = False,
+        fallback_urls: Optional[list[str]] = None,
+        resume: bool = False,
+    ) -> str:
+        """Download a remote file to a local path without parsing it.
+
+        URL/redirect safety, robots policy, response-size limits, and atomic
+        destination writes are handled by :class:`DownloadService`. PDF
+        signature checks are enabled explicitly or inferred from ``.pdf``.
+        """
+        format_hint = None if expected_format == "auto" else expected_format
+        return self._download.download_file(
+            source,
+            output_path,
+            min_bytes=min_bytes,
+            max_bytes=max_bytes,
+            expected_format=format_hint,
+            overwrite=overwrite,
+            fallback_urls=fallback_urls,
+            resume=resume,
+        )
+
+    def locate_pdf(self, doi: str) -> str:
+        """Locate OA PDF/landing-page candidates for a DOI via OpenAlex, with an opt-in Unpaywall fallback.
+
+        This reports candidates and provenance; it never downloads the file.
+        """
+        return json.dumps(self._oa_locator.locate(doi), indent=2, ensure_ascii=False)
 
     def extract_document(
         self,

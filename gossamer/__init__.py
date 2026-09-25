@@ -42,6 +42,7 @@ from gossamer.search_providers import (
     RateLimit,
     RateState,
     QuotaExhaustedError,
+    ProviderRateLimitError,
     get_default_providers,
     resolve_provider_name,
 )
@@ -78,6 +79,7 @@ from gossamer.research_providers import (
     EpoOpsAdapter,
     KiprisAdapter,
     PatentsViewAdapter,
+    SemanticScholarAdapter,
 )
 
 __all__ = [
@@ -114,6 +116,7 @@ __all__ = [
     "RateLimit",
     "RateState",
     "QuotaExhaustedError",
+    "ProviderRateLimitError",
     "get_default_providers",
     "resolve_provider_name",
     # HTML metadata extraction
@@ -154,4 +157,5 @@ __all__ = [
     "EpoOpsAdapter",
     "KiprisAdapter",
     "PatentsViewAdapter",
+    "SemanticScholarAdapter",
 ]

@@ -175,6 +175,7 @@ class TestKeystoreCli:
         out = ks.init_keystore(str(target))
         data = json.loads(target.read_text(encoding="utf-8"))
         assert set(data) == set(ks.KNOWN_KEYS)
+        assert "SEMANTICSCHOLAR_API_KEY" in data
         assert all(v == "" for v in data.values())
         assert str(out) == str(target)
 

@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.6 — no version bump)
+## [Unreleased] (still 0.9.24 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -15,14 +15,189 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   lookup-only — Google's `robots.txt` Allows `/patent/` but Disallows
   `/` (search), verified live, so there is no search-page scraper;
   free-text discovery stays on `site:patents.google.com` web search.
-  Mocked-shape tests + keyless live smoke test; full suite now
-  11016 passed / 32 skipped (the +2 past the new tests: the
-  `test_m17` real-browser tests un-skip once `browser-oxide` is
-  installed).
+  Mocked-shape tests + keyless live smoke test; latest full suite now
+  reports 11086 passed / 33 skipped, including tests skipped when the
+  optional `browser-oxide` extra is unavailable.
 - Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.24] — Remove dead helpers left by the Rust ports
+
+- Delete six unreferenced routines found by a CodeRadar call-graph scan:
+  `guard._normalize_scopes` (M4), `robots._path_regex` (M9),
+  `research_providers._first_desc`/`_strip_tags` (M12),
+  `research_providers._join` and `research_categories._display` plus its
+  `_PROVIDER_DISPLAY` table (0.6.0 overhaul), and the now-unused `import re`
+  in `robots.py`. Parity suites vendor their own `_v_` copies and stay
+  green; full suite unchanged at 11102 passed / 33 skipped.
+
+## [0.9.23] — Cache-behavior docs and workflow close-out
+
+- Document cache behavior in the skill and Quickref: per-response `cache_hit`
+  on page/document reads, TTL search-result caching, uncached
+  check/download/lookup/cite tools, and `prune`/`clear`/`reset` semantics.
+  Sync CLI synopses for OpenAlex title/author, download resume, and cite
+  `--from-pdf`. No PATH shim is shipped; the project-venv invocation remains
+  the supported path. This closes the remaining plan workflow items; live
+  arXiv/download successes stay upstream-dependent.
+
+## [0.9.22] — Cite-from-PDF via detected DOI
+
+- Add `from_pdf` to `export_citations` and `--from-pdf` to `gossamer cite`.
+  Local `.pdf` inputs are detected automatically; the DOI is read from extracted
+  text/metadata with a raw-byte fallback, and PDFs without a detectable DOI
+  return a structured error instead of a guessed citation.
+
+## [0.9.21] — Unpaywall fallback for DOI-to-OA lookup
+
+- Add an opt-in Unpaywall v2 fallback to `locate_pdf`: OpenAlex runs first, and
+  Unpaywall is queried only when `GOSSAMER_UNPAYWALL_EMAIL` is configured and
+  OpenAlex yields no usable candidate (or fails). The live endpoint/auth
+  contract was verified (real contact required; example.com yields HTTP 422).
+  Results preserve OpenAlex-first provenance via `sources`/`provider_errors`.
+
+## [0.9.20] — Safe download resume with Range/If-Range
+
+- Add opt-in `resume` to `download_file` / `gossamer download --resume`. A partial
+  destination is continued with `Range: bytes=<offset>-` plus stored `If-Range`
+  validators (ETag/Last-Modified sidecar). A 206 with a matching Content-Range
+  appends; a 200 restarts atomically; 416 and Content-Range mismatches preserve
+  the partial file with structured errors. Without `resume`, 206 is still
+  rejected as `partial_response`.
+
+## [0.9.19] — OpenAlex fielded title/author search
+
+- Add verified OpenAlex `title`/`author` controls through the adapter, category
+  facade, toolbox/MCP tool, and `gossamer research --title/--author`. They map
+  to the live-verified `title.search` and `raw_author_name.search` filters and
+  combine with `filter=`; blank values and embedded commas are rejected locally.
+  Valid only with `provider='openalex'` and rejected with `providers=`.
+
+## [0.9.18] — Collection and routing documentation
+
+- Add an end-to-end scholarly collection recipe to SKILL/Quickref/README:
+  search, status-check, locate OA candidates, download, extract, cite. Clarify
+  that `--try-mirrors` uses caller-supplied URLs and still applies robots/SSRF
+  checks; do not bypass bot walls.
+- Correct `AGENTS.md` patent routing: EPO/KIPRIS/PatentsView/Lens are key-gated;
+  Google Patents is a keyless publication-number lookup only, not free-text search.
+
+## [0.9.17] — Compliant caller-supplied PDF mirrors
+
+- Add `fallback_urls` / `--try-mirrors` to `download_file`. Caller-supplied
+  OA/repository candidates are tried sequentially; every candidate is checked
+  independently against SSRF and robots policy, and attempts/selected source
+  are returned with provenance. No mirror discovery or access-control bypass is
+  performed automatically.
+- If all candidates fail due to bot walls/access denial, return
+  `human_action_needed` with each attempted URL and error; otherwise return
+  `all_sources_failed`. Add local-server tests for fallback success, challenge
+  failure, ordered attempts, and malformed mirror lists.
+
+## [0.9.16] — Explicit scholarly merge by DOI/arXiv ID
+
+- Add opt-in `providers=[...]` to scholarly research and `--providers` to the
+  CLI. Multi-provider mode is sequential, never implicit, and currently only
+  accepts providers from the scholarly category; it is mutually exclusive
+  with a single `provider=`, OpenAlex `filter`, and `select`.
+- Normalize DOI forms and arXiv IDs (matching versioned IDs by versionless key)
+  and merge only on those strong identifiers. Preserve the first requested
+  provider's canonical record, all source records/source names, and conflicting
+  values. Records without a strong key remain separate; titles are not fuzzy-merged.
+  Partial provider failures retain successful results and return provider errors.
+- Add offline tests for DOI and arXiv-ID grouping, source/conflict preservation,
+  unkeyed records, invalid provider combinations, partial failure, CLI forwarding,
+  and deterministic order.
+
+## [0.9.15] — Semantic Scholar Academic Graph adapter
+
+- Add opt-in `semanticscholar` search/fetch support to the scholarly category;
+  OpenAlex remains the default. Use the documented Graph API `/paper/search`
+  and `/paper/{paper_id}` endpoints, bounded pagination, explicit paper fields,
+  and Rust normalization kernels.
+- Add optional `GOSSAMER_SEMANTICSCHOLAR_API_KEY` to the keystore template and
+  send it only in the documented `x-api-key` header. Enforce at least one
+  request/second. Keyless HTTP 429 responses fail with a message naming the
+  setting rather than retrying the shared pool; authenticated retries use the
+  common bounded Retry-After policy.
+- Add mocked adapter/category/settings/Rust tests and an opt-in live smoke test
+  that requires an API key. Update scholarly routing and provider docs.
+
+## [0.9.14] — OpenAlex native filter/select controls
+
+- Add OpenAlex-only `filter` and `select` passthrough to `research_by_category`,
+  the toolbox/MCP registry, and `gossamer research --filter/--select`. Reject
+  these controls for other providers and reject blank expressions locally.
+  Cap OpenAlex `per_page` at the documented maximum of 100. Add offline tests
+  for HTTP parameters, request caps, provider routing, and CLI forwarding.
+  Fielded search and raw-URL passthrough remain deferred.
+
+## [0.9.13] — DOI-to-open-access locator
+
+- Add `locate_pdf` to the toolbox/MCP registry and `gossamer locate-pdf DOI`
+  to the CLI. Normalize bare DOIs, `doi:` values, and DOI resolver URLs, then
+  query OpenAlex using its documented DOI filter. Return ranked best-OA and
+  other open-access PDF/landing-page candidates with source, license, version,
+  and work metadata. This locates but does not download; closed-access and
+  not-found works are explicit results, provider failures are errors.
+- Add offline tests for DOI forms, filter/auth construction, best-location
+  ranking/deduplication, landing-page fallback, closed/no-location/not-found,
+  and provider errors. Keep OpenAlex as the scholarly default; Unpaywall and
+  repository fallbacks remain follow-ups after their API/terms verification.
+- Update the registry to 12 MCP tools and 13 CLI commands (including
+  CLI-only `categories`).
+
+## [0.9.12] — Validated standalone file downloads
+
+- Add `download_file` to the toolbox/MCP registry and `gossamer download URL -o PATH`
+  to the CLI. Stream to a temporary file under the configured/per-call size
+  limit, revalidate redirects against SSRF/robots policy, and atomically install
+  only after validation. Preserve existing files unless `--overwrite` is set.
+- Infer PDF validation from `.pdf` output or `--expect-format pdf`; enforce `%PDF-`
+  magic, `--min-bytes`, and classified HTTP/bot-wall/size/partial/network/local
+  errors. Return final URL, content type, status, size, SHA-256, and output path.
+  Resume support is deferred; unsolicited HTTP 206 responses are rejected.
+- Update CLI/MCP parity to 11 tools (12 CLI commands including `categories`)
+  and add local-server tests for success, redirect safety, robots, file clashes,
+  PDF validation, HTTP errors, byte caps, and partial responses.
+
+## [0.9.11] — OpenAlex contact and polite-pool request metadata
+
+- Send `GOSSAMER_OPENALEX_EMAIL` as the documented `mailto` request
+  parameter and in client-identification headers when configured. Remove the
+  fabricated `research@example.org` fallback; no contact is sent unless the
+  operator supplies one. Keep the API key optional for casual use and document
+  that a free key raises the daily budget. Add request/retry regression tests.
+
+## [0.9.10] — Consistent research-provider errors
+
+- Keep `research` results list-valued on every path; put provider failures in a
+  top-level `error` field and preserve engine metadata outside `results`.
+  The `research` CLI now exits nonzero for top-level errors while still
+  emitting parseable JSON.
+
+## [0.9.9] — Reliable arXiv API requests
+
+- Replace the stale arXiv User-Agent/contact placeholder with an identifiable
+  project/version identity and explicitly accept Atom XML. Treat arXiv's empty
+  HTTP 406 edge response as a possible temporary rate limit (typed error, no
+  immediate retries); keep the opt-in smoke to one paced `id_list` request and
+  skip clearly when the upstream edge is rate-limiting the network.
+
+## [0.9.8] — Status-aware Python HTTP retries
+
+- Retry only transient transport errors and HTTP 408/425/429/5xx; permanent
+  HTTP and application errors fail immediately. Honor bounded `Retry-After`
+  delta/date values and avoid retrying when the requested wait exceeds the cap.
+  Add deterministic retry-policy tests.
+
+## [0.9.7] — UTF-8-safe CLI output
+
+- Configure direct CLI stdout/stderr as UTF-8 when supported, preventing
+  non-ASCII JSON such as Greek `μ` from failing on Windows code pages.
+  Add a subprocess regression test under a strict cp1252 stream.
 
 ## [0.9.6] — Lens patent aggregator
 

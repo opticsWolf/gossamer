@@ -24,6 +24,7 @@ Auth and options resolve exactly like the MCP server: explicit flags >
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -81,6 +82,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-results", type=int, default=5)
     p.add_argument("--category", default=None)
     p.add_argument("--provider", default=None)
+    p.add_argument("--filter", default=None,
+                   help="OpenAlex-native filter (only with --provider openalex)")
+    p.add_argument("--select", default=None,
+                   help="OpenAlex-native field projection (only with --provider openalex)")
+    p.add_argument("--title", default=None,
+                   help="OpenAlex title search via verified title.search filter (only with --provider openalex)")
+    p.add_argument("--author", default=None,
+                   help="OpenAlex author search via verified raw_author_name.search filter (only with --provider openalex)")
+    p.add_argument("--providers", nargs="+", default=None,
+                   help="Explicit sequential scholarly providers to merge (mutually exclusive with --provider)")
     _common(p)
 
     p = sub.add_parser("categories", help="List research categories + providers")
@@ -100,6 +111,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("batch", help="Fetch several pages at once")
     p.add_argument("urls", nargs="+")
+    _common(p)
+
+    p = sub.add_parser("download", help="Download a remote file to a local path")
+    p.add_argument("source", help="Remote HTTP(S) URL")
+    p.add_argument("-o", "--output", dest="output_path", required=True,
+                   help="Destination file path")
+    p.add_argument("--min-bytes", type=int, default=1)
+    p.add_argument("--max-bytes", type=int, default=0,
+                   help="Maximum bytes (0 uses configured max_response_bytes)")
+    p.add_argument("--expect-format", default="auto", choices=("auto", "pdf"),
+                   help="Validate PDF magic when set to pdf (auto infers from .pdf output)")
+    p.add_argument("--overwrite", action="store_true",
+                   help="Replace an existing destination")
+    p.add_argument("--try-mirrors", nargs="+", default=None, metavar="URL",
+                   help="Try caller-supplied alternate URLs sequentially after the primary URL fails")
+    p.add_argument("--resume", action="store_true",
+                   help="Continue an existing partial file with Range/If-Range when the server supports it")
+    _common(p)
+
+    p = sub.add_parser("locate-pdf", help="Find OA PDF/landing-page candidates for a DOI")
+    p.add_argument("doi")
     _common(p)
 
     p = sub.add_parser("extract", help="Extract a document (PDF/DOCX/XLSX/…) or feed")
@@ -147,17 +179,35 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("cite", help="Format DOIs/URLs as citations")
     p.add_argument("results", nargs="+",
-                   help="DOIs, URLs, or JSON result objects")
+                   help="DOIs, URLs, local PDF paths, or JSON result objects")
     p.add_argument("--style", default="bibtex",
                    choices=("bibtex", "csl-json", "apa", "mla"))
     p.add_argument("--enrich", action="store_true")
     p.add_argument("--no-dedupe", action="store_true")
+    p.add_argument("--from-pdf", action="store_true",
+                   help="Treat every input as a local PDF and cite its detected DOI")
     _common(p)
 
     return parser
 
 
+def _configure_utf8_stdio() -> None:
+    """Prefer UTF-8 CLI text output without breaking embedded/captured streams."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, TypeError, ValueError):
+            # Some wrapped/closed streams cannot be reconfigured. Leave those
+            # streams alone; normal terminals and redirected Python streams
+            # support reconfigure().
+            continue
+
+
 def main(argv=None) -> int:
+    _configure_utf8_stdio()
     args = build_parser().parse_args(argv)
     toolbox = _build_toolbox(args)
     commands = {
@@ -167,13 +217,20 @@ def main(argv=None) -> int:
             max_tokens=args.max_tokens, provider=args.provider),
         "research": lambda: toolbox.research_by_category(
             args.query, max_results=args.max_results,
-            category=args.category, provider=args.provider),
+            category=args.category, provider=args.provider,
+            filter=args.filter, select=args.select, providers=args.providers,
+            title=args.title, author=args.author),
         "categories": lambda: toolbox.research_categories(),
         "inspect": lambda: toolbox.inspect_html_page(
             args.url, use_smart=args.use_smart, query=args.query,
             offset=args.offset, max_chunks=args.max_chunks,
             structured=args.structured),
         "batch": lambda: toolbox.batch_inspect_pages(args.urls),
+        "download": lambda: toolbox.download_file(
+            args.source, args.output_path, min_bytes=args.min_bytes,
+            max_bytes=args.max_bytes, expected_format=args.expect_format,
+            overwrite=args.overwrite, fallback_urls=args.try_mirrors, resume=args.resume),
+        "locate-pdf": lambda: toolbox.locate_pdf(args.doi),
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,
             store=args.store, store_dir=args.store_dir,
@@ -189,13 +246,22 @@ def main(argv=None) -> int:
         "cache": lambda: toolbox.manage_cache(args.action),
         "cite": lambda: toolbox.export_citations(
             args.results, style=args.style, enrich=args.enrich,
-            dedupe=not args.no_dedupe),
+            dedupe=not args.no_dedupe, from_pdf=args.from_pdf),
     }
     try:
-        print(commands[args.command]())
+        output = commands[args.command]()
+        print(output)
     except (ValueError, RuntimeError) as exc:
         print(f"gossamer: error: {exc}", file=sys.stderr)
         return 1
+
+    if args.command in {"research", "download", "locate-pdf"}:
+        try:
+            payload = json.loads(output) if isinstance(output, str) else output
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict) and payload.get("error"):
+            return 1
     return 0
 
 
