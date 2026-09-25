@@ -72,3 +72,7 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).
 - OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.
 - Semantic Scholar is opt-in and keyless-capable; its shared pool can 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for an individual one-request-per-second allowance.
+
+## Collection flow
+
+`research QUERY --category scholarly` → `check URL --mode status` → `locate-pdf DOI` (optional) → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI`. `--try-mirrors URL…` accepts only explicit caller-supplied OA/repository candidates; robots/SSRF checks apply to each. Review license/access terms before redistribution.

@@ -97,3 +97,12 @@ wait or set that exact variable rather than looping retries.
 - Figures need `extract … --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.
 - Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).
 - Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and do not resume or bypass bot walls. `--try-mirrors` accepts only caller-supplied, known OA/repository URLs; each is checked independently and attempts are returned with provenance.
+
+## Literature collection workflow
+
+1. Search via `research QUERY --category scholarly --max-results N`; use `--providers openalex arxiv` only when you explicitly want a sequential multi-provider merge.
+2. Probe candidate pages with `check URL --mode status` before spending a full fetch/download.
+3. For a DOI, run `locate-pdf DOI`, inspect the returned `candidates`, and prefer an OA PDF URL with clear source/license metadata. This step locates candidates; it does not fetch the file.
+4. Download with `download URL -o paper.pdf --expect-format pdf`. If a known OA repository mirror is already available, pass it with `--try-mirrors URL…`; each URL is still checked independently and no challenge is bypassed.
+5. Parse the saved file with `extract paper.pdf`; add `--store --store-dir DIR` if you also want the extracted Markdown/resources persisted.
+6. Export a citation with `cite DOI --style bibtex` (or another supported style). Review license/access terms before redistributing any full text.

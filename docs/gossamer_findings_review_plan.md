@@ -27,7 +27,7 @@ Several findings need qualification:
 - Cross-provider research is explicitly opt-in in `0.9.16`; it searches sequentially, merges only on DOI/arXiv identifiers, and retains per-provider raw records and conflicts.
 - F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
-Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) stable provider-error contract; (3) validated download; (4) DOI-to-OA lookup; (5) OpenAlex filter/select; (6) Semantic Scholar; (7) identifier-based scholarly merge. Remaining work: compliant mirror/human-needed handling, collection-workflow polish, and deferred OpenAlex fielded-search/resume features.
+Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) stable provider-error contract; (3) validated download; (4) DOI-to-OA lookup; (5) OpenAlex filter/select; (6) Semantic Scholar; (7) identifier-based scholarly merge; (8) policy-checked caller-supplied mirrors and collection workflow docs. Remaining work is lower-priority cache observability, `cite --from-pdf`, optional PATH shim, and deferred OpenAlex fielded-search/download resume.
 
 ---
 
@@ -99,10 +99,10 @@ Implemented in `0.9.16`. `research_by_category` accepts an explicit `providers=[
 
 ### Smaller workflow items
 
-- `check --mode status` exists in the CLI; `cache --action prune|clear|reset` also exists. The skill does not currently present the end-to-end collection recipe that would make these easy to discover.
+- **Done:** `check --mode status` and `cache --action prune|clear|reset` are documented in the Quickref and the skill now presents the end-to-end collection recipe. Cache-hit observability can still be improved as a lower-priority UX follow-up.
 - There is no `cite --from-pdf` path. Treat that as a later convenience feature; first get DOI extraction/resolution and file acquisition right.
 - Add a concise explanation of cache behavior to the workflow docs if users still cannot tell when a result is cached after using the existing commands.
-- Additional documentation drift found during review: `AGENTS.md` still says patent providers are key-gated, while `google-patents` is a keyless number-lookup provider. Update that statement when doing the next documentation synchronization.
+- **Done (`0.9.18`):** Correct `AGENTS.md` patent routing: EPO/KIPRIS/PatentsView/Lens are key-gated; Google Patents is keyless number lookup only, not free-text search.
 
 ---
 
@@ -228,16 +228,16 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 ### Milestone F — compliant mirror handling and workflow/documentation
 
 **Priority:** P2/P3  
-**Status:** Caller-supplied mirror fallback implemented in `0.9.17`; collection recipe and remaining docs polish are pending.
+**Status:** Caller-supplied mirror fallback (`0.9.17`), collection recipe, and patent-routing docs (`0.9.18`) are implemented; cache observability and convenience features remain deferred.
 **Scope:** F6, F5 follow-up, small workflow items  
 **Likely files:** `gossamer/downloader.py`, document/download orchestration, docs/README/QUICKREF/SKILL, `AGENTS.md`.
 
 1. **Done (`0.9.17`):** `--try-mirrors` accepts caller-supplied, known OA/repository candidates (including `locate_pdf` results), tries them sequentially, and records each URL/outcome plus the selected source.
 2. **Done (`0.9.17`):** Every candidate is independently checked against SSRF, robots, and rate limits. Exhausted bot-wall/access-denied chains return `human_action_needed` with attempts. No browser automation or access-control bypass is used.
-3. Update the skill with a collection recipe: **search → check → locate → download → extract/store → cite**. Include current commands, max-pages/budget guidance, and the role of `cache --action`.
+3. **Done (`0.9.18`):** Update the skill/README/Quickref with **search → check → locate → download → extract/store → cite**, current commands, `max_pages`/budget guidance, and cache maintenance.
 4. **Done:** Document the distinction: `download URL -o PATH` saves an opaque file; `extract URL --store` also parses and stores supported documents. Keep that separation clear in future workflow docs.
 5. Defer `cite --from-pdf` until download and metadata extraction are stable; then add PDF metadata/DOI detection and tests rather than guessing citations from arbitrary text.
-6. Fix the stale `AGENTS.md` patent statement: current patent providers are not all key-gated because `google-patents` is a keyless publication-number lookup. Keep the distinction that it is lookup-only, not free-text search.
+6. **Done (`0.9.18`):** Fix the stale `AGENTS.md` patent statement and preserve the distinction that `google-patents` is lookup-only, not free-text search.
 7. Do not add a PATH shim unless users still need it after the skill’s existing venv command is made prominent. Treat cache-hit visibility as a usability follow-up, not a blocker for download correctness.
 
 ---
@@ -268,6 +268,6 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 6. **E2:** completed in `0.9.15` — opt-in Semantic Scholar adapter; OpenAlex remains the default.
 7. **E3:** completed in `0.9.16` — explicit identifier-based scholarly merge.
 8. **F6:** completed in `0.9.17` — caller-supplied policy-checked mirror attempts.
-9. **Docs follow-up:** collection recipe, patent-key wording, and cache visibility; resume/fielded search remain deferred.
+9. **Docs (`0.9.18`):** collection recipe and patent routing wording completed. Lower-priority follow-ups: cache-hit observability, `cite --from-pdf`, optional PATH shim, download resume, and OpenAlex fielded search.
 
 This order fixes tool-breaking defects before adding the acquisition and precision features that motivated the hunt, while keeping external API work opt-in and policy-compliant.

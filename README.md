@@ -137,6 +137,8 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 
 Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi'` passes provider-native controls; those options are rejected for other providers. Explicit scholarly multi-search is opt-in via `gossamer research QUERY --providers openalex arxiv`; it merges by DOI/arXiv ID, preserves each source record, and never fans out by default.
 
+**Paper collection:** `research` → `check --mode status` → optional `locate-pdf DOI` → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI`. Supplied mirror URLs are checked independently; gossamer respects robots/SSRF policy and does not bypass bot walls. The [skill](./skills/gossamer/SKILL.md) has the full recipe.
+
 ---
 
 ## Configuration

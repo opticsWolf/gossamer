@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.17 — no version bump)
+## [Unreleased] (still 0.9.18 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,15 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.18] — Collection and routing documentation
+
+- Add an end-to-end scholarly collection recipe to SKILL/Quickref/README:
+  search, status-check, locate OA candidates, download, extract, cite. Clarify
+  that `--try-mirrors` uses caller-supplied URLs and still applies robots/SSRF
+  checks; do not bypass bot walls.
+- Correct `AGENTS.md` patent routing: EPO/KIPRIS/PatentsView/Lens are key-gated;
+  Google Patents is a keyless publication-number lookup only, not free-text search.
 
 ## [0.9.17] — Compliant caller-supplied PDF mirrors
 

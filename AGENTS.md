@@ -12,8 +12,10 @@ gossamer instead of guessing or raw curl loops.
   `gossamer search|research|categories|inspect|batch|download|locate-pdf|extract|check|discover|crawl|cache|cite`
   (or `python -m gossamer.cli …` from the project venv).
 - **Routing**: `gossamer categories` prints the live category → provider
-  table (`scholarly`/`legal`/`patent`/`financial`/`geo`). Patent providers
-  are key-gated — surface missing-key errors to the user, don't retry.
+  table (`scholarly`/`legal`/`patent`/`financial`/`geo`). `epo`, `kipris`,
+  `patentsview`, and `lens` are key-gated; `google-patents` is a keyless
+  publication-number lookup only (not free-text search). Surface missing-key
+  errors and do not retry hard authentication failures.
 - **Budgets**: keep crawls ≤ 15 pages, set `max_tokens`, extract page ranges.
 - **Keys**: `~/.gossamer/keys.json` (`python -m gossamer.keystore --init`);
   never put secrets in configs or prompts.
