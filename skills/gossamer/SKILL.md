@@ -37,7 +37,7 @@ per-domain rate-limited, and token-budgeted.
 
 `research` auto-routes, or pick explicitly. Category → default provider:
 
-- `scholarly` → `openalex` (papers, DOIs, citations)
+- `scholarly` → `openalex` by default; `crossref`, `arxiv`, `zenodo`, and `semanticscholar` are opt-in scholarly providers
 - `legal` → `courtlistener` (US case law) · `oldp` (German cases) ·
   `hudoc` (ECtHR) · `ecfr`/`federalregister`/`govinfo` (US regs)
 - `patent` → `epo` (worldwide via INPADOC) · `kipris` (Korea) ·
@@ -78,6 +78,10 @@ Keyed providers raise an actionable error naming the exact variable
 OpenAlex works keyless for casual use; `GOSSAMER_OPENALEX_KEY` is optional
 and raises the API's daily budget. Set `GOSSAMER_OPENALEX_EMAIL` to send your
 own `mailto` contact; gossamer does not invent a default email.
+Semantic Scholar can run keyless, but its unauthenticated pool is shared and
+may return 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for the
+individual one-request-per-second allowance; if keyless use returns 429,
+wait or set that exact variable rather than looping retries.
 
 ## Config / cache (where stuff actually is)
 

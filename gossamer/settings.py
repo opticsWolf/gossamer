@@ -197,6 +197,7 @@ KNOWN_KEYS: List[str] = [
     "NASA_KEY",
     "NVD_API_KEY",
     "ZENODO_TOKEN",
+    "SEMANTICSCHOLAR_API_KEY",
     "CONGRESS_KEY",
     "CENSUS_KEY",
     "CHEMXIV_TOKEN",

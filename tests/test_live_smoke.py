@@ -12,7 +12,8 @@ consuming rate budgets or asserting brittle exact values.
 
 Key-gated adapters (PubMed / GitHub / FRED) use their key automatically when
 the corresponding ``GOSSAMER_*`` env var is set; they still run keyless
-otherwise, so they do not require a key to smoke-test.
+otherwise, so they do not require a key to smoke-test. Semantic Scholar is
+keyless-capable, but its live smoke requires a key to avoid the shared pool.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from gossamer.research_providers import (
     OverpassAdapter,
     PatentsViewAdapter,
     SoftwareHeritageAdapter,
+    SemanticScholarAdapter,
     YahooFinanceAdapter,
     ZenodoAdapter,
     PubmedAdapter,
@@ -84,6 +86,20 @@ def test_openalex_search_and_fetch(live):
     # fetch() the first result by its own id.
     one = prov.fetch(results[0]["id"])
     assert one and one[0]["id"] == results[0]["id"]
+
+
+@pytest.mark.live
+@pytest.mark.parametrize(
+    "live_key", ["GOSSAMER_SEMANTICSCHOLAR_API_KEY"], indirect=True,
+)
+def test_semanticscholar_search(live_key):
+    # The API key is optional for normal operation but required for the live
+    # smoke so this test does not consume the shared anonymous quota.
+    prov = SemanticScholarAdapter(api_key=live_key)
+    results = prov.search("graph neural networks", max_results=1)
+    assert results, "Semantic Scholar returned no results"
+    _assert_common_result(results[0], source="semanticscholar")
+    assert results[0]["title"]
 
 
 @pytest.mark.live

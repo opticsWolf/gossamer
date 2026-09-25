@@ -11,7 +11,7 @@ one or more providers; the caller may pass ``provider=`` to :func:`search_catego
 to call any of them separately. There is **no implicit fallback chain** -- the
 model controls which source it queries.
 
-  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo``
+  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo`` / ``semanticscholar``
   * ``legal``     -> ``courtlistener`` / ``ecfr`` / ``federalregister`` /
                      ``oldp`` / ``hudoc`` / ``govinfo``
                      (``eurlex`` / ``german`` were retired — no public
@@ -89,7 +89,8 @@ class Category:
         return provider in self.providers
 
 
-# Academic works / papers / citations / DOIs / journals.
+# Academic works / papers / citations / DOIs / journals. OpenAlex stays first
+# (the category default); Semantic Scholar is an explicit opt-in provider.
 _SCHOLARLY: Tuple[str, ...] = (
     "paper", "papers", "citation", "citations", "journal",
     "peer-reviewed", "peer reviewed", "arxiv", "e-print", "doi",
@@ -161,7 +162,7 @@ CATEGORIES: Tuple[Category, ...] = (
         name="scholarly",
         description="Academic works, papers, citations, DOIs, journals.",
         keywords=_SCHOLARLY,
-        providers=("openalex", "crossref", "arxiv", "zenodo"),
+        providers=("openalex", "crossref", "arxiv", "zenodo", "semanticscholar"),
         kind="adapter",
     ),
     Category(
@@ -238,6 +239,7 @@ _PROVIDER_DISPLAY: Dict[str, str] = {
     "bis": "BIS",
     "coingecko": "CoinGecko",
     "zenodo": "Zenodo",
+    "semanticscholar": "Semantic Scholar",
     "overpass": "Overpass",
     "oldp": "Open Legal Data",
     "hudoc": "HUDOC (ECtHR)",
@@ -296,6 +298,7 @@ _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "bis": "gossamer.research_providers.BisAdapter",
     "coingecko": "gossamer.research_providers.CoinGeckoAdapter",
     "zenodo": "gossamer.research_providers.ZenodoAdapter",
+    "semanticscholar": "gossamer.research_providers.SemanticScholarAdapter",
     "overpass": "gossamer.research_providers.OverpassAdapter",
     "oldp": "gossamer.research_providers.OldpAdapter",
     "hudoc": "gossamer.research_providers.HudocAdapter",

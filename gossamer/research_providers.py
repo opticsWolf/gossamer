@@ -10,6 +10,7 @@ Built so far (Phase 2 — robust, low-risk, no / cheap keys):
   * :class:`OpenMeteoAdapter` — weather/climate + place lookup (geo)
   * :class:`CrossrefAdapter`  — works / DOI lookup (scholarly)
   * :class:`ArxivAdapter`     — preprint search (scholarly)
+  * :class:`SemanticScholarAdapter` — Academic Graph paper search/lookup (scholarly, optional key)
   * :class:`PubmedAdapter`    — biomedical literature search / fetch (scholarly)
   * :class:`DoajAdapter`      — open-access journals search (scholarly)
   * :class:`OpenLibraryAdapter` — book search / lookup (library)
@@ -45,7 +46,7 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import date as _date
 from typing import Dict, List, Optional, Tuple, Union
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 
 import httpx
 
@@ -196,6 +197,135 @@ class OpenAlexAdapter(ResourceAdapter):
             record["raw"] = json.dumps(work)
             records.append(record)
         return records
+
+
+class SemanticScholarAdapter(ResourceAdapter):
+    """Semantic Scholar Academic Graph papers search/lookup.
+
+    API keys are optional but recommended: authenticated callers receive an
+    individual one-request-per-second allowance, while keyless callers share
+    a pool. A key is read from ``GOSSAMER_SEMANTICSCHOLAR_API_KEY`` and sent
+    in the documented ``x-api-key`` header.
+    """
+
+    name = "semanticscholar"
+    domain = "scholarly"
+    requires_key = False
+    BASE = "https://api.semanticscholar.org/graph/v1"
+    PAPER_FIELDS = (
+        "paperId,title,abstract,year,publicationDate,authors,citationCount,"
+        "referenceCount,venue,externalIds,url,openAccessPdf,fieldsOfStudy,"
+        "publicationTypes"
+    )
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_key: Optional[str] = None,
+    ):
+        self.api_key = (
+            api_key if api_key is not None
+            else _env_get("GOSSAMER_SEMANTICSCHOLAR_API_KEY", "")
+        ).strip()
+        self._last_search = 0.0
+        self._last_fetch = 0.0
+        # An API key gives an individual 1 request/sec limit. Use the same
+        # minimum when keyless; the shared unauthenticated pool can throttle sooner.
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.1),
+            fetch_delay,
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        headers = dict(headers or {})
+        if self.api_key:
+            headers.setdefault("x-api-key", self.api_key)
+        return url, dict(params or {}), headers
+
+    def parse_headers(self, status, headers):
+        return RateState(rps=1.0)
+
+    def _request_json(self, path: str, params: dict) -> dict:
+        self._enforce_delay()
+        url, query, headers = self.inject_auth(f"{self.BASE}/{path}", params, {})
+        response = httpx.get(url, params=query, headers=headers, timeout=30.0)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if response.status_code == 429 and not self.api_key:
+                retry_after = retry_after_seconds(exc)
+                message = (
+                    "Semantic Scholar returned HTTP 429 for a keyless request; "
+                    "unauthenticated traffic shares a rate-limit pool. Set "
+                    "GOSSAMER_SEMANTICSCHOLAR_API_KEY for an individual "
+                    "one-request-per-second allowance, or wait before retrying."
+                )
+                if retry_after is not None:
+                    message += f" Retry after at least {retry_after:g} seconds."
+                raise ProviderRateLimitError(
+                    self.name, 429, retry_after=retry_after, message=message,
+                ) from exc
+            raise
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Semantic Scholar API returned a non-object JSON response")
+        return payload
+
+    def _search_impl(self, query, max_results=5):
+        total_limit = max(0, min(int(max_results), 1000))
+        records = []
+        offset = 0
+        while len(records) < total_limit:
+            page_limit = min(100, total_limit - len(records))
+            body = self._request_json(
+                "paper/search",
+                {
+                    "query": query,
+                    "fields": self.PAPER_FIELDS,
+                    "offset": offset,
+                    "limit": page_limit,
+                },
+            )
+            papers = body.get("data", [])
+            if not isinstance(papers, list):
+                raise ValueError("Semantic Scholar response field 'data' must be a list")
+            if not papers:
+                break
+            parsed = json.loads(
+                _rust.semanticscholar_parse_search(
+                    json.dumps({"data": papers}), len(papers),
+                )
+            )
+            for record, paper in zip(parsed, papers):
+                record["raw"] = json.dumps(paper)
+                records.append(record)
+            next_offset = body.get("next")
+            if "next" in body:
+                if next_offset is None:
+                    break
+                if not isinstance(next_offset, int) or next_offset <= offset:
+                    break
+                offset = next_offset
+            else:
+                offset += len(papers)
+            if len(papers) < page_limit:
+                break
+        return records[:total_limit]
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def fetch(self, record_id, params=None):
+        identifier = str(record_id).strip()
+        if re.fullmatch(r"10\.\d{4,9}/\S+", identifier, flags=re.IGNORECASE):
+            identifier = f"DOI:{identifier}"
+        url_identifier = quote(identifier, safe="")
+        query = {"fields": self.PAPER_FIELDS}
+        query.update(params or {})
+        body = self._request_json(f"paper/{url_identifier}", query)
+        record = json.loads(_rust.semanticscholar_parse_fetch(json.dumps(body)))
+        record["raw"] = json.dumps(body)
+        return [record]
 
 class OpenMeteoAdapter(ResourceAdapter):
     """Open-Meteo weather/climate + place lookup (https://open-meteo.com).

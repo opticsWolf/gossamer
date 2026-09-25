@@ -565,6 +565,14 @@ def openalex_parse_fetch(response_json: str) -> str:
     """OpenAlex work row (short shape) minus raw, as JSON (src/adapters.rs)."""
     ...
 
+def semanticscholar_parse_search(response_json: str, max_results: int = 5) -> str:
+    """Semantic Scholar paper rows minus raw, as JSON (src/adapters.rs)."""
+    ...
+
+def semanticscholar_parse_fetch(response_json: str) -> str:
+    """Semantic Scholar paper row minus raw, as JSON (src/adapters.rs)."""
+    ...
+
 def crossref_parse_search(
     response_json: str,
     max_results: int = 5,

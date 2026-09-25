@@ -103,6 +103,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(adapters::alphavantage_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::openalex_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::openalex_parse_fetch, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::semanticscholar_parse_search, m)?)?;
+    m.add_function(wrap_pyfunction!(adapters::semanticscholar_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::crossref_parse_search, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::crossref_parse_fetch, m)?)?;
     m.add_function(wrap_pyfunction!(adapters::openlibrary_parse_search, m)?)?;

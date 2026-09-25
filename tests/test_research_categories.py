@@ -257,7 +257,9 @@ def test_search_category_explicit_provider_calls_that_source(monkeypatch):
     assert out["category"] == "scholarly"
     assert out["provider"] == "crossref"
     assert seen["provider"] == "crossref"
-    assert out["available_providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert out["available_providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
 
 
 def test_search_category_provider_mismatch_with_category_is_rejected():
@@ -300,7 +302,9 @@ def test_search_category_provider_only_reverse_resolves_owning_category(monkeypa
     assert out["provider"] == "arxiv"
     assert "error" not in out
     assert seen["provider"] == "arxiv"
-    assert out["available_providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert out["available_providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
 
 
 def test_search_category_unknown_provider_is_rejected_not_raised():
@@ -497,7 +501,9 @@ def test_facade_research_categories_returns_taxonomy():
     }
     by_name = {d["category"]: d for d in data}
     assert by_name["scholarly"]["default_provider"] == "openalex"
-    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert by_name["scholarly"]["providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
     assert by_name["legal"]["providers"] == [
         "courtlistener", "ecfr", "federalregister",
         "oldp", "hudoc", "govinfo",
@@ -658,7 +664,9 @@ def test_research_by_category_no_query_returns_taxonomy(tmp_path):
         "scholarly", "legal", "patent", "financial", "geo", "general",
     }
     by_name = {d["category"]: d for d in data}
-    assert by_name["scholarly"]["providers"] == ["openalex", "crossref", "arxiv", "zenodo"]
+    assert by_name["scholarly"]["providers"] == [
+        "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+    ]
     assert by_name["legal"]["providers"] == [
         "courtlistener", "ecfr", "federalregister",
         "oldp", "hudoc", "govinfo",

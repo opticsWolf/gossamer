@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.14 — no version bump)
+## [Unreleased] (still 0.9.15 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -16,12 +16,26 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `/` (search), verified live, so there is no search-page scraper;
   free-text discovery stays on `site:patents.google.com` web search.
   Mocked-shape tests + keyless live smoke test; latest full suite now
-  reports 11068 passed / 32 skipped, including tests skipped when the
+  reports 11074 passed / 33 skipped, including tests skipped when the
   optional `browser-oxide` extra is unavailable.
 - Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.15] — Semantic Scholar Academic Graph adapter
+
+- Add opt-in `semanticscholar` search/fetch support to the scholarly category;
+  OpenAlex remains the default. Use the documented Graph API `/paper/search`
+  and `/paper/{paper_id}` endpoints, bounded pagination, explicit paper fields,
+  and Rust normalization kernels.
+- Add optional `GOSSAMER_SEMANTICSCHOLAR_API_KEY` to the keystore template and
+  send it only in the documented `x-api-key` header. Enforce at least one
+  request/second. Keyless HTTP 429 responses fail with a message naming the
+  setting rather than retrying the shared pool; authenticated retries use the
+  common bounded Retry-After policy.
+- Add mocked adapter/category/settings/Rust tests and an opt-in live smoke test
+  that requires an API key. Update scholarly routing and provider docs.
 
 ## [0.9.14] — OpenAlex native filter/select controls
 

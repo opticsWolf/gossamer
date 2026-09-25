@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11068%20passing%2C%2032%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11074%20passing%2C%2033%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -25,7 +25,7 @@ WebResearcherToolbox (agent_tools.py) — facade, no logic
        │  TOOL_REGISTRY (config.py): one source of truth
        ▼
 Collaborators (Python: HTTP, keys, rate limits, orchestration)
-fetch · search · crawl · document · discovery · 37 domain adapters
+fetch · search · crawl · document · discovery · 38 domain adapters
        │  JSON strings down, JSON strings up
        ▼
 _core (Rust): all response parsers, HTML metadata (in-core meta_oxide
@@ -127,7 +127,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 
 | Category | Providers (first = default) |
 |----------|------------------------------|
-| scholarly | OpenAlex, Crossref, arXiv, Zenodo |
+| scholarly | OpenAlex (default), Crossref, arXiv, Zenodo, Semantic Scholar (opt-in; key recommended for rate limits) |
 | legal | CourtListener, eCFR, Federal Register, Open Legal Data, HUDOC (ECtHR), GovInfo |
 | patent | EPO OPS, KIPRIS, PatentsView, Lens 🔑 + keyless Google Patents lookup |
 | financial | Yahoo, Frankfurter (FX), Eurostat, Bundesbank, BIS, CoinGecko, AlphaVantage 🔑 |
@@ -160,6 +160,9 @@ OpenAlex works without a key for casual use. Set `GOSSAMER_OPENALEX_KEY`
 (in the keystore or environment) for the higher daily budget. If you want to
 identify your client by email, set `GOSSAMER_OPENALEX_EMAIL`; it is sent as
 `mailto` and in the request headers. No placeholder email is sent when unset.
+Semantic Scholar is also callable without a key, but keyless requests share a
+pool and may receive 429s; set `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for its
+individual one-request-per-second allowance.
 
 ---
 

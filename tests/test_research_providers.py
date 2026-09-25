@@ -6,6 +6,7 @@ domain adapters (OpenAlex scholarly, Open-Meteo geo). Search providers keep
 their existing coverage in tests/test_providers.py and test_m3_retry.py.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -30,6 +31,7 @@ from gossamer.research_providers import (
     OpenLibraryAdapter,
     OpenMeteoAdapter,
     PubmedAdapter,
+    SemanticScholarAdapter,
     WorldBankAdapter,
     _parse_lat_lon,
     _rate_state_from_headers,
@@ -277,6 +279,135 @@ class TestOpenAlexAdapter:
         out = OpenAlexAdapter(delay=0.0).fetch("W999")
         assert out[0]["id"] == "W999"
         assert out[0]["title"] == "Single"
+
+
+# ────────────────────────────────────────────────────────────────
+# SemanticScholarAdapter (scholarly)
+# ────────────────────────────────────────────────────────────────
+
+
+class TestSemanticScholarAdapter:
+    _paper = {
+        "paperId": "S2-P1",
+        "title": "Graph neural networks",
+        "abstract": "A paper abstract.",
+        "year": 2024,
+        "publicationDate": "2024-05-01",
+        "authors": [{"authorId": "A1", "name": "Ada"}],
+        "externalIds": {"DOI": "10.1234/example", "ArXiv": "2401.00001"},
+        "citationCount": 7,
+        "referenceCount": 11,
+        "venue": "Conference on Graphs",
+        "url": "https://www.semanticscholar.org/paper/S2-P1",
+        "openAccessPdf": {"url": "https://example.org/paper.pdf", "status": "GREEN"},
+        "fieldsOfStudy": [{"category": "Engineering"}],
+        "publicationTypes": ["JournalArticle"],
+    }
+
+    def test_metadata_and_optional_api_key(self):
+        adapter = SemanticScholarAdapter(delay=0.0)
+        assert adapter.name == "semanticscholar"
+        assert adapter.domain == "scholarly"
+        assert adapter.requires_key is False
+        assert adapter.rate_limit.search_interval == 0.0
+        _, params, headers = SemanticScholarAdapter(
+            delay=0.0, api_key="test-key",
+        ).inject_auth("https://example.org", {"q": "x"}, {})
+        assert params == {"q": "x"}
+        assert headers["x-api-key"] == "test-key"
+
+    def test_api_key_is_loaded_from_environment(self, monkeypatch):
+        monkeypatch.setenv("GOSSAMER_SEMANTICSCHOLAR_API_KEY", "env-key")
+        adapter = SemanticScholarAdapter(delay=0.0)
+        _, _, headers = adapter.inject_auth("https://example.org", {}, {})
+        assert headers["x-api-key"] == "env-key"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_maps_graph_api_fields(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"total": 1, "offset": 0, "data": [self._paper]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        result = SemanticScholarAdapter(delay=0.0, api_key="secret").search(
+            "graph neural networks", max_results=5,
+        )[0]
+
+        request = mock_get.call_args
+        assert request.args[0] == "https://api.semanticscholar.org/graph/v1/paper/search"
+        assert request.kwargs["headers"]["x-api-key"] == "secret"
+        assert request.kwargs["params"]["query"] == "graph neural networks"
+        assert request.kwargs["params"]["limit"] == 5
+        assert request.kwargs["params"]["offset"] == 0
+        assert "openAccessPdf" in request.kwargs["params"]["fields"]
+        assert result["source"] == "semanticscholar"
+        assert result["id"] == "S2-P1"
+        assert result["doi"] == "10.1234/example"
+        assert result["authors"] == "Ada"
+        assert result["citations"] == 7
+        assert result["fields"]["semanticscholar"]["open_access_pdf"]["url"] == (
+            "https://example.org/paper.pdf"
+        )
+        assert json.loads(result["raw"]) == self._paper
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_paginates_with_100_item_api_limit(self, mock_get):
+        first = MagicMock()
+        first.json.return_value = {
+            "total": 102, "offset": 0, "next": 100,
+            "data": [{"paperId": f"p{i}", "title": f"Paper {i}"} for i in range(100)],
+        }
+        first.raise_for_status.return_value = None
+        second = MagicMock()
+        second.json.return_value = {
+            "total": 102, "offset": 100, "next": None,
+            "data": [{"paperId": "p100", "title": "Paper 100"},
+                     {"paperId": "p101", "title": "Paper 101"}],
+        }
+        second.raise_for_status.return_value = None
+        mock_get.side_effect = [first, second]
+
+        result = SemanticScholarAdapter(delay=0.0, api_key="key").search(
+            "papers", max_results=102,
+        )
+
+        assert len(result) == 102
+        assert [call.kwargs["params"]["offset"] for call in mock_get.call_args_list] == [0, 100]
+        assert [call.kwargs["params"]["limit"] for call in mock_get.call_args_list] == [100, 2]
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_keyless_429_names_api_key_and_fails_without_retry(self, mock_get):
+        request = httpx.Request("GET", f"{SemanticScholarAdapter.BASE}/paper/search")
+        response = httpx.Response(429, headers={"Retry-After": "10"}, request=request)
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = response.headers
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=request, response=response,
+        )
+        mock_get.return_value = mock_response
+
+        with pytest.raises(ProviderRateLimitError, match="GOSSAMER_SEMANTICSCHOLAR_API_KEY") as exc:
+            SemanticScholarAdapter(delay=0.0).search("paper", max_results=1)
+        assert exc.value.retry_after == 10
+        assert "Retry after at least 10 seconds" in str(exc.value)
+        assert mock_get.call_count == 1
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_fetch_accepts_doi_and_parses_detail(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = self._paper
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        result = SemanticScholarAdapter(delay=0.0, api_key="key").fetch(
+            "10.1234/example",
+        )[0]
+
+        assert mock_get.call_args.args[0].endswith("/paper/DOI%3A10.1234%2Fexample")
+        assert mock_get.call_args.kwargs["headers"]["x-api-key"] == "key"
+        assert result["id"] == "S2-P1"
+        assert result["doi"] == "10.1234/example"
 
 
 # ────────────────────────────────────────────────────────────────

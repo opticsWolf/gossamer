@@ -390,6 +390,32 @@ fn batch6_scholarly_shapes() {
     let body = r#"{"results": [{"id": "r", "bibjson": {"identifier": [{"type": "issn", "id": "1"}, {"type": "doi"}]}}]}"#;
     let out = doaj_parse_search_impl(body, 5).unwrap();
     assert_eq!(out[0]["doi"], Value::Null);
+    // Semantic Scholar: Academic Graph search/fetch normalize into the common schema.
+    let paper = serde_json::json!({
+        "paperId": "p1",
+        "title": "Optical films",
+        "abstract": "Gradient coatings",
+        "year": 2024,
+        "publicationDate": "2024-05-01",
+        "authors": [{"authorId": "a1", "name": "Ada"}, {"name": "Lin"}],
+        "externalIds": {"DOI": "10.1234/x"},
+        "citationCount": 9,
+        "referenceCount": 17,
+        "venue": "Optics",
+        "openAccessPdf": {"url": "https://example.org/p.pdf", "status": "GREEN"},
+        "fieldsOfStudy": [{"category": "Engineering"}],
+        "publicationTypes": ["JournalArticle"],
+    });
+    let body = serde_json::json!({"data": [paper.clone()]}).to_string();
+    let out = semanticscholar_parse_search_impl(&body, 5).unwrap();
+    assert_eq!(out[0]["source"], "semanticscholar");
+    assert_eq!(out[0]["id"], "p1");
+    assert_eq!(out[0]["doi"], "10.1234/x");
+    assert_eq!(out[0]["authors"], "Ada, Lin");
+    assert_eq!(out[0]["citations"], 9);
+    assert_eq!(out[0]["fields"]["semanticscholar"]["open_access_pdf"]["url"], "https://example.org/p.pdf");
+    let fetch = semanticscholar_parse_fetch_impl(&paper.to_string()).unwrap();
+    assert_eq!(fetch["id"], "p1");
 }
 
 #[test]

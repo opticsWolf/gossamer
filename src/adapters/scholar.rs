@@ -1,4 +1,4 @@
-//! Adapter kernels: Scholarly kernels (Zenodo, BioRxiv, ChemRxiv, OpenAlex, Crossref, Open Library, DOAJ, arXiv, PubMed).
+//! Adapter kernels: Scholarly kernels (Zenodo, BioRxiv, ChemRxiv, OpenAlex, Crossref, Open Library, DOAJ, arXiv, PubMed, Semantic Scholar).
 
 use pyo3::prelude::*;
 use serde_json::Value;
@@ -735,6 +735,117 @@ pub fn openalex_parse_fetch_impl(response_json: &str) -> Result<Value, String> {
     openalex_work_impl(&body, false)
 }
 
+fn semanticscholar_text(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn semanticscholar_paper_impl(paper: &Value) -> Result<Value, String> {
+    let map = match paper {
+        Value::Object(map) => map,
+        _ => return Err(attr_error(json_type(paper))),
+    };
+    let paper_id = semanticscholar_text(map.get("paperId"));
+    let title = semanticscholar_text(map.get("title"));
+    let doi = match map.get("externalIds") {
+        Some(Value::Object(ids)) => semanticscholar_text(ids.get("DOI")),
+        _ => String::new(),
+    };
+    let publication_date = semanticscholar_text(map.get("publicationDate"));
+    let year = map.get("year").cloned().unwrap_or(Value::Null);
+    let published = if publication_date.is_empty() {
+        semanticscholar_text(map.get("year"))
+    } else {
+        publication_date
+    };
+    let authors = match map.get("authors") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|author| match author {
+                Value::Object(author) => author.get("name"),
+                _ => None,
+            })
+            .map(|name| semanticscholar_text(Some(name)))
+            .filter(|name| !name.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => String::new(),
+    };
+    let abstract_text = semanticscholar_text(map.get("abstract"));
+    let url = {
+        let found = semanticscholar_text(map.get("url"));
+        if !found.is_empty() {
+            found
+        } else if !paper_id.is_empty() {
+            format!("https://www.semanticscholar.org/paper/{paper_id}")
+        } else {
+            String::new()
+        }
+    };
+    let mut record = serde_json::Map::new();
+    record.insert("source".to_string(), Value::String("semanticscholar".to_string()));
+    record.insert("id".to_string(), Value::String(paper_id));
+    record.insert("title".to_string(), Value::String(title));
+    record.insert("url".to_string(), Value::String(url));
+    record.insert("doi".to_string(), Value::String(doi));
+    record.insert("published".to_string(), Value::String(published));
+    record.insert("authors".to_string(), Value::String(authors));
+    record.insert("citations".to_string(), map.get("citationCount").cloned().unwrap_or(Value::from(0)));
+    record.insert(
+        "snippet".to_string(),
+        Value::String(char_head(&abstract_text, 240).to_string()),
+    );
+
+    let mut fields = serde_json::Map::new();
+    fields.insert("year".to_string(), year);
+    fields.insert("venue".to_string(), map.get("venue").cloned().unwrap_or(Value::Null));
+    fields.insert(
+        "reference_count".to_string(),
+        map.get("referenceCount").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "open_access_pdf".to_string(),
+        map.get("openAccessPdf").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "fields_of_study".to_string(),
+        map.get("fieldsOfStudy").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "publication_types".to_string(),
+        map.get("publicationTypes").cloned().unwrap_or(Value::Null),
+    );
+    let mut namespaced = serde_json::Map::new();
+    namespaced.insert("semanticscholar".to_string(), Value::Object(fields));
+    record.insert("fields".to_string(), Value::Object(namespaced));
+    Ok(Value::Object(record))
+}
+
+pub fn semanticscholar_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let map = match &body {
+        Value::Object(map) => map,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    let papers: Vec<&Value> = match map.get("data") {
+        None => Vec::new(),
+        Some(value) => subscript_hits(Some(value), max_results)?,
+    };
+    papers.into_iter().map(semanticscholar_paper_impl).collect()
+}
+
+pub fn semanticscholar_parse_fetch_impl(response_json: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    semanticscholar_paper_impl(&body)
+}
 
 /// `(w.get("title") or [""])[0]`: falsy titles fold to `[""]`;
 /// truthy lists index (empty impossible — falsy caught); truthy
@@ -1326,6 +1437,25 @@ pub fn openalex_parse_search(
 #[pyfunction]
 pub fn openalex_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
     openalex_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn semanticscholar_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    semanticscholar_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn semanticscholar_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    semanticscholar_parse_fetch_impl(response_json)
         .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }

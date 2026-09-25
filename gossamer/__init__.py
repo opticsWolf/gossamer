@@ -79,6 +79,7 @@ from gossamer.research_providers import (
     EpoOpsAdapter,
     KiprisAdapter,
     PatentsViewAdapter,
+    SemanticScholarAdapter,
 )
 
 __all__ = [
@@ -156,4 +157,5 @@ __all__ = [
     "EpoOpsAdapter",
     "KiprisAdapter",
     "PatentsViewAdapter",
+    "SemanticScholarAdapter",
 ]

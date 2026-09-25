@@ -16,14 +16,14 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), and OpenAlex native `filter`/`select` support (`0.9.14`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work includes the confirmed Semantic Scholar adapter, cross-provider merge, and compliant mirror handling; OpenAlex fielded search remains a follow-up pending a verified mapping.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), and the opt-in Semantic Scholar adapter (`0.9.15`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is cross-provider merge and compliant mirror handling; OpenAlex fielded search remains a follow-up pending a verified mapping.
 
 Several findings need qualification:
 
 - `extract URL --store` still saves original bytes together with extracted Markdown. A distinct `download URL -o PATH` / `download_file` tool is now implemented for opaque files: it streams to an atomic destination, enforces size limits, checks PDF magic when appropriate, and returns classified errors without trying to extract or bypass bot walls.
 - The arXiv live smoke test already existed and remains opt-in. It is now a single default-paced `id_list` call and skips only on the typed upstream 406 rate-limit result; offline tests cover header/parser behavior.
 - OpenAlex now sends an operator-supplied `GOSSAMER_OPENALEX_EMAIL` as `mailto` and client-identification headers (`0.9.11`); no placeholder contact is fabricated. A free `GOSSAMER_OPENALEX_KEY` remains optional for casual use and raises the daily budget. Generic `Retry-After` and exponential backoff are implemented; current official guidance does not document a response-body `retryAfter` field, so do not invent a parser for one.
-- There is no Semantic Scholar provider in gossamer today. The classification keyword is not provider support; no Semantic Scholar key variable or adapter contract currently exists. **Integration is now confirmed and is included as a build milestone below**; the exact upstream endpoint/auth/field contract must be verified before coding.
+- Semantic Scholar integration is implemented in `0.9.15` as an opt-in provider; OpenAlex remains the scholarly default. `GOSSAMER_SEMANTICSCHOLAR_API_KEY` is optional but recommended to avoid the shared anonymous rate-limit pool; keyless 429 errors name the variable and do not retry the shared pool.
 - F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
 Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex request correctness; (2) stable provider-error response and CLI exit status; (3) standalone download and DOI-to-OA resolution; (4) provider-native OpenAlex query controls and the confirmed Semantic Scholar adapter; (5) opt-in cross-provider merging, including Semantic Scholar; (6) mirror/human-needed behavior and collection-workflow documentation.
@@ -60,9 +60,11 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 **Implementation status:** The generic retry decorator is status-aware (`0.9.8`), honors bounded `Retry-After`, and uses exponential backoff for retryable 429/5xx and transport errors. Configured `mailto`/headers and omission of a default contact are covered in `0.9.11`. Current official OpenAlex docs describe 429 responses, rate-limit headers, and exponential backoff; they do not establish the free-text/body `retryAfter` field described in the findings, so no undocumented parser is added. An API key is the supported way to increase the current daily budget; `mailto` identifies the client but should not be described as authentication or a guaranteed quota bypass.
 
-### Semantic Scholar: integration confirmed; adapter does not exist yet
+### Semantic Scholar: integration confirmed and implemented
 
-The `scholarly` category currently lists `openalex`, `crossref`, `arxiv`, and `zenodo` (`gossamer/research_categories.py:159-164`). There is no Semantic Scholar adapter, endpoint implementation, key setting, or live test. The word `semanticscholar` currently appears only as a classification keyword, and the reported 429s were not generated by a gossamer adapter. The user has now confirmed that Semantic Scholar integration is part of the improvement plan. Build it as a distinct opt-in scholarly provider; keep OpenAlex as the category default unless a later decision changes that. Verify the current official API contract before selecting request URLs, auth headers, rate handling, or response mappings.
+`SemanticScholarAdapter` is implemented in `0.9.15` as an opt-in scholarly provider; OpenAlex remains the default. It uses the official Academic Graph `/paper/search` and `/paper/{paper_id}` endpoints, requests explicit fields, pages at no more than 100 results/request and caps relevance search at 1,000 results, and normalizes paper IDs, DOI, title, authors, abstract, year/date, venue, citation count, and OA-PDF metadata. Rust kernels build the common rows and Python reattaches each provider's raw record.
+
+`GOSSAMER_SEMANTICSCHOLAR_API_KEY` is optional; when set it is sent in the documented `x-api-key` header. The official [API tutorial](https://www.semanticscholar.org/product/api/tutorial) says keys get an individual one-request-per-second rate while keyless requests share a pool. The adapter paces at least one second per request and converts keyless 429 responses to an actionable rate-limit error naming the exact key variable rather than retrying the shared pool. With a key, the common bounded retry policy honors `Retry-After`. The live smoke test is opt-in and requires a key to avoid burdening the shared anonymous pool.
 
 ### F1 — standalone download primitive: implemented; resume is deferred
 
@@ -198,20 +200,20 @@ The document download path uses a static `httpx.Client`; it does not download bi
 
 Fielded `title:`/`author:` search is deferred until the provider's current grammar is verified. Prefer typed options over arbitrary URLs/query strings; no raw-query escape hatch was added.
 
-#### E2. Semantic Scholar provider integration (confirmed)
+#### E2. Semantic Scholar provider integration (implemented)
 
-**Status:** Approved for implementation; not yet present in the code.  
+**Status:** Implemented in `0.9.15`; opt-in and keyless-capable, with OpenAlex retained as the default.
 **Likely files:** `gossamer/research_providers.py`, `gossamer/research_categories.py`, `gossamer/settings.py`, `gossamer/_core.pyi`, `src/adapters/scholar.rs`, `src/lib.rs`, `src/adapters/tests.rs`, `tests/test_research_providers.py`, `tests/test_research_categories.py`, `tests/test_live_smoke.py`, provider/docs tables.
 
-1. Before coding, use the project’s documented research workflow to verify Semantic Scholar’s current official API: supported search and paper lookup endpoints, authentication/key header, rate limits, pagination, available fields, abstract representation, error/429 responses, and acceptable-use constraints. Do not copy endpoint or response assumptions from the hand-rolled calls described in the findings.
-2. Add a `SemanticScholarAdapter(ResourceAdapter)` with provider name `semanticscholar`, scholarly domain, explicit configured key support where the verified API permits it, and fail-fast missing-key behavior if the chosen API operation requires a key. Use the canonical project setting `GOSSAMER_SEMANTICSCHOLAR_API_KEY` unless verification or existing naming conventions establish a better single name; register it in `settings.py`/keystore and document the exact variable. Do not make the adapter silently fall back to another provider.
-3. Implement documented search and paper fetch/lookup operations, rate limiting and response-specific errors. Bound page size/result counts, handle 401/403/429 distinctly, honor provider retry guidance through Milestone A’s retry policy, and retain the raw source record for fields the normalized schema does not yet expose.
-4. Normalize only fields present in the verified response contract into gossamer’s common record shape (stable paper ID, title, authors, year/date, DOI, URL, abstract/snippet, citation count and OA-PDF metadata if provided). Parse nested/special abstract formats only according to official examples and fixtures; do not guess.
-5. Add the provider to the scholarly provider list and adapter factory/name maps, but place it after existing providers so `openalex` remains the default. This is an explicit opt-in addition; it must not make ordinary category research fan out to Semantic Scholar.
-6. Add deterministic mocked tests for request URL/params/auth, search/fetch row shape, empty results, malformed/error bodies, missing key, rate-limit response, and raw-record passthrough. Add one `GOSSAMER_LIVE=1` smoke test, skipped without the required key; keep it outside the default offline test path and keep request count within the documented limit.
-7. Update README, QUICKREF, SKILL, category output expectations, key/keystore examples, adapter counts, architecture notes, and changelog after implementation. Recount the test badge from the actual full test run. A docs-only plan update does not change the package version; release/version policy is decided when the code is implemented.
+1. **Verified before implementation:** the official Graph API uses `/paper/search` and `/paper/{paper_id}`, `query`/`fields`/`limit`/`offset`, a 100-item page limit and a 1,000-result relevance cap. `/paper/{paper_id}` accepts `DOI:` identifiers. The API tutorial documents the optional `x-api-key` header and individual 1 request/second allowance; unauthenticated callers share a pool.
+2. **Done:** `SemanticScholarAdapter(ResourceAdapter)` uses provider id `semanticscholar` in the scholarly domain. `GOSSAMER_SEMANTICSCHOLAR_API_KEY` is optional, registered in `settings.py`/keystore, and sent only as `x-api-key`. The adapter never silently falls back to another provider.
+3. **Done:** Implement search pagination (≤100 per request, ≤1,000 relevance results), paper lookup including DOI identifiers, at-least-one-second pacing, distinct 401/403/429 handling, bounded keyed retries, keyless 429 fail-fast with the exact key setting, and raw-source retention.
+4. **Done:** Rust kernels normalize paper ID, title, authors, year/date, DOI, URL, abstract/snippet, citation count, venue, and OA-PDF metadata. Python reattaches the unmodified provider record under `raw`.
+5. **Done:** Add Semantic Scholar last in the scholarly provider list, factory, and display-name map. OpenAlex remains the default; category research does not fan out.
+6. **Done:** Mocked tests cover URL/params/header, pagination, search/fetch rows, environment key, 429 classification, and raw records. The opt-in live smoke is skipped without an API key and uses one paced request.
+7. **Done:** Update README, QUICKREF, SKILL, scholarly taxonomy, key/keystore template, adapter counts, architecture, and changelog. Test badge is recalculated from the full suite.
 
-**Acceptance:** `research <query> --provider semanticscholar` makes a documented authenticated request when needed and returns normalized records; missing credentials name the exact setting; 429 behavior is bounded and tested; OpenAlex remains the default; the provider is covered by offline tests and an opt-in live smoke.
+**Acceptance:** Met by offline tests: `research <query> --provider semanticscholar` returns normalized records; optional auth uses the exact documented header/setting; keyless 429s name the exact setting and fail fast; OpenAlex remains the default; the live smoke is opt-in and key-gated.
 
 #### E3. Opt-in multi-provider search and merge (F4)
 
@@ -239,7 +241,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 
 ## 4. Semantic Scholar integration status
 
-**Decision: confirmed for integration.** This is now a planned implementation item (Milestone E2), not a defer/build decision gate. The adapter is absent today, so the reported 429 is not a gossamer regression; integration must first verify the official API contract and then add the provider, key handling, retry behavior, tests, taxonomy, and documentation described in E2. The work is independent of the P0 reliability fixes and should not block them.
+**Integrated in `0.9.15`.** The adapter is opt-in, OpenAlex remains the category default, the API key is optional, and keyless 429s return an actionable message instead of hammering the shared pool. The live smoke requires an API key and remains behind `GOSSAMER_LIVE=1`.
 
 ---
 
@@ -260,7 +262,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 3. **C:** implemented in `0.9.12` with validation and classified outcomes; resume deferred.
 4. **D:** completed in `0.9.13` — DOI-to-OA candidate resolution via OpenAlex.
 5. **E1:** completed in `0.9.14` — OpenAlex-native filter/select.
-6. **E2:** next — confirmed Semantic Scholar adapter; keep OpenAlex as the default.
+6. **E2:** completed in `0.9.15` — opt-in Semantic Scholar adapter; OpenAlex remains the default.
 7. **E3:** explicit cross-provider merge, including Semantic Scholar, only after individual provider behavior is stable.
 8. **F:** compliant mirror handling and collection-recipe/docs synchronization.
 

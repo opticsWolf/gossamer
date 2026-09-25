@@ -28,7 +28,7 @@ tool; the toolbox method `research_categories()` backs it).
 
 ## Providers (keyless unless 🔑)
 
-- **scholarly** → `openalex`, `crossref`, `arxiv`, `zenodo`
+- **scholarly** → `openalex` (default), `crossref`, `arxiv`, `zenodo`, `semanticscholar` (opt-in)
 - **legal** → `courtlistener`, `ecfr`, `federalregister`, `oldp` (DE), `hudoc` (ECtHR), `govinfo`
 - **patent** → `epo` 🔑, `kipris` 🔑, `patentsview` 🔑, `lens` 🔑, `google-patents` (keyless number lookup; others fail fast without keys; `lens` aggregates WO/EP/DE/CN/US, trial is non-commercial/academic)
 - **financial** → `yahoo`, `frankfurter`, `eurostat`, `bundesbank`, `bis`, `coingecko`, `alphavantage` 🔑
@@ -71,4 +71,4 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - `use_smart="browser"` needs the `gossamer-web[browser]` extra (Windows/macOS only, no Linux wheels); without it browser requests fail and only static fetch runs.
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).
 - OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.
-- OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.
+- Semantic Scholar is opt-in and keyless-capable; its shared pool can 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for an individual one-request-per-second allowance.
