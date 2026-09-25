@@ -1,6 +1,6 @@
 [package]
 name = "gossamer-core"
-version = "0.9.24"
+version = "0.9.25"
 edition = "2021"
 description = "Rust parsing core for the gossamer LLM web researcher (PyO3)"
 authors = ["opticsWolf"]
@@ -32,7 +32,9 @@ serde_json = { version = "1.0.151", features = ["preserve_order"] }
 serde = "1.0.229"
 quick-xml = "0.42.0"
 blake2 = "0.11.0"
-meta_oxide = { git = "https://github.com/opticsWolf/meta_oxide.git", rev = "a55c09f", default-features = false }
+# Vendored (see vendor/README.md): the fork remote is gone and crates.io
+# 0.1.1 predates the gating/RDFa/output fixes our parity suites pin.
+meta_oxide = { path = "vendor/meta_oxide", default-features = false }
 
 [profile.release]
 strip = true   # Remove debug symbols

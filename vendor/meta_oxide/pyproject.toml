@@ -1,0 +1,79 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "meta-oxide"
+version = "0.1.2"
+description = "Universal metadata extraction library supporting 13 formats (HTML Meta, Open Graph, Twitter Cards, JSON-LD, Microdata, Microformats, RDFa, Dublin Core, Web App Manifest, oEmbed, rel-links, Images, SEO) with 7 language bindings"
+authors = [
+    {name = "Yury Fedoseev", email = "yfedoseev@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT OR Apache-2.0"}
+keywords = ["metadata", "microformats", "html", "json-ld", "parser", "web", "extraction", "scraping", "open-graph", "twitter-cards", "schema-org"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup :: HTML",
+]
+
+[project.urls]
+Homepage = "https://github.com/yfedoseev/meta-oxide"
+Documentation = "https://github.com/yfedoseev/meta-oxide/tree/main/docs"
+Repository = "https://github.com/yfedoseev/meta-oxide"
+"Bug Tracker" = "https://github.com/yfedoseev/meta-oxide/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "maturin>=1.0",
+]
+
+[tool.maturin]
+features = ["python", "pyo3/extension-module"]
+module-name = "meta_oxide"
+bindings = "pyo3"
+
+[tool.pytest.ini_options]
+testpaths = ["bindings/python/tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "A", "C4", "DTZ", "T10", "EM", "ISC", "ICN", "G", "PIE", "T20", "PT", "Q", "RET", "SIM", "TID", "ARG", "PTH", "PD", "PGH", "PL", "TRY", "NPY", "RUF"]
+ignore = ["PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*.py" = ["T201", "ANN201", "PLR2004"]  # Allow print, missing return type, and magic values in examples
+"bindings/python/tests/*.py" = ["ANN201", "PLR2004", "E501", "E712", "PLC0415", "RUF001"]  # Allow missing return type, magic values, long lines, equality comparisons, import order, and Unicode in tests
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Allow untyped defs for now (tests and examples)

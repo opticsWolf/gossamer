@@ -1,0 +1,40 @@
+[package]
+name = "meta_oxide"
+version = "0.1.2"
+edition = "2021"
+authors = ["Yury Fedoseev <yfedoseev@gmail.com>"]
+description = "Universal metadata extraction library supporting 13 formats (HTML Meta, Open Graph, Twitter Cards, JSON-LD, Microdata, Microformats, RDFa, Dublin Core, Web App Manifest, oEmbed, rel-links, Images, SEO) with 7 language bindings"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yfedoseev/meta_oxide"
+readme = "README.md"
+keywords = ["metadata", "parsing", "html", "web", "extraction"]
+categories = ["parser-implementations", "web-programming", "text-processing"]
+
+[lib]
+name = "meta_oxide"
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[features]
+default = []
+python = ["pyo3"]
+c-api = []
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+scraper = "0.20"
+ego-tree = "0.6"
+url = "2.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+pyo3 = { version = "0.22", features = ["auto-initialize"] }
+
+[build-dependencies]
+cbindgen = "0.26"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3

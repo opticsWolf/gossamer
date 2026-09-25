@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.9.5)
+# gossamer — architecture (v0.9.24)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -71,7 +71,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
 | Documents | `document.py` | bytes → text via oxide converters, `pages=` slicing, `store=` persistence, figure extraction |
 | Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, caller-supplied sequential mirror attempts, classified failures |
-| Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution; no automatic download |
+| Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution (plus opt-in Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is set, OpenAlex-first with provenance); no automatic download |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
 | Domain adapters | `research_providers.py` | 38 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
@@ -84,7 +84,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Cache | `cache.py` | two-tier memory-LRU + disk-TTL (§7) |
 | Assets | `resource_store.py` | downloaded + embedded file assets for stored content |
 | Guard | `guard.py` | optional JailGuard ONNX detector (§9) |
-| Citations | `citations.py` | BibTeX/CSL-JSON/APA/MLA reconstruction over ported kernels |
+| Citations | `citations.py` | BibTeX/CSL-JSON/APA/MLA reconstruction over ported kernels, including local-PDF DOI detection (`from_pdf`) with structured errors for DOI-less files |
 | Budgets | `budget.py` | output-budget enforcement with link-budget reservation |
 | Sections/links | `sections.py`, `text_links.py` | markdown shaping + `![]()`/bare-URL detection |
 | Net safety | `ssrf.py`, `robots.py`, `liveness.py`, `dedup.py` | SSRF allow-listing, robots compliance, reachability probes, result dedupe |
@@ -373,7 +373,7 @@ spot on hyperlink annotations.
 | | `scraper`, `html2md` | HTML parse → markdown |
 | | `serde/serde_json`, `quick-xml` | records, feeds |
 | | `tiktoken-rs` | in-core encodings |
-| | `meta_oxide` (git fork, no default features) | metadata, in-core |
+| | `meta_oxide` (vendored at `vendor/meta_oxide`, no default features) | metadata, in-core |
 | | `regex`, `blake2`, misc | scans, hashes, shims |
 | Python | `httpx`, `pydantic>=2.7`, `tiktoken`, `ddgs` | providers, schemas, search |
 | Oxide | `pdf_oxide`, `office_oxide` (`[documents]`) | document converters |
