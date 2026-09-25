@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.20 — no version bump)
+## [Unreleased] (still 0.9.21 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,14 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.21] — Unpaywall fallback for DOI-to-OA lookup
+
+- Add an opt-in Unpaywall v2 fallback to `locate_pdf`: OpenAlex runs first, and
+  Unpaywall is queried only when `GOSSAMER_UNPAYWALL_EMAIL` is configured and
+  OpenAlex yields no usable candidate (or fails). The live endpoint/auth
+  contract was verified (real contact required; example.com yields HTTP 422).
+  Results preserve OpenAlex-first provenance via `sources`/`provider_errors`.
 
 ## [0.9.20] — Safe download resume with Range/If-Range
 

@@ -980,7 +980,7 @@ class WebResearcherToolbox:
         )
 
     def locate_pdf(self, doi: str) -> str:
-        """Locate OA PDF/landing-page candidates for a DOI via OpenAlex.
+        """Locate OA PDF/landing-page candidates for a DOI via OpenAlex, with an opt-in Unpaywall fallback.
 
         This reports candidates and provenance; it never downloads the file.
         """

@@ -103,7 +103,7 @@ wait or set that exact variable rather than looping retries.
 
 1. Search via `research QUERY --category scholarly --max-results N`; use `--providers openalex arxiv` only when you explicitly want a sequential multi-provider merge.
 2. Probe candidate pages with `check URL --mode status` before spending a full fetch/download.
-3. For a DOI, run `locate-pdf DOI`, inspect the returned `candidates`, and prefer an OA PDF URL with clear source/license metadata. This step locates candidates; it does not fetch the file.
+3. For a DOI, run `locate-pdf DOI`, inspect the returned `candidates`, and prefer an OA PDF URL with clear source/license metadata. This step locates candidates; it does not fetch the file. OpenAlex runs first; Unpaywall v2 is queried only when `GOSSAMER_UNPAYWALL_EMAIL` is configured and OpenAlex yields nothing usable.
 4. Download with `download URL -o paper.pdf --expect-format pdf`. If a known OA repository mirror is already available, pass it with `--try-mirrors URL…`; each URL is still checked independently and no challenge is bypassed.
 5. Parse the saved file with `extract paper.pdf`; add `--store --store-dir DIR` if you also want the extracted Markdown/resources persisted.
 6. Export a citation with `cite DOI --style bibtex` (or another supported style). Review license/access terms before redistributing any full text.

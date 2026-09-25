@@ -280,7 +280,7 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "locate_pdf",
-        "Resolve a DOI through OpenAlex and return inspectable open-access PDF or landing-page candidates with source/license/version provenance. This locates but does not download; use download_file separately. Returns not_found, closed_access, open_access, or a top-level error status.",
+        "Resolve a DOI through OpenAlex (plus Unpaywall v2 when GOSSAMER_UNPAYWALL_EMAIL is configured) and return inspectable open-access PDF or landing-page candidates with source/license/version provenance. This locates but does not download; use download_file separately. Returns not_found, closed_access, open_access, or a top-level error status.",
         "locate_pdf",
         (
             ToolParam(

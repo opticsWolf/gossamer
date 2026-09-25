@@ -172,6 +172,77 @@ def test_locator_rejects_malformed_provider_raw_record():
     assert result["error"]["code"] == "invalid_provider_record"
 
 
+def test_locator_skips_unpaywall_without_email():
+    calls = []
+
+    def fetcher(doi, email):
+        calls.append((doi, email))
+        return {"is_oa": True}
+
+    closed = _work_record(is_oa=False)
+    result = OpenAccessLocator(
+        adapter_factory=lambda: _FakeAdapter([closed]),
+        unpaywall_fetcher=fetcher,
+    ).locate("10.1234/example")
+
+    assert result["status"] == "closed_access"
+    assert calls == []
+
+
+def test_locator_uses_unpaywall_for_closed_openalex_record():
+    closed = _work_record(is_oa=False)
+    payload = {
+        "doi": "10.1234/example",
+        "title": "Fallback paper",
+        "is_oa": True,
+        "oa_status": "gold",
+        "best_oa_location": {
+            "url_for_pdf": "https://repo.example/fallback.pdf",
+            "url_for_landing_page": "https://repo.example/record",
+            "license": "cc-by",
+            "version": "publishedVersion",
+            "host_type": "repository",
+        },
+        "oa_locations": [],
+    }
+
+    result = OpenAccessLocator(
+        adapter_factory=lambda: _FakeAdapter([closed]),
+        unpaywall_email="reader@example.org",
+        unpaywall_fetcher=lambda _doi, _email: payload,
+    ).locate("10.1234/example")
+
+    assert result["status"] == "open_access"
+    assert result["provider"] == "unpaywall"
+    assert result["sources"] == ["openalex", "unpaywall"]
+    assert result["candidates"][0]["url"] == "https://repo.example/fallback.pdf"
+    assert result["candidates"][0]["kind"] == "pdf"
+
+
+def test_locator_falls_back_when_openalex_fails():
+    class FailingAdapter:
+        def fetch_by_doi(self, _doi):
+            raise RuntimeError("upstream down")
+
+    payload = {
+        "doi": "10.1234/example",
+        "title": "Rescued paper",
+        "is_oa": True,
+        "best_oa_location": {"url": "https://repo.example/record", "host_type": "repository"},
+        "oa_locations": [],
+    }
+
+    result = OpenAccessLocator(
+        adapter_factory=FailingAdapter,
+        unpaywall_email="reader@example.org",
+        unpaywall_fetcher=lambda _doi, _email: payload,
+    ).locate("10.1234/example")
+
+    assert result["status"] == "open_access"
+    assert result["provider"] == "unpaywall"
+    assert result["provider_errors"][0]["provider"] == "openalex"
+
+
 class _FakeAdapter:
     def __init__(self, records):
         self.records = records

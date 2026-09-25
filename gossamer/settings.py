@@ -204,6 +204,7 @@ KNOWN_KEYS: List[str] = [
     "ALPHA_VANTAGE_KEY",
     "COURTLISTENER_KEY",
     "GOVINFO_KEY",
+    "UNPAYWALL_EMAIL",
     "EPO_KEY",
     "EPO_SECRET",
     "KIPRIS_KEY",
