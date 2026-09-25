@@ -274,7 +274,8 @@ def describe_categories() -> str:
         "provider ids) as JSON. Pass provider=<id> to call a specific source; "
         "pass category=<name> to skip classification. No automatic fallback "
         "between providers -- the caller chooses. Returns the chosen category, "
-        "provider, and results as JSON."
+        "provider, and results as JSON. Provider failures keep results as an "
+        "empty list and add a top-level error field."
     )
 
 # provider id -> adapter factory (imported lazily so this module stays
@@ -445,7 +446,8 @@ def search_category(
     -------
     dict
         A normalized, JSON-serialisable payload naming the chosen category,
-        the provider actually called, its available providers, and results.
+        the provider actually called, its available providers, and a list-valued
+        ``results`` field. Failures add a top-level string ``error``.
     """
     # Resolve the category: explicit, reverse-resolved from the provider, or
     # by classifying the query (only when the caller left both unspecified).
@@ -498,23 +500,47 @@ def search_category(
             "results": [],
         }
 
-    if category_obj.kind == "adapter":
-        try:
+    error = None
+    metadata = {}
+    try:
+        if category_obj.kind == "adapter":
             adapter = _make_adapter(provider)
-            results: object = adapter.search(query, max_results=max_results)
-        except Exception as exc:  # noqa: BLE001 - surface as result, never raise
-            results = {"error": f"{provider} search failed: {exc}"}
-    else:
-        results = _parse_engine_results(
-            tb.search_web(query, max_results=max_results, provider=provider)
-        )
+            provider_result = adapter.search(query, max_results=max_results)
+        else:
+            provider_result = _parse_engine_results(
+                tb.search_web(query, max_results=max_results, provider=provider)
+            )
 
-    return {
+        if isinstance(provider_result, list):
+            results = provider_result
+        elif isinstance(provider_result, dict):
+            candidate_results = provider_result.get("results")
+            results = candidate_results if isinstance(candidate_results, list) else []
+            error = provider_result.get("error")
+            metadata = {
+                key: value
+                for key, value in provider_result.items()
+                if key not in {"results", "error"}
+            }
+            if error is None and not isinstance(candidate_results, list):
+                error = f"{provider} returned an invalid result payload"
+        else:
+            results = []
+            error = f"{provider} returned an invalid result payload"
+    except Exception as exc:  # noqa: BLE001 - surface as result, never raise
+        results = []
+        error = f"{provider} search failed: {exc}"
+
+    payload = {
         "query": query,
         "category": category_obj.name,
         "provider": provider,
         "available_providers": list(category_obj.providers),
         "provider_kind": category_obj.kind,
         "description": category_obj.description,
+        **metadata,
         "results": results,
     }
+    if error is not None:
+        payload["error"] = str(error)
+    return payload

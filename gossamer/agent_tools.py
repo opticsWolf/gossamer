@@ -564,7 +564,8 @@ class WebResearcherToolbox:
         ``category=`` and ``provider=`` are given, the provider must belong to
         that category. There is no automatic fallback between providers -- the
         caller chooses which source to query. Returns a JSON payload naming the
-        chosen category, the provider actually called, and results.
+        chosen category, the provider actually called, and results. Provider
+        failures keep ``results`` as a list and add a top-level ``error`` field.
         """
         if not (query or "").strip():
             return self.research_categories()

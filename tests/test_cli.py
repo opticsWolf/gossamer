@@ -92,12 +92,32 @@ raise SystemExit(cli.main(["search", "q", "--search-only"]))
     assert payload["results"][0]["snippet"] == "gradient index μ"
 
 
-def test_tool_error_returns_exit_1(capsys, tmp_path):
-    # Unknown research provider -> toolbox returns an error payload, but a
-    # hard failure (e.g. bad args inside the tool) exits nonzero. The CLI
-    # surfaces tool-level error dicts on stdout with rc 0; only exceptions
-    # (ValueError/RuntimeError) become rc 1. Force one via an empty query.
-    rc = main(["--cache-dir", str(tmp_path), "research", ""])
-    assert rc in (0, 1)
-    out = capsys.readouterr().out
-    assert out.strip(), "CLI must always emit something parseable"
+def test_research_provider_error_payload_is_json_and_returns_exit_1(
+    monkeypatch, capsys,
+):
+    class Stub:
+        def research_by_category(self, query, **kwargs):
+            return json.dumps({
+                "query": query,
+                "results": [],
+                "error": "arxiv search failed: temporary edge limit",
+            })
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    rc = main(["research", "quantum", "--provider", "arxiv"])
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"] == []
+    assert payload["error"] == "arxiv search failed: temporary edge limit"
+
+
+def test_research_success_payload_returns_exit_0(monkeypatch, capsys):
+    class Stub:
+        def research_by_category(self, query, **kwargs):
+            return json.dumps({"query": query, "results": [{"title": "paper"}]})
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    assert main(["research", "quantum"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"] == [{"title": "paper"}]

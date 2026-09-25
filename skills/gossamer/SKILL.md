@@ -50,6 +50,11 @@ per-domain rate-limited, and token-budgeted.
 `gossamer categories` prints this table live —
 prefer it over memory when unsure.
 
+Provider failures from `research` keep `results` as an empty list and put the
+message in a top-level `error` field. The CLI exits nonzero for these failures.
+For arXiv HTTP 406, which can reflect a temporary upstream edge/IP limit,
+avoid immediate repeat calls and honor the provider's three-second minimum.
+
 ## Budgets (avoid harness timeouts)
 
 - `use_smart="browser"` (JS rendering) needs the `gossamer-web[browser]`

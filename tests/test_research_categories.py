@@ -145,8 +145,37 @@ def test_search_category_adapter_failure_is_surfaced_not_raised(monkeypatch):
 
     out = rc.search_category(object(), "a paper on graphs")
     assert out["category"] == "scholarly"
-    assert isinstance(out["results"], dict)
-    assert "error" in out["results"]
+    assert out["results"] == []
+    assert isinstance(out["error"], str)
+    assert "openalex search failed: network down" == out["error"]
+
+
+def test_search_category_engine_error_uses_same_envelope():
+    class FailedEngine:
+        def search_web(self, *args, **kwargs):
+            return json.dumps({
+                "error": "search providers unavailable",
+                "available_providers": ["duckduckgo"],
+            })
+
+    out = rc.search_category(FailedEngine(), "latest breaking news")
+    assert out["results"] == []
+    assert out["error"] == "search providers unavailable"
+    assert out["available_providers"] == ["duckduckgo"]
+
+
+def test_search_category_engine_guard_metadata_preserves_result_list():
+    class GuardedEngine:
+        def search_web(self, *args, **kwargs):
+            return json.dumps({
+                "results": [{"title": "engine hit"}],
+                "guard": {"enabled": True},
+            })
+
+    out = rc.search_category(GuardedEngine(), "latest breaking news")
+    assert out["results"] == [{"title": "engine hit"}]
+    assert out["guard"] == {"enabled": True}
+    assert "error" not in out
 
 
 def test_search_category_default_provider_when_omitted(monkeypatch):

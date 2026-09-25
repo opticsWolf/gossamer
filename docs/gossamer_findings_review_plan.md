@@ -1,23 +1,28 @@
 # Gossamer findings review and implementation plan
 
-**Review date:** 2026-09-25  
-**Reviewed tree:** `dev_rust` at `f042d15` (`0.9.6`)  
-**Source report:** [`gossamer_findings.md`](gossamer_findings.md)  
-**Scope:** Compare the reported literature-hunt findings with the current implementation; distinguish confirmed defects, partially implemented features, and requests that require a product decision; propose an ordered, testable implementation plan.
+**Review date:** 2026-09-25
 
-No source code was changed during this review. The plan below is not an implementation commitment or version bump.
+**Baseline reviewed tree:** `dev_rust` at `f042d15` (`0.9.6`)
+
+**Implementation branch:** `dev_rust`; initial implementation commits are being versioned per fix as requested.
+
+**Source report:** [`gossamer_findings.md`](gossamer_findings.md)
+
+**Scope:** Compare the reported literature-hunt findings with the implementation, distinguish confirmed defects from upstream limits and missing features, and track the ordered implementation with testable acceptance criteria.
+
+The initial review made no source changes. Implementation began after approval; this file is now the living status/plan.
 
 ---
 
 ## 1. Executive summary
 
-The main reliability findings are valid. The CLI writes its result directly to the current text stream, and this Windows environment reports `cp1252`; a controlled CLI test with Greek `μ` produced no JSON and returned exit code 1. The arXiv adapter also fails live: a current query received HTTP 406 and the generic retry wrapper issued the failing request three times. Provider exceptions are currently encoded inconsistently: normal responses have a list in `results`, while provider failures have an error dictionary there; the CLI then returns success because the error is data, not an exception.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), and the stable provider-error envelope/CLI status fix (current `0.9.10` implementation). The arXiv service is still returning an upstream 406 from this network; code now identifies it and avoids repeated requests rather than pretending headers solved the edge limit. OpenAlex `mailto`/provider retry guidance and the collection features remain pending.
 
 Several findings need qualification:
 
 - `extract URL --store` already downloads and saves the original bytes together with extracted Markdown. The missing feature is a standalone, opaque-file download command with reliable validation and failure reporting—not all ability to save a fetched document.
-- The arXiv live smoke test already exists, but is opt-in and does not assert `Accept`; it should be corrected/strengthened rather than duplicated. Its current search-plus-fetch path uses `delay=0`, which bypasses the adapter's documented three-second interval.
-- OpenAlex already sends an email in its `User-Agent` and `Contact-Agent` headers and recognizes `GOSSAMER_OPENALEX_EMAIL`; it does not send the `mailto` parameter described in the report, uses a placeholder fallback email, and does not honor provider retry guidance.
+- The arXiv live smoke test already existed and remains opt-in. It is now a single default-paced `id_list` call and skips only on the typed upstream 406 rate-limit result; offline tests cover header/parser behavior.
+- OpenAlex already sends an email in its `User-Agent` and `Contact-Agent` headers and recognizes `GOSSAMER_OPENALEX_EMAIL`; it does not send the `mailto` parameter and uses a placeholder fallback email. Generic HTTP `Retry-After` handling is now implemented, but OpenAlex-specific body guidance and an operator-supplied real contact remain to be wired and verified.
 - There is no Semantic Scholar provider in gossamer today. The classification keyword is not provider support; no Semantic Scholar key variable or adapter contract currently exists. **Integration is now confirmed and is included as a build milestone below**; the exact upstream endpoint/auth/field contract must be verified before coding.
 - F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
@@ -27,13 +32,11 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 ## 2. Findings compared with the code
 
-### B1 — CLI output encoding: confirmed, high priority
+### B1 — CLI output encoding: confirmed and fixed
 
-**Current code:** `gossamer/cli.py:160-199` dispatches to a toolbox method and calls `print()` on the returned value. It does not normalize stdout/stderr encoding. `tests/test_cli.py` covers parsers, dispatch, and basic errors, but no non-ASCII output.
+**Baseline code/evidence:** The original `gossamer/cli.py` called `print()` without configuring stdout/stderr. This environment reported `sys.stdout.encoding == "cp1252"`; a strict cp1252 CLI test with Greek small letter mu (`μ`, U+03BC) returned 1, emitted no JSON, and printed a `charmap` encoding error. (This is Greek `μ`, not the cp1252-encodable micro sign `µ`.)
 
-**Reproduction:** This environment's Python process reported `sys.stdout.encoding == "cp1252"`. With a stub result containing Greek small letter mu (`μ`, U+03BC) and a strict cp1252 stream, `main()` returned 1, stdout was empty, and stderr contained a `charmap` encoding error. (This is Greek `μ`, not the cp1252-encodable micro sign `µ`.)
-
-**Conclusion:** The report is accurate: the user gets no valid JSON. The current CLI catches the encoding exception as a `ValueError`, so this is more precisely a failed command rather than an uncaught process crash.
+**Implementation status:** Fixed in `0.9.7` / commit `d88e843`. The CLI reconfigures standard output/error as UTF-8 when supported, uses `backslashreplace` for otherwise unencodable surrogate data, and leaves captured/embedded streams without `reconfigure()` untouched. A subprocess regression test sets `PYTHONIOENCODING=cp1252:strict` and asserts the resulting JSON is valid UTF-8 and preserves `μ`.
 
 ### B2 — arXiv HTTP 406: confirmed; current evidence points to an upstream edge limit
 
@@ -43,19 +46,19 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 **Implementation conclusion:** Do not spoof a browser or retry 406 repeatedly. Keep the explicit Atom Accept and truthful project UA, map arXiv 406 to an actionable typed rate-limit error (include `Retry-After` if the service supplies one), and let the caller wait rather than extending a possible edge block. This improves failure handling; a successful live response remains dependent on arXiv availability and the source IP's quota state.
 
-**Existing coverage:** `tests/test_live_smoke.py` already has an opt-in test and is being changed to one default-paced `id_list` request. It should skip with a clear explanation only when the provider returns the typed 406 rate-limit result. Offline tests should pin headers, parsing, and exactly one attempt for the 406. Ordinary tests must remain offline.
+**Coverage:** `tests/test_live_smoke.py` now makes one default-paced `id_list` request and skips with a clear explanation only when the provider returns the typed 406 rate-limit result. Offline tests pin headers, parsing, and exactly one attempt for the 406. Ordinary tests remain offline.
 
-### B3 — provider error shape and CLI status: confirmed
+### B3 — provider error shape and CLI status: confirmed and fixed
 
-**Current code:** `research_categories.search_category()` (`gossamer/research_categories.py:501-520`) catches provider exceptions and assigns `results = {"error": ...}`. Successful provider calls return a list. This creates the union-shaped `results` field reported in the findings. `gossamer/cli.py:194-199` returns zero after printing any normal toolbox result; it only returns 1 when a `ValueError` or `RuntimeError` escapes. Because `search_category()` has already caught the provider exception, the CLI treats a failed provider call as success.
+**Baseline code:** `research_categories.search_category()` put provider errors inside `results`, and the CLI returned zero because the exception had already been converted to data.
 
-**Existing tests:** `tests/test_research_categories.py` includes an assertion for an error under `out["results"]`; `tests/test_cli.py` documents that tool-level error payloads currently exit zero. Both need to change with the contract.
+**Implementation status:** Fixed in `0.9.10` (current change set). Adapter and engine failures now use `results: []` plus a top-level string `error`; normal guarded-engine metadata is preserved outside the result list. The `research` CLI parses its JSON response and returns 1 when the top-level error is set, while still printing parseable JSON. Tests cover adapter failures, engine error envelopes, guarded success metadata, and CLI success/failure status.
 
 ### OpenAlex anonymous throttling: partially addressed
 
-**Current code:** `OpenAlexAdapter` (`gossamer/research_providers.py:75-149`) reads `GOSSAMER_OPENALEX_EMAIL` and includes an email in `User-Agent` and `Contact-Agent`. `GOSSAMER_OPENALEX_EMAIL` is present in the settings/keystore key list. If unset, the adapter uses the placeholder `research@example.org`. Its request parameters currently include only `search` and `per_page`; it does not include `mailto`. On a response error, it simply calls `raise_for_status()`.
+**Current code:** `OpenAlexAdapter` (`gossamer/research_providers.py`) reads `GOSSAMER_OPENALEX_EMAIL` and includes it in `User-Agent` and `Contact-Agent`; the setting is recognized by the keystore. If unset, the adapter still uses the placeholder `research@example.org`. Requests include only `search` and `per_page`, not `mailto`, and the adapter does not interpret OpenAlex-specific retry guidance.
 
-The shared Python retry decorator retries all exceptions with fixed delay/backoff; it does not honor a `Retry-After` header or a provider-specified wait. The findings are therefore partly right: there is already an attempt at polite identification, but it is not the tested `mailto=` path from the hunt and the retry behavior is insufficient. A real project contact address must be selected rather than inventing one.
+**Implementation status:** The shared Python retry decorator is now status-aware (`0.9.8`): it does not retry permanent 4xx/application errors and honors bounded `Retry-After` on retryable HTTP errors. The OpenAlex-specific `mailto` parameter, choice of a valid project contact/default, and any documented response-body `retryAfter` format remain pending. Do not invent a project email or parse undocumented free text.
 
 ### Semantic Scholar: integration confirmed; adapter does not exist yet
 

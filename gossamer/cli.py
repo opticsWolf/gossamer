@@ -24,6 +24,7 @@ Auth and options resolve exactly like the MCP server: explicit flags >
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -208,10 +209,19 @@ def main(argv=None) -> int:
             dedupe=not args.no_dedupe),
     }
     try:
-        print(commands[args.command]())
+        output = commands[args.command]()
+        print(output)
     except (ValueError, RuntimeError) as exc:
         print(f"gossamer: error: {exc}", file=sys.stderr)
         return 1
+
+    if args.command == "research":
+        try:
+            payload = json.loads(output) if isinstance(output, str) else output
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict) and payload.get("error"):
+            return 1
     return 0
 
 
