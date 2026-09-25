@@ -143,6 +143,202 @@ class DownloadService:
             code, message, http_status=status, url=url, retry_after=retry_after,
         )
 
+    @staticmethod
+    def _resume_state_path(target: Path) -> Path:
+        return target.parent / f"{target.name}.gossamer-resume.json"
+
+    def _store_resume_validators(self, state_path: Path, response) -> None:
+        try:
+            etag = response.headers.get("ETag")
+            last_modified = response.headers.get("Last-Modified")
+            payload = {}
+            if isinstance(etag, str) and etag.strip():
+                payload["etag"] = etag.strip()
+            if isinstance(last_modified, str) and last_modified.strip():
+                payload["last_modified"] = last_modified.strip()
+            if payload:
+                state_path.parent.mkdir(parents=True, exist_ok=True)
+                state_path.write_text(json.dumps(payload), encoding="utf-8")
+        except OSError:
+            pass
+
+    @staticmethod
+    def _clear_resume_state(state_path: Path) -> None:
+        try:
+            state_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _validate_finished_file(self, *, data: bytes, sample: bytes, content_type, size: int, minimum: int, expect_pdf: bool, http_status: int, url: str) -> None:
+        if size < minimum:
+            raise _DownloadFailure(
+                "too_small",
+                f"The file contained {size} bytes; minimum is {minimum}.",
+                bytes=size,
+                http_status=http_status,
+                url=url,
+            )
+        if expect_pdf and not data[: len(_PDF_MAGIC)] == _PDF_MAGIC:
+            sample_lower = bytes(sample).lower()
+            is_html = "html" in (content_type or "").lower() or sample_lower.lstrip().startswith(b"<html")
+            if is_html and any(marker in sample_lower for marker in _BOT_MARKERS):
+                code, message = "bot_wall", ("The server returned an anti-bot/browser challenge instead of a PDF; no bypass was attempted.")
+            elif is_html:
+                code, message = "unexpected_content", "The server returned HTML instead of a PDF."
+            else:
+                code, message = "invalid_file", "The response does not have a PDF signature (%PDF-)."
+            raise _DownloadFailure(
+                code, message, bytes=size, content_type=content_type,
+                http_status=http_status, url=url,
+            )
+
+    def _finish_resume_append(self, *, url, current_url, response, target: Path, state_path: Path, resume_offset: int, cap: int, minimum: int, expect_pdf: bool) -> str:
+        self._store_resume_validators(state_path, response)
+        content_type = response.headers.get("Content-Type")
+        try:
+            with target.open("rb") as existing:
+                prefix = existing.read(len(_PDF_MAGIC))
+                existing.seek(0)
+                digest = hashlib.sha256()
+                while True:
+                    chunk = existing.read(65536)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+        except OSError as exc:
+            raise _DownloadFailure("local_write_error", str(exc), url=current_url) from exc
+        size = resume_offset
+        sample = bytearray(bytes(prefix[:1024]))
+        try:
+            with target.open("ab") as output:
+                for chunk in response.iter_bytes():
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if size > cap:
+                        raise _DownloadFailure(
+                            "too_large", f"The download exceeded the {cap}-byte limit.",
+                            http_status=response.status_code, url=current_url,
+                        )
+                    if len(sample) < 1024:
+                        sample.extend(chunk[: 1024 - len(sample)])
+                    digest.update(chunk)
+                    output.write(chunk)
+        except _DownloadFailure:
+            raise
+        except OSError as exc:
+            raise _DownloadFailure("local_write_error", str(exc), url=current_url) from exc
+        full_prefix = bytes(prefix) if len(bytes(prefix)) >= len(_PDF_MAGIC) else bytes(sample[: len(_PDF_MAGIC)])
+        self._validate_finished_file(
+            data=full_prefix, sample=bytes(sample), content_type=content_type,
+            size=size, minimum=minimum, expect_pdf=expect_pdf,
+            http_status=response.status_code, url=current_url,
+        )
+        self._clear_resume_state(state_path)
+        return json.dumps(
+            {
+                "source": url,
+                "final_url": current_url,
+                "output_path": str(target),
+                "bytes": size,
+                "sha256": digest.hexdigest(),
+                "content_type": content_type,
+                "http_status": response.status_code,
+                "status": "downloaded",
+                "resumed": True,
+                "resume_offset": resume_offset,
+            },
+            indent=2,
+        )
+
+    def _finish_resume_restart(self, *, url, current_url, response, target: Path, state_path: Path, cap: int, minimum: int, expect_pdf: bool) -> str:
+        self._store_resume_validators(state_path, response)
+        declared_length = response.headers.get("Content-Length")
+        try:
+            if declared_length is not None and int(declared_length) > cap:
+                raise _DownloadFailure(
+                    "too_large", f"The server declared {declared_length} bytes; limit is {cap}.",
+                    http_status=response.status_code, url=current_url,
+                )
+        except ValueError:
+            pass
+        content_type = response.headers.get("Content-Type")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_path = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".part", dir=str(target.parent))
+        size = 0
+        digest = hashlib.sha256()
+        prefix = bytearray()
+        sample = bytearray()
+        try:
+            with os.fdopen(fd, "wb") as output:
+                for chunk in response.iter_bytes():
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if size > cap:
+                        raise _DownloadFailure(
+                            "too_large", f"The download exceeded the {cap}-byte limit.",
+                            http_status=response.status_code, url=current_url,
+                        )
+                    if len(prefix) < len(_PDF_MAGIC):
+                        prefix.extend(chunk[: len(_PDF_MAGIC) - len(prefix)])
+                    if len(sample) < 1024:
+                        sample.extend(chunk[: 1024 - len(sample)])
+                    digest.update(chunk)
+                    output.write(chunk)
+        except BaseException:
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        self._validate_finished_file(
+            data=bytes(prefix), sample=bytes(sample), content_type=content_type,
+            size=size, minimum=minimum, expect_pdf=expect_pdf,
+            http_status=response.status_code, url=current_url,
+        )
+        os.replace(temp_path, target)
+        self._clear_resume_state(state_path)
+        return json.dumps(
+            {
+                "source": url,
+                "final_url": current_url,
+                "output_path": str(target),
+                "bytes": size,
+                "sha256": digest.hexdigest(),
+                "content_type": content_type,
+                "http_status": response.status_code,
+                "status": "downloaded",
+                "resumed": False,
+                "resume_restarted": True,
+            },
+            indent=2,
+        )
+
+    @staticmethod
+    def _parse_content_range(value: str | None, *, want_start: int) -> tuple[int, int | None] | None:
+        """Parse ``Content-Range: bytes <start>-<end>/<total|*>`` for a resume."""
+        if not value:
+            return None
+        text = value.strip().lower()
+        if not text.startswith("bytes "):
+            return None
+        try:
+            range_part, _, total_part = text[len("bytes "):].partition("/")
+            start_text, _, end_text = range_part.partition("-")
+            start = int(start_text)
+            int(end_text)  # validate the end offset without retaining it
+        except ValueError:
+            return None
+        if start != want_start:
+            return None
+        if total_part not in ("", "*"):
+            try:
+                return start, int(total_part)
+            except ValueError:
+                return None
+        return start, None
+
     def download_file(
         self,
         source: str,
@@ -153,6 +349,7 @@ class DownloadService:
         expected_format: Optional[str] = None,
         overwrite: bool = False,
         fallback_urls: Optional[list[str]] = None,
+        resume: bool = False,
     ) -> str:
         """Download *source* atomically to *output_path* and return JSON.
 
@@ -161,13 +358,21 @@ class DownloadService:
         enforced; callers may lower/raise it per download with ``max_bytes``.
         Existing files are not replaced unless ``overwrite=True``. Optional
         ``fallback_urls`` are caller-supplied, tried sequentially, and each is
-        independently checked against robots/SSRF policy.
+        independently checked against robots/SSRF policy. When ``resume=True``
+        an existing partial file is continued with ``Range``/``If-Range``;
+        servers that ignore ``Range`` restart the file, and unsatisfiable
+        ranges preserve the partial file with a structured error.
         """
         if fallback_urls is not None:
             if not isinstance(fallback_urls, (list, tuple)):
                 return self._error(
                     str(source), "invalid_argument",
                     "fallback_urls must be a list of non-empty URL strings",
+                )
+            if not isinstance(resume, bool):
+                return self._error(
+                    str(source), "invalid_argument",
+                    "resume must be a boolean",
                 )
             if fallback_urls:
                 return self._download_candidates(
@@ -178,6 +383,7 @@ class DownloadService:
                     max_bytes=max_bytes,
                     expected_format=expected_format,
                     overwrite=overwrite,
+                    resume=resume,
                 )
         try:
             url = normalize_url(source)
@@ -215,14 +421,42 @@ class DownloadService:
                 raise ValueError("min_bytes cannot exceed max_bytes")
             if expected_format not in (None, "pdf"):
                 raise ValueError("expected_format must be omitted or 'pdf'")
+            if not isinstance(resume, bool):
+                raise ValueError("resume must be a boolean")
+            if not isinstance(overwrite, bool):
+                raise ValueError("overwrite must be a boolean")
         except (TypeError, ValueError, OSError) as exc:
             return self._error(url, "invalid_argument", str(exc))
 
-        if target.exists() and not overwrite:
+        state_path = self._resume_state_path(target)
+        resume_offset = 0
+        resume_validators: dict = {}
+        if resume and not overwrite and target.is_file():
+            try:
+                resume_offset = target.stat().st_size
+            except OSError as exc:
+                return self._error(url, "local_write_error", str(exc))
+            if resume_offset < 0:
+                resume_offset = 0
+            try:
+                raw_state = state_path.read_text(encoding="utf-8")
+                parsed_state = json.loads(raw_state)
+                if isinstance(parsed_state, dict):
+                    for key in ("etag", "last_modified"):
+                        value = parsed_state.get(key)
+                        if isinstance(value, str) and value.strip():
+                            resume_validators[key] = value.strip()
+            except (OSError, ValueError):
+                resume_validators = {}
+        elif target.exists() and not overwrite:
             return self._error(
                 url, "file_exists", f"Output already exists: {target}",
                 output_path=str(target),
             )
+        elif overwrite and resume:
+            # An explicit overwrite restarts even when resume is requested.
+            resume_offset = 0
+            resume_validators = {}
 
         expect_pdf = expected_format == "pdf" or target.suffix.lower() == ".pdf"
         current_url = url
@@ -240,8 +474,15 @@ class DownloadService:
                             url=current_url,
                         )
                     self._tb._rate_limit_domain(current_url)
+                    request_headers = self._tb._next_headers()
+                    if resume and resume_offset > 0:
+                        request_headers["Range"] = f"bytes={resume_offset}-"
+                        if resume_validators.get("etag"):
+                            request_headers["If-Range"] = resume_validators["etag"]
+                        elif resume_validators.get("last_modified"):
+                            request_headers["If-Range"] = resume_validators["last_modified"]
                     with client.stream(
-                        "GET", current_url, headers=self._tb._next_headers(),
+                        "GET", current_url, headers=request_headers,
                     ) as response:
                         if response.status_code in _REDIRECT_STATUSES:
                             location = response.headers.get("Location")
@@ -266,15 +507,62 @@ class DownloadService:
                                 ) from exc
                             continue
 
-                        if response.status_code == 206:
+                        if response.status_code == 416 and resume and resume_offset > 0:
                             raise _DownloadFailure(
-                                "partial_response",
-                                "The server returned partial content without a resume request.",
+                                "resume_unsatisfiable",
+                                "The server rejected the resume offset; the partial file was preserved.",
                                 http_status=response.status_code,
                                 url=current_url,
+                                output_path=str(target),
+                                resume_offset=resume_offset,
+                            )
+                        if response.status_code == 206:
+                            if not (resume and resume_offset > 0):
+                                raise _DownloadFailure(
+                                    "partial_response",
+                                    "The server returned partial content without a resume request.",
+                                    http_status=response.status_code,
+                                    url=current_url,
+                                )
+                            content_range = self._parse_content_range(
+                                response.headers.get("Content-Range"),
+                                want_start=resume_offset,
+                            )
+                            if content_range is None:
+                                raise _DownloadFailure(
+                                    "resume_mismatch",
+                                    "The server's Content-Range did not match the resume offset; the partial file was preserved.",
+                                    http_status=response.status_code,
+                                    url=current_url,
+                                    output_path=str(target),
+                                    resume_offset=resume_offset,
+                                )
+                            return self._finish_resume_append(
+                                url=url,
+                                current_url=current_url,
+                                response=response,
+                                target=target,
+                                state_path=state_path,
+                                resume_offset=resume_offset,
+                                cap=cap,
+                                minimum=minimum,
+                                expect_pdf=expect_pdf,
                             )
                         if not 200 <= response.status_code < 300:
                             raise self._http_error(response, current_url)
+                        if resume and resume_offset > 0:
+                            # Server ignored Range; restart into a temp file and
+                            # replace the stale partial only on success.
+                            return self._finish_resume_restart(
+                                url=url,
+                                current_url=current_url,
+                                response=response,
+                                target=target,
+                                state_path=state_path,
+                                cap=cap,
+                                minimum=minimum,
+                                expect_pdf=expect_pdf,
+                            )
 
                         declared_length = response.headers.get("Content-Length")
                         try:

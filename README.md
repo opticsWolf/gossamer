@@ -111,7 +111,8 @@ are the same surface, param-for-param: `web_search`,
 `extract_document`, `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
 `export_citations`, `check_sources`. `download_file` saves an opaque remote file
 without requiring extraction; caller-supplied `fallback_urls` are tried
-sequentially with normal robots/SSRF checks. Use `extract_document` when you
+sequentially with normal robots/SSRF checks, and `resume=true` continues a
+partial file with Range/If-Range (restart when the server ignores Range). Use `extract_document` when you
 also want parsed text. `locate_pdf` resolves a DOI to OpenAlex OA PDF/landing-page candidates
 without downloading them. The CLI adds `gossamer categories`
 (routing table; not an MCP tool). Parameters:

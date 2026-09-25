@@ -67,13 +67,13 @@ Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) sta
 
 `GOSSAMER_SEMANTICSCHOLAR_API_KEY` is optional; when set it is sent in the documented `x-api-key` header. The official [API tutorial](https://www.semanticscholar.org/product/api/tutorial) says keys get an individual one-request-per-second rate while keyless requests share a pool. The adapter paces at least one second per request and converts keyless 429 responses to an actionable rate-limit error naming the exact key variable rather than retrying the shared pool. With a key, the common bounded retry policy honors `Retry-After`. The live smoke test is opt-in and requires a key to avoid burdening the shared anonymous pool.
 
-### F1 — standalone download primitive: implemented; resume is deferred
+### F1 — standalone download primitive: implemented, with opt-in resume
 
 **Existing capability:** `extract URL --store` continues to save the original bytes plus extracted Markdown. Its parsing-oriented behavior is unchanged.
 
 **Implementation status:** `download URL -o PATH` and the `download_file` Python/MCP tool are implemented in `0.9.12` (`gossamer/downloader.py`). The downloader streams under the configured/per-call byte cap to a temporary file, revalidates every redirect against SSRF and robots policy, then atomically installs the output. Existing destinations are preserved unless `overwrite=true`. PDF output is signature-checked when inferred from `.pdf` or explicitly requested. Errors distinguish URL/robots rejection, HTTP 404/access denial/rate limit, bot wall, too-large/too-small/partial responses, invalid/unexpected content, network/timeout, and local write failures. Success returns final URL, response metadata, size, hash, and path.
 
-**Scope limitation:** Resume (`Range`/`If-Range`) is not implemented yet. The downloader rejects a 206 response unless resume is explicitly designed and tested later. It never attempts a browser or access-control bypass. Tests use a local HTTP server and cover redirects, validation, PDF signature, min/max size, overwrite behavior, 404, bot wall, partial response, robots, and redirect SSRF revalidation.
+**Resume (`0.9.20`):** opt-in `resume=true` / `--resume` continues a partial destination with `Range`/`If-Range` and a validator sidecar. A 206 with matching Content-Range appends; a 200 restarts atomically; 416/mismatches preserve the partial file. Without resume, 206 is still rejected as `partial_response`. It never attempts a browser or access-control bypass. Tests use a local HTTP server and cover redirects, validation, PDF signature, min/max size, overwrite behavior, 404, bot wall, partial response, robots, redirect SSRF revalidation, and resume append/restart/unsatisfiable/validator paths.
 
 **Live smoke:** A W3C sample-PDF URL returned `robots_disallowed`; the downloader correctly made no request. This verifies the policy gate, not a successful external transfer. A future live success smoke should use a known robots-allowed source.
 
@@ -159,7 +159,7 @@ Implemented in `0.9.16`. `research_by_category` accepts an explicit `providers=[
 ### Milestone C — standalone, validated download operation (implemented)
 
 **Priority:** P1; highest collection-workflow value  
-**Status:** Implemented in `0.9.12`; resume support is explicitly deferred.
+**Status:** Implemented in `0.9.12`; opt-in resume added in `0.9.20`.
 **Scope:** F1, groundwork for F6  
 **Files:** `gossamer/downloader.py`, `gossamer/agent_tools.py`, `gossamer/cli.py`, `gossamer/config.py`, download/CLI/MCP tests, README/QUICKREF/SKILL/AGENTS/ARCHITECTURE.
 
@@ -262,7 +262,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 
 1. **A1 + A2 + A3:** implemented in `0.9.7`–`0.9.11`; arXiv live success remains upstream-dependent.
 2. **B:** implemented in `0.9.10` with a stable provider error envelope and nonzero CLI status.
-3. **C:** implemented in `0.9.12` with validation and classified outcomes; resume deferred.
+3. **C:** implemented in `0.9.12` with validation and classified outcomes; opt-in resume added in `0.9.20`.
 4. **D:** completed in `0.9.13` — DOI-to-OA candidate resolution via OpenAlex.
 5. **E1:** completed in `0.9.14` — OpenAlex-native filter/select.
 6. **E2:** completed in `0.9.15` — opt-in Semantic Scholar adapter; OpenAlex remains the default.

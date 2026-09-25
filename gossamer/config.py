@@ -265,6 +265,12 @@ TOOL_REGISTRY = (
             ),
             ToolParam("overwrite", bool, False, "Replace an existing destination only when true."),
             ToolParam(
+                "resume",
+                bool,
+                False,
+                "Continue an existing partial file with Range/If-Range; servers that ignore Range restart the file.",
+            ),
+            ToolParam(
                 "fallback_urls",
                 list[str],
                 [],

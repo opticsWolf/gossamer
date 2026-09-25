@@ -97,7 +97,7 @@ wait or set that exact variable rather than looping retries.
 - Tables render as markdown tables by default — no flag needed.
 - Figures need `extract … --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.
 - Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).
-- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and do not resume or bypass bot walls. `--try-mirrors` accepts only caller-supplied, known OA/repository URLs; each is checked independently and attempts are returned with provenance.
+- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and never bypass bot walls. Add `--resume` to continue an existing partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges keep the partial file). `--try-mirrors` accepts only caller-supplied, known OA/repository URLs; each is checked independently and attempts are returned with provenance.
 
 ## Literature collection workflow
 

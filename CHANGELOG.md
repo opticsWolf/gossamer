@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.19 — no version bump)
+## [Unreleased] (still 0.9.20 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,15 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.20] — Safe download resume with Range/If-Range
+
+- Add opt-in `resume` to `download_file` / `gossamer download --resume`. A partial
+  destination is continued with `Range: bytes=<offset>-` plus stored `If-Range`
+  validators (ETag/Last-Modified sidecar). A 206 with a matching Content-Range
+  appends; a 200 restarts atomically; 416 and Content-Range mismatches preserve
+  the partial file with structured errors. Without `resume`, 206 is still
+  rejected as `partial_response`.
 
 ## [0.9.19] — OpenAlex fielded title/author search
 

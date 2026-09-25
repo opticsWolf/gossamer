@@ -14,6 +14,8 @@ from gossamer.config import ToolboxConfig
 from gossamer.ssrf import SsrfBlockedError
 
 _PDF = b"%PDF-1.7\nexample pdf bytes\n%%EOF\n"
+_RESUMABLE = b"%PDF-1.7\nresumable content for range tests\n%%EOF\n"
+_RESUMABLE_ETAG = '"resumable-etag-1"'
 _ROUTES = {
     "/paper.pdf": (200, {"Content-Type": "application/pdf"}, _PDF),
     "/small.pdf": (200, {"Content-Type": "application/pdf"}, b"%PDF-1"),
@@ -45,14 +47,69 @@ def file_server():
         def do_GET(self):
             path = urlsplit(self.path).path
             hits.append(path)
-            status, headers, body = _ROUTES.get(
-                path, (404, {"Content-Type": "text/plain"}, b"not found"),
-            )
-            self.send_response(status)
-            for name, value in headers.items():
-                self.send_header(name, value)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
+            if path == "/resumable.pdf":
+                range_header = self.headers.get("Range")
+                if_range = self.headers.get("If-Range")
+                if range_header and if_range and if_range not in (_RESUMABLE_ETAG, "*"):
+                    body = _RESUMABLE
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("ETag", _RESUMABLE_ETAG)
+                    self.end_headers()
+                elif range_header and range_header.startswith("bytes="):
+                    try:
+                        start = int(range_header[len("bytes="):].split("-", 1)[0])
+                    except ValueError:
+                        start = 0
+                    if start >= len(_RESUMABLE):
+                        self.send_response(416)
+                        self.send_header("Content-Range", f"bytes */{len(_RESUMABLE)}")
+                        self.end_headers()
+                    else:
+                        body = _RESUMABLE[start:]
+                        self.send_response(206)
+                        self.send_header("Content-Type", "application/pdf")
+                        self.send_header("Content-Range", f"bytes {start}-{len(_RESUMABLE) - 1}/{len(_RESUMABLE)}")
+                        self.send_header("Content-Length", str(len(body)))
+                        self.send_header("ETag", _RESUMABLE_ETAG)
+                        self.send_header("Accept-Ranges", "bytes")
+                        self.end_headers()
+                else:
+                    body = _RESUMABLE
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("ETag", _RESUMABLE_ETAG)
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.end_headers()
+            elif path == "/no-range.pdf":
+                body = _RESUMABLE
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+            elif path == "/unsatisfiable.pdf":
+                if self.headers.get("Range"):
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{len(_RESUMABLE)}")
+                    self.end_headers()
+                    body = b""
+                else:
+                    body = _RESUMABLE
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/pdf")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+            else:
+                status, headers, body = _ROUTES.get(
+                    path, (404, {"Content-Type": "text/plain"}, b"not found"),
+                )
+                self.send_response(status)
+                for name, value in headers.items():
+                    self.send_header(name, value)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
             if body:
                 try:
                     self.wfile.write(body)
@@ -277,3 +334,62 @@ def test_download_revalidates_redirect_target_and_robots(file_server, monkeypatc
     assert blocked["error"]["code"] == "robots_disallowed"
     assert hits[-1] == "/redirect.pdf"
     assert not (tmp_path / "robots.pdf").exists()
+
+
+def test_download_resume_completes_partial_file_with_range(file_server, monkeypatch, tmp_path):
+    base, hits = file_server
+    tb, _ = _toolbox(monkeypatch, tmp_path, max_bytes=512)
+    output = tmp_path / "resumed.pdf"
+    partial = _RESUMABLE[:12]
+    output.write_bytes(partial)
+
+    result = _download(tb, f"{base}/resumable.pdf", output, resume=True)
+
+    assert result["status"] == "downloaded"
+    assert result["resumed"] is True
+    assert result["resume_offset"] == len(partial)
+    assert result["bytes"] == len(_RESUMABLE)
+    assert output.read_bytes() == _RESUMABLE
+    assert hits[-1] == "/resumable.pdf"
+
+
+def test_download_resume_restarts_when_server_ignores_range(file_server, monkeypatch, tmp_path):
+    base, _ = file_server
+    tb, _ = _toolbox(monkeypatch, tmp_path, max_bytes=512)
+    output = tmp_path / "restarted.pdf"
+    output.write_bytes(b"%PDF-stale-partial")
+
+    result = _download(tb, f"{base}/no-range.pdf", output, resume=True)
+
+    assert result["status"] == "downloaded"
+    assert result.get("resume_restarted") is True
+    assert output.read_bytes() == _RESUMABLE
+
+
+def test_download_resume_preserves_file_on_unsatisfiable_range(file_server, monkeypatch, tmp_path):
+    base, _ = file_server
+    tb, _ = _toolbox(monkeypatch, tmp_path, max_bytes=512)
+    output = tmp_path / "kept.pdf"
+    original = b"%PDF-partial-kept-bytes"
+    output.write_bytes(original)
+
+    result = _download(tb, f"{base}/unsatisfiable.pdf", output, resume=True)
+
+    assert result["error"]["code"] == "resume_unsatisfiable"
+    assert output.read_bytes() == original
+
+
+def test_download_resume_sends_if_range_and_restarts_on_mismatch(file_server, monkeypatch, tmp_path):
+    base, _ = file_server
+    tb, _ = _toolbox(monkeypatch, tmp_path, max_bytes=512)
+    output = tmp_path / "validator.pdf"
+    output.write_bytes(_RESUMABLE[:10])
+    state = output.parent / f"{output.name}.gossamer-resume.json"
+    state.write_text(json.dumps({"etag": '"stale-etag"'}), encoding="utf-8")
+
+    result = _download(tb, f"{base}/resumable.pdf", output, resume=True)
+
+    assert result["status"] == "downloaded"
+    assert result.get("resume_restarted") is True
+    assert output.read_bytes() == _RESUMABLE
+    assert not state.exists()
