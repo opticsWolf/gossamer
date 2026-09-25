@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.24 — no version bump)
+## [Unreleased] (still 0.9.25 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,19 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.25] — Vendor meta_oxide (fork remote gone)
+
+- The `opticsWolf/meta_oxide` fork remote returns `Repository not found`,
+  breaking every fresh `cargo` resolution (CI included). The fork source at
+  the pinned rev `a55c09f` is now vendored at `vendor/meta_oxide/`
+  (everything but `.git/`, provenance in `vendor/README.md`) and
+  `Cargo.toml` uses a path dependency. crates.io 0.1.1 was evaluated and
+  rejected: it predates the fork's pyo3-gating fix (won't compile with
+  `default-features = false`), the RDFa recursion fix (process-killing
+  stack overflow), and output-shaping fixes the parity suites pin.
+  Verified with a release `maturin develop` rebuild plus the metaextract
+  parity suites and the full suite (11102 passed / 33 skipped, unchanged).
 
 ## [0.9.24] — Remove dead helpers left by the Rust ports
 

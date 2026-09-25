@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gossamer-web"
-version = "0.9.24"
+version = "0.9.25"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -37,9 +37,9 @@ dependencies = [
     "ddgs>=2.0",
     # Rust-backed extractors (same ecosystem as the _core module).
     # meta-oxide ships INSIDE _core now (src/metaextract.rs depends on
-    # the meta_oxide Rust crate, fork rev 81bdb53) — no Python bridge
-    # package needed, which also un-blocks PyPI publishing (direct
-    # git references are rejected by PyPI).
+    # the meta_oxide Rust crate, vendored at vendor/meta_oxide) — no
+    # Python bridge package needed, which also un-blocks PyPI publishing
+    # (direct git references are rejected by PyPI).
 ]
 
 [project.urls]

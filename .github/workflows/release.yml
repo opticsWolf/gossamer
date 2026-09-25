@@ -86,8 +86,9 @@ jobs:
       - name: Install maturin
         run: pip install "maturin>=1.0,<2.0"
 
-      # Needs network: resolves the meta_oxide git dependency. sdist
-      # consumers rebuild from source, so this is expected.
+      # No git dependencies remain (meta_oxide is vendored), so only
+      # crates.io access is needed. sdist consumers rebuild from
+      # source, so network here is expected.
       - name: Build sdist
         run: maturin sdist --out dist
 

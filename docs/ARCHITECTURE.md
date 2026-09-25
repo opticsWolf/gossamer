@@ -373,7 +373,7 @@ spot on hyperlink annotations.
 | | `scraper`, `html2md` | HTML parse → markdown |
 | | `serde/serde_json`, `quick-xml` | records, feeds |
 | | `tiktoken-rs` | in-core encodings |
-| | `meta_oxide` (git fork, no default features) | metadata, in-core |
+| | `meta_oxide` (vendored at `vendor/meta_oxide`, no default features) | metadata, in-core |
 | | `regex`, `blake2`, misc | scans, hashes, shims |
 | Python | `httpx`, `pydantic>=2.7`, `tiktoken`, `ddgs` | providers, schemas, search |
 | Oxide | `pdf_oxide`, `office_oxide` (`[documents]`) | document converters |
