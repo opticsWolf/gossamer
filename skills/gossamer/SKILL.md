@@ -18,10 +18,10 @@ per-domain rate-limited, and token-budgeted.
   `batch_inspect_pages`, `download_file`, `locate_pdf`, `extract_document`,
   `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
   `export_citations`, `check_sources`.
-- **CLI** (identical JSON, no MCP setup; 14 commands — all 13 MCP tools
+- **CLI** (identical JSON, no MCP setup; 13 commands — all 12 MCP tools
   1:1 plus `categories`): `search QUERY [--max-results N --max-tokens T
   --search-only --provider P --depth D]` · `research QUERY [--category C
-  --provider P --max-results N]` · `inspect URL [--query Q --offset N
+  --provider P --max-results N --filter F --select F]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
   `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite]` ·
   `locate-pdf DOI` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
@@ -50,6 +50,10 @@ per-domain rate-limited, and token-budgeted.
 
 `gossamer categories` prints this table live —
 prefer it over memory when unsure.
+
+`research --filter F --select F` passes OpenAlex-native controls and is valid
+only with `--provider openalex`; gossamer rejects these options for other
+providers rather than silently ignoring them.
 
 Provider failures from `research` keep `results` as an empty list and put the
 message in a top-level `error` field. The CLI exits nonzero for these failures.

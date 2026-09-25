@@ -82,6 +82,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-results", type=int, default=5)
     p.add_argument("--category", default=None)
     p.add_argument("--provider", default=None)
+    p.add_argument("--filter", default=None,
+                   help="OpenAlex-native filter (only with --provider openalex)")
+    p.add_argument("--select", default=None,
+                   help="OpenAlex-native field projection (only with --provider openalex)")
     _common(p)
 
     p = sub.add_parser("categories", help="List research categories + providers")
@@ -201,7 +205,8 @@ def main(argv=None) -> int:
             max_tokens=args.max_tokens, provider=args.provider),
         "research": lambda: toolbox.research_by_category(
             args.query, max_results=args.max_results,
-            category=args.category, provider=args.provider),
+            category=args.category, provider=args.provider,
+            filter=args.filter, select=args.select),
         "categories": lambda: toolbox.research_categories(),
         "inspect": lambda: toolbox.inspect_html_page(
             args.url, use_smart=args.use_smart, query=args.query,

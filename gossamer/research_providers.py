@@ -133,12 +133,19 @@ class OpenAlexAdapter(ResourceAdapter):
         # OpenAlex exposes no X-RateLimit headers; report the documented ceiling.
         return RateState(rps=100.0)
 
-    def _search_impl(self, query, max_results=5):
+    def _search_impl(self, query, max_results=5, *, filter=None, select=None):
+        if filter is not None and not filter.strip():
+            raise ValueError("OpenAlex filter must not be blank")
+        if select is not None and not select.strip():
+            raise ValueError("OpenAlex select must not be blank")
         self._enforce_delay()
         url = f"{self.BASE}/works"
-        url, params, headers = self.inject_auth(
-            url, {"search": query, "per_page": min(max_results, 200)}, {}
-        )
+        query_params = {"search": query, "per_page": min(max_results, 100)}
+        if filter is not None:
+            query_params["filter"] = filter
+        if select is not None:
+            query_params["select"] = select
+        url, params, headers = self.inject_auth(url, query_params, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=15.0)
         resp.raise_for_status()
         # Row building in Rust (src/adapters.rs); `raw` re-attached here
@@ -151,6 +158,13 @@ class OpenAlexAdapter(ResourceAdapter):
         for rec, w in zip(records, works[:max_results]):
             rec["raw"] = json.dumps(w)
         return records
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def search(self, query, max_results=5, *, filter=None, select=None):
+        """Search OpenAlex works with optional native filter/select controls."""
+        return self._search_impl(
+            query, max_results, filter=filter, select=select,
+        )
 
     def fetch(self, record_id, params=None):
         self._enforce_delay()

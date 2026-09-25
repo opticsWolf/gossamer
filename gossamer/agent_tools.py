@@ -552,6 +552,8 @@ class WebResearcherToolbox:
         max_results: int = 5,
         category: Optional[str] = None,
         provider: Optional[str] = None,
+        filter: Optional[str] = None,
+        select: Optional[str] = None,
     ) -> str:
         """Category-aware, provider-specific search (P8 tool ``research_by_category``).
 
@@ -566,12 +568,19 @@ class WebResearcherToolbox:
         ``provider=crossref``) -- given alone, its owning category is
         reverse-resolved, so the query is still not reclassified. When both
         ``category=`` and ``provider=`` are given, the provider must belong to
-        that category. There is no automatic fallback between providers -- the
-        caller chooses which source to query. Returns a JSON payload naming the
-        chosen category, the provider actually called, and results. Provider
-        failures keep ``results`` as a list and add a top-level ``error`` field.
+        that category. ``filter``/``select`` pass through only to OpenAlex and
+        are rejected for other providers. There is no automatic fallback
+        between providers -- the caller chooses which source to query. Returns
+        a JSON payload naming the chosen category, provider, and results.
+        Provider failures keep ``results`` as a list and add a top-level
+        ``error`` field.
         """
         if not (query or "").strip():
+            if filter is not None or select is not None:
+                return json.dumps({
+                    "results": [],
+                    "error": "OpenAlex filter/select options require a research query",
+                }, indent=2)
             return self.research_categories()
         return json.dumps(
             search_category(
@@ -580,6 +589,8 @@ class WebResearcherToolbox:
                 category=category,
                 provider=provider,
                 max_results=max_results,
+                filter=filter,
+                select=select,
             ),
             indent=2,
             default=str,

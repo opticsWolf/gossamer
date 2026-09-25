@@ -137,6 +137,47 @@ def test_search_category_adapter_path_instantiates_and_searches(monkeypatch):
     assert seen == {"query": "a citation-heavy paper on graphs", "max_results": 2, "provider": "openalex"}
 
 
+def test_search_category_plumbs_openalex_native_options(monkeypatch):
+    seen = {}
+
+    class _FakeAdapter:
+        def search(self, query, max_results=5, *, filter=None, select=None):
+            seen.update({
+                "query": query,
+                "max_results": max_results,
+                "filter": filter,
+                "select": select,
+            })
+            return [{"source": "openalex"}]
+
+    monkeypatch.setattr(rc, "_make_adapter", lambda _provider: _FakeAdapter())
+    out = rc.search_category(
+        object(), "peer reviewed paper", filter="type:article", select="id,title",
+    )
+
+    assert out["provider"] == "openalex"
+    assert out["results"] == [{"source": "openalex"}]
+    assert seen == {
+        "query": "peer reviewed paper",
+        "max_results": 5,
+        "filter": "type:article",
+        "select": "id,title",
+    }
+
+
+def test_search_category_rejects_openalex_options_for_other_providers(monkeypatch):
+    def should_not_make_adapter(_provider):
+        raise AssertionError("unsupported native options must fail before dispatch")
+
+    monkeypatch.setattr(rc, "_make_adapter", should_not_make_adapter)
+    out = rc.search_category(
+        object(), "paper", provider="crossref", filter="type:article",
+    )
+    assert out["results"] == []
+    assert "error" in out
+    assert "require provider='openalex'" in out["error"]
+
+
 def test_search_category_adapter_failure_is_surfaced_not_raised(monkeypatch):
     def boom(_provider):
         raise RuntimeError("network down")

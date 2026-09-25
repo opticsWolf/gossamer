@@ -273,8 +273,9 @@ def describe_categories() -> str:
         "Omit the query to return the full taxonomy (category descriptions and "
         "provider ids) as JSON. Pass provider=<id> to call a specific source; "
         "pass category=<name> to skip classification. No automatic fallback "
-        "between providers -- the caller chooses. Returns the chosen category, "
-        "provider, and results as JSON. Provider failures keep results as an "
+        "between providers -- the caller chooses. OpenAlex-only filter/select "
+        "options pass through to that API. Returns the chosen category, provider, "
+        "and results as JSON. Provider failures keep results as an "
         "empty list and add a top-level error field."
     )
 
@@ -409,6 +410,8 @@ def search_category(
     category: Optional[str] = None,
     provider: Optional[str] = None,
     max_results: int = 5,
+    filter: Optional[str] = None,
+    select: Optional[str] = None,
 ) -> dict:
     """Trigger **one** provider via *tb* for *query*.
 
@@ -441,6 +444,10 @@ def search_category(
         used.
     max_results : int
         Maximum number of results to return.
+    filter : str, optional
+        OpenAlex-native filter expression. Valid only with provider='openalex'.
+    select : str, optional
+        OpenAlex-native field projection. Valid only with provider='openalex'.
 
     Returns
     -------
@@ -500,12 +507,28 @@ def search_category(
             "results": [],
         }
 
+    if (filter is not None or select is not None) and provider != "openalex":
+        return {
+            "query": query,
+            "category": category_obj.name,
+            "provider": provider,
+            "available_providers": list(category_obj.providers),
+            "provider_kind": category_obj.kind,
+            "error": "OpenAlex filter/select options require provider='openalex'",
+            "results": [],
+        }
+
     error = None
     metadata = {}
     try:
         if category_obj.kind == "adapter":
             adapter = _make_adapter(provider)
-            provider_result = adapter.search(query, max_results=max_results)
+            if provider == "openalex" and (filter is not None or select is not None):
+                provider_result = adapter.search(
+                    query, max_results=max_results, filter=filter, select=select,
+                )
+            else:
+                provider_result = adapter.search(query, max_results=max_results)
         else:
             provider_result = _parse_engine_results(
                 tb.search_web(query, max_results=max_results, provider=provider)

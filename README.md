@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11063%20passing%2C%2032%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11068%20passing%2C%2032%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -103,7 +103,7 @@ results = await tools.search_web_async("rust programming")
 > the loop; call the sync methods otherwise. Full model:
 > [Architecture](./docs/ARCHITECTURE.md#12-async--threading-model).
 
-### Tools (thirteen MCP tools, everywhere)
+### Tools (twelve MCP tools, everywhere)
 
 MCP tools, CLI commands (`gossamer …`), and `execute_tool(name, args)`
 are the same surface, param-for-param: `web_search`,
@@ -134,7 +134,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 | geo | Open-Meteo, Overpass |
 | general | DuckDuckGo (Google/Bing/Exa 🔑 opt-in) |
 
-Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …).
+Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi'` passes provider-native controls; those options are rejected for other providers.
 
 ---
 

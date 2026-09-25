@@ -16,7 +16,7 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), and DOI-to-OA candidate resolution (`0.9.13`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work includes the confirmed Semantic Scholar adapter, OpenAlex precision controls, multi-provider merge, and compliant mirror handling.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), and OpenAlex native `filter`/`select` support (`0.9.14`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work includes the confirmed Semantic Scholar adapter, cross-provider merge, and compliant mirror handling; OpenAlex fielded search remains a follow-up pending a verified mapping.
 
 Several findings need qualification:
 
@@ -79,9 +79,9 @@ The `scholarly` category currently lists `openalex`, `crossref`, `arxiv`, and `z
 `locate_pdf` / `gossamer locate-pdf DOI` is implemented in `0.9.13`. It normalizes bare DOI, `doi:` prefix, and DOI resolver URL inputs; uses OpenAlex's documented `works?filter=doi:https://doi.org/<doi>` query; and reads `best_oa_location` plus other OA `locations` from the preserved raw work record. Results rank the best location first, deduplicate URLs, and include PDF or landing-page kind, source, license, version, and work metadata. `not_found`, `closed_access`, and open-access-without-location are distinct from provider/invalid-input errors. The resolver does not download files; use `download_file` separately.
 
 This first pass deliberately uses OpenAlex only. Unpaywall and repository fallbacks remain deferred until their current API/auth/terms are verified. The offline suite pins DOI normalization, request construction, candidate ordering/deduplication, and error outcomes. An opt-in-style manual CLI smoke for `10.1371/journal.pone.0266781` successfully returned the PLoS PDF URL and PMC/DOAJ landing-page candidates with their OA metadata.
-### F3 — provider-native query passthrough: confirmed
+### F3 — OpenAlex native filter/select: implemented; fielded search deferred
 
-OpenAlex search sends only `search` and `per_page`. There is no `filter`, `select`, or equivalent advanced-query surface plumbed through `research_categories`, the toolbox API, or the CLI. Preserving each raw result does not enable caller-controlled filters/projections.
+Implemented in `0.9.14`: `research_by_category` and `gossamer research` accept provider-native `filter` and `select`; they are passed to OpenAlex only and rejected for other providers rather than silently ignored. OpenAlex's current documented `per_page` ceiling is 100, so requests are capped accordingly. Offline tests assert exact request parameters, per-page cap, category/tool/CLI plumbing, and unsupported-provider errors. Fielded `title:`/`author:` search is deferred until its OpenAlex query grammar is verified and can be mapped without guessing. No arbitrary URL/query-string escape hatch was added.
 
 ### F4 — cross-provider merge/dedupe: confirmed
 
@@ -194,12 +194,9 @@ The document download path uses a static `httpx.Client`; it does not download bi
 
 #### E1. OpenAlex native query controls (F3)
 
-- Add typed `filter` and `select` parameters (and fielded search only if its mapping is clear) to the OpenAlex adapter and plumb them through the research facade/CLI.
-- Reject these options when a different provider is selected; never silently drop a caller’s filter.
-- Keep the ordinary query behavior unchanged and preserve provider raw records.
-- Test exact request parameters, URL encoding, max-result limits, invalid/unsupported option handling, and CLI/MCP parity.
+**Status:** Implemented in `0.9.14`. `filter` and `select` are typed through the adapter, category facade, toolbox/MCP tool, and CLI. They are rejected unless OpenAlex is the selected provider. Requests cap `per_page` at the current API maximum of 100; blank controls fail locally. Tests pin request parameters, forwarding, and unsupported-provider behavior.
 
-Prefer typed provider options over arbitrary raw URLs/query strings. Any raw-query escape hatch needs an explicit security, endpoint, and auth boundary.
+Fielded `title:`/`author:` search is deferred until the provider's current grammar is verified. Prefer typed options over arbitrary URLs/query strings; no raw-query escape hatch was added.
 
 #### E2. Semantic Scholar provider integration (confirmed)
 
@@ -262,8 +259,9 @@ Prefer typed provider options over arbitrary raw URLs/query strings. Any raw-que
 2. **B:** implemented in `0.9.10` with a stable provider error envelope and nonzero CLI status.
 3. **C:** implemented in `0.9.12` with validation and classified outcomes; resume deferred.
 4. **D:** completed in `0.9.13` — DOI-to-OA candidate resolution via OpenAlex.
-5. **E1 + E2:** next — precise provider-native queries and the confirmed Semantic Scholar adapter; keep OpenAlex as the default.
-6. **E3:** explicit cross-provider merge, including Semantic Scholar, only after individual provider behavior is stable.
-7. **F:** compliant mirror handling and collection-recipe/docs synchronization.
+5. **E1:** completed in `0.9.14` — OpenAlex-native filter/select.
+6. **E2:** next — confirmed Semantic Scholar adapter; keep OpenAlex as the default.
+7. **E3:** explicit cross-provider merge, including Semantic Scholar, only after individual provider behavior is stable.
+8. **F:** compliant mirror handling and collection-recipe/docs synchronization.
 
 This order fixes tool-breaking defects before adding the acquisition and precision features that motivated the hunt, while keeping external API work opt-in and policy-compliant.

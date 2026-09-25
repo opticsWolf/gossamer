@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.13 — no version bump)
+## [Unreleased] (still 0.9.14 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -16,12 +16,21 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   `/` (search), verified live, so there is no search-page scraper;
   free-text discovery stays on `site:patents.google.com` web search.
   Mocked-shape tests + keyless live smoke test; latest full suite now
-  reports 11063 passed / 32 skipped, including tests skipped when the
+  reports 11068 passed / 32 skipped, including tests skipped when the
   optional `browser-oxide` extra is unavailable.
 - Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.14] — OpenAlex native filter/select controls
+
+- Add OpenAlex-only `filter` and `select` passthrough to `research_by_category`,
+  the toolbox/MCP registry, and `gossamer research --filter/--select`. Reject
+  these controls for other providers and reject blank expressions locally.
+  Cap OpenAlex `per_page` at the documented maximum of 100. Add offline tests
+  for HTTP parameters, request caps, provider routing, and CLI forwarding.
+  Fielded search and raw-URL passthrough remain deferred.
 
 ## [0.9.13] — DOI-to-open-access locator
 

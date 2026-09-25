@@ -189,6 +189,31 @@ class TestOpenAlexAdapter:
         assert results[0]["citations"] == 5
         assert mock_get.call_args.kwargs["params"]["mailto"] == "me@example.org"
 
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_passes_filter_select_and_caps_per_page(self, mock_get):
+        response = MagicMock()
+        response.json.return_value = {"results": [{"id": "W123", "title": "A paper"}]}
+        response.raise_for_status.return_value = None
+        mock_get.return_value = response
+
+        results = OpenAlexAdapter(delay=0.0, email="").search(
+            "quantum", max_results=250,
+            filter="type:article,open_access.is_oa:true",
+            select="id,title,doi",
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        assert params["per_page"] == 100
+        assert params["filter"] == "type:article,open_access.is_oa:true"
+        assert params["select"] == "id,title,doi"
+        assert results[0]["id"] == "W123"
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_search_rejects_blank_native_options(self, mock_get):
+        with pytest.raises(ValueError, match="filter must not be blank"):
+            OpenAlexAdapter(delay=0.0).search("q", filter="  ")
+        mock_get.assert_not_called()
+
     def test_inject_auth_sets_configured_mailto_and_contact_headers(self):
         prov = OpenAlexAdapter(delay=0.0, email="me@example.org")
         url, params, headers = prov.inject_auth("https://api.openalex.org/works", {}, {})

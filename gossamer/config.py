@@ -456,6 +456,18 @@ TOOL_REGISTRY = (
                 "it must belong to that category. Omitted -> the category's "
                 "default provider. No automatic fallback.",
             ),
+            ToolParam(
+                "filter",
+                str,
+                None,
+                "OpenAlex-native filter expression; valid only with provider='openalex'.",
+            ),
+            ToolParam(
+                "select",
+                str,
+                None,
+                "OpenAlex-native comma-separated field projection; valid only with provider='openalex'.",
+            ),
         ),
     ),
     ToolSpec(

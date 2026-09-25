@@ -18,6 +18,11 @@ def _parse(argv):
 def test_parsers_accept_all_subcommands():
     assert _parse(["search", "q"]).command == "search"
     assert _parse(["research", "q", "--provider", "epo"]).provider == "epo"
+    advanced = _parse([
+        "research", "q", "--provider", "openalex",
+        "--filter", "type:article", "--select", "id,title",
+    ])
+    assert (advanced.filter, advanced.select) == ("type:article", "id,title")
     assert _parse(["categories"]).command == "categories"
     assert _parse(["inspect", "https://x.example"]).command == "inspect"
     assert _parse(["batch", "https://a.example", "https://b.example"]).urls == [
@@ -119,6 +124,24 @@ def test_research_provider_error_payload_is_json_and_returns_exit_1(
     payload = json.loads(capsys.readouterr().out)
     assert payload["results"] == []
     assert payload["error"] == "arxiv search failed: temporary edge limit"
+
+
+def test_research_native_options_dispatch(monkeypatch, capsys):
+    calls = {}
+
+    class Stub:
+        def research_by_category(self, query, **kwargs):
+            calls.update(query=query, **kwargs)
+            return json.dumps({"query": query, "results": []})
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    assert main([
+        "research", "q", "--provider", "openalex",
+        "--filter", "type:article", "--select", "id,title",
+    ]) == 0
+    capsys.readouterr()
+    assert calls["filter"] == "type:article"
+    assert calls["select"] == "id,title"
 
 
 def test_download_dispatch_and_error_exit_status(monkeypatch, capsys):
