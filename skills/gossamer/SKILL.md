@@ -15,15 +15,16 @@ per-domain rate-limited, and token-budgeted.
 
 - **MCP tools** (`gossamer_*` in pi with directTools, or plain names in
   Codex/Claude Code): `web_search`, `inspect_html_page`,
-  `batch_inspect_pages`, `extract_document`, `discover_resources`,
-  `crawl`, `manage_cache`, `research_by_category`,
+  `batch_inspect_pages`, `download_file`, `extract_document`,
+  `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
   `export_citations`, `check_sources`.
-- **CLI** (identical JSON, no MCP setup; 11 commands — all 10 MCP tools
+- **CLI** (identical JSON, no MCP setup; 12 commands — all 11 MCP tools
   1:1 plus `categories`): `search QUERY [--max-results N --max-tokens T
   --search-only --provider P --depth D]` · `research QUERY [--category C
   --provider P --max-results N]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
-  `batch URL…` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
+  `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite]` ·
+  `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
   --store-dir D --include-images]` · `check URL… [--mode status|content]` ·
   `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N
   --min-score S --same-host --excerpts --search-prior --seed-urls U…
@@ -85,3 +86,4 @@ own `mailto` contact; gossamer does not invent a default email.
 - Tables render as markdown tables by default — no flag needed.
 - Figures need `extract … --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.
 - Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).
+- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and do not resume or bypass bot walls.

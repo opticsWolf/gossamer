@@ -4,7 +4,7 @@ Command-level companion to [Architecture](./ARCHITECTURE.md). Full manual:
 [README](../README.md). Per-version history: [Changelog](../CHANGELOG.md).
 Planning history: local `planning/` (unsynced).
 
-## Tools (ten MCP tools; CLI = MCP 1:1 plus `categories`)
+## Tools (eleven MCP tools; CLI = MCP 1:1 plus `categories`)
 
 | Tool | CLI | Essentials |
 |---|---|---|
@@ -12,6 +12,7 @@ Planning history: local `planning/` (unsynced).
 | `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`, `--max-results 5`; empty query prints the live taxonomy |
 | `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static`, `--offset 0`, `--max-chunks 1`, `--structured` |
 | `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
+| `download_file` | `gossamer download URL -o PATH` | `--min-bytes 1`, `--max-bytes 0` (configured cap), `--expect-format auto\|pdf`, `--overwrite`; streams to an atomic file, does not extract |
 | `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as json\|markdown\|csv` (XLSX tables; default json, csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
 | `discover_resources` | `gossamer discover URL` | feeds + bounded `/sitemap.xml` probe |
 | `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--min-score 0.05`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls`, `--use-smart` |
@@ -22,7 +23,7 @@ Planning history: local `planning/` (unsynced).
 CLI-only: `gossamer categories` prints the routing table (not an MCP
 tool; the toolbox method `research_categories()` backs it).
 
-`extract --pages` cannot combine with `--store`. `include_images` is PDF-only.
+`extract --pages` cannot combine with `--store`. `include_images` is PDF-only. `download` has no resume mode yet; it rejects unexpected partial-content responses.
 
 ## Providers (keyless unless 🔑)
 
@@ -68,4 +69,5 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - Guard is off by default (`GuardConfig(enabled=True)` + `gossamer-web[guard]` extra to arm).
 - `use_smart="browser"` needs the `gossamer-web[browser]` extra (Windows/macOS only, no Linux wheels); without it browser requests fail and only static fetch runs.
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).
+- OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.
 - OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.

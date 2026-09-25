@@ -35,11 +35,12 @@ class TestRegistryShape:
         # + inspect_html_structured folded into their base tools; the cache
         # trio + get_stats replaced by manage_cache. research_by_category is a
         # category-aware, provider-specific overlay (scholarly/geo/general); it
-        # also returns the live taxonomy when called with no query. 10 tools.
+        # also returns the live taxonomy when called with no query. 11 tools.
         assert REGISTRY_NAMES == {
             "web_search",
             "inspect_html_page",
             "batch_inspect_pages",
+            "download_file",
             "extract_document",
             "discover_resources",
             "crawl",

@@ -248,6 +248,25 @@ TOOL_REGISTRY = (
         ),
     ),
     ToolSpec(
+        "download_file",
+        "Download a remote file to an explicit local path without requiring document extraction. Streams under the configured/per-call byte cap, follows and revalidates redirects, respects robots.txt and SSRF protections, and validates PDF magic when expected_format='pdf' or the output ends in .pdf. Existing destinations are preserved unless overwrite=true. Returns provenance or a classified error; bot walls are not bypassed.",
+        "download_file",
+        (
+            ToolParam("source", str, description="Remote HTTP(S) URL to download"),
+            ToolParam("output_path", str, description="Local destination file path"),
+            ToolParam("min_bytes", int, 1, "Minimum accepted file size in bytes (default: 1)."),
+            ToolParam("max_bytes", int, 0, "Maximum bytes (0 uses the configured max_response_bytes cap)."),
+            ToolParam(
+                "expected_format",
+                str,
+                "auto",
+                "'auto' validates PDF when output_path ends in .pdf; 'pdf' always validates the %PDF- signature.",
+                enum=["auto", "pdf"],
+            ),
+            ToolParam("overwrite", bool, False, "Replace an existing destination only when true."),
+        ),
+    ),
+    ToolSpec(
         "extract_document",
         "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats (TXT, MD, CSV, JSON, XML) and RSS/Atom feeds. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.",
         "extract_document",

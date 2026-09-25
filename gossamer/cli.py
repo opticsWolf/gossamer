@@ -103,6 +103,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("urls", nargs="+")
     _common(p)
 
+    p = sub.add_parser("download", help="Download a remote file to a local path")
+    p.add_argument("source", help="Remote HTTP(S) URL")
+    p.add_argument("-o", "--output", dest="output_path", required=True,
+                   help="Destination file path")
+    p.add_argument("--min-bytes", type=int, default=1)
+    p.add_argument("--max-bytes", type=int, default=0,
+                   help="Maximum bytes (0 uses configured max_response_bytes)")
+    p.add_argument("--expect-format", default="auto", choices=("auto", "pdf"),
+                   help="Validate PDF magic when set to pdf (auto infers from .pdf output)")
+    p.add_argument("--overwrite", action="store_true",
+                   help="Replace an existing destination")
+    _common(p)
+
     p = sub.add_parser("extract", help="Extract a document (PDF/DOCX/XLSX/…) or feed")
     p.add_argument("source")
     p.add_argument("--pages", default=None, help="PDF page range, e.g. 10-20")
@@ -191,6 +204,10 @@ def main(argv=None) -> int:
             offset=args.offset, max_chunks=args.max_chunks,
             structured=args.structured),
         "batch": lambda: toolbox.batch_inspect_pages(args.urls),
+        "download": lambda: toolbox.download_file(
+            args.source, args.output_path, min_bytes=args.min_bytes,
+            max_bytes=args.max_bytes, expected_format=args.expect_format,
+            overwrite=args.overwrite),
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,
             store=args.store, store_dir=args.store_dir,
@@ -215,7 +232,7 @@ def main(argv=None) -> int:
         print(f"gossamer: error: {exc}", file=sys.stderr)
         return 1
 
-    if args.command == "research":
+    if args.command in {"research", "download"}:
         try:
             payload = json.loads(output) if isinstance(output, str) else output
         except (TypeError, json.JSONDecodeError):

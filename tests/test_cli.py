@@ -25,6 +25,14 @@ def test_parsers_accept_all_subcommands():
         "https://b.example",
     ]
     assert _parse(["extract", "f.pdf", "--pages", "1-3"]).pages == "1-3"
+    download = _parse([
+        "download", "https://example.org/paper.pdf", "-o", "paper.pdf",
+        "--min-bytes", "100", "--max-bytes", "1000000",
+        "--expect-format", "pdf",
+    ])
+    assert (download.output_path, download.min_bytes, download.max_bytes) == (
+        "paper.pdf", 100, 1000000,
+    )
     assert _parse(["check", "https://x.example", "--mode", "content"]).mode == "content"
     assert _parse(["discover", "https://x.example"]).url == "https://x.example"
     crawl = _parse(["crawl", "https://x.example", "--query", "q",
@@ -110,6 +118,23 @@ def test_research_provider_error_payload_is_json_and_returns_exit_1(
     payload = json.loads(capsys.readouterr().out)
     assert payload["results"] == []
     assert payload["error"] == "arxiv search failed: temporary edge limit"
+
+
+def test_download_dispatch_and_error_exit_status(monkeypatch, capsys):
+    class Stub:
+        def download_file(self, source, output_path, **kwargs):
+            return json.dumps({
+                "source": source,
+                "output_path": output_path,
+                "status": "error",
+                "error": {"code": "not_found", "message": "missing"},
+            })
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    rc = main(["download", "https://example.org/a.pdf", "-o", "a.pdf"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert payload["error"]["code"] == "not_found"
 
 
 def test_research_success_payload_returns_exit_0(monkeypatch, capsys):

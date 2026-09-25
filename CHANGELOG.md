@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.11 — no version bump)
+## [Unreleased] (still 0.9.12 — no version bump)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -15,14 +15,27 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   lookup-only — Google's `robots.txt` Allows `/patent/` but Disallows
   `/` (search), verified live, so there is no search-page scraper;
   free-text discovery stays on `site:patents.google.com` web search.
-  Mocked-shape tests + keyless live smoke test; full suite now
-  11016 passed / 32 skipped (the +2 past the new tests: the
-  `test_m17` real-browser tests un-skip once `browser-oxide` is
-  installed).
+  Mocked-shape tests + keyless live smoke test; latest full suite now
+  reports 11046 passed / 32 skipped, including tests skipped when the
+  optional `browser-oxide` extra is unavailable.
 - Docs: `use_smart="browser"` needs the `gossamer-web[browser]` extra
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+
+## [0.9.12] — Validated standalone file downloads
+
+- Add `download_file` to the toolbox/MCP registry and `gossamer download URL -o PATH`
+  to the CLI. Stream to a temporary file under the configured/per-call size
+  limit, revalidate redirects against SSRF/robots policy, and atomically install
+  only after validation. Preserve existing files unless `--overwrite` is set.
+- Infer PDF validation from `.pdf` output or `--expect-format pdf`; enforce `%PDF-`
+  magic, `--min-bytes`, and classified HTTP/bot-wall/size/partial/network/local
+  errors. Return final URL, content type, status, size, SHA-256, and output path.
+  Resume support is deferred; unsolicited HTTP 206 responses are rejected.
+- Update CLI/MCP parity to 11 tools (12 CLI commands including `categories`)
+  and add local-server tests for success, redirect safety, robots, file clashes,
+  PDF validation, HTTP errors, byte caps, and partial responses.
 
 ## [0.9.11] — OpenAlex contact and polite-pool request metadata
 

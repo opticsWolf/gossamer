@@ -85,6 +85,7 @@ from gossamer.dedup import dedupe  # noqa: F401  # Workstream 2
 from gossamer.liveness import check_liveness, LIVENESS_TIMEOUT  # noqa: F401  # Workstream 2
 from gossamer.fetch import FetchService  # noqa: F401
 from gossamer.document import DocumentExtractor  # noqa: F401
+from gossamer.downloader import DownloadService
 from gossamer.budget import ContentBudget  # noqa: F401
 from gossamer.discovery import ResourceDiscovery  # noqa: F401
 from gossamer.research_categories import CATEGORIES, search_category  # noqa: F401
@@ -243,6 +244,7 @@ class WebResearcherToolbox:
         self._fetch = FetchService(self)
 
         self._doc = DocumentExtractor(self)
+        self._download = DownloadService(self)
 
         self._crawler = Crawler(self)
 
@@ -924,6 +926,31 @@ class WebResearcherToolbox:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self.batch_inspect_pages, urls
+        )
+
+    def download_file(
+        self,
+        source: str,
+        output_path: str,
+        min_bytes: int = 1,
+        max_bytes: int = 0,
+        expected_format: str = "auto",
+        overwrite: bool = False,
+    ) -> str:
+        """Download a remote file to a local path without parsing it.
+
+        URL/redirect safety, robots policy, response-size limits, and atomic
+        destination writes are handled by :class:`DownloadService`. PDF
+        signature checks are enabled explicitly or inferred from ``.pdf``.
+        """
+        format_hint = None if expected_format == "auto" else expected_format
+        return self._download.download_file(
+            source,
+            output_path,
+            min_bytes=min_bytes,
+            max_bytes=max_bytes,
+            expected_format=format_hint,
+            overwrite=overwrite,
         )
 
     def extract_document(

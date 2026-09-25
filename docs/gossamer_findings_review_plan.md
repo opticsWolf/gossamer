@@ -16,11 +16,11 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), and configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work includes standalone acquisition, DOI resolution, the confirmed Semantic Scholar adapter, OpenAlex precision controls, and multi-provider merge.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), and a standalone validated file downloader (`0.9.12`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work includes DOI resolution, the confirmed Semantic Scholar adapter, OpenAlex precision controls, multi-provider merge, and compliant mirror handling.
 
 Several findings need qualification:
 
-- `extract URL --store` already downloads and saves the original bytes together with extracted Markdown. The missing feature is a standalone, opaque-file download command with reliable validation and failure reporting—not all ability to save a fetched document.
+- `extract URL --store` still saves original bytes together with extracted Markdown. A distinct `download URL -o PATH` / `download_file` tool is now implemented for opaque files: it streams to an atomic destination, enforces size limits, checks PDF magic when appropriate, and returns classified errors without trying to extract or bypass bot walls.
 - The arXiv live smoke test already existed and remains opt-in. It is now a single default-paced `id_list` call and skips only on the typed upstream 406 rate-limit result; offline tests cover header/parser behavior.
 - OpenAlex now sends an operator-supplied `GOSSAMER_OPENALEX_EMAIL` as `mailto` and client-identification headers (`0.9.11`); no placeholder contact is fabricated. A free `GOSSAMER_OPENALEX_KEY` remains optional for casual use and raises the daily budget. Generic `Retry-After` and exponential backoff are implemented; current official guidance does not document a response-body `retryAfter` field, so do not invent a parser for one.
 - There is no Semantic Scholar provider in gossamer today. The classification keyword is not provider support; no Semantic Scholar key variable or adapter contract currently exists. **Integration is now confirmed and is included as a build milestone below**; the exact upstream endpoint/auth/field contract must be verified before coding.
@@ -52,7 +52,7 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 **Baseline code:** `research_categories.search_category()` put provider errors inside `results`, and the CLI returned zero because the exception had already been converted to data.
 
-**Implementation status:** Fixed in `0.9.10` (current change set). Adapter and engine failures now use `results: []` plus a top-level string `error`; normal guarded-engine metadata is preserved outside the result list. The `research` CLI parses its JSON response and returns 1 when the top-level error is set, while still printing parseable JSON. Tests cover adapter failures, engine error envelopes, guarded success metadata, and CLI success/failure status.
+**Implementation status:** Fixed in `0.9.10` / commit `bd6bd26`. Adapter and engine failures now use `results: []` plus a top-level string `error`; normal guarded-engine metadata is preserved outside the result list. The `research` CLI parses its JSON response and returns 1 when the top-level error is set, while still printing parseable JSON. Tests cover adapter failures, engine error envelopes, guarded success metadata, and CLI success/failure status.
 
 ### OpenAlex anonymous throttling: contact and retry behavior improved; quotas remain provider-controlled
 
@@ -64,13 +64,15 @@ Recommended order: (1) CLI encoding, HTTP retry behavior, arXiv and OpenAlex req
 
 The `scholarly` category currently lists `openalex`, `crossref`, `arxiv`, and `zenodo` (`gossamer/research_categories.py:159-164`). There is no Semantic Scholar adapter, endpoint implementation, key setting, or live test. The word `semanticscholar` currently appears only as a classification keyword, and the reported 429s were not generated by a gossamer adapter. The user has now confirmed that Semantic Scholar integration is part of the improvement plan. Build it as a distinct opt-in scholarly provider; keep OpenAlex as the category default unless a later decision changes that. Verify the current official API contract before selecting request URLs, auth headers, rate handling, or response mappings.
 
-### F1 — download primitive: partially present; important gap remains
+### F1 — standalone download primitive: implemented; resume is deferred
 
-**Existing capability:** `extract URL --store` is available in the CLI and toolbox. `DocumentExtractor.extract_document()` can fetch a URL and store the original bytes plus extracted Markdown (`gossamer/document.py:97-303`). Its URL fetch follows redirects, records final URL/status/content type, and enforces `max_response_bytes` (`_fetch_document_url`, lines 493-537).
+**Existing capability:** `extract URL --store` continues to save the original bytes plus extracted Markdown. Its parsing-oriented behavior is unchanged.
 
-**Missing capability:** There is no standalone `download URL -o file` command in `gossamer/cli.py`. The extraction path requires the body to be recognized/parsed as a supported document or text format; it is not an opaque binary saver. The current fetch buffers the bounded body in memory, has no resume facility, and does not expose a download-specific minimum-size or PDF-magic validation contract. Error results are generic document-extraction errors rather than structured download outcomes such as 404, bot wall, timeout, too large, or invalid PDF.
+**Implementation status:** `download URL -o PATH` and the `download_file` Python/MCP tool are implemented in `0.9.12` (`gossamer/downloader.py`). The downloader streams under the configured/per-call byte cap to a temporary file, revalidates every redirect against SSRF and robots policy, then atomically installs the output. Existing destinations are preserved unless `overwrite=true`. PDF output is signature-checked when inferred from `.pdf` or explicitly requested. Errors distinguish URL/robots rejection, HTTP 404/access denial/rate limit, bot wall, too-large/too-small/partial responses, invalid/unexpected content, network/timeout, and local write failures. Success returns final URL, response metadata, size, hash, and path.
 
-**Conclusion:** The report's practical pain is valid, but “there is no download primitive” should be read as “there is no general-purpose standalone download primitive.” `extract --store` is an existing workaround for accessible, extractable files.
+**Scope limitation:** Resume (`Range`/`If-Range`) is not implemented yet. The downloader rejects a 206 response unless resume is explicitly designed and tested later. It never attempts a browser or access-control bypass. Tests use a local HTTP server and cover redirects, validation, PDF signature, min/max size, overwrite behavior, 404, bot wall, partial response, robots, and redirect SSRF revalidation.
+
+**Live smoke:** A W3C sample-PDF URL returned `robots_disallowed`; the downloader correctly made no request. This verifies the policy gate, not a successful external transfer. A future live success smoke should use a known robots-allowed source.
 
 ### F2 — DOI-to-OA resolver: confirmed
 
@@ -151,21 +153,22 @@ The document download path uses a static `httpx.Client`; it does not download bi
 
 **Compatibility:** This changes the location of provider errors in the JSON response. Document it in the changelog and skill/API notes; do not silently keep a union type for backwards compatibility.
 
-### Milestone C — add a standalone, validated download operation
+### Milestone C — standalone, validated download operation (implemented)
 
 **Priority:** P1; highest collection-workflow value  
+**Status:** Implemented in `0.9.12`; resume support is explicitly deferred.
 **Scope:** F1, groundwork for F6  
-**Likely files:** `gossamer/document.py` or a focused download module, `gossamer/agent_tools.py`, `gossamer/cli.py`, tool registry/MCP wiring if parity is desired, `tests/` download-specific module, README/QUICKREF/SKILL.
+**Files:** `gossamer/downloader.py`, `gossamer/agent_tools.py`, `gossamer/cli.py`, `gossamer/config.py`, download/CLI/MCP tests, README/QUICKREF/SKILL/AGENTS/ARCHITECTURE.
 
 1. Add a standalone URL-to-file API/command such as `download URL -o PATH`; do not require the document parser to understand the response.
 2. Reuse the existing URL validation, robots policy, domain throttling, redirect handling, response cap, and provenance conventions. Revalidate redirect destinations according to the project’s URL-safety policy.
 3. Stream to a temporary file in the destination directory and atomically rename only after successful validation. Avoid accumulating large files in memory. Preserve final URL, status, content type, byte count, and output path.
 4. Support a configurable minimum byte count. Validate expected formats by signature (e.g. `%PDF-`) when the user requests/infers that format; do not reject arbitrary binary downloads merely because they are not PDFs. Detect HTML/challenge responses masquerading as PDFs and report them as unexpected/bot-wall content rather than saving them as successful PDFs.
-5. Add resumable downloads only with correct HTTP Range/If-Range handling. Test 206 continuation, servers that ignore Range and return 200, validators/ETags, interrupted transfers, and cleanup of partial files. If robust resume support expands scope, ship the safe atomic non-resume path first and track resume as a follow-up rather than pretending it works.
+5. **Deferred:** Resume is not included in `0.9.12`. The downloader rejects 206 partial responses rather than saving an unrequested partial body. Implement `Range`/`If-Range`, validators, server-ignores-Range behavior, and interrupted-transfer cleanup only as a separately tested follow-up.
 6. Return stable error classes for not found, access denied/bot wall, timeout/network error, too large, too small, invalid signature/content type, and local write failure. Include a suggested manual-action path without attempting access-control bypass.
-7. Keep `extract URL --store` as the extraction-plus-storage operation; clarify the distinction in help/docs. Decide whether `download` should be an MCP tool as well as CLI/API so the documented CLI/MCP parity remains intentional.
+7. **Done:** Keep `extract URL --store` for extraction-plus-storage. Expose `download_file` through the Python toolbox/MCP registry and `download` through the CLI with the shared parameter contract.
 
-**Acceptance:** A local test server can serve a PDF, HTML challenge, truncated body, oversized body, redirect, 404, and resumable response. Tests verify bytes on disk, no partial final output on failure, correct provenance/error class, and URL-safety behavior.
+**Verification:** The local HTTP-server tests cover PDF bytes, HTML/challenge responses, too-small/oversized/partial responses, redirects, 404, overwrite behavior, robots checks, and SSRF revalidation. They verify no partial final file on failure and preserve provenance. Resume is not an acceptance criterion for this release.
 
 ### Milestone D — implement DOI-to-OA location
 
@@ -247,16 +250,16 @@ Prefer typed provider options over arbitrary raw URLs/query strings. Any raw-que
 - Keep provider live tests behind the existing `GOSSAMER_LIVE=1` gate. Use one request per live smoke where possible and honor provider-specific delays.
 - Run focused tests per milestone, then the complete pytest suite, `ruff check gossamer/`, Rust tests/clippy if Rust code is touched, and the project’s CLI/MCP parity checks.
 - Run a manual collection/provider smoke only after the relevant fixes: non-ASCII CLI output; arXiv one-request lookup; OpenAlex throttle simulation with a local/mocked response; one keyed Semantic Scholar live query when credentials are available; DOI location; download of a known accessible PDF; blocked-source classification.
-- This review document is documentation-only. Keep package version at **0.9.6** for this file; any later implementation/release version decision belongs to that implementation task.
+- Per the user’s instruction, every feature/fix commit increments the patch version by `0.0.1` and is committed/pushed. Plan-status edits are bundled with the related implementation commit; they do not receive a separate bump by themselves.
 
 ---
 
 ## 6. Suggested delivery order
 
-1. **A1 + A2 + A3:** encoding, arXiv request and retry correction, OpenAlex contact/throttle behavior.
-2. **B:** stable provider error envelope and nonzero CLI exit for hard provider failures.
-3. **C:** standalone download with validation and clear outcomes.
-4. **D:** DOI-to-OA candidate resolution.
+1. **A1 + A2 + A3:** implemented in `0.9.7`–`0.9.11`; arXiv live success remains upstream-dependent.
+2. **B:** implemented in `0.9.10` with a stable provider error envelope and nonzero CLI status.
+3. **C:** implemented in `0.9.12` with validation and classified outcomes; resume deferred.
+4. **D:** next — DOI-to-OA candidate resolution.
 5. **E1 + E2:** precise provider-native queries and the confirmed Semantic Scholar adapter; keep OpenAlex as the default.
 6. **E3:** explicit cross-provider merge, including Semantic Scholar, only after individual provider behavior is stable.
 7. **F:** compliant mirror handling and collection-recipe/docs synchronization.
