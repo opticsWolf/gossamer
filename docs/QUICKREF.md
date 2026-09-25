@@ -75,4 +75,4 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 
 ## Collection flow
 
-`research QUERY --category scholarly` → `check URL --mode status` → `locate-pdf DOI` (optional) → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI`. `--try-mirrors URL…` accepts only explicit caller-supplied OA/repository candidates; robots/SSRF checks apply to each. Review license/access terms before redistribution.
+`research QUERY --category scholarly` → `check URL --mode status` → `locate-pdf DOI` (optional) → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` when the DOI is detected from the file). `--try-mirrors URL…` accepts only explicit caller-supplied OA/repository candidates; robots/SSRF checks apply to each. Review license/access terms before redistribution.

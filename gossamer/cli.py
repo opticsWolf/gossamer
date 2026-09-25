@@ -179,11 +179,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("cite", help="Format DOIs/URLs as citations")
     p.add_argument("results", nargs="+",
-                   help="DOIs, URLs, or JSON result objects")
+                   help="DOIs, URLs, local PDF paths, or JSON result objects")
     p.add_argument("--style", default="bibtex",
                    choices=("bibtex", "csl-json", "apa", "mla"))
     p.add_argument("--enrich", action="store_true")
     p.add_argument("--no-dedupe", action="store_true")
+    p.add_argument("--from-pdf", action="store_true",
+                   help="Treat every input as a local PDF and cite its detected DOI")
     _common(p)
 
     return parser
@@ -244,7 +246,7 @@ def main(argv=None) -> int:
         "cache": lambda: toolbox.manage_cache(args.action),
         "cite": lambda: toolbox.export_citations(
             args.results, style=args.style, enrich=args.enrich,
-            dedupe=not args.no_dedupe),
+            dedupe=not args.no_dedupe, from_pdf=args.from_pdf),
     }
     try:
         output = commands[args.command]()

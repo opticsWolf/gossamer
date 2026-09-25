@@ -371,3 +371,60 @@ class TestFormatCitations:
 
     def test_empty_input(self):
         assert format_citations([], style="bibtex") == ""
+
+
+_MINIMAL_PDF = (
+    b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+    b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+    b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+    b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
+    b"4 0 obj\n<< /Length 68 >>\nstream\n"
+    b"BT /F1 12 Tf 72 720 Td (DOI: 10.1234/example-doi) Tj ET\n"
+    b"endstream\nendobj\n"
+    b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n"
+    b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+)
+
+_NO_DOI_PDF = _MINIMAL_PDF.replace(b"10.1234/example-doi", b"no identifier here")
+
+
+def test_find_doi_in_text_strips_trailing_punctuation():
+    from gossamer.citations import find_doi_in_text
+
+    assert find_doi_in_text("see DOI: 10.1234/example-doi.") == "10.1234/example-doi"
+    assert find_doi_in_text("https://doi.org/10.1234/ABC") == "10.1234/ABC"
+    assert find_doi_in_text("no identifier") is None
+
+
+def test_export_citations_detects_pdf_doi_automatically(tmp_path):
+    from gossamer.agent_tools import WebResearcherToolbox
+    from gossamer.config import ToolboxConfig
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(_MINIMAL_PDF)
+    tb = WebResearcherToolbox(ToolboxConfig(cache_dir=str(tmp_path / "cache")))
+    out = tb.export_citations([str(pdf)], style="bibtex")
+    assert "10.1234/example-doi" in out
+
+
+def test_export_citations_from_pdf_flag_and_missing_doi(tmp_path):
+    import json as _json
+
+    from gossamer.agent_tools import WebResearcherToolbox
+    from gossamer.config import ToolboxConfig
+
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(_MINIMAL_PDF)
+    tb = WebResearcherToolbox(ToolboxConfig(cache_dir=str(tmp_path / "cache")))
+    out = tb.export_citations([str(pdf)], style="bibtex", from_pdf=True)
+    assert "10.1234/example-doi" in out
+
+    plain = tmp_path / "note.pdf"
+    plain.write_bytes(_NO_DOI_PDF)
+    missing = _json.loads(tb.export_citations([str(plain)], style="bibtex", from_pdf=True))
+    assert "no DOI found" in missing["error"]
+
+    absent = _json.loads(
+        tb.export_citations([str(tmp_path / "absent.pdf")], style="bibtex", from_pdf=True)
+    )
+    assert "PDF not found" in absent["error"]

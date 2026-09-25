@@ -286,6 +286,19 @@ _FORMATTERS = {
 FORMAT_STYLES = tuple(_FORMATTERS.keys())
 
 
+_DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>\]}\)]+", re.IGNORECASE)
+
+
+def find_doi_in_text(text: str) -> Optional[str]:
+    """Return the first DOI in *text*, stripped of trailing punctuation."""
+    if not isinstance(text, str) or not text:
+        return None
+    match = _DOI_RE.search(text)
+    if not match:
+        return None
+    return match.group(0).rstrip(".,;:")
+
+
 def format_citations(
     results,
     style: str = "bibtex",

@@ -16,7 +16,7 @@ The initial review made no source changes. Implementation began after approval; 
 
 ## 1. Executive summary
 
-The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), the opt-in Semantic Scholar adapter (`0.9.15`), explicit scholarly DOI/arXiv merge (`0.9.16`), and compliant caller-supplied mirrors (`0.9.17`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is collection workflow polish, the stale patent-routing instruction, and deferred OpenAlex fielded search/resume.
+The baseline review reproduced three reliability issues: cp1252 stdout rejected Greek `μ`; arXiv returned HTTP 406; and provider exceptions produced a dict inside `results` while the CLI exited successfully. Implementation has started. **Completed:** UTF-8 CLI output (`0.9.7`), status-aware transient HTTP retries (`0.9.8`), arXiv-specific typed 406/rate-limit reporting (`0.9.9`), a stable provider-error envelope/CLI status (`0.9.10`), configured OpenAlex `mailto` handling without a fabricated default (`0.9.11`), a standalone validated file downloader (`0.9.12`), DOI-to-OA candidate resolution (`0.9.13`), OpenAlex native `filter`/`select` support (`0.9.14`), the opt-in Semantic Scholar adapter (`0.9.15`), explicit scholarly DOI/arXiv merge (`0.9.16`), compliant caller-supplied mirrors (`0.9.17`), collection/patent-routing docs (`0.9.18`), OpenAlex title/author search (`0.9.19`), download resume (`0.9.20`), Unpaywall fallback (`0.9.21`), and cite-from-PDF (`0.9.22`). The arXiv service is still returning an upstream 406 from this network; code identifies it and avoids repeated requests rather than pretending headers solved the edge limit. Remaining work is lower-priority cache observability and the optional PATH shim.
 
 Several findings need qualification:
 
@@ -27,7 +27,7 @@ Several findings need qualification:
 - Cross-provider research is explicitly opt-in in `0.9.16`; it searches sequentially, merges only on DOI/arXiv identifiers, and retains per-provider raw records and conflicts.
 - F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
-Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) stable provider-error contract; (3) validated download; (4) DOI-to-OA lookup; (5) OpenAlex filter/select; (6) Semantic Scholar; (7) identifier-based scholarly merge; (8) policy-checked caller-supplied mirrors and collection workflow docs. Remaining work is lower-priority cache observability, `cite --from-pdf`, optional PATH shim, and deferred OpenAlex fielded-search/download resume.
+Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) stable provider-error contract; (3) validated download; (4) DOI-to-OA lookup; (5) OpenAlex filter/select; (6) Semantic Scholar; (7) identifier-based scholarly merge; (8) policy-checked caller-supplied mirrors and collection workflow docs; (9) OpenAlex title/author search; (10) download resume; (11) Unpaywall fallback; (12) cite-from-PDF. Remaining work is lower-priority cache observability and the optional PATH shim.
 
 ---
 
@@ -100,7 +100,7 @@ Implemented in `0.9.16`. `research_by_category` accepts an explicit `providers=[
 ### Smaller workflow items
 
 - **Done:** `check --mode status` and `cache --action prune|clear|reset` are documented in the Quickref and the skill now presents the end-to-end collection recipe. Cache-hit observability can still be improved as a lower-priority UX follow-up.
-- There is no `cite --from-pdf` path. Treat that as a later convenience feature; first get DOI extraction/resolution and file acquisition right.
+- **Done (`0.9.22`):** `cite FILE.pdf [--from-pdf]` detects the DOI from extracted text/metadata (raw-byte fallback) and cites it; PDFs without a detectable DOI return a structured error instead of a guessed citation.
 - Add a concise explanation of cache behavior to the workflow docs if users still cannot tell when a result is cached after using the existing commands.
 - **Done (`0.9.18`):** Correct `AGENTS.md` patent routing: EPO/KIPRIS/PatentsView/Lens are key-gated; Google Patents is keyless number lookup only, not free-text search.
 
@@ -236,7 +236,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 2. **Done (`0.9.17`):** Every candidate is independently checked against SSRF, robots, and rate limits. Exhausted bot-wall/access-denied chains return `human_action_needed` with attempts. No browser automation or access-control bypass is used.
 3. **Done (`0.9.18`):** Update the skill/README/Quickref with **search → check → locate → download → extract/store → cite**, current commands, `max_pages`/budget guidance, and cache maintenance.
 4. **Done:** Document the distinction: `download URL -o PATH` saves an opaque file; `extract URL --store` also parses and stores supported documents. Keep that separation clear in future workflow docs.
-5. Defer `cite --from-pdf` until download and metadata extraction are stable; then add PDF metadata/DOI detection and tests rather than guessing citations from arbitrary text.
+5. **Done (`0.9.22`):** `cite --from-pdf` detects PDF DOI via stable extraction plus a raw-byte fallback, with tests; unknown PDFs error rather than guessing.
 6. **Done (`0.9.18`):** Fix the stale `AGENTS.md` patent statement and preserve the distinction that `google-patents` is lookup-only, not free-text search.
 7. Do not add a PATH shim unless users still need it after the skill’s existing venv command is made prominent. Treat cache-hit visibility as a usability follow-up, not a blocker for download correctness.
 
@@ -268,6 +268,7 @@ Fielded `title:`/`author:` search is deferred until the provider's current gramm
 6. **E2:** completed in `0.9.15` — opt-in Semantic Scholar adapter; OpenAlex remains the default.
 7. **E3:** completed in `0.9.16` — explicit identifier-based scholarly merge.
 8. **F6:** completed in `0.9.17` — caller-supplied policy-checked mirror attempts.
-9. **Docs (`0.9.18`):** collection recipe and patent routing wording completed. Lower-priority follow-ups: cache-hit observability, `cite --from-pdf`, optional PATH shim, download resume, and OpenAlex fielded search.
+9. **Docs (`0.9.18`):** collection recipe and patent routing wording completed.
+10. **Fielded search (`0.9.19`), resume (`0.9.20`), Unpaywall (`0.9.21`), cite-from-PDF (`0.9.22`).** Remaining follow-ups: cache-hit observability and the optional PATH shim.
 
 This order fixes tool-breaking defects before adding the acquisition and precision features that motivated the hunt, while keeping external API work opt-in and policy-compliant.

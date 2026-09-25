@@ -532,6 +532,12 @@ TOOL_REGISTRY = (
                 True,
                 "Collapse records that share a DOI or URL before formatting.",
             ),
+            ToolParam(
+                "from_pdf",
+                bool,
+                False,
+                "Treat every string input as a local PDF path and cite its detected DOI; PDFs without a DOI return an error.",
+            ),
         ),
     ),
     ToolSpec(

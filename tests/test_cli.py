@@ -68,6 +68,7 @@ def test_crawl_dispatch_through_main(monkeypatch, capsys):
     assert _parse(["cache", "--action", "clear"]).action == "clear"
     cite = _parse(["cite", "10.1/abc", "--style", "apa"])
     assert (cite.results, cite.style) == (["10.1/abc"], "apa")
+    assert _parse(["cite", "paper.pdf", "--from-pdf"]).from_pdf is True
 
 
 def test_categories_runs_offline(capsys, tmp_path):

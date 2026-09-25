@@ -626,12 +626,42 @@ class WebResearcherToolbox:
         ]
         return json.dumps(payload, indent=2)
 
+    def _doi_from_pdf(self, path) -> tuple[Optional[str], Optional[str]]:
+        """Extract the first DOI from a local PDF; return (doi, error)."""
+        try:
+            data = Path(path).read_bytes()
+        except OSError as exc:
+            return None, f"cannot read PDF {path}: {exc}"
+        texts: list[str] = []
+        try:
+            raw = self._doc.extract_document(str(path))
+            try:
+                payload = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                payload = None
+            if isinstance(payload, dict) and isinstance(payload.get("content"), str):
+                texts.append(payload["content"])
+        except Exception:  # noqa: BLE001 - fall back to raw-byte scan
+            pass
+        try:
+            texts.append(data.decode("latin-1", errors="ignore"))
+        except Exception:  # noqa: BLE001 - unreadable bytes mean no DOI
+            pass
+        from gossamer.citations import find_doi_in_text
+
+        for text in texts:
+            doi = find_doi_in_text(text)
+            if doi:
+                return doi, None
+        return None, f"no DOI found in PDF {path}; pass a DOI explicitly"
+
     def export_citations(
         self,
         results,
         style: str = "bibtex",
         enrich: bool = False,
         dedupe: bool = True,
+        from_pdf: bool = False,
     ) -> str:
         """Reconstruct and export citations from results (Plan workstream 1).
 
@@ -655,6 +685,12 @@ class WebResearcherToolbox:
             in a missing venue / abstract (best-effort; never raises).
         dedupe:
             Collapse records sharing a DOI or URL before formatting.
+        from_pdf:
+            When true, every string input must be a local PDF path whose DOI
+            is detected from its text/metadata. When false (default), local
+            ``.pdf`` files are still detected automatically; other strings
+            keep the DOI/URL/JSON interpretation. PDFs without a detectable
+            DOI yield a JSON error rather than a guessed citation.
 
         Returns the formatted citations as text (empty-result case returns a
         JSON error dict so callers never branch on an empty string). Never
@@ -678,8 +714,27 @@ class WebResearcherToolbox:
                 indent=2,
             )
         parsed = []
+        pdf_errors: list[str] = []
         for item in results:
             if isinstance(item, str):
+                candidate = item.strip()
+                wants_pdf = bool(from_pdf) or (
+                    candidate.lower().endswith(".pdf") and Path(candidate).is_file()
+                )
+                if wants_pdf:
+                    pdf_path = Path(candidate)
+                    if not pdf_path.is_file():
+                        pdf_errors.append(f"PDF not found: {item}")
+                        continue
+                    if pdf_path.suffix.lower() != ".pdf":
+                        pdf_errors.append(f"not a PDF file: {item}")
+                        continue
+                    doi, error = self._doi_from_pdf(pdf_path)
+                    if error is not None:
+                        pdf_errors.append(error)
+                        continue
+                    parsed.append(doi)
+                    continue
                 try:
                     loaded = json.loads(item)
                 except (json.JSONDecodeError, TypeError):
@@ -688,6 +743,11 @@ class WebResearcherToolbox:
                     parsed.append(loaded)
                     continue
             parsed.append(item)
+        if pdf_errors:
+            return json.dumps(
+                {"error": "; ".join(pdf_errors), "count": 0},
+                indent=2,
+            )
         try:
             text = format_citations(
                 parsed, style=style, enrich=enrich, dedupe=dedupe
