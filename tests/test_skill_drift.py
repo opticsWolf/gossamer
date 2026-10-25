@@ -5,14 +5,17 @@ It lives inside the package (not at the repo root) so maturin copies it
 into the wheel; these tests read it through ``importlib.resources``, the
 same path an installed release uses.
 
-Every tool name the skill names must exist in the tool registry; every
-CLI subcommand the skill teaches must exist in the argparse parser. A doc
-edit naming a phantom tool fails here, not in production.
+Every tool name the skill names must exist in the tool registry, the
+written call signatures must match the registry's parameters and defaults
+exactly, and every CLI subcommand the skill teaches must exist in the
+argparse parser. A doc edit naming a phantom tool or a stale default
+fails here, not in production.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import re
 from pathlib import Path
@@ -93,6 +96,68 @@ def test_skill_names_only_registered_tools():
         f"registry/skill drift: missing={sorted(registered - named)}, "
         f"phantom={sorted(named - registered)}"
     )
+
+
+_REQUIRED = object()  # marker: parameter written without a default
+
+
+def _signatures() -> dict:
+    """Parse the skill's Tool call signatures into ``{tool: [(param, default)]}``.
+
+    ``default`` is ``_REQUIRED`` for parameters written without one; string
+    values stay quoted so the caller can ``ast.literal_eval`` them.
+    """
+    text = _skill()
+    section = re.search(r"## Tool call signatures(.*?)(?=\n## )", text, re.DOTALL)
+    assert section, "SKILL.md has no 'Tool call signatures' section"
+    calls: dict = {}
+    buffer: list[str] = []
+    for block in re.findall(r"```python\n(.*?)```", section.group(1), re.DOTALL):
+        for raw in block.splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            buffer.append(line)
+            joined = " ".join(buffer)
+            if not joined.endswith(")"):
+                continue
+            buffer.clear()
+            match = re.fullmatch(r"(\w+)\((.*)\)", joined)
+            assert match, f"unparseable signature line: {joined!r}"
+            name, params_text = match.groups()
+            params = []
+            for part in filter(None, (p.strip() for p in params_text.split(","))):
+                p_name, sep, p_default = part.partition("=")
+                params.append(
+                    (p_name.strip(), _REQUIRED if not sep else p_default.strip())
+                )
+            calls[name] = params
+    return calls
+
+
+def test_tool_signatures_match_the_registry():
+    """The written call signatures cannot drift from TOOL_REGISTRY."""
+    calls = _signatures()
+    registry = {spec.name: spec for spec in TOOL_REGISTRY}
+    assert set(calls) == set(registry), (
+        f"signature drift: missing={sorted(set(registry) - set(calls))}, "
+        f"phantom={sorted(set(calls) - set(registry))}"
+    )
+    for name, params in calls.items():
+        spec = registry[name]
+        assert [p_name for p_name, _ in params] == [p.name for p in spec.params], (
+            f"{name}: signature parameters/order differ from the registry"
+        )
+        for (p_name, raw_default), p in zip(params, spec.params):
+            if raw_default is _REQUIRED:
+                assert p.required, f"{name}.{p_name} should show a default"
+                continue
+            assert not p.required, f"{name}.{p_name} is required but shows a default"
+            shown = ast.literal_eval(raw_default)
+            assert shown == p.default, (
+                f"{name}.{p_name}: skill shows {shown!r}, "
+                f"registry default is {p.default!r}"
+            )
 
 
 # ────────────────────────────────────────────────────────────────

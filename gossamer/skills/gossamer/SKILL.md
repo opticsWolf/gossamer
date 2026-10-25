@@ -37,7 +37,67 @@ per-domain rate-limited, and token-budgeted.
   Run via the project venv
   (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows); `skills
   show gossamer` prints this file, and `skills install` copies it into
-  Claude Code / OpenCode skill directories.
+  Claude Code / OpenCode skill directories. CLI defaults:
+  `--max-results 5` (search/research), `--depth 5`, `--max-tokens 0`
+  (budget default), crawl `--max-depth 3 --max-pages 15 --min-score 0.05`.
+
+## Tool call signatures (defaults shown; one JSON envelope per call)
+
+Required parameters have no default. `None`/empty means "not supplied";
+`0` budgets mean "toolbox default".
+
+### Search & read
+
+```python
+web_search(query, search_only=False, max_results=5, depth=5,
+           max_tokens=0, provider="duckduckgo")
+inspect_html_page(url, use_smart="auto", query=None, offset=0,
+                  max_chunks=1, structured=False)
+batch_inspect_pages(urls)
+crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
+      min_score=0.05, excerpts=False, search_prior=False, seed_urls=[],
+      use_smart="auto")
+```
+
+`crawl` caps: `max_depth` hard cap 5, `max_pages` 1-50 (failed fetches do
+not count). `use_smart="browser"` needs the `gossamer-web[browser]` extra.
+
+### Documents & files
+
+```python
+extract_document(source, pages=None, structured=False, store=False,
+                 store_dir=None, include_images=False, tables_as="json")
+download_file(source, output_path, min_bytes=1, max_bytes=0,
+              expected_format="auto", overwrite=False, resume=False,
+              fallback_urls=[])
+discover_resources(url)
+check_sources(urls, mode="status")
+```
+
+`extract_document(pages="10-20")` is 1-based inclusive for PDFs (sheet
+range for XLSX) and cannot combine with `store=True`; `include_images`
+needs `store=True` and is PDF-only. `download_file(max_bytes=0)` uses the
+configured cap; `fallback_urls` are caller-supplied mirrors, each checked
+independently. `check_sources(mode="status")` is a HEAD probe;
+`"content"` is a GET for hosts that reject HEAD.
+
+### Research & citations
+
+```python
+research_by_category(query=None, category=None, max_results=5,
+                     provider=None, filter=None, select=None, title=None,
+                     author=None, providers=[])
+locate_pdf(doi)
+export_citations(results, style="bibtex", enrich=False, dedupe=True,
+                 from_pdf=False)
+manage_cache(action="prune")
+```
+
+`research_by_category(query)` with no category auto-routes; omit `query`
+entirely to get the provider taxonomy. `filter`/`select`/`title`/`author`
+are valid only with `provider="openalex"` and rejected otherwise;
+`providers=[...]` is scholarly-only and mutually exclusive with
+`provider`. `locate_pdf` locates candidates, it never downloads.
 
 ## Routing (don't guess — classify first)
 

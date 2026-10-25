@@ -4,6 +4,22 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.33] — Full tool call signatures in the skill (CodeRadar parity)
+
+- New "Tool call signatures" section in the bundled SKILL.md: a Python
+  call signature for every one of the 12 registry tools with the exact
+  registry defaults, grouped search/read, documents/files, and
+  research/citations, plus the caps and exclusivity rules that matter
+  (`crawl` max_depth 5 / max_pages 1-50, `pages` vs `store`,
+  OpenAlex-only `filter`/`select`/`title`/`author`, scholarly-only
+  `providers`, `max_bytes=0` = configured cap). The CLI Access bullet
+  gains the defaults line (`--max-results 5`, `--depth 5`, crawl limits).
+- New drift gate `test_tool_signatures_match_the_registry`: the written
+  signatures are parsed from the skill and must match TOOL_REGISTRY
+  exactly — tool set, parameter names, parameter order, and every shown
+  default value (a stale default in the doc now fails the suite, not a
+  production call).
+
 ## [0.9.32] — Complete the CLI help
 
 - Every subcommand, positional, and option now carries a help string
