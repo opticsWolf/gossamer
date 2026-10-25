@@ -79,6 +79,8 @@ Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) sta
 
 **Live smoke:** A W3C sample-PDF URL returned `robots_disallowed`; the downloader correctly made no request. This verifies the policy gate, not a successful external transfer. A future live success smoke should use a known robots-allowed source.
 
+**Live verification 2026-10-25:** `https://www.rfc-editor.org/rfc/rfc9110.pdf` (robots.txt allows `User-agent: *` on `/rfc/*.pdf`; only `/rfc/authors/`, `/rfc/rerendered/`, `/rfc/v3test/` are Disallowed) downloaded live through the real toolbox path: 2,858,365 bytes, `application/pdf`, atomic install, no `.part` leftovers. The opt-in live smoke `tests/test_live_smoke.py::test_download_live_robots_allowed_source` now exercises robots check → URL/SSRF validation → streaming → PDF signature check end to end against a robots-allowed host; the robots-disallowed gate remains covered by the offline local-server tests.
+
 ### F2 — DOI-to-OA resolver: implemented with OpenAlex first, Unpaywall fallback
 
 `locate_pdf` / `gossamer locate-pdf DOI` is implemented in `0.9.13`. It normalizes bare DOI, `doi:` prefix, and DOI resolver URL inputs; uses OpenAlex's documented `works?filter=doi:https://doi.org/<doi>` query; and reads `best_oa_location` plus other OA `locations` from the preserved raw work record. Results rank the best location first, deduplicate URLs, and include PDF or landing-page kind, source, license, version, and work metadata. `not_found`, `closed_access`, and open-access-without-location are distinct from provider/invalid-input errors. The resolver does not download files; use `download_file` separately.

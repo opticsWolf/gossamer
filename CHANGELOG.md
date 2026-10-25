@@ -4,6 +4,16 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.27] — Live download smoke against a robots-allowed source
+
+- New opt-in live smoke `test_download_live_robots_allowed_source`
+  (GOSSAMER_LIVE=1) downloads `https://www.rfc-editor.org/rfc/rfc9110.pdf`
+  through the real toolbox path: live robots check (rfc-editor.org allows
+  `User-agent: *` on `/rfc/*.pdf`), URL/SSRF validation, streaming, PDF
+  signature check, atomic install, no `.part` leftovers. Verified live
+  2026-10-25 (2,858,365 bytes, `application/pdf`). Closes the plan item that
+  until now only had a robots-disallowed gate verification (W3C sample).
+
 ## [0.9.26] — arXiv live-smoke hardening (also ships the google-patents provider committed without a bump at 0.9.25)
 
 - Keyless `google-patents` lookup provider in the `patent` category

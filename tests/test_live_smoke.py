@@ -18,6 +18,8 @@ keyless-capable, but its live smoke requires a key to avoid the shared pool.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -443,3 +445,42 @@ def test_patentsview_search(live):
     assert results, "PatentsView returned no results"
     _assert_common_result(results[0], source="patentsview")
     assert results[0]["id"]
+
+
+# ────────────────────────────────────────────────────────────────
+# Live download path (verified robots-allowed source)
+# ────────────────────────────────────────────────────────────────
+
+@pytest.mark.live
+def test_download_live_robots_allowed_source(live, tmp_path):
+    # Verified live 2026-10-25: rfc-editor.org's robots.txt allows
+    # ``User-agent: *`` on /rfc/*.pdf (only /rfc/authors/, /rfc/rerendered/
+    # and /rfc/v3test/ are Disallowed). RFC 9110 (HTTP semantics, ~2.9 MB)
+    # is a stable, long-lived document, so this exercises the *real*
+    # download path — live robots check, SSRF/URL validation, streaming,
+    # PDF signature check, atomic install — against a host the policy is
+    # allowed to fetch. The earlier W3C sample-PDF attempt was
+    # robots-disallowed, which verified the gate but never a successful
+    # external transfer.
+    from gossamer.agent_tools import WebResearcherToolbox
+    from gossamer.config import ToolboxConfig
+
+    tb = WebResearcherToolbox(ToolboxConfig(
+        cache_dir=str(tmp_path / "cache"),
+        max_response_bytes=16 * 1024 * 1024,
+        domain_delay=0,
+        respect_robots=True,
+    ))
+    output = tmp_path / "rfc9110.pdf"
+    payload = json.loads(tb.download_file(
+        "https://www.rfc-editor.org/rfc/rfc9110.pdf",
+        str(output),
+        expected_format="pdf",
+    ))
+
+    assert payload["status"] == "downloaded", payload
+    assert payload["bytes"] > 1_000_000
+    assert payload["content_type"].startswith("application/pdf")
+    assert payload["final_url"].startswith("https://www.rfc-editor.org/")
+    assert output.read_bytes()[:5] == b"%PDF-"
+    assert list(tmp_path.glob("*.part")) == []
