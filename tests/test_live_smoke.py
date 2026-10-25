@@ -18,6 +18,7 @@ keyless-capable, but its live smoke requires a key to avoid the shared pool.
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from gossamer.search_providers import ProviderRateLimitError
@@ -124,6 +125,13 @@ def test_arxiv_id_list_fetch(live):
         one = prov.fetch("1707.06376")
     except ProviderRateLimitError as exc:
         pytest.skip(f"arXiv is temporarily rate-limiting this network: {exc}")
+    except httpx.TransportError as exc:
+        # Live verification 2026-10-25: the edge also fails by *not
+        # answering* (20 s ReadTimeout) rather than 406-ing. Either way the
+        # condition is upstream (IP/edge state), the adapter sends no
+        # further requests, and a smoke test must report a skip — not a
+        # red suite — for a network the caller does not control.
+        pytest.skip(f"arXiv upstream edge is not responding from this network: {exc}")
     assert one and one[0]["id"].startswith("1707.06376")
     _assert_common_result(one[0], source="arxiv")
     assert one[0]["title"]

@@ -4,7 +4,7 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
-## [Unreleased] (still 0.9.25 — no version bump)
+## [0.9.26] — arXiv live-smoke hardening (also ships the google-patents provider committed without a bump at 0.9.25)
 
 - Keyless `google-patents` lookup provider in the `patent` category
   (listed last, after `epo`/`kipris`/`patentsview`/`lens`, so the
@@ -22,6 +22,12 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   (README/QUICKREF/SKILL.md) — Windows/macOS only, no Linux wheels,
   so it stays an extra and static fetch remains the default; SKILL.md
   patent routing now lists `lens` + `google-patents`.
+- arXiv live smoke (opt-in, one paced request) now skips with a reason on
+  any upstream transport failure, not only the typed 406: live
+  verification on 2026-10-25 saw the edge fail by not answering at all
+  (20 s ReadTimeout after successful connect/TLS) rather than 406-ing.
+  Both are upstream IP/edge conditions; the adapter's truthful-UA /
+  Atom-Accept request shape and offline behavior are unchanged.
 
 ## [0.9.25] — Vendor meta_oxide (fork remote gone)
 

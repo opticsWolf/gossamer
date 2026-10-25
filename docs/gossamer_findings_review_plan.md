@@ -47,6 +47,8 @@ Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) sta
 
 **Implementation conclusion:** Do not spoof a browser or retry 406 repeatedly. Keep the explicit Atom Accept and truthful project UA, map arXiv 406 to an actionable typed rate-limit error (include `Retry-After` if the service supplies one), and let the caller wait rather than extending a possible edge block. This improves failure handling; a successful live response remains dependent on arXiv availability and the source IP's quota state.
 
+**Live verification 2026-10-25:** The edge failure mode has shifted: a single paced `id_list` request now answers with **no response at all** (20 s `ReadTimeout` after successful connect/TLS), not a fast 406. Both are upstream IP/edge conditions outside the client's control. The live smoke (`tests/test_live_smoke.py::test_arxiv_id_list_fetch`) now skips with a reason on any upstream transport failure in addition to the typed 406, so a throttled/blackholed network reports a skip instead of a red suite. One paced request per live run is unchanged; a successful live response remains upstream-dependent.
+
 **Coverage:** `tests/test_live_smoke.py` now makes one default-paced `id_list` request and skips with a clear explanation only when the provider returns the typed 406 rate-limit result. Offline tests pin headers, parsing, and exactly one attempt for the 406. Ordinary tests remain offline.
 
 ### B3 — provider error shape and CLI status: confirmed and fixed
