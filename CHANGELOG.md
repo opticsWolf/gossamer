@@ -4,6 +4,15 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.31] — Skill content catches up with the new surface
+
+- The bundled SKILL.md now teaches what 0.9.29 added: the
+  `skills://gossamer` MCP resource, the `skills list|show|install` CLI
+  subcommand (14 subcommands total), and the documented OpenAlex 429
+  taxonomy (per-second vs daily-budget `not_enough_credits` with
+  `X-RateLimit-Reset`). The drift test's expected CLI-command set gains
+  `skills`, keeping the skill/registry equality checks honest.
+
 ## [0.9.30] — Gate the live browser tests (slow + live markers)
 
 - The default suite is deterministic again. The three flaky tests that hit

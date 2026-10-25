@@ -118,6 +118,7 @@ def test_skill_names_only_existing_cli_commands():
     expected = {
         "search", "research", "inspect", "batch", "download", "locate-pdf",
         "extract", "check", "discover", "crawl", "cache", "cite", "categories",
+        "skills",
     }
     assert commands == expected, (
         f"CLI bullet drift: unexpected={sorted(commands - expected)}, "

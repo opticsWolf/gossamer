@@ -18,8 +18,10 @@ per-domain rate-limited, and token-budgeted.
   `batch_inspect_pages`, `download_file`, `locate_pdf`, `extract_document`,
   `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
   `export_citations`, `check_sources`.
-- **CLI** (identical JSON, no MCP setup; 13 commands — all 12 MCP tools
-  1:1 plus `categories`): `search QUERY [--max-results N --max-tokens T
+- **MCP resource** `skills://gossamer`: this file, readable from any MCP
+  host without a repo checkout.
+- **CLI** (identical JSON, no MCP setup; 14 subcommands — the 12 MCP tools
+  1:1, plus `categories` and `skills`): `search QUERY [--max-results N --max-tokens T
   --search-only --provider P --depth D]` · `research QUERY [--category C
   --provider P --providers P… --max-results N --filter F --select F --title T --author A]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
@@ -30,8 +32,12 @@ per-domain rate-limited, and token-budgeted.
   --min-score S --same-host --excerpts --search-prior --seed-urls U…
   --use-smart auto|browser|static]` · `cache [--action prune|clear|reset]` ·
   `cite DOI|URL|PDF… [--style bibtex|csl-json|apa|mla --enrich --no-dedupe --from-pdf]` ·
-  `categories`. Run via the project venv
-  (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows).
+  `categories` ·
+  `skills list|show|install [--dest DIR…] [--project] [--skill NAME…] [--force]`.
+  Run via the project venv
+  (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows); `skills
+  show gossamer` prints this file, and `skills install` copies it into
+  Claude Code / OpenCode skill directories.
 
 ## Routing (don't guess — classify first)
 
@@ -80,7 +86,10 @@ Keyed providers raise an actionable error naming the exact variable
 (e.g. `GOSSAMER_EPO_KEY`) — surface it to the user instead of retrying.
 OpenAlex works keyless for casual use; `GOSSAMER_OPENALEX_KEY` is optional
 and raises the API's daily budget. Set `GOSSAMER_OPENALEX_EMAIL` to send your
-own `mailto` contact; gossamer does not invent a default email.
+own `mailto` contact; gossamer does not invent a default email. OpenAlex
+429s come in two documented kinds: a per-second rate limit (wait a moment
+and retry) and a daily credit-budget refusal (`not_enough_credits` — wait
+for the daily reset; the typed error carries `X-RateLimit-Reset` seconds).
 Semantic Scholar can run keyless, but its unauthenticated pool is shared and
 may return 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for the
 individual one-request-per-second allowance; if keyless use returns 429,
