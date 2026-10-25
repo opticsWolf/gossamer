@@ -4,6 +4,11 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.35] — Tests badge one-off
+
+- The 0.9.34 badge (11110) predates 0.9.33's signature-drift test;
+  recalculated from the release-gate run: 11111 passed / 34 skipped.
+
 ## [0.9.34] — Documentation sweep (stale claims from the 0.9.26-0.9.33 work)
 
 - README: Tests badge recalculated (11110 passing / 34 skipped — the old
