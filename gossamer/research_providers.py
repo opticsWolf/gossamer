@@ -73,6 +73,20 @@ def _package_version() -> str:
 
 _UA = f"gossamer/{_package_version()}"
 
+def _int_header(headers, name: str) -> Optional[int]:
+    """Read an integer-valued header (e.g. ``X-RateLimit-Reset``).
+
+    Returns None when the header is absent or unparsable so callers can
+    distinguish "not supplied" from a real value.
+    """
+    raw = headers.get(name) if headers is not None else None
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
 def _parse_lat_lon(lat_lon: Union[str, Tuple[float, float], List[float]]) -> Tuple[float, float]:
     """Accept ``"lat,lon"`` or ``(lat, lon)`` and return ``(float, float)``."""
     if isinstance(lat_lon, (tuple, list)):
@@ -83,11 +97,22 @@ def _parse_lat_lon(lat_lon: Union[str, Tuple[float, float], List[float]]) -> Tup
 class OpenAlexAdapter(ResourceAdapter):
     """OpenAlex scholarly-works search (https://docs.openalex.org).
 
-    Works without a key for casual use; an optional free API key increases
-    the daily budget. If the operator configures ``GOSSAMER_OPENALEX_EMAIL``,
-    it is sent as ``mailto`` and in the client identification headers. No
-    placeholder contact address is fabricated. The documented request-rate
-    ceiling is 100 requests per second.
+    Works without a key for casual use; a free API key raises the daily
+    credit budget 10x (and the per-second tier from 10 to 30 requests/s).
+    If the operator configures ``GOSSAMER_OPENALEX_EMAIL``, it is sent as
+    ``mailto`` and in the client identification headers. No placeholder
+    contact address is fabricated.
+
+    Rate contract (official docs, verified 2026-10-25; docs last updated
+    2026-10-15): per-second ceilings are 10 req/s keyless, 30 req/s with a
+    free key (50 on annual plans); every response carries
+    ``X-RateLimit-Limit`` (daily credit budget), ``X-RateLimit-Remaining``,
+    ``X-RateLimit-Credits-Used`` and ``X-RateLimit-Reset`` (seconds until
+    the daily reset at midnight UTC). A 429 is either a per-second rate
+    limit ("wait a moment and retry") or a daily-budget refusal (body
+    ``"error": "not_enough_credits"``; run the request after the reset).
+    Exponential backoff on 429/5xx is the documented retry guidance; the
+    documented error contract has no body-level ``retryAfter`` field.
     """
 
     name = "openalex"
@@ -109,7 +134,8 @@ class OpenAlexAdapter(ResourceAdapter):
         self.api_key = api_key or _env_get("GOSSAMER_OPENALEX_KEY", "")
         self._last_search = 0.0
         self._last_fetch = 0.0
-        # <100 rps ceiling; keep a conservative gap with light jitter.
+        # Documented keyless tier is 10 req/s (2026-10-25); keep a
+        # conservative gap with light jitter.
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.25),
             fetch_delay,
@@ -131,8 +157,69 @@ class OpenAlexAdapter(ResourceAdapter):
         return url, p, h
 
     def parse_headers(self, status, headers):
-        # OpenAlex exposes no X-RateLimit headers; report the documented ceiling.
-        return RateState(rps=100.0)
+        """Read the documented ``X-RateLimit-*`` headers into a RateState.
+
+        OpenAlex semantics differ from the GitHub/Crossref family:
+        ``X-RateLimit-Limit`` is the *daily credit budget* (e.g. 10000),
+        not a per-second rate, so it is deliberately not mapped onto
+        ``RateState.rps`` — the documented per-second tier is used instead
+        (10/s keyless, 30/s with a free key). ``X-RateLimit-Reset`` is
+        seconds until the daily reset (midnight UTC), which is exactly the
+        documented "wait for the reset" hint for daily-budget 429s.
+        """
+        state = _rate_state_from_headers(headers, default_rps=10.0)
+        state.rps = 30.0 if self.api_key else 10.0
+        if state.remaining == 0:
+            state.exhausted = True
+        return state
+
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        """``raise_for_status`` with the documented OpenAlex 429 taxonomy.
+
+        Verified against the official docs (2026-10-25): a 429 is either a
+        per-second rate limit (``"Rate limit exceeded"``; the documented
+        fix is "wait a moment and retry", so it stays a plain
+        :class:`httpx.HTTPStatusError` and the shared bounded retry policy
+        applies) or a *daily credit-budget* refusal (body
+        ``"error": "not_enough_credits"``; the request was refused before
+        it ran and only the daily reset helps). The budget refusal is
+        converted to a typed :class:`ProviderRateLimitError` whose retry
+        hint is the documented ``X-RateLimit-Reset`` seconds-until-reset
+        header. No undocumented body field (e.g. a free-text
+        ``retryAfter``) is parsed.
+        """
+        try:
+            response.raise_for_status()
+            return
+        except httpx.HTTPStatusError as exc:
+            if response.status_code != 429:
+                raise
+            status_exc = exc
+        reset = _int_header(response.headers, "X-RateLimit-Reset")
+        try:
+            body = response.json()
+            error_name = body.get("error") if isinstance(body, dict) else None
+        except ValueError:
+            # Non-JSON error bodies (edge responses) fall through to the
+            # plain retryable 429 path.
+            error_name = None
+        if error_name == "not_enough_credits":
+            retry_after = float(reset) if reset is not None else None
+            message = (
+                "OpenAlex daily credit budget is exhausted (HTTP 429 "
+                "not_enough_credits); the request was refused before it ran. "
+            )
+            if retry_after is not None:
+                message += (
+                    f"Wait for the daily reset in about {retry_after:g} seconds "
+                    "(X-RateLimit-Reset), add prepaid usage, or narrow the query."
+                )
+            else:
+                message += "Wait for the daily reset (midnight UTC) or add prepaid usage."
+            raise ProviderRateLimitError(
+                self.name, 429, retry_after=retry_after, message=message,
+            ) from status_exc
+        raise status_exc
 
     @staticmethod
     def _fielded_filter(base_filter=None, title=None, author=None) -> Optional[str]:
@@ -177,7 +264,7 @@ class OpenAlexAdapter(ResourceAdapter):
             query_params["select"] = select
         url, params, headers = self.inject_auth(url, query_params, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=15.0)
-        resp.raise_for_status()
+        self._raise_for_status(resp)
         # Row building in Rust (src/adapters.rs); `raw` re-attached here
         # so it stays byte-identical `json.dumps` of each work.
         body = resp.json()
@@ -201,7 +288,7 @@ class OpenAlexAdapter(ResourceAdapter):
         url = f"{self.BASE}/works/{record_id}"
         url, params, headers = self.inject_auth(url, params, {})
         resp = httpx.get(url, params=params, headers=headers, timeout=15.0)
-        resp.raise_for_status()
+        self._raise_for_status(resp)
         # Row building in Rust (src/adapters.rs); `raw` re-attached here.
         body = resp.json()
         rec = json.loads(_rust.openalex_parse_fetch(json.dumps(body)))
@@ -218,7 +305,7 @@ class OpenAlexAdapter(ResourceAdapter):
             {},
         )
         response = httpx.get(url, params=params, headers=headers, timeout=15.0)
-        response.raise_for_status()
+        self._raise_for_status(response)
         works = response.json().get("results", [])
         records = []
         for work in works[:1]:

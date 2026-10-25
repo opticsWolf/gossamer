@@ -163,6 +163,94 @@ class TestOpenAlexAdapter:
         assert prov.domain == "scholarly"
         assert prov.requires_key is False
 
+    def test_parse_headers_reads_documented_rate_limit_headers(self):
+        # Documented response headers (verified 2026-10-25). X-RateLimit-Limit
+        # is the DAILY credit budget and must not leak into RateState.rps.
+        prov = OpenAlexAdapter(delay=0.0)
+        state = prov.parse_headers(200, {
+            "X-RateLimit-Limit": "10000",
+            "X-RateLimit-Remaining": "8766",
+            "X-RateLimit-Credits-Used": "1",
+            "X-RateLimit-Reset": "43200",
+        })
+        assert state.rps == 10.0  # documented keyless tier, not the budget
+        assert state.remaining == 8766
+        assert state.reset_seconds == 43200
+        assert state.exhausted is False
+        assert state.retry_after is None
+
+    def test_parse_headers_keyed_tier_exhausted_and_garbage(self):
+        keyed = OpenAlexAdapter(delay=0.0, api_key="k")
+        state = keyed.parse_headers(200, {"X-RateLimit-Remaining": "0"})
+        assert state.rps == 30.0  # documented free-key tier
+        assert state.remaining == 0
+        assert state.exhausted is True
+
+        bare = OpenAlexAdapter(delay=0.0).parse_headers(200, {})
+        assert (bare.remaining, bare.reset_seconds) == (None, None)
+        assert bare.exhausted is False
+
+        junk = OpenAlexAdapter(delay=0.0).parse_headers(
+            200, {"X-RateLimit-Remaining": "soon", "X-RateLimit-Reset": "midnight"},
+        )
+        assert (junk.remaining, junk.reset_seconds) == (None, None)
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_daily_budget_429_becomes_typed_rate_limit_error(self, mock_get):
+        # Documented daily-budget refusal: body error "not_enough_credits",
+        # refused before it ran; the reset hint is X-RateLimit-Reset seconds.
+        response = MagicMock()
+        response.status_code = 429
+        response.headers.get.return_value = "43200"
+        response.json.return_value = {"error": "not_enough_credits", "message": "out of credits"}
+        response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=MagicMock(), response=response,
+        )
+        mock_get.return_value = response
+
+        with pytest.raises(ProviderRateLimitError) as excinfo:
+            OpenAlexAdapter(delay=0.0).search("quantum", max_results=1)
+
+        assert excinfo.value.status_code == 429
+        assert excinfo.value.retry_after == 43200.0
+        assert "daily credit budget" in str(excinfo.value)
+        assert "not_enough_credits" in str(excinfo.value)
+        # Not transient within a retry window: exactly one request.
+        assert mock_get.call_count == 1
+
+    @patch("time.sleep")
+    @patch("gossamer.research_providers.httpx.get")
+    def test_per_second_429_stays_retryable_http_error(self, mock_get, mock_sleep):
+        # Documented per-second 429 ("wait a moment and retry"): stays a
+        # plain HTTPStatusError so the shared bounded backoff applies.
+        response = MagicMock()
+        response.status_code = 429
+        response.headers.get.return_value = None
+        response.json.return_value = {"error": "Rate limit exceeded"}
+        response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "429 Too Many Requests", request=MagicMock(), response=response,
+        )
+        mock_get.return_value = response
+
+        with pytest.raises(httpx.HTTPStatusError):
+            OpenAlexAdapter(delay=0.0).search("quantum", max_results=1)
+
+        assert mock_get.call_count == 3  # exhausted the bounded retries
+        mock_sleep.assert_called()
+
+    @patch("gossamer.research_providers.httpx.get")
+    def test_permanent_400_propagates_immediately(self, mock_get):
+        response = MagicMock()
+        response.status_code = 400
+        response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=MagicMock(), response=response,
+        )
+        mock_get.return_value = response
+
+        with pytest.raises(httpx.HTTPStatusError):
+            OpenAlexAdapter(delay=0.0).search("quantum", max_results=1)
+        assert mock_get.call_count == 1
+
     @patch("gossamer.research_providers.httpx.get")
     def test_search_parses(self, mock_get):
         mock_resp = MagicMock()

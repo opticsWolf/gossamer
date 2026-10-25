@@ -4,6 +4,23 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.28] — OpenAlex documented rate-limit contract
+
+- Re-verified 2026-10-25 against the official docs (updated 2026-10-15).
+  `OpenAlexAdapter.parse_headers` now reads the documented
+  `X-RateLimit-Remaining`/`X-RateLimit-Reset` headers into `RateState` with
+  the documented per-second tiers (10 req/s keyless, 30 req/s free key; the
+  old "100 req/s" docstring assumption was stale). `X-RateLimit-Limit` is
+  the daily credit budget and is deliberately not reported as rps;
+  `remaining == 0` marks the state `exhausted`.
+- 429 taxonomy per the documented contract: a daily-budget refusal (body
+  `error: not_enough_credits`) becomes a typed `ProviderRateLimitError`
+  whose retry hint is `X-RateLimit-Reset` (seconds until the daily reset)
+  and is not retried; a per-second 429 stays a plain retryable
+  `HTTPStatusError` under the shared bounded backoff. The documented error
+  contract still has no body-level `retryAfter` field, so none is parsed
+  (confirmed absent, not merely unverified).
+
 ## [0.9.27] — Live download smoke against a robots-allowed source
 
 - New opt-in live smoke `test_download_live_robots_allowed_source`
