@@ -4,6 +4,30 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.29] — Ship the agent skill in the wheel (CodeRadar-style packaging)
+
+- `skills/gossamer/SKILL.md` moved into the package
+  (`gossamer/skills/gossamer/SKILL.md`) so maturin copies it into the
+  wheel — a plain `pip install gossamer-web` now delivers the skill
+  (previously it only rode along in the sdist).
+- New `gossamer.skills` loader: `importlib.resources` read path, frontmatter
+  validation (missing `description` or a name/directory mismatch is a
+  packaging bug), and a non-destructive `install()` helper.
+- New `gossamer skills list|show|install` CLI commands (plain-text output,
+  no toolbox constructed): `list` prints bundled skills + triggers, `show`
+  prints the SKILL.md verbatim, `install` copies it into agent discovery
+  directories (`~/.claude/skills` + `~/.config/opencode/skills` by default;
+  `--project` for project-local, repeatable `--dest`/`--skill`, `--force`
+  to overwrite).
+- The MCP server now serves the skill as the `skills://gossamer` resource
+  and the server instructions point agents at `skills show/install` — an
+  MCP-only host can read the full pack without a repo checkout.
+- Two honesty gates: `tests/test_skill_drift.py` (every tool/CLI command
+  the skill names must exist in the registry/parser; frontmatter; install
+  behavior; MCP resource round-trip) and `scripts/verify_bundled_assets.py`
+  wired into the release workflow after the wheel and sdist builds.
+- README/ARCHITECTURE/plan-doc path references updated.
+
 ## [0.9.28] — OpenAlex documented rate-limit contract
 
 - Re-verified 2026-10-25 against the official docs (updated 2026-10-15).

@@ -45,11 +45,18 @@ toolbox singleton is configured from `GOSSAMER_*` env
 crawl cache cite`). Entry points: `gossamer`, `python -m
 gossamer.cli`. Prints the same JSON the MCP tools return.
 
-### Skills (`skills/gossamer/SKILL.md`)
+### Skills (`gossamer/skills/gossamer/SKILL.md`)
 
 Teaches harnesses routing, budgets, auth, and config/cache locations.
-Installed to the harness skills dir; the repo copy is the source of
-truth.
+The file lives inside the package so maturin ships it in the wheel;
+`gossamer.skills` reads it through `importlib.resources`, the MCP server
+serves it as the `skills://gossamer` resource, and `gossamer skills
+list|show|install` copies it into Claude Code / OpenCode discovery
+directories (non-destructive without `--force`). Two gates keep it
+honest: `tests/test_skill_drift.py` (every tool/command the skill names
+must exist; frontmatter must be present) and
+`scripts/verify_bundled_assets.py` in the release workflow (the built
+wheel/sdist must contain the file).
 
 ### Tool registry (`gossamer/config.py`)
 

@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 
 
 def _build_toolbox(args) -> object:
@@ -188,6 +189,24 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Treat every input as a local PDF and cite its detected DOI")
     _common(p)
 
+    p = sub.add_parser("skills", help="Bundled agent skill packs (list/show/install)")
+    skills_sub = p.add_subparsers(dest="skills_command", required=True)
+    skills_sub.add_parser("list",
+                          help="List the bundled skills and what triggers them")
+    sp = skills_sub.add_parser("show", help="Print one bundled SKILL.md verbatim")
+    sp.add_argument("name")
+    sp = skills_sub.add_parser(
+        "install", help="Copy the bundled skills into agent discovery directories")
+    sp.add_argument("--dest", action="append", default=None, metavar="DIR",
+                    help="Skills directory to install into (repeatable). Default: "
+                         "~/.claude/skills and ~/.config/opencode/skills")
+    sp.add_argument("--project", action="store_true",
+                    help="Install into ./.claude/skills and ./.opencode/skills instead")
+    sp.add_argument("--skill", action="append", default=None, metavar="NAME",
+                    help="Only this skill (repeatable). Default: every bundled skill")
+    sp.add_argument("--force", action="store_true",
+                    help="Overwrite existing skill directories")
+
     return parser
 
 
@@ -206,9 +225,67 @@ def _configure_utf8_stdio() -> None:
             continue
 
 
+def _run_skills(args) -> int:
+    """Handle ``gossamer skills …`` (plain-text output; no toolbox needed)."""
+    from gossamer.skills import (
+        SkillNotFound,
+        default_destinations,
+        install as install_skills,
+        iter_skills,
+        skill_text,
+    )
+
+    if args.skills_command == "list":
+        for name, description in iter_skills():
+            print(f"{name}\n    {description}")
+        print("Install with `gossamer skills install`.")
+        return 0
+
+    if args.skills_command == "show":
+        try:
+            text = skill_text(args.name)
+        except SkillNotFound as exc:
+            print(f"gossamer: error: {exc.args[0]}", file=sys.stderr)
+            return 1
+        print(text, end="")
+        return 0
+
+    if args.skills_command == "install":
+        if args.dest and args.project:
+            print("gossamer: error: --dest and --project are mutually exclusive",
+                  file=sys.stderr)
+            return 1
+        targets = (
+            [Path(d) for d in args.dest] if args.dest
+            else list(default_destinations(project=args.project))
+        )
+        try:
+            results = [
+                result
+                for target in targets
+                for result in install_skills(target, names=args.skill, force=args.force)
+            ]
+        except SkillNotFound as exc:
+            print(f"gossamer: error: {exc.args[0]}", file=sys.stderr)
+            return 1
+        for result in results:
+            print(f"{result.status:<9} {result.path}")
+        skipped = sum(result.status == "skipped" for result in results)
+        if skipped:
+            print(f"{skipped} skill(s) already present; use --force to overwrite.")
+        return 0
+
+    print(f"gossamer: error: unknown skills command {args.skills_command!r}",
+          file=sys.stderr)
+    return 1
+
+
 def main(argv=None) -> int:
     _configure_utf8_stdio()
     args = build_parser().parse_args(argv)
+    if args.command == "skills":
+        # Skill management needs no toolbox (no cache/config side effects).
+        return _run_skills(args)
     toolbox = _build_toolbox(args)
     commands = {
         "search": lambda: toolbox.web_search(

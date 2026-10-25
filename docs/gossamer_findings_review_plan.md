@@ -25,7 +25,7 @@ Several findings need qualification:
 - OpenAlex now sends an operator-supplied `GOSSAMER_OPENALEX_EMAIL` as `mailto` and client-identification headers (`0.9.11`); no placeholder contact is fabricated. A free `GOSSAMER_OPENALEX_KEY` remains optional for casual use and raises the daily budget. Generic `Retry-After` and exponential backoff are implemented; current official guidance does not document a response-body `retryAfter` field, so do not invent a parser for one.
 - Semantic Scholar integration is implemented in `0.9.15` as an opt-in provider; OpenAlex remains the scholarly default. `GOSSAMER_SEMANTICSCHOLAR_API_KEY` is optional but recommended to avoid the shared anonymous rate-limit pool; keyless 429 errors name the variable and do not retry the shared pool.
 - Cross-provider research is explicitly opt-in in `0.9.16`; it searches sequentially, merges only on DOI/arXiv identifiers, and retains per-provider raw records and conflicts.
-- F5's documentation alternative is already satisfied: `skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
+- F5's documentation alternative is already satisfied: `gossamer/skills/gossamer/SKILL.md` includes the Windows venv invocation. A PATH shim is optional.
 
 Implementation order completed: (1) CLI/HTTP/arXiv/OpenAlex reliability; (2) stable provider-error contract; (3) validated download; (4) DOI-to-OA lookup; (5) OpenAlex filter/select; (6) Semantic Scholar; (7) identifier-based scholarly merge; (8) policy-checked caller-supplied mirrors and collection workflow docs; (9) OpenAlex title/author search; (10) download resume; (11) Unpaywall fallback; (12) cite-from-PDF; (13) cache-behavior docs and PATH-shim close-out. No further plan items remain open.
 
@@ -95,7 +95,9 @@ Implemented in `0.9.14`: `research_by_category` and `gossamer research` accept p
 Implemented in `0.9.16`. `research_by_category` accepts an explicit `providers=[...]` list; `gossamer research --providers ...` exposes the same mode. Calls are sequential, restricted to scholarly providers, mutually exclusive with `provider=`, and never run by default. Records merge only on canonical DOI or arXiv ID (matching arXiv versions through the versionless key); titles are not fuzzy-merged. Each merged result retains the first requested provider's canonical record, all source records, source names, and conflicting field values. Unkeyed records remain separate. Partial failures preserve successful results and expose per-provider errors plus a top-level error.
 ### F5 — shell invocation: documentation alternative already present
 
-`skills/gossamer/SKILL.md` gives the Windows venv invocation (`…/.venv/Scripts/python.exe -m gossamer.cli …`). A global PATH shim may be convenient, but it is not required to address the documentation gap described in the finding.
+`gossamer/skills/gossamer/SKILL.md` gives the Windows venv invocation (`…/.venv/Scripts/python.exe -m gossamer.cli …`). A global PATH shim may be convenient, but it is not required to address the documentation gap described in the finding.
+
+**Packaging update (`0.9.29`):** the skill moved from the repo-root `skills/` directory into the package (`gossamer/skills/gossamer/SKILL.md`) so maturin ships it in the wheel; the `gossamer skills list|show|install` commands and the `skills://gossamer` MCP resource make it reachable without a repo checkout, with drift tests and a release-artifact gate keeping it honest.
 
 ### F6 — bot walls and binary acquisition: compliant caller-supplied fallback implemented
 

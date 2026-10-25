@@ -19,7 +19,7 @@
 
 ```
 LLM Agent / User
-       │  MCP (mcp_server.py) · CLI (cli.py) · skills/SKILL.md
+       │  MCP (mcp_server.py) · CLI (cli.py) · skills (bundled)
        ▼
 WebResearcherToolbox (agent_tools.py) — facade, no logic
        │  TOOL_REGISTRY (config.py): one source of truth
@@ -138,7 +138,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 
 Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi' --title 'gradient index' --author 'Smith'` passes provider-native controls; those options are rejected for other providers. `--title`/`--author` map to the verified `title.search`/`raw_author_name.search` filters and combine with `--filter`. Explicit scholarly multi-search is opt-in via `gossamer research QUERY --providers openalex arxiv`; it merges by DOI/arXiv ID, preserves each source record, and never fans out by default.
 
-**Paper collection:** `research` → `check --mode status` → optional `locate-pdf DOI` → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` for a DOI detected from the file). Supplied mirror URLs are checked independently; gossamer respects robots/SSRF policy and does not bypass bot walls. The [skill](./skills/gossamer/SKILL.md) has the full recipe.
+**Paper collection:** `research` → `check --mode status` → optional `locate-pdf DOI` → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` for a DOI detected from the file). Supplied mirror URLs are checked independently; gossamer respects robots/SSRF policy and does not bypass bot walls. The [skill](./gossamer/skills/gossamer/SKILL.md) has the full recipe — it ships inside the wheel, and `gossamer skills install` copies it into your agent's discovery directory.
 
 ---
 
@@ -175,7 +175,9 @@ individual one-request-per-second allowance.
 Same stdio server everywhere (`python -m gossamer.mcp_server`); keys stay
 in the keystore, never in client configs. Shallowest first: direct CLI
 (`gossamer search|research|inspect|download|locate-pdf|extract|…`, 1:1 with MCP) → MCP
-(`directTools`) → `skills/gossamer/SKILL.md`.
+(`directTools`) → `gossamer/skills/gossamer/SKILL.md` (bundled in the wheel
+and served as the `skills://gossamer` MCP resource; `gossamer skills
+list|show|install` manages it).
 
 **pi** (`mcp.json`, then reload):
 

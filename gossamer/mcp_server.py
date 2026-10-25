@@ -65,6 +65,7 @@ from gossamer.agent_tools import (
     WebResearcherToolbox,
 )
 from gossamer.guard import GuardConfig
+from gossamer.skills import skill_description, skill_text
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +246,13 @@ INSTRUCTIONS = (
     "markdown with follow-up links, and extract text/tables from documents "
     "(PDF, DOCX, XLSX, PPTX) and text formats (TXT, MD, CSV, JSON, XML, "
     "RSS/Atom). Results are cached, rate-limited per domain, and "
-    "token-budgeted."
+    "token-budgeted.\n\n"
+    "## Skill pack\n\n"
+    "The `gossamer` agent skill ships inside this package and is readable "
+    "as the resource `skills://gossamer` (routing, budgets, auth, cache "
+    "behavior, and the literature-collection recipe). Run "
+    "`gossamer skills show gossamer` to print it, or `gossamer skills "
+    "install` to copy it into Claude Code / OpenCode discovery directories."
 )
 
 
@@ -295,6 +302,20 @@ def build_server() -> MCPServer:
     )
     for spec in TOOL_REGISTRY:
         server.tool()(_mcp_tool_for(spec))
+
+    # Agent-facing document that ships in the wheel. A resource (not a
+    # tool) keeps the tool surface intact while letting an MCP-only host
+    # read the skill pack without a repo checkout.
+    @server.resource(
+        "skills://gossamer",
+        name="gossamer",
+        description=skill_description("gossamer"),
+        mime_type="text/markdown",
+    )
+    def _skill_gossamer() -> str:
+        """The gossamer agent skill pack."""
+        return skill_text("gossamer")
+
     return server
 
 
