@@ -14,6 +14,9 @@ entry, pi shell commands, cron jobs)::
     gossamer crawl https://example.com --query "pricing" --max-pages 10
     gossamer cache --action prune
     gossamer cite 10.1234/abc https://example.com/paper --style apa
+    gossamer download https://example.com/paper.pdf -o paper.pdf --expect-format pdf
+    gossamer locate-pdf 10.1234/abc
+    gossamer skills install
 
 Output is the same JSON the MCP tools return (one document per call).
 Auth and options resolve exactly like the MCP server: explicit flags >
@@ -69,20 +72,28 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("search", help="Web search (+ optional fetch)")
-    p.add_argument("query")
-    p.add_argument("--max-results", type=int, default=5)
-    p.add_argument("--search-only", action="store_true")
-    p.add_argument("--provider", default=None)
-    p.add_argument("--depth", type=int, default=5)
+    p.add_argument("query", help="The search query / research topic")
+    p.add_argument("--max-results", type=int, default=5,
+                   help="Provider results to request (default 5)")
+    p.add_argument("--search-only", action="store_true",
+                   help="Return provider results only; skip page fetching")
+    p.add_argument("--provider", default=None,
+                   help="Search engine to prefer (duckduckgo/google/bing/exa/browser)")
+    p.add_argument("--depth", type=int, default=5,
+                   help="Candidate pages to fetch when not --search-only (default 5)")
     p.add_argument("--max-tokens", type=int, default=0,
                    help="Token budget for the fetched-page corpus")
     _common(p)
 
     p = sub.add_parser("research", help="Domain-routed research (patents, law, finance, …)")
-    p.add_argument("query")
-    p.add_argument("--max-results", type=int, default=5)
-    p.add_argument("--category", default=None)
-    p.add_argument("--provider", default=None)
+    p.add_argument("query", help="The research topic")
+    p.add_argument("--max-results", type=int, default=5,
+                   help="Provider results to request (default 5)")
+    p.add_argument("--category", default=None,
+                   help="Research category (scholarly/legal/patent/financial/geo); "
+                        "default auto-routes the query")
+    p.add_argument("--provider", default=None,
+                   help="Provider within the category (default: category default)")
     p.add_argument("--filter", default=None,
                    help="OpenAlex-native filter (only with --provider openalex)")
     p.add_argument("--select", default=None,
@@ -99,7 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
 
     p = sub.add_parser("inspect", help="Fetch one page as markdown")
-    p.add_argument("url")
+    p.add_argument("url", help="The URL to fetch")
     p.add_argument("--query", default=None)
     p.add_argument("--use-smart", default="auto", choices=("auto", "browser", "static"))
     p.add_argument("--offset", type=int, default=0,
@@ -111,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
 
     p = sub.add_parser("batch", help="Fetch several pages at once")
-    p.add_argument("urls", nargs="+")
+    p.add_argument("urls", nargs="+", help="URLs to fetch")
     _common(p)
 
     p = sub.add_parser("download", help="Download a remote file to a local path")
@@ -132,16 +143,19 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
 
     p = sub.add_parser("locate-pdf", help="Find OA PDF/landing-page candidates for a DOI")
-    p.add_argument("doi")
+    p.add_argument("doi", help="DOI (bare, doi: prefix, or resolver URL)")
     _common(p)
 
     p = sub.add_parser("extract", help="Extract a document (PDF/DOCX/XLSX/…) or feed")
-    p.add_argument("source")
+    p.add_argument("source", help="Local file path or remote URL")
     p.add_argument("--pages", default=None, help="PDF page range, e.g. 10-20")
-    p.add_argument("--structured", action="store_true")
+    p.add_argument("--structured", action="store_true",
+                   help="Structured payload (metadata/tables/links) where supported")
     p.add_argument("--store", action="store_true",
                    help="Write original + markdown under --store-dir")
-    p.add_argument("--store-dir", default=None)
+    p.add_argument("--store-dir", default=None,
+                   help="Directory for the stored original + extracted "
+                        "markdown/resources (with --store)")
     p.add_argument("--include-images", action="store_true",
                    help="PDF only, needs --store: also save figures")
     p.add_argument("--tables-as", default="json",
@@ -150,32 +164,45 @@ def build_parser() -> argparse.ArgumentParser:
     _common(p)
 
     p = sub.add_parser("check", help="Probe URL reachability")
-    p.add_argument("urls", nargs="+")
-    p.add_argument("--mode", default="status", choices=("status", "content"))
+    p.add_argument("urls", nargs="+", help="URLs to probe")
+    p.add_argument("--mode", default="status", choices=("status", "content"),
+                   help="status = HEAD probe (default); content = GET, for hosts "
+                        "that reject HEAD")
     _common(p)
 
     p = sub.add_parser("discover", help="Find feeds + sitemap pages for a site")
-    p.add_argument("url")
+    p.add_argument("url", help="Site URL to probe for feeds and sitemaps")
     _common(p)
 
     p = sub.add_parser("crawl", help="Relevance-ranked link-graph traversal")
-    p.add_argument("root_url")
+    p.add_argument("root_url", help="Root URL to start the traversal")
     p.add_argument("--query", default=None)
     p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--max-pages", type=int, default=15)
     p.add_argument("--same-host", action="store_true")
     p.add_argument("--min-score", type=float, default=0.05,
                    help="Minimum relevance score to keep a page")
-    p.add_argument("--excerpts", action="store_true")
-    p.add_argument("--search-prior", action="store_true")
-    p.add_argument("--seed-urls", nargs="*", default=None)
+    p.add_argument("--excerpts", action="store_true",
+                   help="Add a keyword-densest 300-char excerpt per page "
+                        "(raises the payload; pair with a lower --max-pages)")
+    p.add_argument("--search-prior", action="store_true",
+                   help="Run one site-scoped web search first and feed its top-5 "
+                        "into the frontier, exempt from --min-score")
+    p.add_argument("--seed-urls", nargs="*", default=None,
+                   help="Extra starting URLs, SSRF-checked and pushed at "
+                        "depth 0 (their children are depth 1)")
     p.add_argument("--use-smart", default="auto",
-                   choices=("auto", "browser", "static"))
+                   choices=("auto", "browser", "static"),
+                   help="Render strategy: auto (default), browser (stealth "
+                        "engine first), or static (never renders)")
     _common(p)
 
     p = sub.add_parser("cache", help="Cache maintenance (prune/clear/reset)")
     p.add_argument("--action", default="prune",
-                   choices=("prune", "clear", "reset"))
+                   choices=("prune", "clear", "reset"),
+                   help="prune drops expired/over-cap entries (keeps valid ones "
+                        "and visited URLs); clear wipes caches plus visited URLs; "
+                        "reset forgets visited URLs only")
     _common(p)
 
     p = sub.add_parser("cite", help="Format DOIs/URLs as citations")
@@ -183,8 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="DOIs, URLs, local PDF paths, or JSON result objects")
     p.add_argument("--style", default="bibtex",
                    choices=("bibtex", "csl-json", "apa", "mla"))
-    p.add_argument("--enrich", action="store_true")
-    p.add_argument("--no-dedupe", action="store_true")
+    p.add_argument("--enrich", action="store_true",
+                   help="One canonical DOI lookup per unique DOI to fill in a "
+                        "missing venue/abstract (best-effort)")
+    p.add_argument("--no-dedupe", action="store_true",
+                   help="Keep records sharing a DOI/URL instead of collapsing them")
     p.add_argument("--from-pdf", action="store_true",
                    help="Treat every input as a local PDF and cite its detected DOI")
     _common(p)
@@ -194,7 +224,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_sub.add_parser("list",
                           help="List the bundled skills and what triggers them")
     sp = skills_sub.add_parser("show", help="Print one bundled SKILL.md verbatim")
-    sp.add_argument("name")
+    sp.add_argument("name", help="Bundled skill name (see `gossamer skills list`)")
     sp = skills_sub.add_parser(
         "install", help="Copy the bundled skills into agent discovery directories")
     sp.add_argument("--dest", action="append", default=None, metavar="DIR",

@@ -4,6 +4,20 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.32] — Complete the CLI help
+
+- Every subcommand, positional, and option now carries a help string
+  (`search --search-only/--provider/--depth`, `research --category/
+  --provider`, `crawl --excerpts/--search-prior/--seed-urls/--use-smart`,
+  `check --mode`, `cache --action`, `extract --structured/--store-dir`,
+  `cite --enrich/--no-dedupe`, `skills show NAME`, and the bare
+  positionals). All wording is taken from the verified semantics (registry
+  descriptions, crawl E1/E2 docs, downloader/check contracts) — no
+  invented defaults.
+- cli.py module docstring gains `download` / `locate-pdf` / `skills`
+  examples; QUICKREF's tool table header and the CLI-only paragraph now
+  cover `categories` + `skills` and the `skills://gossamer` MCP resource.
+
 ## [0.9.31] — Skill content catches up with the new surface
 
 - The bundled SKILL.md now teaches what 0.9.29 added: the

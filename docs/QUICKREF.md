@@ -4,7 +4,7 @@ Command-level companion to [Architecture](./ARCHITECTURE.md). Full manual:
 [README](../README.md). Per-version history: [Changelog](../CHANGELOG.md).
 Planning history: local `planning/` (unsynced).
 
-## Tools (twelve MCP tools; CLI = MCP 1:1 plus `categories`)
+## Tools (twelve MCP tools; CLI = MCP 1:1 plus `categories` and `skills`)
 
 | Tool | CLI | Essentials |
 |---|---|---|
@@ -22,7 +22,12 @@ Planning history: local `planning/` (unsynced).
 | `check_sources` | `gossamer check URL…` | `--mode status\|content` |
 
 CLI-only: `gossamer categories` prints the routing table (not an MCP
-tool; the toolbox method `research_categories()` backs it).
+tool; the toolbox method `research_categories()` backs it). Also CLI-only:
+`gossamer skills list|show|install` manages the bundled agent skill — the
+same file the MCP server serves as the `skills://gossamer` resource;
+`install` copies it into Claude Code (`~/.claude/skills`) and OpenCode
+(`~/.config/opencode/skills`) discovery directories, non-destructively
+without `--force`.
 
 `extract --pages` cannot combine with `--store`. `include_images` is PDF-only. `download --resume` continues a partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges preserve the partial file); without `--resume`, unexpected partial-content responses are rejected.
 
