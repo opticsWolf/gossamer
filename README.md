@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11102%20passing%2C%2033%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11110%20passing%2C%2034%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -115,8 +115,9 @@ sequentially with normal robots/SSRF checks, and `resume=true` continues a
 partial file with Range/If-Range (restart when the server ignores Range). Use `extract_document` when you
 also want parsed text. `locate_pdf` resolves a DOI to OpenAlex OA PDF/landing-page candidates (plus Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is configured)
 without downloading them. The CLI adds `gossamer categories`
-(routing table; not an MCP tool). Parameters:
-[Quick reference](./docs/QUICKREF.md#tools-mcp--cli--execute_tool).
+(routing table) and `gossamer skills list|show|install` (bundled skill
+management) — neither is an MCP tool. Parameters:
+[Quick reference](./docs/QUICKREF.md).
 
 ```python
 tools.get_llm_definitions()  # OpenAI-compatible function definitions

@@ -4,6 +4,26 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.34] — Documentation sweep (stale claims from the 0.9.26-0.9.33 work)
+
+- README: Tests badge recalculated (11110 passing / 34 skipped — the old
+  badge predated the live-gating); the Tools section now mentions the
+  CLI-only `gossamer skills list|show|install`; the broken QUICKREF
+  anchor (the heading changed in 0.9.32) is replaced with a plain file
+  link.
+- AGENTS.md: CLI line covers `categories` + `skills`; new Skill bullet
+  (bundled in the wheel, `skills://gossamer` resource, `skills install`
+  destinations).
+- ARCHITECTURE: version stamp synced (was v0.9.24); §2 CLI subcommand
+  list gains `skills`; §20 corrected — `meta_oxide` is vendored at
+  `vendor/meta_oxide/` (path dependency, fork remote gone), not a git
+  rev, and the tag-gated release flow (wheels + sdist +
+  `scripts/verify_bundled_assets.py` gate, PyPI trusted publishing) is
+  described; docs-rule wording matches the actual `docs/` contents.
+- QUICKREF: OpenAlex gotcha now carries the documented 429 taxonomy
+  (per-second vs daily-budget `not_enough_credits` with
+  `X-RateLimit-Reset`).
+
 ## [0.9.33] — Full tool call signatures in the skill (CodeRadar parity)
 
 - New "Tool call signatures" section in the bundled SKILL.md: a Python

@@ -8,9 +8,13 @@ gossamer instead of guessing or raw curl loops.
   `batch_inspect_pages`, `download_file`, `locate_pdf`, `extract_document`,
   `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,
   `export_citations`, `check_sources`.
-- **CLI** (always available, mirrors all 12 MCP tools 1:1):
-  `gossamer search|research|categories|inspect|batch|download|locate-pdf|extract|check|discover|crawl|cache|cite`
+- **CLI** (always available, mirrors all 12 MCP tools 1:1, plus
+  `categories` and `skills`):
+  `gossamer search|research|categories|inspect|batch|download|locate-pdf|extract|check|discover|crawl|cache|cite|skills`
   (or `python -m gossamer.cli …` from the project venv).
+- **Skill**: the agent skill ships in the wheel and is served as the
+  `skills://gossamer` MCP resource; `gossamer skills install` copies it
+  into `~/.claude/skills` and `~/.config/opencode/skills`.
 - **Routing**: `gossamer categories` prints the live category → provider
   table (`scholarly`/`legal`/`patent`/`financial`/`geo`). `epo`, `kipris`,
   `patentsview`, and `lens` are key-gated; `google-patents` is a keyless

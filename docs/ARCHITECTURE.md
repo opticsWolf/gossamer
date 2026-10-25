@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.9.24)
+# gossamer — architecture (v0.9.33)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -42,7 +42,7 @@ toolbox singleton is configured from `GOSSAMER_*` env
 
 `argparse` over subcommands 1:1 with the registry
 (`search research categories inspect batch download locate-pdf extract check discover
-crawl cache cite`). Entry points: `gossamer`, `python -m
+crawl cache cite skills`). Entry points: `gossamer`, `python -m
 gossamer.cli`. Prints the same JSON the MCP tools return.
 
 ### Skills (`gossamer/skills/gossamer/SKILL.md`)
@@ -395,6 +395,12 @@ wheel is PyPI-clean.
 (`abi3`, LTO + stripped release profile). Versions move together
 (`pyproject.toml`, `Cargo.toml` + lockfile) 0.0.1 per milestone with
 a `CHANGELOG.md` entry; every bump is committed and pushed. The
-`meta_oxide` crate arrives via git rev (fork) — PyPI-clean because no
-Python direct reference remains. Docs rule: `docs/` keeps this file
-plus `QUICKREF.md`; working notes live in gitignored `planning/`.
+`meta_oxide` crate is vendored at `vendor/meta_oxide/` (path dependency;
+the fork remote is gone — provenance in `vendor/README.md`), so fresh
+cargo resolution and CI stay network-clean with no Python direct
+reference. Releases are tag-gated (`v*.*.*`, tag must equal both
+manifests): the workflow builds manylinux/macOS/Windows wheels + sdist,
+gates on the bundled skill (`scripts/verify_bundled_assets.py`), and
+publishes to PyPI (trusted publishing, token fallback). Docs rule:
+`docs/` keeps this file, `QUICKREF.md`, and the findings/review
+records; working notes live in gitignored `planning/`.

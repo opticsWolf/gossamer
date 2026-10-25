@@ -79,7 +79,7 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - Guard is off by default (`GuardConfig(enabled=True)` + `gossamer-web[guard]` extra to arm).
 - `use_smart="browser"` needs the `gossamer-web[browser]` extra (Windows/macOS only, no Linux wheels); without it browser requests fail and only static fetch runs.
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).
-- OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent.
+- OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent. OpenAlex 429s are two documented kinds: per-second (wait a moment) or daily budget (`not_enough_credits` — wait for the reset; the typed error carries `X-RateLimit-Reset` seconds).
 - Semantic Scholar is opt-in and keyless-capable; its shared pool can 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for an individual one-request-per-second allowance.
 
 ## Collection flow
