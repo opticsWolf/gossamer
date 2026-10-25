@@ -240,7 +240,9 @@ class TestToolboxMetadata:
         assert toolbox._fetch._compact_metadata({}) == {}
         assert toolbox._fetch._compact_metadata(None) == {}
 
-    def test_fetch_smart_page_returns_metadata(self):
+    @pytest.mark.slow
+    @pytest.mark.live
+    def test_fetch_smart_page_returns_metadata(self, live):
         """Verify fetch_smart_page returns a 3-tuple (md, links, metadata)."""
         from gossamer.agent_tools import fetch_smart_page
 

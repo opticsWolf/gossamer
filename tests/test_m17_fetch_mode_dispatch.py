@@ -14,11 +14,17 @@ Two layers of coverage:
   fallback) and an empty page (static returns non-text -> auto falls back).
   Each case gets a fresh toolbox + cache so nothing leaks across modes.
 
-* **Real browser_oxide (external HTTPS, skips if the network/browser is
-  unavailable).** The stealth engine verifies TLS certs and speaks HTTP/2
-  over TLS, so it cannot reach a self-signed local server; we exercise it
-  against ``https://example.com`` instead to prove the real engine is wired
-  through the dispatch.
+* **Real browser_oxide (external HTTPS; slow + live-gated).** The stealth
+  engine verifies TLS certs and speaks HTTP/2 over TLS, so it cannot reach
+  a self-signed local server; we exercise it against ``https://example.com``
+  instead to prove the real engine is wired through the dispatch. These
+  tests hit the live network with the real engine, so they are marked
+  ``slow`` (excluded from the default suite via ``-m 'not slow'``) and
+  ``live``: the session fixture skips before any request unless
+  ``GOSSAMER_LIVE=1``. Run them explicitly with
+  ``GOSSAMER_LIVE=1 pytest -m slow tests/test_m17_fetch_mode_dispatch.py``.
+  They were flaky under the parallel default suite (several engines fetch
+  example.com concurrently), which is why they are no longer part of it.
 """
 
 import json
@@ -224,7 +230,16 @@ class TestBatchDispatch:
 
 @pytest.fixture(scope="session")
 def real_browser():
-    """True if the real stealth engine renders an external HTTPS page."""
+    """True if the real stealth engine renders an external HTTPS page.
+
+    Live-gated at the fixture (a session fixture cannot depend on the
+    function-scoped ``live`` fixture): without ``GOSSAMER_LIVE=1`` it
+    skips before making any network request.
+    """
+    from tests.conftest import _live_enabled
+
+    if not _live_enabled(os.environ.get("GOSSAMER_LIVE")):
+        pytest.skip("live test (enable with GOSSAMER_LIVE=1)")
     try:
         r = json.loads(make("browser").inspect_html_page("https://example.com"))
         return (r.get("fetch_method") == "browser"
@@ -233,6 +248,8 @@ def real_browser():
         return False
 
 
+@pytest.mark.slow
+@pytest.mark.live
 class TestRealBrowserExampleCom:
     def test_browser_mode_uses_real_engine(self, real_browser):
         if not real_browser:

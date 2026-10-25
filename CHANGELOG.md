@@ -4,6 +4,27 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.9.30] — Gate the live browser tests (slow + live markers)
+
+- The default suite is deterministic again. The three flaky tests that hit
+  the live network with the real browser_oxide engine are now marked
+  `slow` (excluded via the default `-m 'not slow'`) and `live`:
+  `TestRealBrowserExampleCom` (2 tests in
+  `tests/test_m17_fetch_mode_dispatch.py`) and
+  `TestToolboxMetadata::test_fetch_smart_page_returns_metadata`
+  (`tests/test_meta_oxide.py`). The `real_browser` session fixture skips
+  before any request unless `GOSSAMER_LIVE=1` (a session fixture cannot
+  depend on the function-scoped `live` fixture, so the gate lives in the
+  fixture itself). Run them explicitly with
+  `GOSSAMER_LIVE=1 pytest -m slow tests/test_m17_fetch_mode_dispatch.py`.
+- Full suite: 11110 passed / 34 skipped in ~30 s (previously ~150 s with
+  real-engine launches). Verified pre-existing: the same flake reproduces
+  on the unmodified 0.9.28 tree. Root cause is upstream — browser-oxide
+  0.1.3 currently aborts natively on example.com (V8 deadline
+  terminate_execution followed by a 64 GB allocation failure), which also
+  kills the pytest process; live-gated runs need a healthy engine until
+  that is fixed.
+
 ## [0.9.29] — Ship the agent skill in the wheel (CodeRadar-style packaging)
 
 - `skills/gossamer/SKILL.md` moved into the package
