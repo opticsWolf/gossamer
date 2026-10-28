@@ -369,6 +369,7 @@ def test_search_category_explicit_provider_calls_that_source(monkeypatch):
     assert seen["provider"] == "crossref"
     assert out["available_providers"] == [
         "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+        "huggingface", "huggingface-papers",
     ]
 
 
@@ -414,6 +415,7 @@ def test_search_category_provider_only_reverse_resolves_owning_category(monkeypa
     assert seen["provider"] == "arxiv"
     assert out["available_providers"] == [
         "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+        "huggingface", "huggingface-papers",
     ]
 
 
@@ -613,6 +615,7 @@ def test_facade_research_categories_returns_taxonomy():
     assert by_name["scholarly"]["default_provider"] == "openalex"
     assert by_name["scholarly"]["providers"] == [
         "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+        "huggingface", "huggingface-papers",
     ]
     assert by_name["legal"]["providers"] == [
         "courtlistener", "ecfr", "federalregister",
@@ -776,6 +779,7 @@ def test_research_by_category_no_query_returns_taxonomy(tmp_path):
     by_name = {d["category"]: d for d in data}
     assert by_name["scholarly"]["providers"] == [
         "openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+        "huggingface", "huggingface-papers",
     ]
     assert by_name["legal"]["providers"] == [
         "courtlistener", "ecfr", "federalregister",

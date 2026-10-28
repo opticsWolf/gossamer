@@ -11,6 +11,8 @@ Built so far (Phase 2 — robust, low-risk, no / cheap keys):
   * :class:`CrossrefAdapter`  — works / DOI lookup (scholarly)
   * :class:`ArxivAdapter`     — preprint search (scholarly)
   * :class:`SemanticScholarAdapter` — Academic Graph paper search/lookup (scholarly, optional key)
+  * :class:`HuggingFaceAdapter` — Hub model search/lookup incl. card bodies (scholarly, optional token)
+  * :class:`HuggingFacePapersAdapter` — Daily Papers search, arXiv-joined (scholarly, keyless, search-only)
   * :class:`PubmedAdapter`    — biomedical literature search / fetch (scholarly)
   * :class:`DoajAdapter`      — open-access journals search (scholarly)
   * :class:`OpenLibraryAdapter` — book search / lookup (library)
@@ -442,6 +444,196 @@ class SemanticScholarAdapter(ResourceAdapter):
         record = json.loads(_rust.semanticscholar_parse_fetch(json.dumps(body)))
         record["raw"] = json.dumps(body)
         return [record]
+
+class HuggingFaceAdapter(ResourceAdapter):
+    """Hugging Face Hub model search / lookup (scholarly, keyless-friendly).
+
+    Search ranks by downloads (the Hub's relevance proxy). ``fetch`` returns
+    the full model record plus the model-card body as text (``card``), read
+    from the repo's raw ``README.md`` on ``main`` (fallback ``master``),
+    capped at ``CARD_MAX_CHARS``. Weight files, datasets, Spaces, collections
+    and the Inference API are out of scope by design — this adapter reads
+    *about* models, it never downloads them.
+
+    An API token is optional but raises the rate limit; it is read from
+    ``GOSSAMER_HF_TOKEN`` and sent as ``Authorization: Bearer``.
+    """
+
+    name = "huggingface"
+    domain = "scholarly"
+    requires_key = False
+    BASE = "https://huggingface.co/api"
+    CARD_MAX_CHARS = 20000
+    CARD_REVISIONS = ("main", "master")
+
+    def __init__(
+        self,
+        delay: Optional[Union[float, RateLimit]] = None,
+        fetch_delay: Optional[float] = None,
+        *,
+        api_token: Optional[str] = None,
+    ):
+        self.api_token = (
+            api_token if api_token is not None
+            else _env_get("GOSSAMER_HF_TOKEN", "")
+        ).strip()
+        self._init_rate_limit(
+            delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.1),
+            fetch_delay,
+        )
+
+    def inject_auth(self, url, params=None, headers=None):
+        headers = dict(headers or {})
+        if self.api_token:
+            headers.setdefault("Authorization", f"Bearer {self.api_token}")
+        return url, dict(params or {}), headers
+
+    def parse_headers(self, status, headers):
+        return RateState(rps=1.0)
+
+    def _request_json(self, path: str, params: dict):
+        self._enforce_delay()
+        url, query, headers = self.inject_auth(f"{self.BASE}{path}", params, {})
+        response = httpx.get(url, params=query, headers=headers, timeout=30.0)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if response.status_code == 429 and not self.api_token:
+                retry_after = retry_after_seconds(exc)
+                message = (
+                    "Hugging Face Hub returned HTTP 429 for a keyless request; "
+                    "set GOSSAMER_HF_TOKEN to raise the rate limit, "
+                    "or wait before retrying."
+                )
+                if retry_after is not None:
+                    message += f" Retry after at least {retry_after:g} seconds."
+                raise ProviderRateLimitError(
+                    self.name, 429, retry_after=retry_after, message=message,
+                ) from exc
+            raise
+        payload = response.json()
+        if not isinstance(payload, (dict, list)):
+            raise ValueError(
+                "Hugging Face Hub API returned a non-JSON-container response"
+            )
+        return payload
+
+    def _search_impl(self, query, max_results=5):
+        total_limit = max(0, min(int(max_results), 1000))
+        if not total_limit:
+            return []
+        body = self._request_json(
+            "/models",
+            {
+                "search": query,
+                "sort": "downloads",
+                "direction": "-1",
+                "limit": total_limit,
+            },
+        )
+        if not isinstance(body, list):
+            raise ValueError(
+                "Hugging Face Hub models search returned a non-list response"
+            )
+        parsed = json.loads(
+            _rust.huggingface_parse_search(json.dumps(body), total_limit),
+        )
+        for record, model in zip(parsed, body):
+            record["raw"] = json.dumps(model)
+        return parsed
+
+    @retry(max_attempts=3, delay=1.0, backoff=2.0)
+    def fetch(self, record_id, params=None):
+        identifier = str(record_id).strip()
+        for prefix in ("https://huggingface.co/", "http://huggingface.co/"):
+            if identifier.lower().startswith(prefix):
+                identifier = identifier[len(prefix):]
+        if identifier.lower().startswith("papers/"):
+            raise ValueError(
+                "huggingface fetches models; pass paper ids to the "
+                "huggingface-papers provider (search-only — full text via "
+                "the arxiv provider)"
+            )
+        identifier = identifier.strip("/")
+        if not re.fullmatch(r"[\w.\-]+/[\w.\-]+", identifier):
+            raise ValueError(
+                f"Hugging Face model id must look like 'org/model', "
+                f"got {record_id!r}"
+            )
+        body = self._request_json(f"/models/{identifier}", dict(params or {}))
+        if not isinstance(body, dict):
+            raise ValueError(
+                "Hugging Face Hub model lookup returned a non-object response"
+            )
+        record = json.loads(_rust.huggingface_parse_fetch(json.dumps(body)))
+        record["raw"] = json.dumps(body)
+        card, card_url, truncated = self._read_card(identifier)
+        record["card"] = card
+        record["card_url"] = card_url
+        record["card_truncated"] = truncated
+        return [record]
+
+    def _read_card(self, identifier: str):
+        """Best-effort model-card body (raw README.md, text only)."""
+        for revision in self.CARD_REVISIONS:
+            self._enforce_delay()
+            url = f"https://huggingface.co/{identifier}/raw/{revision}/README.md"
+            _, _, headers = self.inject_auth(url, {}, {})
+            try:
+                response = httpx.get(url, headers=headers, timeout=30.0)
+            except httpx.HTTPError:
+                continue
+            if response.status_code == 404:
+                continue
+            if response.status_code != 200:
+                # Gated/private/repo-level failure: the metadata record
+                # stands on its own, the card stays empty.
+                return "", url, False
+            text = response.text
+            if len(text) > self.CARD_MAX_CHARS:
+                return text[: self.CARD_MAX_CHARS], url, True
+            return text, url, False
+        fallback = (
+            f"https://huggingface.co/{identifier}/raw/"
+            f"{self.CARD_REVISIONS[0]}/README.md"
+        )
+        return "", fallback, False
+
+
+class HuggingFacePapersAdapter(HuggingFaceAdapter):
+    """Hugging Face Daily Papers search (scholarly, keyless, search-only).
+
+    Records carry the arXiv id as ``arxiv_id`` so scholarly multi-search
+    merges them with ``arxiv`` / ``semanticscholar`` records. Full text stays
+    on the ``arxiv`` provider; this adapter has no ``fetch``.
+    """
+
+    name = "huggingface-papers"
+
+    def _search_impl(self, query, max_results=5):
+        total_limit = max(0, min(int(max_results), 1000))
+        if not total_limit:
+            return []
+        body = self._request_json(
+            "/papers/search", {"q": query, "limit": total_limit},
+        )
+        if not isinstance(body, list):
+            raise ValueError(
+                "Hugging Face Hub papers search returned a non-list response"
+            )
+        parsed = json.loads(
+            _rust.huggingface_papers_parse_search(json.dumps(body), total_limit),
+        )
+        for record, paper in zip(parsed, body):
+            record["raw"] = json.dumps(paper)
+        return parsed
+
+    def fetch(self, record_id, params=None):
+        raise NotImplementedError(
+            "huggingface-papers is search-only; fetch full text via the "
+            "arxiv provider"
+        )
+
 
 class OpenMeteoAdapter(ResourceAdapter):
     """Open-Meteo weather/climate + place lookup (https://open-meteo.com).

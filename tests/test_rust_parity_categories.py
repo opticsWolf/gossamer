@@ -26,7 +26,7 @@ def test_table_sizes_match():
     # Per-category counts pin additions/removals to the right table.
     sizes = {cat.name: len(cat.keywords) for cat in rc.CATEGORIES}
     assert sizes == {
-        "scholarly": 25, "legal": 38, "patent": 18,
+        "scholarly": 29, "legal": 38, "patent": 18,
         "financial": 45, "geo": 21, "general": 0,
     }
 

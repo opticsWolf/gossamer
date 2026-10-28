@@ -11,7 +11,7 @@ one or more providers; the caller may pass ``provider=`` to :func:`search_catego
 to call any of them separately. There is **no implicit fallback chain** -- the
 model controls which source it queries.
 
-  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo`` / ``semanticscholar``
+  * ``scholarly`` -> ``openalex`` / ``crossref`` / ``arxiv`` / ``zenodo`` / ``semanticscholar`` / ``huggingface`` / ``huggingface-papers``
   * ``legal``     -> ``courtlistener`` / ``ecfr`` / ``federalregister`` /
                      ``oldp`` / ``hudoc`` / ``govinfo``
                      (``eurlex`` / ``german`` were retired — no public
@@ -97,7 +97,8 @@ _SCHOLARLY: Tuple[str, ...] = (
     "scholar", "academic", "academia", "publication", "publications",
     "research paper", "professor", "university", "thesis", "theses",
     "abstract", "semanticscholar", "refereed", "conference paper",
-    "open access",
+    "open access", "huggingface", "hugging face", "model card",
+    "daily papers",
 )
 
 # Case law, statutes, regulations, bills, government codes — plus EU /
@@ -162,7 +163,8 @@ CATEGORIES: Tuple[Category, ...] = (
         name="scholarly",
         description="Academic works, papers, citations, DOIs, journals.",
         keywords=_SCHOLARLY,
-        providers=("openalex", "crossref", "arxiv", "zenodo", "semanticscholar"),
+        providers=("openalex", "crossref", "arxiv", "zenodo", "semanticscholar",
+                   "huggingface", "huggingface-papers"),
         kind="adapter",
     ),
     Category(
@@ -265,6 +267,8 @@ _ADAPTER_FACTORIES: Dict[str, Callable[[], object]] = {
     "coingecko": "gossamer.research_providers.CoinGeckoAdapter",
     "zenodo": "gossamer.research_providers.ZenodoAdapter",
     "semanticscholar": "gossamer.research_providers.SemanticScholarAdapter",
+    "huggingface": "gossamer.research_providers.HuggingFaceAdapter",
+    "huggingface-papers": "gossamer.research_providers.HuggingFacePapersAdapter",
     "overpass": "gossamer.research_providers.OverpassAdapter",
     "oldp": "gossamer.research_providers.OldpAdapter",
     "hudoc": "gossamer.research_providers.HudocAdapter",

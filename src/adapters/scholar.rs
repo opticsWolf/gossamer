@@ -847,6 +847,289 @@ pub fn semanticscholar_parse_fetch_impl(response_json: &str) -> Result<Value, St
     semanticscholar_paper_impl(&body)
 }
 
+// ── HuggingFace Hub (models + papers, read-only) ───────────────────────
+//
+// Record shape follows the scholarly adapters (`source/id/title/url/doi/
+// published/authors/citations/snippet/fields`). `citations` carries the
+// Hub popularity proxy (`downloads` for models, `upvotes` for papers);
+// model→paper linkage rides on `arxiv_ids` (informational only — models
+// never merge; see `research_merge._identifier_key`, which keys merges on
+// record-level `arxiv_id`, set only for papers).
+
+fn huggingface_text(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// `tags` entries after `prefix` (`arxiv:`, `dataset:`, `license:`);
+/// missing/non-list tags fold to empty.
+fn huggingface_tag_values(map: &serde_json::Map<String, Value>, prefix: &str) -> Vec<String> {
+    match map.get("tags") {
+        Some(Value::Array(tags)) => tags
+            .iter()
+            .filter_map(|tag| match tag {
+                Value::String(text) => text.strip_prefix(prefix).map(str::to_string),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn huggingface_fields(map: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "likes".to_string(),
+        map.get("likes").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "downloads".to_string(),
+        map.get("downloads").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "pipeline_tag".to_string(),
+        Value::String(huggingface_text(map.get("pipeline_tag"))),
+    );
+    fields.insert(
+        "library_name".to_string(),
+        Value::String(huggingface_text(map.get("library_name"))),
+    );
+    fields.insert(
+        "tags".to_string(),
+        map.get("tags")
+            .filter(|tags| tags.is_array())
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new())),
+    );
+    for key in ["private", "gated", "disabled"] {
+        fields.insert(key.to_string(), map.get(key).cloned().unwrap_or(Value::Null));
+    }
+    fields.insert("sha".to_string(), Value::String(huggingface_text(map.get("sha"))));
+    fields.insert(
+        "arxiv_ids".to_string(),
+        Value::Array(
+            huggingface_tag_values(map, "arxiv:")
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "datasets".to_string(),
+        Value::Array(
+            huggingface_tag_values(map, "dataset:")
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "license".to_string(),
+        Value::String(
+            huggingface_tag_values(map, "license:").into_iter().next().unwrap_or_default(),
+        ),
+    );
+    fields
+}
+
+fn huggingface_model_impl(item: &Value) -> Result<Value, String> {
+    let map = match item {
+        Value::Object(map) => map,
+        _ => return Err(attr_error(json_type(item))),
+    };
+    let model_id = huggingface_text(map.get("id"));
+    let url = if model_id.is_empty() {
+        String::new()
+    } else {
+        format!("https://huggingface.co/{model_id}")
+    };
+    let pipeline_tag = huggingface_text(map.get("pipeline_tag"));
+    let library_name = huggingface_text(map.get("library_name"));
+    let mut snippet_parts = Vec::new();
+    if !pipeline_tag.is_empty() {
+        snippet_parts.push(pipeline_tag.clone());
+    }
+    if !library_name.is_empty() {
+        snippet_parts.push(library_name.clone());
+    }
+    if let Some(Value::Number(likes)) = map.get("likes") {
+        snippet_parts.push(format!("likes {likes}"));
+    }
+    if let Some(Value::Number(downloads)) = map.get("downloads") {
+        snippet_parts.push(format!("downloads {downloads}"));
+    }
+    let mut namespaced = huggingface_fields(map);
+    let mut record = serde_json::Map::new();
+    record.insert("source".to_string(), Value::String("huggingface".to_string()));
+    record.insert("id".to_string(), Value::String(model_id));
+    record.insert(
+        "title".to_string(),
+        Value::String(huggingface_text(map.get("id"))),
+    );
+    record.insert("url".to_string(), Value::String(url));
+    record.insert("doi".to_string(), Value::String(String::new()));
+    record.insert(
+        "published".to_string(),
+        Value::String(huggingface_text(map.get("lastModified"))),
+    );
+    record.insert(
+        "authors".to_string(),
+        Value::String(huggingface_text(map.get("author"))),
+    );
+    record.insert(
+        "citations".to_string(),
+        map.get("downloads")
+            .filter(|downloads| downloads.is_number())
+            .cloned()
+            .unwrap_or(Value::from(0)),
+    );
+    record.insert("snippet".to_string(), Value::String(snippet_parts.join("; ")));
+    let mut fields = serde_json::Map::new();
+    fields.insert("huggingface".to_string(), Value::Object(namespaced));
+    record.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(record))
+}
+
+pub fn huggingface_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let items = subscript_hits(Some(&body), max_results)?;
+    items.into_iter().map(huggingface_model_impl).collect()
+}
+
+pub fn huggingface_parse_fetch_impl(response_json: &str) -> Result<Value, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let mut record = match huggingface_model_impl(&body)? {
+        Value::Object(record) => record,
+        _ => return Err("ValueError: huggingface model record is not an object".to_string()),
+    };
+    let map = match &body {
+        Value::Object(map) => map,
+        _ => return Err(attr_error(json_type(&body))),
+    };
+    if let Some(Value::Object(namespaced)) = record
+        .get_mut("fields")
+        .and_then(|fields| fields.get_mut("huggingface"))
+    {
+        namespaced.insert(
+            "card_data".to_string(),
+            map.get("cardData").cloned().unwrap_or(Value::Null),
+        );
+        namespaced.insert(
+            "siblings".to_string(),
+            match map.get("siblings") {
+                Some(Value::Array(siblings)) => Value::Array(
+                    siblings
+                        .iter()
+                        .filter_map(|sibling| match sibling {
+                            Value::Object(entry) => match entry.get("rfilename") {
+                                Some(Value::String(name)) => {
+                                    Some(Value::String(name.clone()))
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        })
+                        .collect(),
+                ),
+                _ => Value::Array(Vec::new()),
+            },
+        );
+    }
+    Ok(Value::Object(record))
+}
+
+fn huggingface_paper_impl(item: &Value) -> Result<Value, String> {
+    let map = match item {
+        Value::Object(map) => map,
+        _ => return Err(attr_error(json_type(item))),
+    };
+    // Daily Papers wraps the record in a `paper` envelope; a bare paper
+    // object (or a non-object envelope) falls back to the item itself.
+    let paper = match map.get("paper") {
+        Some(Value::Object(paper)) => paper,
+        _ => map,
+    };
+    let arxiv_id = huggingface_text(paper.get("id"));
+    let url = if arxiv_id.is_empty() {
+        String::new()
+    } else {
+        format!("https://huggingface.co/papers/{arxiv_id}")
+    };
+    let authors = match paper.get("authors") {
+        Some(Value::Array(authors)) => authors
+            .iter()
+            .filter_map(|author| match author {
+                Value::Object(author) => author.get("name"),
+                _ => None,
+            })
+            .map(|name| huggingface_text(Some(name)))
+            .filter(|name| !name.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => String::new(),
+    };
+    let summary = huggingface_text(paper.get("summary"));
+    let published = {
+        let dated = huggingface_text(paper.get("publishedAt"));
+        if !dated.is_empty() {
+            dated
+        } else {
+            huggingface_text(map.get("publishedAt"))
+        }
+    };
+    let mut namespaced = serde_json::Map::new();
+    namespaced.insert(
+        "upvotes".to_string(),
+        paper
+            .get("upvotes")
+            .filter(|upvotes| upvotes.is_number())
+            .cloned()
+            .unwrap_or(Value::from(0)),
+    );
+    let mut record = serde_json::Map::new();
+    record.insert(
+        "source".to_string(),
+        Value::String("huggingface-papers".to_string()),
+    );
+    record.insert("id".to_string(), Value::String(arxiv_id.clone()));
+    record.insert("arxiv_id".to_string(), Value::String(arxiv_id));
+    record.insert(
+        "title".to_string(),
+        Value::String(huggingface_text(paper.get("title"))),
+    );
+    record.insert("url".to_string(), Value::String(url));
+    record.insert("doi".to_string(), Value::String(String::new()));
+    record.insert("published".to_string(), Value::String(published));
+    record.insert("authors".to_string(), Value::String(authors));
+    record.insert("citations".to_string(), Value::from(0));
+    record.insert(
+        "snippet".to_string(),
+        Value::String(char_head(&summary, 240).to_string()),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("huggingface-papers".to_string(), Value::Object(namespaced));
+    record.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(record))
+}
+
+pub fn huggingface_papers_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+) -> Result<Vec<Value>, String> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| format!("ValueError: {e}"))?;
+    let items = subscript_hits(Some(&body), max_results)?;
+    items.into_iter().map(huggingface_paper_impl).collect()
+}
+
 /// `(w.get("title") or [""])[0]`: falsy titles fold to `[""]`;
 /// truthy lists index (empty impossible — falsy caught); truthy
 /// strings yield their first char; anything else raises TypeError.
@@ -1457,6 +1740,37 @@ pub fn semanticscholar_parse_search(
 pub fn semanticscholar_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
     semanticscholar_parse_fetch_impl(response_json)
         .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn huggingface_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    huggingface_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+pub fn huggingface_parse_fetch(py: Python, response_json: &str) -> PyResult<String> {
+    huggingface_parse_fetch_impl(response_json)
+        .and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .map_err(|e| to_py_err(py, e))
+}
+
+#[pyfunction]
+#[pyo3(signature = (response_json, max_results = 5))]
+pub fn huggingface_papers_parse_search(
+    py: Python,
+    response_json: &str,
+    max_results: i64,
+) -> PyResult<String> {
+    huggingface_papers_parse_search_impl(response_json, max_results)
+        .and_then(|v| serde_json::to_string(&Value::Array(v)).map_err(|e| e.to_string()))
         .map_err(|e| to_py_err(py, e))
 }
 

@@ -37,7 +37,7 @@ without `--force`.
 
 ## Providers (keyless unless 🔑)
 
-- **scholarly** → `openalex` (default), `crossref`, `arxiv`, `zenodo`, `semanticscholar` (opt-in)
+- **scholarly** → `openalex` (default), `crossref`, `arxiv`, `zenodo`, `semanticscholar`, `huggingface` (models + cards), `huggingface-papers` (search-only) (opt-in)
 - **legal** → `courtlistener`, `ecfr`, `federalregister`, `oldp` (DE), `hudoc` (ECtHR), `govinfo`
 - **patent** → `epo` 🔑, `kipris` 🔑, `patentsview` 🔑, `lens` 🔑, `google-patents` (keyless number lookup; others fail fast without keys; `lens` aggregates WO/EP/DE/CN/US, trial is non-commercial/academic)
 - **financial** → `yahoo`, `frankfurter`, `eurostat`, `bundesbank`, `bis`, `coingecko`, `alphavantage` 🔑

@@ -108,7 +108,7 @@ are valid only with `provider="openalex"` and rejected otherwise;
 
 `research` auto-routes, or pick explicitly. Category → default provider:
 
-- `scholarly` → `openalex` by default; `crossref`, `arxiv`, `zenodo`, and `semanticscholar` are opt-in scholarly providers
+- `scholarly` → `openalex` by default; `crossref`, `arxiv`, `zenodo`, `semanticscholar`, `huggingface` (models + cards), and `huggingface-papers` (Daily Papers, arXiv-joined, search-only) are opt-in scholarly providers. Hub search is conjunctive — prefer short queries (`stable diffusion model`, not full sentences)
 - `legal` → `courtlistener` (US case law) · `oldp` (German cases) ·
   `hudoc` (ECtHR) · `ecfr`/`federalregister`/`govinfo` (US regs)
 - `patent` → `epo` (worldwide via INPADOC) · `kipris` (Korea) ·

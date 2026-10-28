@@ -72,6 +72,10 @@ def _identifier_key(record: dict) -> str | None:
         if normalized:
             return f"arxiv:{normalized}"
 
+    normalized = _arxiv_id(record.get("arxiv_id"))
+    if normalized:
+        return f"arxiv:{normalized}"
+
     if str(record.get("source", "")).lower() == "arxiv":
         normalized = _arxiv_id(record.get("id") or record.get("url"))
         if normalized:

@@ -4,6 +4,22 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.10.1] — HuggingFace Hub adapters (models + papers, read-only)
+
+- New opt-in scholarly providers `huggingface` (model search/lookup) and
+  `huggingface-papers` (Daily Papers search, search-only): keyless, optional
+  `GOSSAMER_HF_TOKEN` (`HF_TOKEN` keystore slot) raises the rate limit.
+  Model `fetch` returns the full Hub record plus the model-card body as
+  text (`card`, raw README.md on `main`/`master`, capped, `card_truncated`
+  flag); gated/private repos keep metadata with an empty card. Papers carry
+  `arxiv_id`, and `research_merge` keys merges on it, so Hub papers join
+  `arxiv`/`semanticscholar` records; models (informational `arxiv_ids`)
+  never merge. Row-building in three Rust kernels
+  (`huggingface_parse_search/fetch`, `huggingface_papers_parse_search`)
+  with `tests/test_rust_parity_huggingface.py` (204 cases incl. vendored
+  live fixtures); offline adapter tests in `tests/test_huggingface.py` +
+  one slow live test. Skill/QUICKREF/README/ARCHITECTURE updated.
+
 ## [0.10.0] — JATS-first scholarly route (bobine proposal §5)
 
 - `extract_document` gains `prefer_jats=True` (MCP + `extract --prefer-jats /
@@ -17,8 +33,9 @@ labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
   Dependency is core (`bobine>=0.7.0`, now on PyPI as 0.7.1 — no models,
   no ONNX Runtime on this path); the import stays lazy so a missing
   install fails with an action, not at import time.
-  Tests: `tests/test_jats_route.py` (21 offline:
-  routing, fallback order, flag matrix, store, cache) + vendored
+  Tests: `tests/test_jats_route.py` (22 offline:
+  routing, fallback order, flag matrix, store, cache, real-conversion
+  census incl. `\tag{Eq 1/2}`) + vendored
   `tests/fixtures/jats-chem-olive-2024.xml`; QUICKREF + skill updated.
 
 ## [0.9.35] — Tests badge one-off

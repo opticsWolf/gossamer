@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.10.0)
+# gossamer — architecture (v0.10.1)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -82,7 +82,7 @@ delegating to collaborator objects, all returning JSON strings.
 | JATS helpers | `jats.py` | pure DOI/resolver helpers for the JATS-first route (EuropePMC/PMC-OA/PLOS parsing, tarball picking, lazy `bobine.convert_jats` loading); all network stays in `document.py` plumbing |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
-| Domain adapters | `research_providers.py` | 38 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
+| Domain adapters | `research_providers.py` | 40 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
 | Routing | `research_categories.py` | keyword classifier (Euro terms folded in, no separate category) + provider factories |
 | Scholarly merge | `research_merge.py` | explicit DOI/arXiv-ID dedupe with canonical record, conflicts, and per-provider source records |
 | HTML meta | `meta_extractor.py` | `_core` kernels first, legacy `meta_oxide` package as last-resort fallback, then empty |

@@ -1,5 +1,7 @@
 """Identifier-only scholarly cross-provider merge tests."""
 
+import json
+
 from gossamer.research_merge import merge_scholarly_records
 
 
@@ -67,3 +69,37 @@ def test_invalid_doi_falls_back_to_arxiv_or_no_identifier():
 
     assert merged[0]["key"] == "arxiv:1707.06376"
     assert merged[1]["key"] is None
+
+
+def test_huggingface_papers_arxiv_id_joins_arxiv_and_semanticscholar():
+    providers = [
+        ("arxiv", [{
+            "source": "arxiv", "id": "2006.11239",
+            "title": "Denoising Diffusion Probabilistic Models",
+        }]),
+        ("huggingface-papers", [{
+            "source": "huggingface-papers", "id": "2006.11239",
+            "arxiv_id": "2006.11239",
+            "title": "Denoising Diffusion Probabilistic Models",
+            "url": "https://huggingface.co/papers/2006.11239",
+        }]),
+        ("semanticscholar", [{
+            "source": "semanticscholar", "id": "S2-1",
+            "raw": json.dumps({"externalIds": {"ArXiv": "2006.11239"}}),
+        }]),
+        ("huggingface", [{
+            "source": "huggingface", "id": "org/model",
+            "title": "A diffusion model",
+            "url": "https://huggingface.co/org/model",
+            "fields": {"huggingface": {"arxiv_ids": ["2006.11239"]}},
+        }]),
+    ]
+
+    merged = merge_scholarly_records(providers)
+
+    assert len(merged) == 2
+    assert merged[0]["key"] == "arxiv:2006.11239"
+    assert merged[0]["sources"] == ["arxiv", "huggingface-papers", "semanticscholar"]
+    # Models carry arxiv_ids (informational only) and never merge.
+    assert merged[1]["key"] is None
+    assert merged[1]["sources"] == ["huggingface"]

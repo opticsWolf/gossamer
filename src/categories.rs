@@ -32,7 +32,8 @@ static TABLES: &[CategoryTable] = &[
             "scholar", "academic", "academia", "publication", "publications",
             "research paper", "professor", "university", "thesis", "theses",
             "abstract", "semanticscholar", "refereed", "conference paper",
-            "open access",
+            "open access", "huggingface", "hugging face", "model card",
+            "daily papers",
         ],
     },
     CategoryTable {
