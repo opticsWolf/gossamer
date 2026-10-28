@@ -961,7 +961,7 @@ fn huggingface_model_impl(item: &Value) -> Result<Value, String> {
     if let Some(Value::Number(downloads)) = map.get("downloads") {
         snippet_parts.push(format!("downloads {downloads}"));
     }
-    let mut namespaced = huggingface_fields(map);
+    let namespaced = huggingface_fields(map);
     let mut record = serde_json::Map::new();
     record.insert("source".to_string(), Value::String("huggingface".to_string()));
     record.insert("id".to_string(), Value::String(model_id));
