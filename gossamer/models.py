@@ -159,6 +159,16 @@ class ExtractionResult(BaseModel):
     # maps to the files written — {"directory", "pdf", "markdown",
     # "pdf_bytes", "markdown_chars"}. None when store=False.
     stored: Optional[dict] = None
+    # JATS-first route (bobine proposal §5): set only when the JATS route
+    # served the request. Absence of ``jats_source`` means the PDF path
+    # served it. Counts are health signals (n_formulas == 0 on a
+    # math-heavy paper ⇒ suspect input).
+    resolved_doi: Optional[str] = None
+    jats_source: Optional[str] = None
+    jats_title: Optional[str] = None
+    n_formulas: Optional[int] = None
+    n_figures: Optional[int] = None
+    n_tables: Optional[int] = None
 
 
 class InspectionResult(BaseModel):

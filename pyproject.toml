@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gossamer-web"
-version = "0.9.35"
+version = "0.10.0"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -35,6 +35,12 @@ dependencies = [
     "pydantic>=2.7",
     "tiktoken>=0.5",
     "ddgs>=2.0",
+    # JATS-first scholarly route (docs/handoff_gossamer_jats.md):
+    # publisher full-text XML via bobine.convert_jats. Core dep (no
+    # models, no ONNX Runtime on this path); the import stays lazy
+    # (require_bobine) so a missing install fails with an action, not
+    # at import time.
+    "bobine>=0.7.0",
     # Rust-backed extractors (same ecosystem as the _core module).
     # meta-oxide ships INSIDE _core now (src/metaextract.rs depends on
     # the meta_oxide Rust crate, vendored at vendor/meta_oxide) — no
@@ -62,6 +68,7 @@ documents = [
 # §7: optional prompt-injection guard (JailGuard ONNX detector). The package
 # imports and runs without it; only an enabled guard needs the model.
 guard = ["jailguard>=0.1.2"]
+
 # Optional CSL rendering for APA/MLA (citeproc-py + bundled styles). NOT a
 # hard dependency: citeproc is imported lazily inside gossamer
 # .citations, and to_apa / to_mla fall back to the pure-Python approximation

@@ -161,6 +161,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tables-as", default="json",
                    choices=("markdown", "csv", "json"),
                    help="Rendering of spreadsheet (XLSX) tables (default: json)")
+    p.add_argument("--prefer-jats", dest="prefer_jats", action="store_true",
+                   default=True,
+                   help="JATS-first scholarly route (default on): DOI-resolvable sources try publisher full-text XML (EuropePMC / PMC OA / PLOS) before the PDF path. pages= with a JATS-resolvable source errors (sections, not pages); --store writes <stem>.xml + <stem>.md; --include-images is a no-op on the JATS route (remote hrefs, not saved).")
+    p.add_argument("--no-prefer-jats", dest="prefer_jats", action="store_false",
+                   help="Disable the JATS-first route; always use the PDF path (also disables the pages=/JATS error)")
     _common(p)
 
     p = sub.add_parser("check", help="Probe URL reachability")
@@ -341,7 +346,8 @@ def main(argv=None) -> int:
         "extract": lambda: toolbox.extract_document(
             args.source, pages=args.pages, structured=args.structured,
             store=args.store, store_dir=args.store_dir,
-            include_images=args.include_images, tables_as=args.tables_as),
+            include_images=args.include_images, tables_as=args.tables_as,
+            prefer_jats=args.prefer_jats),
         "check": lambda: toolbox.check_sources(args.urls, mode=args.mode),
         "discover": lambda: toolbox.discover_resources(args.url),
         "crawl": lambda: toolbox.crawl(

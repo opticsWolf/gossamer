@@ -14,7 +14,7 @@ Planning history: local `planning/` (unsynced).
 | `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
 | `download_file` | `gossamer download URL -o PATH` | `--min-bytes 1`, `--max-bytes 0` (configured cap), `--expect-format auto\|pdf`, `--overwrite`, `--resume`, `--try-mirrors URL…` (caller-supplied, sequential, policy-checked); fresh downloads stream to an atomic file, resume appends with Range/If-Range; does not extract |
 | `locate_pdf` | `gossamer locate-pdf DOI` | Returns OpenAlex OA candidates (plus Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is set) with source/license/version provenance; does not download |
-| `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as json\|markdown\|csv` (XLSX tables; default json, csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`) |
+| `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as json\|markdown\|csv` (XLSX tables; default json, csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`), `[--prefer-jats \| --no-prefer-jats]` (default on: DOI-resolvable sources try publisher full-text XML first) |
 | `discover_resources` | `gossamer discover URL` | feeds + bounded `/sitemap.xml` probe |
 | `crawl` | `gossamer crawl URL` | `--query`, `--max-depth 3`, `--max-pages 15`, `--min-score 0.05`, `--same-host`, `--excerpts`, `--search-prior`, `--seed-urls`, `--use-smart` |
 | `manage_cache` | `gossamer cache` | `prune` (default) \| `clear` \| `reset` |
@@ -29,7 +29,7 @@ same file the MCP server serves as the `skills://gossamer` resource;
 (`~/.config/opencode/skills`) discovery directories, non-destructively
 without `--force`.
 
-`extract --pages` cannot combine with `--store`. `include_images` is PDF-only. `download --resume` continues a partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges preserve the partial file); without `--resume`, unexpected partial-content responses are rejected.
+`extract --pages` cannot combine with `--store`. `include_images` is PDF-only (JATS route: documented no-op — figures are remote hrefs, not saved). Scholarly `extract` prefers publisher full text (JATS XML via EuropePMC / PMC OA / PLOS) when resolvable: sections/GFM tables/remote-figure hrefs/fused math (`$…$`, `$$… \tag{N}$$`); `pages=` with a JATS-resolvable source errors (sections, not pages); `structured=true` or spreadsheet `tables_as=json/csv` skips the route. JATS markdown trends shorter than the same paper's PDF extraction (direction, not a number) — the win is correct math. Absence of `jats_source` in provenance means the PDF path served it. `download --resume` continues a partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges preserve the partial file); without `--resume`, unexpected partial-content responses are rejected.
 
 ## Cache behavior
 
@@ -84,4 +84,4 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 
 ## Collection flow
 
-`research QUERY --category scholarly` → `check URL --mode status` → `locate-pdf DOI` (optional) → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` when the DOI is detected from the file). `--try-mirrors URL…` accepts only explicit caller-supplied OA/repository candidates; robots/SSRF checks apply to each. Review license/access terms before redistribution.
+`research QUERY --category scholarly` → `check URL --mode status` → `locate-pdf DOI` (optional) → `download URL -o FILE --expect-format pdf` → `extract DOI` (JATS-first: publisher full text when resolvable) or `extract FILE --no-prefer-jats` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` when the DOI is detected from the file). `--try-mirrors URL…` accepts only explicit caller-supplied OA/repository candidates; robots/SSRF checks apply to each. Review license/access terms before redistribution.

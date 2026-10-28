@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gossamer-web.svg)](https://pypi.org/project/gossamer-web/)
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-11111%20passing%2C%2034%20skipped-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-11133%20passing%2C%2034%20skipped-brightgreen)](tests/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
@@ -42,7 +42,7 @@ Python decides, Rust parses. Details: [Architecture](./docs/ARCHITECTURE.md).
 - **Multi-Provider Search**: Google, Bing, Exa alongside DuckDuckGo with failover or merged results
 - **Domain Providers**: `research_by_category` classifies queries (incl. German/EU terms like *Leitzins*, *BVerfG*, *HICP*) into scholarly / legal / patent / financial / geo — keyless-first
 - **Patent Providers**: EPO OPS, KIPRIS, PatentsView, Lens (all key-gated, fail fast with the exact variable name; Lens aggregates WO/EP/DE/CN/US, trial is non-commercial/academic) + keyless Google Patents number lookup
-- **Documents**: PDF/DOCX/XLSX/PPTX plus TXT/MD/CSV/JSON/XML/feeds; tables render as markdown by default; `store=True, include_images=True` saves PDF figures
+- **Documents**: PDF/DOCX/XLSX/PPTX plus TXT/MD/CSV/JSON/XML/feeds; tables render as markdown by default; `store=True, include_images=True` saves PDF figures; scholarly extraction prefers publisher JATS XML (EuropePMC / PMC OA / PLOS via `bobine`, fused math + `\tag{}` displays) when the source is DOI-resolvable (`prefer_jats`, default on)
 - **Crawl**: bounded relevance-ranked BFS (BM25 idfs + thesaurus + anchor context); documents collected, never fetched
 - **Citations**: BibTeX / CSL-JSON / APA / MLA from search results, no extra network calls
 - **HTML Metadata**: 13 formats via the in-core `meta_oxide` crate — no separate install, no PyPI blocker
@@ -139,7 +139,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 
 Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi' --title 'gradient index' --author 'Smith'` passes provider-native controls; those options are rejected for other providers. `--title`/`--author` map to the verified `title.search`/`raw_author_name.search` filters and combine with `--filter`. Explicit scholarly multi-search is opt-in via `gossamer research QUERY --providers openalex arxiv`; it merges by DOI/arXiv ID, preserves each source record, and never fans out by default.
 
-**Paper collection:** `research` → `check --mode status` → optional `locate-pdf DOI` → `download URL -o FILE --expect-format pdf` → `extract FILE` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` for a DOI detected from the file). Supplied mirror URLs are checked independently; gossamer respects robots/SSRF policy and does not bypass bot walls. The [skill](./gossamer/skills/gossamer/SKILL.md) has the full recipe — it ships inside the wheel, and `gossamer skills install` copies it into your agent's discovery directory.
+**Paper collection:** `research` → `check --mode status` → optional `locate-pdf DOI` → `download URL -o FILE --expect-format pdf` → `extract DOI` (JATS-first: publisher full text when resolvable) or `extract FILE --no-prefer-jats` → `cite DOI` (or `cite FILE.pdf [--from-pdf]` for a DOI detected from the file). Supplied mirror URLs are checked independently; gossamer respects robots/SSRF policy and does not bypass bot walls. The [skill](./gossamer/skills/gossamer/SKILL.md) has the full recipe — it ships inside the wheel, and `gossamer skills install` copies it into your agent's discovery directory.
 
 ---
 

@@ -628,32 +628,10 @@ class WebResearcherToolbox:
 
     def _doi_from_pdf(self, path) -> tuple[Optional[str], Optional[str]]:
         """Extract the first DOI from a local PDF; return (doi, error)."""
-        try:
-            data = Path(path).read_bytes()
-        except OSError as exc:
-            return None, f"cannot read PDF {path}: {exc}"
-        texts: list[str] = []
-        try:
-            raw = self._doc.extract_document(str(path))
-            try:
-                payload = json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                payload = None
-            if isinstance(payload, dict) and isinstance(payload.get("content"), str):
-                texts.append(payload["content"])
-        except Exception:  # noqa: BLE001 - fall back to raw-byte scan
-            pass
-        try:
-            texts.append(data.decode("latin-1", errors="ignore"))
-        except Exception:  # noqa: BLE001 - unreadable bytes mean no DOI
-            pass
-        from gossamer.citations import find_doi_in_text
+        # Shared helper (no DocumentExtractor call, so no JATS recursion).
+        from gossamer.jats import doi_from_pdf_path
 
-        for text in texts:
-            doi = find_doi_in_text(text)
-            if doi:
-                return doi, None
-        return None, f"no DOI found in PDF {path}; pass a DOI explicitly"
+        return doi_from_pdf_path(path)
 
     def export_citations(
         self,
@@ -1056,6 +1034,7 @@ class WebResearcherToolbox:
         store_dir: Optional[str] = None,
         include_images: bool = False,
         tables_as: str = "json",
+        prefer_jats: bool = True,
     ) -> str:
         """Extract text content from documents (PDF/DOCX/XLSX/PPTX, JSON,
         XML/RSS feeds, and text-like bodies). Thin delegation to
@@ -1077,6 +1056,7 @@ class WebResearcherToolbox:
         return self._doc.extract_document(
             source, pages, structured, store=store, store_dir=store_dir,
             include_images=include_images, tables_as=tables_as,
+            prefer_jats=prefer_jats,
         )
 
     def extract_document_structured(self, source: str) -> str:

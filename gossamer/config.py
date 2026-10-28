@@ -337,6 +337,12 @@ TOOL_REGISTRY = (
                 "Rendering of spreadsheet (XLSX) tables in the returned content: 'json' (default; array of {sheet, headers, rows}), 'markdown' (pipe tables), or 'csv' (comma-separated, one ## <sheet> block per sheet). Other formats keep markdown rendering.",
                 enum=["markdown", "csv", "json"],
             ),
+            ToolParam(
+                "prefer_jats",
+                bool,
+                True,
+                "JATS-first scholarly route (default true): DOI-resolvable sources try publisher full-text XML (EuropePMC / PMC OA / PLOS) via bobine before the PDF path. pages= with a JATS-resolvable source errors; structured=true or tables_as != 'markdown' skips the route.",
+            ),
         ),
     ),
     ToolSpec(

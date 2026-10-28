@@ -104,6 +104,7 @@ class DocumentExtractor:
         store_dir: Optional[str] = None,
         include_images: bool = False,
         tables_as: str = "json",
+        prefer_jats: bool = True,
     ) -> str:
         """Extract text content from documents.
 
@@ -149,6 +150,15 @@ class DocumentExtractor:
             tables), or ``"csv"`` (comma-separated, one ``## <sheet>``
             block per sheet). Applies to the flat whole-document path for
             XLSX; other formats keep their markdown rendering.
+        prefer_jats : bool
+            JATS-first scholarly route (default True): DOI-resolvable
+            sources attempt publisher full-text XML (EuropePMC / PMC OA /
+            PLOS) via ``bobine.convert_jats`` before the PDF path.
+            ``structured=True`` or ``tables_as != 'markdown'`` skips the
+            route; ``pages=`` with a JATS-resolvable source errors
+            (sections, not pages). ``store=True`` writes ``<stem>.xml``
+            + ``<stem>.md``; ``include_images=True`` is a documented
+            no-op for JATS (remote hrefs, not saved).
         """
         if tables_as not in ("markdown", "csv", "json"):
             return json.dumps(
@@ -177,6 +187,33 @@ class DocumentExtractor:
             )
         if structured:
             return self._extract_document_structured_impl(source)
+        # JATS-first: pages= with a JATS-resolvable source errors (§3.5).
+        # Offline check only (no network) so non-DOI page reads stay cheap.
+        if prefer_jats and self._jats_tables_allows(source, tables_as) and pages is not None and str(pages).strip():
+            if self._jats_resolvable_offline(source):
+                from gossamer.jats import PAGES_JATS_ERROR
+
+                return json.dumps(
+                    {"error": PAGES_JATS_ERROR.format(pages=str(pages).strip())},
+                    indent=2,
+                )
+        # Bare-DOI fast path: not a URL/local file, so skip URL gating
+        # (normalize_url would mangle it; 10.x looks like RFC1918 to SSRF).
+        if prefer_jats and self._jats_tables_allows(source, tables_as) and (pages is None or not str(pages).strip()):
+            try:
+                _is_file = Path(source).is_file()
+            except (OSError, ValueError):
+                _is_file = False
+            if not _is_file:
+                from gossamer import jats as _jats_mod
+
+                if _jats_mod.doi_from_source_string(source) and not source.strip().lower().startswith("http"):
+                    hit = self._try_jats_route(
+                        source, store=store, store_dir=store_dir,
+                        include_images=include_images,
+                    )
+                    if hit is not None:
+                        return hit
         try:
             source = normalize_url(source)  # may still be a local path
             is_url = True
@@ -200,6 +237,15 @@ class DocumentExtractor:
                     indent=2,
                 )
             self._tb._rate_limit_domain(source)
+
+        # JATS-first route (§3.1): after URL gating, before pages/cache.
+        if prefer_jats and self._jats_tables_allows(source, tables_as) and (pages is None or not str(pages).strip()):
+            hit = self._try_jats_route(
+                source, store=store, store_dir=store_dir,
+                include_images=include_images,
+            )
+            if hit is not None:
+                return hit
 
         # Tier 1.2: explicit page-range reads go through the structured
         # parser (the only path with per-page structure) and are cached
@@ -301,6 +347,477 @@ class DocumentExtractor:
         if stored is not None:
             result.stored = stored
         return self._finish_document(result)
+
+    # ───────────────────────────────
+    # JATS-first scholarly route (bobine proposal §5)
+    # ───────────────────────────────
+
+    _JATS_XML_SUFFIXES = (".xml", ".jats", ".nxml")
+    # Spreadsheet suffixes for the tables_as gate (§3.5): JATS tables are
+    # already GFM pipes, so an explicit tables_as='json'/'csv' only skips
+    # the route when the source looks like a spreadsheet (the request the
+    # PDF path can actually serve as JSON/CSV). For scholarly sources
+    # (DOI/PDF/XML) tables_as is ignored by the PDF path anyway, so the
+    # JATS route still applies with default flags (default-on).
+    _JATS_SPREADSHEET_SUFFIXES = (".xlsx", ".xls", ".xlsb", ".csv")
+
+    def _jats_tables_allows(self, source: str, tables_as: str) -> bool:
+        if tables_as == "markdown":
+            return True
+        try:
+            suffix = Path(source).suffix.lower()
+        except (OSError, ValueError):
+            suffix = ""
+        if not suffix:
+            try:
+                suffix = Path(urlparse(source).path).suffix.lower()
+            except Exception:  # noqa: BLE001 - seatbelt
+                suffix = ""
+        return suffix not in self._JATS_SPREADSHEET_SUFFIXES
+
+    def _jats_resolvable_offline(self, source: str) -> bool:
+        """Offline resolvability check (no network, no file read beyond DOI scan)."""
+        from gossamer import jats as _jats_mod
+
+        try:
+            if Path(source).is_file():
+                suffix = Path(source).suffix.lower()
+                if suffix in self._JATS_XML_SUFFIXES:
+                    return True
+                if suffix == ".pdf":
+                    try:
+                        doi, _ = _jats_mod.doi_from_pdf_path(source)
+                    except Exception:  # noqa: BLE001 - best effort
+                        return False
+                    return bool(doi)
+                return False
+        except (OSError, ValueError):
+            pass
+        return _jats_mod.doi_from_source_string(source) is not None
+
+    def _fetch_jats_url(self, url: str):
+        """Fetch a resolver/JATS URL through the toolbox machinery.
+
+        Returns ``(bytes, prov)``. Raises ``ValueError`` for SSRF/robots
+        rejections (callers treat those as tier-skips, never hard errors).
+        Network/fetch failures propagate to the caller, which decides
+        loud (JSON error) vs tier-skip per §3.1/§3.3/§3.5.
+        """
+        try:
+            self._tb._validate_url(url)
+        except (ValueError, SsrfBlockedError) as e:
+            raise ValueError(f"URL rejected: {e}") from e
+        if self._tb._robots_disallows(url):
+            raise ValueError(f"disallowed by robots.txt: {url}")
+        self._tb._rate_limit_domain(url)
+        return self._fetch_document_url(url)
+
+    def _jats_cache_key(self, source: str) -> str:
+        try:
+            if urlparse(source).scheme in ("http", "https"):
+                base = self._tb._cache_key(source)
+            else:
+                base = source
+        except Exception:  # noqa: BLE001 - seatbelt
+            base = source
+        return f"{base}#jats"
+
+    def _try_jats_route(
+        self, source: str, *, store: bool = False,
+        store_dir: Optional[str] = None, include_images: bool = False,
+    ) -> Optional[str]:
+        """JATS-first attempt; ``None`` = not JATS-resolvable (fall through).
+
+        Returns the finished JSON string on success *or* hard error
+        (post-resolution network failure, XML parse); ``None`` only when
+        the source is not JATS-resolvable and the caller must fall
+        through silently to the PDF path.
+        """
+        from gossamer import jats as J
+
+        # Local .xml/.jats/.nxml → direct convert (feeds keep working:
+        # "not a JATS article" falls through, never errors).
+        try:
+            _is_file = Path(source).is_file()
+        except (OSError, ValueError):
+            _is_file = False
+        if _is_file and Path(source).suffix.lower() in self._JATS_XML_SUFFIXES:
+            try:
+                xml_bytes = Path(source).read_bytes()
+            except OSError as e:
+                return json.dumps(
+                    {"error": f"Document extraction failed: {e}"}, indent=2
+                )
+            try:
+                conv = J.convert_jats_bytes(xml_bytes, Path(source).name)
+            except (ImportError, RuntimeError):
+                # Local .xml/.jats/.nxml keeps its existing contract (feed
+                # entries / raw-text fallback): any conversion failure —
+                # missing bobine extra, not-a-JATS feed, malformed XML —
+                # falls through to the normal path, never errors.
+                return None
+            return self._finish_jats_result(
+                source, conv, None, None, None, None,
+                store=store, store_dir=store_dir,
+                include_images=include_images, xml_bytes=xml_bytes,
+            )
+
+        # DOI acquisition (reuse, don't reinvent).
+        resolved_doi: Optional[str] = None
+        if _is_file:
+            if Path(source).suffix.lower() == ".pdf":
+                try:
+                    doi, _ = J.doi_from_pdf_path(source)
+                except Exception:  # noqa: BLE001 - best effort
+                    doi = None
+                if not doi:
+                    return None
+                resolved_doi = doi
+            else:
+                return None
+        else:
+            resolved_doi = J.doi_from_source_string(source)
+            if not resolved_doi:
+                return None
+
+        # Cache: untruncated markdown + provenance envelope (JATS needs
+        # jats_source on hits; the PDF path's provenance loss would read
+        # as "PDF served it").
+        cache_key = self._jats_cache_key(source)
+        cached = self._tb.cache.get(cache_key)
+        if cached is not None:
+            try:
+                import json as _json
+
+                envelope = _json.loads(cached)
+                full_content = envelope["markdown"]
+                prov = dict(envelope.get("prov") or {})
+            except Exception:  # noqa: BLE001 - legacy raw-markdown entry
+                full_content = cached
+                prov = {"resolved_doi": resolved_doi, "jats_source": "cached"}
+            truncated = self._tb._budget._truncate(
+                full_content, self._tb.max_markdown_chars, self._tb.max_tokens
+            )
+            result = ExtractionResult(
+                source=source,
+                content=truncated,
+                content_tokens=count_tokens(truncated, self._tb.model_name),
+                cache_hit=True,
+                content_hash=_sha256_hex(full_content),
+                links=extract_links(full_content),
+                **{k: v for k, v in prov.items() if k in ExtractionResult.model_fields},
+            )
+            return self._finish_document(result)
+
+        # Tier 1: EuropePMC fullTextXML (primary).
+        pmcid: Optional[str] = None
+        try:
+            email = self._openalex_email()
+        except Exception:  # noqa: BLE001 - defensive
+            email = ""
+        import json as _json
+        from urllib.parse import quote as _quote
+
+        search_url = (
+            f"{J.EUROPEPMC_SEARCH_URL}?query=DOI:{_quote(resolved_doi, safe='')}"
+            f"&format=json" + (f"&email={_quote(email)}" if email else "")
+        )
+        try:
+            search_bytes, _ = self._fetch_jats_url(search_url)
+            payload = _json.loads(search_bytes.decode("utf-8", errors="replace"))
+            picked = J.parse_europepmc_search(payload)
+        except ValueError:
+            picked = None  # SSRF/robots on the resolver → tier-skip
+        except Exception as e:  # noqa: BLE001 - search failure → PLOS/None
+            logger.debug("EuropePMC search failed for %s: %s", resolved_doi, e)
+            picked = None
+        if picked is not None:
+            pmcid = picked["pmcid"]
+            ft_url = J.europepmc_fulltext_url(picked["source"], picked["id"])
+            try:
+                xml_bytes, ft_prov = self._fetch_jats_url(ft_url)
+            except ValueError:
+                xml_bytes, ft_prov = None, None  # SSRF/robots → tier-skip
+            except Exception as e:
+                logger.error("JATS fetch failed for %s: %s", ft_url, e)
+                return json.dumps(
+                    {"error": f"Document extraction failed: {e}"}, indent=2
+                )
+            if xml_bytes is not None and ft_prov is not None:
+                if J.is_xml_body(ft_prov.get("content_type"), xml_bytes):
+                    try:
+                        conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.xml")
+                    except ImportError as e:
+                        return json.dumps({"error": str(e)}, indent=2)
+                    except RuntimeError as e:
+                        if "not a JATS article" in str(e):
+                            pass  # try next tier
+                        else:
+                            logger.error("JATS conversion failed for %s: %s", ft_url, e)
+                            return json.dumps(
+                                {"error": f"Document extraction failed: {e}"}, indent=2
+                            )
+                    else:
+                        return self._finish_jats_result(
+                            source, conv, resolved_doi, "europepmc", ft_url, ft_prov,
+                            store=store, store_dir=store_dir,
+                            include_images=include_images, xml_bytes=xml_bytes,
+                            cache_key=cache_key,
+                        )
+                # Fetched but not XML → "no full text": fall to PMC OA.
+                if pmcid is not None:
+                    oa_hit = self._try_pmc_oa(
+                        source, resolved_doi, pmcid, store=store,
+                        store_dir=store_dir, include_images=include_images,
+                        cache_key=cache_key,
+                    )
+                    if oa_hit is not None:
+                        return oa_hit
+                plos_hit = self._try_plos(
+                    source, resolved_doi, store=store, store_dir=store_dir,
+                    include_images=include_images, cache_key=cache_key,
+                )
+                if plos_hit is not None:
+                    return plos_hit
+                return None
+            # SSRF/robots skip on the fullTextXML URL → try OA, then PLOS.
+            if pmcid is not None:
+                oa_hit = self._try_pmc_oa(
+                    source, resolved_doi, pmcid, store=store,
+                    store_dir=store_dir, include_images=include_images,
+                    cache_key=cache_key,
+                )
+                if oa_hit is not None:
+                    return oa_hit
+            plos_hit = self._try_plos(
+                source, resolved_doi, store=store, store_dir=store_dir,
+                include_images=include_images, cache_key=cache_key,
+            )
+            if plos_hit is not None:
+                return plos_hit
+            return None
+        # No EuropePMC hit (or search failed): PLOS last resort, else fall through.
+        plos_hit = self._try_plos(
+            source, resolved_doi, store=store, store_dir=store_dir,
+            include_images=include_images, cache_key=cache_key,
+        )
+        if plos_hit is not None:
+            return plos_hit
+        return None
+
+    def _try_pmc_oa(
+        self, source: str, doi: str, pmcid: str, *, store: bool = False,
+        store_dir: Optional[str] = None, include_images: bool = False,
+        cache_key: Optional[str] = None,
+    ) -> Optional[str]:
+        """PMC OA fallback; ``None`` = no OA full text (try PLOS/fall through)."""
+        from gossamer import jats as J
+        from urllib.parse import quote as _quote
+
+        oa_url = f"{J.PMC_OA_URL}?id={_quote(pmcid, safe='')}"
+        try:
+            oa_bytes, _ = self._fetch_jats_url(oa_url)
+        except ValueError:
+            return None  # SSRF/robots → tier-skip
+        except Exception as e:  # noqa: BLE001 - OA index failure → tier-skip
+            logger.debug("PMC OA lookup failed for %s: %s", pmcid, e)
+            return None
+        tgz_url = J.parse_oa_tgz_link(oa_bytes)
+        if not tgz_url:
+            return None
+        try:
+            tgz_bytes, tgz_prov = self._fetch_jats_url(tgz_url)
+        except ValueError:
+            return None
+        except Exception as e:
+            logger.error("JATS fetch failed for %s: %s", tgz_url, e)
+            return json.dumps(
+                {"error": f"Document extraction failed: {e}"}, indent=2
+            )
+        try:
+            _member, xml_bytes = J.extract_nxml_from_tgz(tgz_bytes, pmcid)
+        except ValueError as e:
+            logger.debug("PMC OA tarball unusable for %s: %s", pmcid, e)
+            return None
+        if not J.is_xml_body("application/xml", xml_bytes):
+            return None
+        try:
+            conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.nxml")
+        except ImportError as e:
+            return json.dumps({"error": str(e)}, indent=2)
+        except RuntimeError as e:
+            if "not a JATS article" in str(e):
+                return None
+            logger.error("JATS conversion failed for %s: %s", tgz_url, e)
+            return json.dumps(
+                {"error": f"Document extraction failed: {e}"}, indent=2
+            )
+        return self._finish_jats_result(
+            source, conv, doi, "pmc-oa", tgz_url, tgz_prov,
+            store=store, store_dir=store_dir,
+            include_images=include_images, xml_bytes=xml_bytes,
+            cache_key=cache_key,
+        )
+
+    def _try_plos(
+        self, source: str, doi: str, *, store: bool = False,
+        store_dir: Optional[str] = None, include_images: bool = False,
+        cache_key: Optional[str] = None,
+    ) -> Optional[str]:
+        """PLOS manuscript fallback; ``None`` on any non-200 (never an error)."""
+        from gossamer import jats as J
+        from urllib.parse import quote as _quote
+
+        journal: Optional[str] = None
+        try:
+            located = self._tb._oa_locator.locate(doi)
+            for cand in located.get("candidates") or []:
+                for key in ("landing_page_url", "url"):
+                    val = cand.get(key)
+                    if isinstance(val, str):
+                        journal = J.plos_journal_from_url(val)
+                        if journal:
+                            break
+                    if journal:
+                        break
+                if journal:
+                    break
+        except Exception:  # noqa: BLE001 - locator failure → skip PLOS
+            return None
+        if not journal:
+            return None
+        plos_url = J.PLOS_FILE_TMPL.format(journal=journal, doi=_quote(doi, safe=""))
+        try:
+            xml_bytes, plos_prov = self._fetch_jats_url(plos_url)
+        except Exception:  # noqa: BLE001 - any non-200 → None, never error
+            return None
+        if not J.is_xml_body(plos_prov.get("content_type"), xml_bytes):
+            return None
+        try:
+            conv = J.convert_jats_bytes(xml_bytes, f"{doi.split('/')[-1]}.xml")
+        except (ImportError, RuntimeError):
+            return None  # PLOS branch is best-effort only
+        return self._finish_jats_result(
+            source, conv, doi, "plos", plos_url, plos_prov,
+            store=store, store_dir=store_dir,
+            include_images=include_images, xml_bytes=xml_bytes,
+            cache_key=cache_key,
+        )
+
+    def _openalex_email(self) -> str:
+        """Operator contact for the EuropePMC politeness param."""
+        try:
+            from gossamer.env import getenv as _env_get
+
+            email = _env_get("GOSSAMER_OPENALEX_EMAIL", "")
+            return email.strip() if isinstance(email, str) else ""
+        except Exception:  # noqa: BLE001 - defensive
+            return ""
+
+    def _finish_jats_result(
+        self, source: str, conv: dict, doi: Optional[str],
+        jats_source: Optional[str], jats_url: Optional[str], prov: Optional[dict],
+        *, store: bool = False, store_dir: Optional[str] = None,
+        include_images: bool = False, xml_bytes: Optional[bytes] = None,
+        cache_key: Optional[str] = None,
+    ) -> str:
+        """Build, optionally store + cache, and guard-finish a JATS hit."""
+        full_content = conv.get("markdown") or ""
+        if not full_content.strip():
+            return json.dumps(
+                {"error": "Document extraction failed: empty JATS conversion"},
+                indent=2,
+            )
+        full_prov: dict = dict(prov or {})
+        if jats_url:
+            full_prov.setdefault("final_url", jats_url)
+        if not full_prov.get("fetched_at"):
+            full_prov["fetched_at"] = _utc_now_iso()
+        stored = None
+        if store:
+            try:
+                stored = self._store_jats_document(
+                    source, doi, xml_bytes or b"", full_content,
+                    store_dir, full_prov, include_images=include_images,
+                )
+            except ValueError as e:
+                return json.dumps({"error": str(e)}, indent=2)
+        if cache_key is None:
+            cache_key = self._jats_cache_key(source)
+        try:
+            import json as _json
+
+            self._tb.cache.put(cache_key, _json.dumps({
+                "markdown": full_content,
+                "prov": {
+                    "resolved_doi": doi,
+                    "jats_source": jats_source or "local",
+                    "jats_title": conv.get("title"),
+                    "n_formulas": conv.get("n_formulas"),
+                    "n_figures": conv.get("n_figures"),
+                    "n_tables": conv.get("n_tables"),
+                    "final_url": full_prov.get("final_url"),
+                    "content_type": full_prov.get("content_type"),
+                    "http_status": full_prov.get("http_status"),
+                    "fetched_at": full_prov.get("fetched_at"),
+                },
+            })) 
+        except Exception:  # noqa: BLE001 - cache failures never fail reads
+            logger.debug("JATS cache write failed", exc_info=True)
+        truncated = self._tb._budget._truncate(
+            full_content, self._tb.max_markdown_chars, self._tb.max_tokens
+        )
+        result = ExtractionResult(
+            source=source,
+            content=truncated,
+            content_tokens=count_tokens(truncated, self._tb.model_name),
+            cache_hit=False,
+            content_hash=_sha256_hex(full_content),
+            links=extract_links(full_content),
+            resolved_doi=doi,
+            jats_source=jats_source or "local",
+            jats_title=conv.get("title") or None,
+            n_formulas=conv.get("n_formulas"),
+            n_figures=conv.get("n_figures"),
+            n_tables=conv.get("n_tables"),
+            **{k: v for k, v in full_prov.items() if k in ExtractionResult.model_fields},
+        )
+        if stored is not None:
+            result.stored = stored
+        return self._finish_document(result)
+
+    def _store_jats_document(
+        self, source: str, doi: Optional[str], xml_bytes: bytes,
+        full_text: str, store_dir: Optional[str], prov: Optional[dict],
+        include_images: bool = False,
+    ) -> dict:
+        """Store fetched JATS XML verbatim + converted markdown.
+
+        ``include_images`` is a documented no-op (figures are remote
+        hrefs, nothing embedded to save) reported in the manifest.
+        Remote figures are never downloaded (license + size + SSRF).
+        """
+        from gossamer.jats import jats_cache_stem
+
+        out_dir = Path(store_dir) if store_dir else Path.cwd() / "stored_documents"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        stem = jats_cache_stem(doi or source)
+        orig_path = out_dir / f"{stem}.xml"
+        md_path = out_dir / f"{stem}.md"
+        orig_path.write_bytes(xml_bytes)
+        md_path.write_text(full_text, encoding="utf-8")
+        resources: dict = {"dir": str(out_dir), "files": [], "referenced": 0, "embedded": 0}
+        if include_images:
+            resources["note"] = "JATS figures are remote hrefs, not saved"
+        return {
+            "directory": str(out_dir),
+            "original": str(orig_path),
+            "markdown": str(md_path),
+            "original_bytes": len(xml_bytes),
+            "markdown_chars": len(full_text),
+            "content_type": (prov or {}).get("content_type"),
+            "resources": resources,
+        }
 
     # Cap on embedded PDF images per store call (disk-fill guard;
     # reported via the manifest when hit).

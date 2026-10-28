@@ -66,7 +66,8 @@ not count). `use_smart="browser"` needs the `gossamer-web[browser]` extra.
 
 ```python
 extract_document(source, pages=None, structured=False, store=False,
-                 store_dir=None, include_images=False, tables_as="json")
+                 store_dir=None, include_images=False, tables_as="json",
+                 prefer_jats=True)
 download_file(source, output_path, min_bytes=1, max_bytes=0,
               expected_format="auto", overwrite=False, resume=False,
               fallback_urls=[])
@@ -76,7 +77,11 @@ check_sources(urls, mode="status")
 
 `extract_document(pages="10-20")` is 1-based inclusive for PDFs (sheet
 range for XLSX) and cannot combine with `store=True`; `include_images`
-needs `store=True` and is PDF-only. `download_file(max_bytes=0)` uses the
+needs `store=True` and is PDF-only. Scholarly extraction prefers publisher
+full text (JATS XML via EuropePMC / PMC OA / PLOS) when resolvable
+(`prefer_jats=True`, default); `pages=` with a JATS-resolvable source
+errors, `structured=True` or `tables_as!="markdown"` skips the route,
+and `include_images` is a no-op on the JATS route (remote hrefs, not saved). `download_file(max_bytes=0)` uses the
 configured cap; `fallback_urls` are caller-supplied mirrors, each checked
 independently. `check_sources(mode="status")` is a HEAD probe;
 `"content"` is a GET for hosts that reject HEAD.

@@ -1,0 +1,460 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.1d3 20150301//EN" "http://jats.nlm.nih.gov/publishing/1.1d3/JATS-journalpublishing1.dtd">
+<article article-type="research-article" dtd-version="1.1d3" xml:lang="en" xmlns:mml="http://www.w3.org/1998/Math/MathML" xmlns:xlink="http://www.w3.org/1999/xlink">
+<front>
+<journal-meta>
+<journal-id journal-id-type="nlm-ta">PLoS ONE</journal-id>
+<journal-id journal-id-type="publisher-id">plos</journal-id>
+<journal-id journal-id-type="pmc">plosone</journal-id>
+<journal-title-group>
+<journal-title>PLOS ONE</journal-title>
+</journal-title-group>
+<issn pub-type="epub">1932-6203</issn>
+<publisher>
+<publisher-name>Public Library of Science</publisher-name>
+<publisher-loc>San Francisco, CA USA</publisher-loc>
+</publisher>
+</journal-meta>
+<article-meta>
+<article-id pub-id-type="doi">10.1371/journal.pone.0306040</article-id>
+<article-id pub-id-type="publisher-id">PONE-D-23-43587</article-id>
+<article-categories>
+<subj-group subj-group-type="heading">
+<subject>Research Article</subject>
+</subj-group>
+<subj-group subj-group-type="Discipline-v3">
+<subject>Biology and life sciences</subject><subj-group><subject>Organisms</subject><subj-group><subject>Eukaryota</subject><subj-group><subject>Plants</subject><subj-group><subject>Fruits</subject><subj-group><subject>Olives</subject></subj-group></subj-group></subj-group></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Research and analysis methods</subject><subj-group><subject>Spectrum analysis techniques</subject><subj-group><subject>NMR spectroscopy</subject></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Physical sciences</subject><subj-group><subject>Physics</subject><subj-group><subject>Thermodynamics</subject><subj-group><subject>Free energy</subject></subj-group></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Research and analysis methods</subject><subj-group><subject>Crystallographic techniques</subject><subj-group><subject>X-ray crystallography</subject></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Research and analysis methods</subject><subj-group><subject>Structural characterization</subject><subj-group><subject>X-ray crystallography</subject></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Research and analysis methods</subject><subj-group><subject>Microscopy</subject><subj-group><subject>Electron microscopy</subject><subj-group><subject>Scanning electron microscopy</subject></subj-group></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Research and analysis methods</subject><subj-group><subject>Chemical synthesis</subject></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Biology and life sciences</subject><subj-group><subject>Plant science</subject><subj-group><subject>Plant anatomy</subject><subj-group><subject>Leaves</subject></subj-group></subj-group></subj-group></subj-group><subj-group subj-group-type="Discipline-v3">
+<subject>Physical sciences</subject><subj-group><subject>Physics</subject><subj-group><subject>Thermodynamics</subject><subj-group><subject>Enthalpy</subject></subj-group></subj-group></subj-group></subj-group></article-categories>
+<title-group>
+<article-title>Olive leaf extract-assisted green synthesis of cd nano complex: A combined experimental and theoretical study</article-title>
+<alt-title alt-title-type="running-head">Green synthesis of cd nano complex: A combined experimental and theoretical study</alt-title>
+</title-group>
+<contrib-group>
+<contrib contrib-type="author" xlink:type="simple">
+<name name-style="western">
+<surname>Alshammari</surname>
+<given-names>Mutairah S.</given-names>
+</name>
+<role content-type="http://credit.niso.org/contributor-roles/project-administration/">Project administration</role>
+<xref ref-type="aff" rid="aff001"><sup>1</sup></xref>
+</contrib>
+<contrib contrib-type="author" corresp="yes" xlink:type="simple">
+<contrib-id authenticated="true" contrib-id-type="orcid">https://orcid.org/0000-0002-3501-2787</contrib-id>
+<name name-style="western">
+<surname>H. Taha</surname>
+<given-names>Rania</given-names>
+</name>
+<role content-type="http://credit.niso.org/contributor-roles/conceptualization/">Conceptualization</role>
+<role content-type="http://credit.niso.org/contributor-roles/data-curation/">Data curation</role>
+<role content-type="http://credit.niso.org/contributor-roles/investigation/">Investigation</role>
+<role content-type="http://credit.niso.org/contributor-roles/methodology/">Methodology</role>
+<role content-type="http://credit.niso.org/contributor-roles/supervision/">Supervision</role>
+<role content-type="http://credit.niso.org/contributor-roles/writing-original-draft/">Writing – original draft</role>
+<role content-type="http://credit.niso.org/contributor-roles/writing-review-editing/">Writing – review &amp; editing</role>
+<xref ref-type="aff" rid="aff001"><sup>1</sup></xref>
+<xref ref-type="aff" rid="aff002"><sup>2</sup></xref>
+<xref ref-type="corresp" rid="cor001">*</xref>
+</contrib>
+<contrib contrib-type="author" xlink:type="simple">
+<name name-style="western">
+<surname>Almutlq</surname>
+<given-names>Nowarah J.</given-names>
+</name>
+<role content-type="http://credit.niso.org/contributor-roles/data-curation/">Data curation</role>
+<xref ref-type="aff" rid="aff001"><sup>1</sup></xref>
+</contrib>
+<contrib contrib-type="author" xlink:type="simple">
+<name name-style="western">
+<surname>Mohamed</surname>
+<given-names>Sabrein H.</given-names>
+</name>
+<role content-type="http://credit.niso.org/contributor-roles/writing-original-draft/">Writing – original draft</role>
+<xref ref-type="aff" rid="aff001"><sup>1</sup></xref>
+<xref ref-type="aff" rid="aff003"><sup>3</sup></xref>
+</contrib>
+</contrib-group>
+<aff id="aff001"><label>1</label> <addr-line>Chemistry Department, College of Science, Jouf University, Sakaka, Saudi Arabia</addr-line></aff>
+<aff id="aff002"><label>2</label> <addr-line>Department of Chemistry, Faculty of Science (Girls), Al-Azhar University, Nasr City, Cairo, Egypt</addr-line></aff>
+<aff id="aff003"><label>3</label> <addr-line>Chemistry Department, Faculty of Science, Cairo University, Cairo, Egypt</addr-line></aff>
+<contrib-group>
+<contrib contrib-type="editor" xlink:type="simple">
+<name name-style="western">
+<surname>Al-Karmalawy</surname>
+<given-names>Ahmed A.</given-names>
+</name>
+<role>Editor</role>
+<xref ref-type="aff" rid="edit1"/>
+</contrib>
+</contrib-group>
+<aff id="edit1"><addr-line>Ahram Canadian University, EGYPT</addr-line></aff>
+<author-notes>
+<fn fn-type="conflict" id="coi001">
+<p>he authors have declared that no competing interests exist.</p>
+</fn>
+<corresp id="cor001">* E-mail: <email xlink:type="simple">mhmd_mosad@yahoo.com</email>, <email xlink:type="simple">rhaly@ju.edu.sa</email></corresp>
+</author-notes>
+<pub-date pub-type="epub">
+<day>2</day>
+<month>8</month>
+<year>2024</year>
+</pub-date>
+<pub-date pub-type="collection">
+<year>2024</year>
+</pub-date>
+<volume>19</volume>
+<issue>8</issue>
+<elocation-id>e0306040</elocation-id>
+<history>
+<date date-type="received">
+<day>25</day>
+<month>12</month>
+<year>2023</year>
+</date>
+<date date-type="accepted">
+<day>5</day>
+<month>6</month>
+<year>2024</year>
+</date>
+</history>
+<permissions>
+<copyright-year>2024</copyright-year>
+<copyright-holder>Alshammari et al</copyright-holder>
+<license xlink:href="http://creativecommons.org/licenses/by/4.0/" xlink:type="simple">
+<license-p>This is an open access article distributed under the terms of the <ext-link ext-link-type="uri" xlink:href="http://creativecommons.org/licenses/by/4.0/" xlink:type="simple">Creative Commons Attribution License</ext-link>, which permits unrestricted use, distribution, and reproduction in any medium, provided the original author and source are credited.</license-p>
+</license>
+</permissions>
+<self-uri content-type="pdf" xlink:href="info:doi/10.1371/journal.pone.0306040"/>
+<abstract>
+<p>Research in the synthesis of Schiff base ligands and their metal complexes using olive leaf extracts as a green reducing agent is an exciting area of study. In this research, a Schiff base ligand is created by combining 1-hydroxy-2-naphthaldehyde and amino-<italic>N</italic>-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfonamide. The synthetic Schiff base is then utilized for the production of a Cd(II) nano complex for the first time with olive leaf extracts serving as the green reducing agent. The extract is obtained by harvesting, drying, and grinding the olive leaves. Various analytical techniques, including <sup>1</sup>H NMR, <sup>13</sup>C NMR spectroscopy, scanning electron microscope (SEM), and conductivity studies, are employed to analyze the Schiff base and its Cd(II) complex. Quantum chemical calculations are also conducted to explore the different conformers of the Cd(II) complex and their stabilities, shedding light on the synthesis pathways of the Schiff base ligand and Cd(II) complex. Extensive DFT-based geometry optimizations and frequency calculations are carried out for 1-hydroxy-2-naphthaldehyde,amino-<italic>N</italic>-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfonamide, the Schiff base ligand, and the corresponding Cd(II) complex. Experimental and theoretical analyses confirm the presence of the azomethine (-HC = N-) group in the Schiff base and validate the formation of the Cd(II) complex in a 2:1 metal-to-ligand ratio through physicochemical characterization methods, highlighting the nanoscale structure of the complex. Combining thorough physicochemical investigations with molecular modeling simulations and the sustainable synthesis of metal complexes, valuable insights into their properties and potential applications in catalysis and drug delivery are obtained.</p>
+</abstract>
+<funding-group>
+<award-group id="award001">
+<funding-source>
+<institution>Ministry of Education in Saudi Arabia</institution>
+</funding-source>
+<award-id>223202</award-id>
+<principal-award-recipient>
+<name name-style="western">
+<surname>Alshammari</surname>
+<given-names>Mutairah S.</given-names>
+</name>
+</principal-award-recipient>
+</award-group>
+<funding-statement>This study was funded by the Deputyship for Research &amp; Innovation, Ministry of Education in Saudi Arabia [project no. 223202] to MSA.</funding-statement>
+</funding-group>
+<counts>
+<fig-count count="7"/>
+<table-count count="2"/>
+<page-count count="11"/>
+</counts>
+<custom-meta-group>
+<custom-meta id="data-availability">
+<meta-name>Data Availability</meta-name>
+<meta-value>Within the manuscript itself.</meta-value>
+</custom-meta>
+</custom-meta-group>
+</article-meta>
+</front>
+<body>
+<sec id="sec001" sec-type="intro">
+<title>Introduction</title>
+<p>Schiff bases are formed when an aldehyde or ketone reacts with a primary amine When an aldehyde or ketone is combined with a primary amine [<xref ref-type="bibr" rid="pone.0306040.ref001">1</xref>, <xref ref-type="bibr" rid="pone.0306040.ref002">2</xref>], resulting in a compound with an azomethine group containing HC = N bonds [<xref ref-type="bibr" rid="pone.0306040.ref003">3</xref>]. These ligands are essential in coordination chemistry for creating stable complexes with metal ions, first discovered by Hugo Schiff in 1864 [<xref ref-type="bibr" rid="pone.0306040.ref004">4</xref>, <xref ref-type="bibr" rid="pone.0306040.ref005">5</xref>], Schiff base ligands play a crucial role [<xref ref-type="bibr" rid="pone.0306040.ref006">6</xref>, <xref ref-type="bibr" rid="pone.0306040.ref007">7</xref>] based on their physicochemical characteristics [<xref ref-type="bibr" rid="pone.0306040.ref001">1</xref>]. They can be used in a variety of clinical [<xref ref-type="bibr" rid="pone.0306040.ref008">8</xref>], biological [<xref ref-type="bibr" rid="pone.0306040.ref004">4</xref>], and analytical branches [<xref ref-type="bibr" rid="pone.0306040.ref009">9</xref>].</p>
+<p>Sulfonamides are a significant class of organo-sulfur compounds that belong to the sulfa medication family. Their main chemical structure includes the sulfonamide group (SO<sub>2</sub>NH) and an amino group (NH<sub>2</sub>). Sulfonamides are cost-effective, stable antibiotics widely used in veterinary medicine to treat and prevent bacterial infections in animals.</p>
+<p>Olives have been historically valued for their food and medicinal properties. Olive leaf extract is effective in treating fever and malaria [<xref ref-type="bibr" rid="pone.0306040.ref010">10</xref>]. It contains substances with strong antibacterial effects [<xref ref-type="bibr" rid="pone.0306040.ref011">11</xref>, <xref ref-type="bibr" rid="pone.0306040.ref012">12</xref>]. Olives also have anti-inflammatory and antioxidant effects. The olive plant can prevent HIV-1 infection and cell-to-cell transfer [<xref ref-type="bibr" rid="pone.0306040.ref013">13</xref>, <xref ref-type="bibr" rid="pone.0306040.ref014">14</xref>]. The main active compounds in olive leaves are oleuropein, hydroxytyrosol, and tyrosol. Other active compounds include luteolin-7-glucoside, apigenin-7-glucoside, diosmetin-7-glucoside, caffeic acid, p-coumaric acid, vanillic acid, vanillin, luteolin, diosmetin, and rutin [<xref ref-type="bibr" rid="pone.0306040.ref015">15</xref>, <xref ref-type="bibr" rid="pone.0306040.ref016">16</xref>].</p>
+<p>This study explored the first-ever use of olive leaf extracts in a bio-reduction method to synthesize a stable cadmium (II) nano complex. Experimental and theoretical methods were employed to characterize the structure, contributing to existing knowledge on the biosynthesis of nano complexes using plant leaf extracts. The experimental toolbox included SEM imaging, conductivity tests, <sup>1</sup>HNMR, and <sup>13</sup>C NMR. Additionally, by simulating the relevant processes in the synthesis of the Schiff base ligand and the Cd(II) complex using quantum chemical simulations, we were able to discover different conformers for the Cd(II) complex and their corresponding stability profiles. Concerning 1-hydroxy-2-naphthaldehyde, amino-<italic>N</italic>-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfonamide, the Schiff base ligand, and the associated Cd(II) complex, we specifically carried out DFT-based extensive geometry optimization and frequency simulations.</p>
+</sec>
+<sec id="sec002" sec-type="materials|methods">
+<title>Methods</title>
+<sec id="sec003">
+<title>Materials and instruments</title>
+<p>Sulphadimidine, Cd(Cl)<sub>2</sub>.H<sub>2</sub>O, 1-hydroxy-2-naphthaldehyde, and ethyl alcohol were purchased and used without further purification (Aldrich, USA). The <sup>1</sup>H NMR, and <sup>13</sup>C NMR spectra (in DMSO-<italic>d</italic><sub><italic>6</italic></sub>) were acquired on a 600MH<sub>Z</sub> spectrometer without the use of an internal standard. With a 5–10 keV functioning Jeol 6310 (Jeol Instruments, Tokyo, Japan) piece of equipment, scanning electron microscopy (SEM) (gold coating, Edwards Sputter Coater, UK) research was conducted.</p>
+<sec id="sec004">
+<title>Collection of samples and extraction</title>
+<p>Olive leaves were collected from different locations in Sakaka Gardens, Al-Jouf city, Saudi Arabia. The undamaged olive leaves were washed, dried, and ground into powder. 25 g of the powder was mixed with 100 mL of methanol in a conical flask and agitated for 48 hours. The mixture was filtered using Whatman No. 1 filter paper and then evaporated to create a nano complex with the extract.</p>
+</sec>
+</sec>
+<sec id="sec005">
+<title>Synthesis of the free ligand H<sub>2</sub>L</title>
+<p>The ligand was synthesized using a previously described procedure [<xref ref-type="bibr" rid="pone.0306040.ref017">17</xref>]. A solution of 1-hydroxy-2-naphthaldehyde (4.305 g, 0.025 mol) in ethanol was mixed with an ethanolic solution of sulphadimidine (6.958 g, 0.025 mol). The reaction mixture was cooled and then refluxed for two hours in a water bath. After filtration and washing, a dark yellow powder weighing 10.70 g was obtained with a 95% yield. The product was dried in a desiccator over anhydrous calcium chloride. The predicted structure of the ligand (<xref ref-type="fig" rid="pone.0306040.g001"><bold>Fig</bold> 1</xref>) and the stoichiometry are consistent.</p>
+<fig id="pone.0306040.g001" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g001</object-id>
+<label>Fig 1</label>
+<caption>
+<title>Schematic representation of the tetradentate ligand H<sub>2</sub>L.</title>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g001" xlink:type="simple"/>
+</fig>
+</sec>
+<sec id="sec006">
+<title>Biosynthesis of Cd nano complex</title>
+<p>The metal complex was synthesized by mixing 0.0025 mol of the ligand H<sub>2</sub>L with 0.005 mol of Cd(Cl)<sub>2</sub>.H<sub>2</sub>O (1:2 molar ratio) in the presence of olive extract as an auxiliary agent. The mixture was ground using a pestle in an open mortar at room temperature. After allowing the mixture to solidify, the solid was filtered and crystallized twice in ethanol to obtain the Cd-nano complex as a light brown crystal. The isolated complex is insoluble in most organic solvents but soluble in DMF and DMSO and appears as a powder. It is stable in the air.</p>
+</sec>
+<sec id="sec007">
+<title>Quantum chemical calculations</title>
+<p>The reaction of the Schiff base ligand (<bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>) from amino-N-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfonamide (ANB) and 1-hydroxy-2-naphthaldehyde (HN) was simulated using quantum chemical calculations. The procedure involves a full gradient minimization geometry optimization of HN, ANB, <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>, and a single water molecule. The optimized geometries showed positive harmonic vibrational frequencies and zero gradient norms. These calculations were carried out using the Gaussian16 software package [<xref ref-type="bibr" rid="pone.0306040.ref018">18</xref>] and the Becke three-parameter Lee-Yang-Parr hybrid functional (B3LYP) density functional theory (DFT) [<xref ref-type="bibr" rid="pone.0306040.ref019">19</xref>, <xref ref-type="bibr" rid="pone.0306040.ref020">20</xref>]. All atoms [<xref ref-type="bibr" rid="pone.0306040.ref021">21</xref>] were subjected to the Def2TZVPP basis set and Grimme’s D3 dispersion correction [<xref ref-type="bibr" rid="pone.0306040.ref022">22</xref>].</p>
+<p>For the condensation reaction: 1 HN + 1 ANB → 1 <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold> + 1 H<sub>2</sub>O, the reaction energy (ΔE) was determined according to the following equation:
+<disp-formula id="pone.0306040.e001">
+<alternatives>
+<graphic id="pone.0306040.e001g" mimetype="image" position="anchor" xlink:href="info:doi/10.1371/journal.pone.0306040.e001" xlink:type="simple"/>
+<mml:math display="block" id="M1">
+<mml:mrow><mml:mi mathvariant="normal">Δ</mml:mi><mml:mi mathvariant="normal">E</mml:mi><mml:mo>=</mml:mo><mml:mi mathvariant="normal">E</mml:mi><mml:mo stretchy="false">(</mml:mo><mml:msub><mml:mi mathvariant="bold">H</mml:mi><mml:mn mathvariant="bold">2</mml:mn></mml:msub><mml:mi mathvariant="bold">L</mml:mi><mml:mo stretchy="false">)</mml:mo><mml:mo>+</mml:mo><mml:mi mathvariant="normal">E</mml:mi><mml:mo stretchy="false">(</mml:mo><mml:msub><mml:mi mathvariant="normal">H</mml:mi><mml:mn>2</mml:mn></mml:msub><mml:mi mathvariant="normal">O</mml:mi><mml:mo stretchy="false">)</mml:mo><mml:mo>‐</mml:mo><mml:mi mathvariant="normal">E</mml:mi><mml:mo>(</mml:mo><mml:mrow><mml:mi mathvariant="normal">H</mml:mi><mml:mi mathvariant="normal">N</mml:mi></mml:mrow><mml:mo>)</mml:mo><mml:mo>‐</mml:mo><mml:mi mathvariant="normal">E</mml:mi><mml:mo>(</mml:mo><mml:mrow><mml:mi mathvariant="normal">A</mml:mi><mml:mi mathvariant="normal">N</mml:mi><mml:mi mathvariant="normal">B</mml:mi></mml:mrow><mml:mo>)</mml:mo></mml:mrow>
+</mml:math>
+</alternatives>
+<label>(Eq 1)</label>
+</disp-formula>
+Here, E(H<sub>2</sub>L), E(H<sub>2</sub>O), E(HN), and E(ANB) stood for the total electronic energies of <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>, H<sub>2</sub>O, HN, and ANB, respectively, including the dispersion energy adjustment. While accounting for zero-point energy and thermal adjustment for enthalpy and Gibbs free energy, the appropriate reaction enthalpy (H) and reaction free energy (G) were determined.</p>
+<p>The interaction between the Schiff base ligand (<bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>) and CdCl<sub>2</sub> to create the Cd(II) complex (Cd<sub>2</sub> <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>) was similarly simulated in a way comparable to the aforementioned condensation reaction and using the same theoretical methodology and degree of theory. Calculations were made for each reaction’s energy (E), enthalpy (H), and free energy (G). Based on projected preferred binding orientations and conformations, the first geometries for the Cd(II) complex were constructed. The Cd(II) complex now has four possible conformers. For each Cd(II) complex conformer, the reaction was simulated as 1 <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold> + 2 CdCl<sub>2</sub> → 1 Cd<sub>2</sub> <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>, and the corresponding reaction energy (ΔE) was calculated as follows:
+<disp-formula id="pone.0306040.e002">
+<alternatives>
+<graphic id="pone.0306040.e002g" mimetype="image" position="anchor" xlink:href="info:doi/10.1371/journal.pone.0306040.e002" xlink:type="simple"/>
+<mml:math display="block" id="M2">
+<mml:mrow><mml:mi mathvariant="normal">Δ</mml:mi><mml:mi mathvariant="normal">E</mml:mi><mml:mo>=</mml:mo><mml:mi mathvariant="normal">E</mml:mi><mml:mo stretchy="false">(</mml:mo><mml:mi mathvariant="normal">C</mml:mi><mml:msub><mml:mi mathvariant="normal">d</mml:mi><mml:mn>2</mml:mn></mml:msub><mml:mspace width="0.25em"/><mml:msub><mml:mi mathvariant="bold">H</mml:mi><mml:mn mathvariant="bold">2</mml:mn></mml:msub><mml:mi mathvariant="bold">L</mml:mi><mml:mo stretchy="false">)</mml:mo><mml:mo>‐</mml:mo><mml:mi mathvariant="normal">E</mml:mi><mml:mo stretchy="false">(</mml:mo><mml:msub><mml:mi mathvariant="bold">H</mml:mi><mml:mn mathvariant="bold">2</mml:mn></mml:msub><mml:mi mathvariant="bold">L</mml:mi><mml:mo stretchy="false">)</mml:mo><mml:mo>‐</mml:mo><mml:mn>2</mml:mn><mml:mspace width="0.25em"/><mml:mi>*</mml:mi><mml:mspace width="0.25em"/><mml:mi mathvariant="normal">E</mml:mi><mml:mo stretchy="false">(</mml:mo><mml:mi mathvariant="normal">C</mml:mi><mml:mi mathvariant="normal">d</mml:mi><mml:mi mathvariant="normal">C</mml:mi><mml:msub><mml:mi mathvariant="normal">l</mml:mi><mml:mn>2</mml:mn></mml:msub><mml:mo stretchy="false">)</mml:mo></mml:mrow>
+</mml:math>
+</alternatives>
+<label>(Eq 2)</label>
+</disp-formula>
+Here, E(Cd<sub>2</sub> <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>), E(<bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>), and E(CdCl<sub>2</sub>) denoted, respectively, the total electronic energies for each of the Cd(II) complex conformers, Cd<sub>2</sub> <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>, <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>, and CdCl<sub>2</sub>. The matching reaction enthalpy (H) and reaction free energy (G) were calculated with similar thermal and zero-point energy corrections. Since there are many different Cd(II) complex conformers that could exist, <xref ref-type="disp-formula" rid="pone.0306040.e002">Eq 2</xref> produced distinct sets of E, H, and G values, each of which was unique to a given conformer.</p>
+</sec>
+</sec>
+<sec id="sec008" sec-type="conclusions">
+<title>Results and discussion</title>
+<sec id="sec009">
+<title>(<italic>E</italic>)-<italic>N</italic>-(4,6-dimethylpyrimidin-2-yl)-4-(((2-hydroxynaphthalen-1-yl)methylene)amino) benzenesulfonamide ligand (H<sub>2</sub>L) and its Cd nano metal</title>
+<p>Elemental analysis results for the synthesized ligand and its nano Cd complex matched the expected calculations (Elemental Analysis for H<sub>2</sub>L free ligand: C, 63.87(63.50); H, 4.66(4.26); N, 12.95(12.80); O, 11.10(10.98); S, 7.41(732)). Additionally, the produced product is supposed to have a stoichiometry of 1:2 (ligand: metal). The metal complex has a molar conductance of 29.60 Ohm<sup>-1</sup>cm<sup>2</sup>mol<sup>-1</sup> indicating it is non-electrolytic. The ligand and its nano complex were found to have melting points of 142°C, and &gt;350°C respectively demonstrating the purity and stability of the compounds.</p>
+</sec>
+<sec id="sec010">
+<title><sup>1</sup>H NMR spectra</title>
+<p>The <sup>1</sup>H NMR spectrum of the nano complex showed singlet signals at 9.48 and 8.29 ppm from NH and CH = N protons, and multiplet signals at 7.55–7.96 ppm induced from aromatic protons. A new peak appeared due to the enolization of the sulphonamide group(-SO<sub>2</sub>NH groups to the (S(O)OH = N)), indicating complexation. Comparison with the free ligand confirmed coordination with the metal atom. The OH group peak shifted to 10.79 ppm, indicating coordination and the azomethine group peak shifted to 8.90 ppm. Aromatic protons showed multiplet signals between 7.79 and 7.94 ppm, while OH protons remained unchanged (<bold><xref ref-type="fig" rid="pone.0306040.g002">Fig 2A and 2B</xref></bold>).</p>
+<fig id="pone.0306040.g002" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g002</object-id>
+<label>Fig 2</label>
+<caption>
+<title/>
+<p><sup>1</sup>H NMR spectra of (a): the free ligand <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold> and (b): The Cd-nano complex.</p>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g002" xlink:type="simple"/>
+</fig>
+</sec>
+<sec id="sec011">
+<title><sup>13</sup>C NMR spectra</title>
+<p>The Cd-nano complex’s <sup>13</sup>C NMR spectrum in DMSO-d6 was obtained (<xref ref-type="fig" rid="pone.0306040.g003"><bold>Fig</bold> 3</xref>). All identified carbon atoms undergo chemical shifts, which are shown in <xref ref-type="table" rid="pone.0306040.t001">Table 1</xref>. Upon comparison it was found that only the carbon atom of the carbonyl group was altered, suggesting that the oxygen in this group is solely involved in complexation [<xref ref-type="bibr" rid="pone.0306040.ref023">23</xref>, <xref ref-type="bibr" rid="pone.0306040.ref024">24</xref>].</p>
+<fig id="pone.0306040.g003" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g003</object-id>
+<label>Fig 3</label>
+<caption>
+<title><sup>13</sup>C NMR spectrum of the Cd-nano complex.</title>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g003" xlink:type="simple"/>
+</fig>
+<table-wrap id="pone.0306040.t001" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.t001</object-id>
+<label>Table 1</label> <caption><title><sup>13</sup>C chemical shifts (in ppm) for the free ligand H<sub>2</sub>L and Cd nano complex.</title></caption>
+<alternatives>
+<graphic id="pone.0306040.t001g" mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.t001" xlink:type="simple"/>
+<table>
+<colgroup>
+<col align="left" valign="middle"/>
+<col align="left" valign="middle"/>
+<col align="left" valign="middle"/>
+</colgroup>
+<thead>
+<tr>
+<th align="center">Carbon</th>
+<th align="left"><sup>13</sup>C chemical shift for Cd-nano complex</th>
+<th align="center">Assigned to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="center"><bold>1</bold></td>
+<td align="center">153.6</td>
+<td align="left">C of benzene ring</td>
+</tr>
+<tr>
+<td align="center"><bold>2</bold></td>
+<td align="center">168.02</td>
+<td align="left">C of the carbonyl group</td>
+</tr>
+<tr>
+<td align="center"><bold>3</bold></td>
+<td align="center">24.26</td>
+<td align="left">C of the methyl group</td>
+</tr>
+<tr>
+<td align="center"><bold>4</bold></td>
+<td align="center">115.5</td>
+<td align="left">C of benzene ring</td>
+</tr>
+<tr>
+<td align="center"><bold>5</bold></td>
+<td align="center">121.9</td>
+<td align="left">C of benzene ring</td>
+</tr>
+<tr>
+<td align="center"><bold>6</bold></td>
+<td align="center">131.5</td>
+<td align="center">C of benzene ring attached to the NH group</td>
+</tr>
+</tbody>
+</table>
+</alternatives>
+</table-wrap>
+</sec>
+<sec id="sec012">
+<title>Conductivity measurements</title>
+<p>The molar conductivities of 1.0 mmol/l Cd-nano complex solutions were measured at standard temperatures. The results support the coordination mechanism of nitrates with the metal cation and show that the metal complex is non-ionic, making it clear that the complex is a nonelectrolyte.</p>
+</sec>
+<sec id="sec013">
+<title>SEM images</title>
+<p>SEM techniques were used to analyze the nano particle’s microstructure, as depicted in <bold><xref ref-type="fig" rid="pone.0306040.g004">Fig 4</xref></bold>. The particles were identified as cubic and spherical, with an estimated size of 4–55 nm, based on this photograph. This study provides a novel approach to biosynthesizing Cd-nano complexes, distinct from other nanoparticle creation methods.</p>
+<fig id="pone.0306040.g004" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g004</object-id>
+<label>Fig 4</label>
+<caption>
+<title>SEM image of Cd-nano complex.</title>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g004" xlink:type="simple"/>
+</fig>
+</sec>
+<sec id="sec014">
+<title>The X-ray diffraction (XRD) pattern of the prepared sample of Cd nanoparticle</title>
+<p>The X-ray diffraction (XRD) pattern of the manufactured Cd nanoparticles sample was obtained and shown in <xref ref-type="fig" rid="pone.0306040.g005"><bold>Fig</bold> 5</xref> using CuK radiation (λ = 1.5406), 40 kV- 40mA, and 2θ scanning mode. This analysis aimed to confirm the crystallinity of the Cd-nano compound. The data collection range was between 10 and 80 degrees. A comparison was made between the experimental diffractogram (<xref ref-type="fig" rid="pone.0306040.g005"><bold>Fig</bold> 5</xref>), Cd file No. 04–0783, and the JCPDS standard powder diffraction card. Four peaks at 2θ values of 45.30°, 55.50°, 68.70°, and 79.80° in the experimental diffractogram were identified as originating from Cd metal.</p>
+<fig id="pone.0306040.g005" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g005</object-id>
+<label>Fig 5</label>
+<caption>
+<title>X-ray diffractogram of Cd-nanocomplex.</title>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g005" xlink:type="simple"/>
+</fig>
+<p>The average crystalline size D of the Cd nanoparticles was determined by calculating from the diffractogram using the Debye-Scherrer formula, D = 0.9/Cos, where Cos represents the full width at half maximum (FWHM) of a peak and is the wavelength of the X-rays used for diffraction [<xref ref-type="bibr" rid="pone.0306040.ref025">25</xref>]. The FWHM was obtained by fitting a Gaussian function to each of the four peaks. The fitted Gaussian curve was then utilized to calculate the FWHM of the peak.</p>
+<p>The results collected for the complex under investigation show a correlation that provides information on the suggested structure of the complex, as depicted in <xref ref-type="fig" rid="pone.0306040.g006"><bold>Fig</bold> 6</xref>.</p>
+<fig id="pone.0306040.g006" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g006</object-id>
+<label>Fig 6</label>
+<caption>
+<title>Suggested structure of the Cd nano metal complex.</title>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g006" xlink:type="simple"/>
+</fig>
+</sec>
+<sec id="sec015">
+<title>Quantum chemical calculations</title>
+<p><xref ref-type="fig" rid="pone.0306040.g007"><bold>Fig</bold> 7</xref> displays the optimized structures of the Schiff base ligand (<bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>), 1-hydroxy-2-naphthaldehyde (HN), amino-N-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfonamide (ANB), and the Cd(II) complex (Cd<sub>2</sub> <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>) conformers. The condensation reaction that forms the Schiff base ligand (<bold>H</bold><sub><bold>2</bold></sub><bold>L</bold>) has positive values for E, H, and G, indicating that the reaction is endothermic and not spontaneous (<xref ref-type="table" rid="pone.0306040.t002">Table 2</xref>). Despite these small values, the reaction is still considered viable and responsive to external stimuli. In contrast, the production of the Cd(II) complex is exothermic and spontaneous, with significantly negative and moderately high E, H, and G values, indicating a favorable reaction leading to the spontaneous formation of a strong and stable complex, the Cd(II) complex.</p>
+<fig id="pone.0306040.g007" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.g007</object-id>
+<label>Fig 7</label>
+<caption>
+<title/>
+<p>Optimized structures of 1-hydroxy-2-naphthaldehyde (A), amino-N-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfonamide (B), the Schiff base ligand <bold>H</bold><sub><bold>2</bold></sub><bold>L</bold> (C), and Cd(II) complex conformers (D-G). Conformers D and F exhibit a zwitterionic configuration, while conformers E and G feature a neutral arrangement. Additionally, D and E conformers adopt cis configurations, whereas F and G conformers adopt trans configurations.</p>
+</caption>
+<graphic mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.g007" xlink:type="simple"/>
+</fig>
+<table-wrap id="pone.0306040.t002" position="float">
+<object-id pub-id-type="doi">10.1371/journal.pone.0306040.t002</object-id>
+<label>Table 2</label> <caption><title>Reaction energy (ΔE), enthalpy (ΔH), and free energy (ΔG) for the condensation reaction (<xref ref-type="disp-formula" rid="pone.0306040.e001">Eq 1</xref>) and complexation reaction (<xref ref-type="disp-formula" rid="pone.0306040.e002">Eq 2</xref>).</title></caption>
+<alternatives>
+<graphic id="pone.0306040.t002g" mimetype="image" position="float" xlink:href="info:doi/10.1371/journal.pone.0306040.t002" xlink:type="simple"/>
+<table>
+<colgroup>
+<col align="left" valign="middle"/>
+<col align="left" valign="middle"/>
+<col align="left" valign="middle"/>
+<col align="left" valign="middle"/>
+</colgroup>
+<thead>
+<tr>
+<th align="left" rowspan="2">Reaction</th>
+<th align="left">ΔE</th>
+<th align="left">ΔH</th>
+<th align="left">ΔG</th>
+</tr>
+<tr>
+<th align="left">(kcal/ mol)</th>
+<th align="left">(kcal/ mol)</th>
+<th align="left">(kcal/ mol)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left"><bold>Ligand</bold></td>
+<td align="left">+3.85</td>
+<td align="left">+3.25</td>
+<td align="left">+4.43</td>
+</tr>
+<tr>
+<td align="left"><bold>Complex1 (D)</bold></td>
+<td align="left">-23.56</td>
+<td align="left">-21.47</td>
+<td align="left">-6.76</td>
+</tr>
+<tr>
+<td align="left"><bold>Complex2 (E)</bold></td>
+<td align="left">-45.10</td>
+<td align="left">-42.19</td>
+<td align="left">-26.74</td>
+</tr>
+<tr>
+<td align="left"><bold>Complex3 (F)</bold></td>
+<td align="left">-25.36</td>
+<td align="left">-23.20</td>
+<td align="left">-7.89</td>
+</tr>
+<tr>
+<td align="left"><bold>Complex4 (G)</bold></td>
+<td align="left">-47.36</td>
+<td align="left">-44.37</td>
+<td align="left">-28.48</td>
+</tr>
+</tbody>
+</table>
+</alternatives>
+</table-wrap>
+<p>The sequence of stability is revealed as D F E G, as shown in <xref ref-type="fig" rid="pone.0306040.g007"><bold>Fig</bold> 7</xref>, by comparing the E, H, and G values for different conformers of Cd(II) complexes (distinguished principally by differences in electronic energy). The least stable conformers, D and F, have a zwitterionic configuration, which is made up of a positively charged connected oxygen (OH) atom and a positively charged nitrogen atom. The most stable conformers, E and G, on the other hand, take on a neutral structure. According to an analysis of the trends in energy, enthalpy, and free energy, the neutral complex structures are more stable than their corresponding zwitterionic counterparts in this situation. This difference could be explained by hydrogen bonding interactions between the NH group and the electronegative O and N atoms around it in neutral configurations.</p>
+<p>Additionally, complex G’s superior stability over complex E can be due to the latter’s lessened repulsion of the choline atoms. The location of two CdCl<sub>2</sub> groups—cis in the case of complex E and trans in the case of complex G—is the cause of this disparity. Therefore, it is anticipated that the neutral trans configuration will predominately be present in the Cd complex, with modest amounts of the cis configuration.</p>
+<p>Based on the obtained, the future work will be the calculation of the charge density of the outermost molecular orbitals along with the molecular electrostatic potential (MEP) map.</p>
+</sec>
+</sec>
+<sec id="sec016" sec-type="conclusions">
+<title>Conclusion</title>
+<p>Extensive DFT-based geometry optimizations and frequency calculations were conducted for 1-hydroxy-2-naphthaldehyde and amino-N-(4,6-dimethylpyrimidin-2-yl)-4-benzenesulfon- amide, a Schiff base ligand, and their Cd(II) complex. The results confirmed the presence of the azomethine group in the Schiff base. Physicochemical characterization confirmed the formation of the Cd(II) complex in a 2:1 metal-to-ligand ratio, highlighting its nanoscaled structure. The analysis, along with molecular modeling simulations and sustainable biosynthesis, provides valuable insights into the complex’s properties and potential applications in catalysis and drug delivery. Future quantum chemical calculations will include determining the charge density of the outermost molecular orbitals and generating a molecular electrostatic potential (MEP) map.</p>
+</sec>
+</body>
+<back>
+<ref-list>
+<title>References</title>
+<ref id="pone.0306040.ref001"><label>1</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Wesley Jeevadason</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Kalidasa Murugavel</surname> <given-names>K</given-names></name>, <name name-style="western"><surname>Neelakantan</surname> <given-names>MA</given-names></name>. <article-title>Review on Schiff bases and their metal complexes as organic photovoltaic materials</article-title>. <source>Renew Sustain Energy Rev</source>. <year>2014</year>;<volume>36</volume>: <fpage>220</fpage>–<lpage>227</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.rser.2014.04.060" xlink:type="simple">10.1016/j.rser.2014.04.060</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref002"><label>2</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Richa</surname> <given-names>Kumar V</given-names></name>, <name name-style="western"><surname>Kataria</surname> <given-names>R</given-names></name>. <article-title>Phenanthroline and Schiff Base associated Cu(II)-coordinated compounds containing N, O as donor atoms for potent anticancer activity</article-title>. <source>J Inorg Biochem</source>. <year>2024</year>;<volume>251</volume>: <fpage>112440</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.jinorgbio.2023.112440" xlink:type="simple">10.1016/j.jinorgbio.2023.112440</ext-link></comment> <object-id pub-id-type="pmid">38065049</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref003"><label>3</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Mishra</surname> <given-names>S</given-names></name>, <name name-style="western"><surname>Kumar</surname> <given-names>S</given-names></name>, <name name-style="western"><surname>Bhandari</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Das</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Mondal</surname> <given-names>P</given-names></name>, <name name-style="western"><surname>Hundal</surname> <given-names>G</given-names></name>, <etal>et al</etal>. <article-title>Reactivity of nitric oxide and nitrosonium Ion with Copper(II/I) Schiff base complexes: Mechanistic aspects of Imine C═N bond cleavage and oxidation of Pyridine-2-aldehyde to Pyridine-2-carboxylic acid</article-title>. <source>Inorg Chem</source>. <year>2022</year>;<volume>61</volume>: <fpage>6421</fpage>–<lpage>6437</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1021/acs.inorgchem.1c04038" xlink:type="simple">10.1021/acs.inorgchem.1c04038</ext-link></comment> <object-id pub-id-type="pmid">35451813</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref004"><label>4</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Yernale</surname> <given-names>NG</given-names></name>, <name name-style="western"><surname>Udayagiri</surname> <given-names>MD</given-names></name>, <name name-style="western"><surname>Mruthyunjayaswam</surname> <given-names>BHM</given-names></name>. <article-title>Synthesis, characterization, mass spectral fragmentation, thermal study and biological evaluation of new Schiff base ligand and its metal(II) complexes derived from 4-(diethylamino)salicylaldehyde and thiazole moiety</article-title>. <source>Eur J Chem</source>. <year>2016</year>;<volume>7</volume>: <fpage>56</fpage>–<lpage>65</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.5155/eurjchem.7.1.56%26%23x2013%3B65.1372" xlink:type="simple">10.5155/eurjchem.7.1.56–65.1372</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref005"><label>5</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Hajrezaie</surname> <given-names>M</given-names></name>, <name name-style="western"><surname>Golbabapour</surname> <given-names>S</given-names></name>, <name name-style="western"><surname>Hassandarvish</surname> <given-names>P</given-names></name>, <name name-style="western"><surname>Gwaram</surname> <given-names>NS</given-names></name>, <name name-style="western"><surname>A. Hadi</surname> <given-names>AH</given-names></name>, <name name-style="western"><surname>Mohd Ali</surname> <given-names>H</given-names></name>, <etal>et al</etal>. <article-title>Acute toxicity and gastroprotection studies of a new schiff base derived copper (II) complex against ethanol-induced acute gastric lesions in rats</article-title>. <source>PloS one</source>. <year>2012</year> <month>Dec</month> <day>10</day>;<volume>7</volume>(<issue>12</issue>):<fpage>e51537</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1371/journal.pone.0051537" xlink:type="simple">10.1371/journal.pone.0051537</ext-link></comment> <object-id pub-id-type="pmid">23251568</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref006"><label>6</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Basu Baul</surname> <given-names>TS</given-names></name>, <name name-style="western"><surname>Chaurasiya</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Vasquez-Ríos</surname> <given-names>MG</given-names></name>, <name name-style="western"><surname>Höpfl</surname> <given-names>H</given-names></name>. <article-title>Synthesis, crystal structures, supramolecular organization and Hirshfeld analysis of nickel(II) and cobalt(II) complexes based on (E)-N-(pyridin-2-ylmethylene)adamantan-1-amine</article-title>. <source>J Mol Struct</source>. <year>2024</year>;<volume>1299</volume>: <fpage>137128</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.molstruc.2023.137128" xlink:type="simple">10.1016/j.molstruc.2023.137128</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref007"><label>7</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Ahmad</surname> <given-names>N</given-names></name>, <name name-style="western"><surname>Anouar</surname> <given-names>EH</given-names></name>, <name name-style="western"><surname>Tajuddin</surname> <given-names>AM</given-names></name>, <name name-style="western"><surname>Ramasamy</surname> <given-names>K</given-names></name>, <name name-style="western"><surname>Yamin</surname> <given-names>BM</given-names></name>, <name name-style="western"><surname>Bahron</surname> <given-names>H</given-names></name>. <article-title>Synthesis, characterization, quantum chemical calculations and anticancer activity of a Schiff base NNOO chelate ligand and Pd(II) complex</article-title>. <source>PLoS One</source>. <year>2020</year>;<volume>15</volume>: <fpage>e0231147</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1371/journal.pone.0231147" xlink:type="simple">10.1371/journal.pone.0231147</ext-link></comment> <object-id pub-id-type="pmid">32287324</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref008"><label>8</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Adly</surname> <given-names>OMI</given-names></name>, <name name-style="western"><surname>Shebl</surname> <given-names>M</given-names></name>, <name name-style="western"><surname>Abdelrhman</surname> <given-names>EM</given-names></name>, <name name-style="western"><surname>El-Shetary</surname> <given-names>BA</given-names></name>. <article-title>Synthesis, spectroscopic, X-ray diffraction, antimicrobial and antitumor studies of Ni(II) and Co(II) complexes derived from 4-acetyl-5,6-diphenyl-3(2H)-pyridazinone and ethylenediamine</article-title>. <source>J Mol Struct</source>. <year>2020</year>;<volume>1219</volume>: <fpage>128607</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.molstruc.2020.128607" xlink:type="simple">10.1016/j.molstruc.2020.128607</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref009"><label>9</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Dawar</surname> <given-names>N</given-names></name>, <name name-style="western"><surname>Devi</surname> <given-names>J</given-names></name>, <name name-style="western"><surname>Kumar</surname> <given-names>B</given-names></name>, <name name-style="western"><surname>Dubey</surname> <given-names>A</given-names></name>. <article-title>Synthesis, Characterization, Pharmacological Screening, Molecular Docking, DFT, MESP, ADMET Studies of Transition Metal(II) Chelates of Bidentate Schiff Base Ligand</article-title>. <source>Inorg Chem Commun</source>. <year>2023</year>;<volume>151</volume>: <fpage>110567</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.inoche.2023.110567" xlink:type="simple">10.1016/j.inoche.2023.110567</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref010"><label>10</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Yangui</surname> <given-names>T</given-names></name>, <name name-style="western"><surname>Chakroun</surname> <given-names>H</given-names></name>, <name name-style="western"><surname>Dhouib</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Bouaziz</surname> <given-names>M</given-names></name>. <article-title>Biological Properties and Chemical Composition of Essential Oils from Fresh and Shade Dried Olive Leaves of <italic>Olea europaea</italic> L. Chemlali Cultivar</article-title>. <source>J. Essent Oil-Bear Plants</source>. <year>2021</year>;<volume>24</volume>: <fpage>1389</fpage>–<lpage>1401</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1080/0972060X.2022.2026254" xlink:type="simple">10.1080/0972060X.2022.2026254</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref011"><label>11</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Lee</surname> <given-names>O-H</given-names></name>, <name name-style="western"><surname>Lee</surname> <given-names>B-Y</given-names></name>. <article-title>Antioxidant and antimicrobial activities of individual and combined phenolics in Olea europaea leaf extract</article-title>. <source>Bioresour Technol</source>. <year>2010</year>;<volume>101</volume>: <fpage>3751</fpage>–<lpage>3754</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.biortech.2009.12.052" xlink:type="simple">10.1016/j.biortech.2009.12.052</ext-link></comment> <object-id pub-id-type="pmid">20106659</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref012"><label>12</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Sánchez-Gutiérrez</surname> <given-names>M</given-names></name>, <name name-style="western"><surname>Bascón-Villegas</surname> <given-names>I</given-names></name>, <name name-style="western"><surname>Rodríguez</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Pérez-Rodríguez</surname> <given-names>F</given-names></name>, <name name-style="western"><surname>Fernández-Prior</surname> <given-names>Á</given-names></name>, <name name-style="western"><surname>Rosal</surname> <given-names>A</given-names></name>, <etal>et al</etal>. <article-title>Valorisation of Olea europaea L. olive leaves through the evaluation of their extracts: antioxidant and antimicrobial activity</article-title>. <source>Foods</source>. <year>2021</year>;<volume>10</volume>: <fpage>966</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.3390/foods10050966" xlink:type="simple">10.3390/foods10050966</ext-link></comment> <object-id pub-id-type="pmid">33925051</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref013"><label>13</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Alowaiesh</surname> <given-names>BF</given-names></name>, <name name-style="western"><surname>Alhaithloul</surname> <given-names>HAS</given-names></name>, <name name-style="western"><surname>Saad</surname> <given-names>AM</given-names></name>, <name name-style="western"><surname>Hassanin</surname> <given-names>AA</given-names></name>. <article-title>Green biogenic of silver nanoparticles using polyphenolic extract of olive leaf wastes with focus on their anticancer and antimicrobial activities</article-title>. <source>Plants</source>. <year>2023</year>;<volume>12</volume>: <fpage>1410</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.3390/plants12061410" xlink:type="simple">10.3390/plants12061410</ext-link></comment> <object-id pub-id-type="pmid">36987100</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref014"><label>14</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Khalil</surname> <given-names>MMH</given-names></name>, <name name-style="western"><surname>Ismail</surname> <given-names>EH</given-names></name>, <name name-style="western"><surname>El-Magdoub</surname> <given-names>F</given-names></name>. <article-title>Biosynthesis of Au nanoparticles using olive leaf extract</article-title>. <source>Arab J Chem</source>. <year>2012</year>;<volume>5</volume>: <fpage>431</fpage>–<lpage>437</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.arabjc.2010.11.011" xlink:type="simple">10.1016/j.arabjc.2010.11.011</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref015"><label>15</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Obied</surname> <given-names>HK</given-names></name>, <name name-style="western"><surname>Prenzler</surname> <given-names>PD</given-names></name>, <name name-style="western"><surname>Omar</surname> <given-names>SH</given-names></name>, <name name-style="western"><surname>Ismael</surname> <given-names>R</given-names></name>, <name name-style="western"><surname>Servili</surname> <given-names>M</given-names></name>, <name name-style="western"><surname>Esposto</surname> <given-names>S</given-names></name>, <etal>et al</etal>. <article-title>Pharmacology of Olive Biophenols</article-title>. <source>Advances in Molecular Toxicology</source>. <year>2012</year>;<volume>6</volume>: <fpage>195</fpage>–<lpage>242</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/B978-0-444-59389-4.00006%26%23x2013%3B9" xlink:type="simple">10.1016/B978-0-444-59389-4.00006–9</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref016"><label>16</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Bianco</surname> <given-names>A</given-names></name>, <name name-style="western"><surname>Uccella</surname> <given-names>N</given-names></name>. <article-title>Biophenolic components of olives</article-title>. <source>Int Food Res</source>. <year>2000</year>;<volume>33</volume>: <fpage>475</fpage>–<lpage>485</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/S0963-9969%2800%2900072-7" xlink:type="simple">10.1016/S0963-9969(00)00072-7</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref017"><label>17</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Sunand</surname> <given-names>K</given-names></name>, <name name-style="western"><surname>Kumar</surname> <given-names>KV</given-names></name>, <name name-style="western"><surname>Ashwini</surname> <given-names>K</given-names></name>, <name name-style="western"><surname>Kumar</surname> <given-names>PS</given-names></name>, <name name-style="western"><surname>Vishnu</surname> <given-names>S</given-names></name>, <name name-style="western"><surname>Samala</surname> <given-names>A</given-names></name>. <article-title>Synthesis characterization and antibacterial studies of 4-aminoantipyrine schiff’s bases</article-title>. <source>Int J Pharm Sci Res</source>. <year>2017</year>;<volume>2</volume>: <fpage>8</fpage>–<lpage>14</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.21477/ijapsr.v2i1.6908" xlink:type="simple">10.21477/ijapsr.v2i1.6908</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref018"><label>18</label><mixed-citation publication-type="book" xlink:type="simple"><name name-style="western"><surname>Frisch</surname> <given-names>MJ</given-names></name>, <name name-style="western"><surname>Trucks</surname> <given-names>GW</given-names></name>, <name name-style="western"><surname>Schlegel</surname> <given-names>HB</given-names></name>, <name name-style="western"><surname>Scuseria</surname> <given-names>GE</given-names></name>, <name name-style="western"><surname>Robb</surname> <given-names>MA</given-names></name>, <name name-style="western"><surname>Cheeseman</surname> <given-names>JR</given-names></name>, <etal>et al</etal>. <source>Gaussian 16, Revision C.01</source>, <publisher-name>Gaussian Inc</publisher-name>. <publisher-loc>Wallingford CT</publisher-loc> <year>2016</year>, <fpage>2016</fpage>.</mixed-citation></ref>
+<ref id="pone.0306040.ref019"><label>19</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Becke</surname> <given-names>AD</given-names></name>. <article-title>Density-functional exchange-energy approximation with correct asymptotic behavior</article-title>. <source>Phys Rev A (Coll Park)</source>. <year>1988</year>;<volume>38</volume>: <fpage>3098</fpage>–<lpage>3100</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1103/physreva.38.3098" xlink:type="simple">10.1103/physreva.38.3098</ext-link></comment> <object-id pub-id-type="pmid">9900728</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref020"><label>20</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Lee</surname> <given-names>C</given-names></name>, <name name-style="western"><surname>Yang</surname> <given-names>W</given-names></name>, <name name-style="western"><surname>Parr</surname> <given-names>RG</given-names></name>. <article-title>Development of the Colle-Salvetti correlation-energy formula into a functional of the electron density</article-title>. <source>Phys Rev B</source>. <year>1988</year>;<volume>37</volume>: <fpage>785</fpage>–<lpage>789</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1103/physrevb.37.785" xlink:type="simple">10.1103/physrevb.37.785</ext-link></comment> <object-id pub-id-type="pmid">9944570</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref021"><label>21</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Weigend</surname> <given-names>F</given-names></name>, <name name-style="western"><surname>Ahlrichs</surname> <given-names>R</given-names></name>. <article-title>Balanced basis sets of split valence, triple zeta valence and quadruple zeta valence quality for H to Rn: Design and assessment of accuracy</article-title>. <source>Phys Chem Chem Phys</source>. <year>2005</year>;<volume>7</volume>: <fpage>3297</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1039/b508541a" xlink:type="simple">10.1039/b508541a</ext-link></comment> <object-id pub-id-type="pmid">16240044</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref022"><label>22</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Grimme</surname> <given-names>S</given-names></name>, <name name-style="western"><surname>Ehrlich</surname> <given-names>S</given-names></name>, <name name-style="western"><surname>Goerigk</surname> <given-names>L</given-names></name>. <article-title>Effect of the damping function in dispersion corrected density functional theory</article-title>. <source>J Comput Chem</source>. <year>2011</year>;<volume>32</volume>: <fpage>1456</fpage>–<lpage>1465</lpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1002/jcc.21759" xlink:type="simple">10.1002/jcc.21759</ext-link></comment> <object-id pub-id-type="pmid">21370243</object-id></mixed-citation></ref>
+<ref id="pone.0306040.ref023"><label>23</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Taha</surname> <given-names>RH</given-names></name>, <name name-style="western"><surname>El‐Shafiey</surname> <given-names>ZA</given-names></name>, <name name-style="western"><surname>Salman</surname> <given-names>AA</given-names></name>, <name name-style="western"><surname>Mansour</surname> <given-names>MM</given-names></name>. <article-title>A study of a newly synthesized ligand and its metal complexes in bulk and nano size and metal uptake efficiency</article-title>. <source>Appl Organomet Chem</source>. <year>2020</year>;<fpage>34</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1002/aoc.5792" xlink:type="simple">10.1002/aoc.5792</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref024"><label>24</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>Dilek</surname> <given-names>Ö</given-names></name>, <name name-style="western"><surname>Dede</surname> <given-names>B</given-names></name>, <name name-style="western"><surname>Karabacak Atay</surname> <given-names>Ç</given-names></name>, <name name-style="western"><surname>Tilki</surname> <given-names>T</given-names></name>. <article-title>Promising agent for the efficient extraction of Co(II) ions from aqueous medium and its metal complexes: Synthesis, theoretical calculations and solvent extraction</article-title>. <source>Polyhedron</source>. <year>2024</year>;<volume>250</volume>: <fpage>116843</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1016/j.poly.2024.116843" xlink:type="simple">10.1016/j.poly.2024.116843</ext-link></comment></mixed-citation></ref>
+<ref id="pone.0306040.ref025"><label>25</label><mixed-citation publication-type="journal" xlink:type="simple"><name name-style="western"><surname>El-Sharkawy</surname> <given-names>RG</given-names></name>, <name name-style="western"><surname>Taha</surname> <given-names>RH</given-names></name>, <name name-style="western"><surname>Ghanem</surname> <given-names>HB</given-names></name>. <article-title>Immobilization of novel inorganic nano-complexes onto MWCNT nanomaterials as a novel adsorbent and anti-inflammatory therapy in an induced model of rheumatoid arthritis</article-title>. <source>Nanotech</source>. <year>2020</year>;<volume>31</volume>: <fpage>305706</fpage>. <comment>doi: <ext-link ext-link-type="uri" xlink:href="https://doi.org/10.1088/1361-6528/ab851a" xlink:type="simple">10.1088/1361-6528/ab851a</ext-link></comment> <object-id pub-id-type="pmid">32235044</object-id></mixed-citation></ref>
+</ref-list>
+</back>
+</article>
