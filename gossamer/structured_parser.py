@@ -79,7 +79,7 @@ def office_ir_tables(ir: Dict[str, Any]) -> List[Tuple[str, List[List[str]]]]:
 
     Rows keep their original order (the first row is the header row when
     the document has one). Works for every office format: office-oxide
-    >= 0.1.10 renders DOCX/XLSX/PPTX tables uniformly under
+    >= 0.1.16 renders office tables uniformly under
     ``sections[].elements``.
     """
     out: List[Tuple[str, List[List[str]]]] = []
@@ -116,14 +116,16 @@ class FollowUpCandidate(BaseModel):
     type: str = "page"  # 'page' -> inspect_html_page, 'document' -> extract_document
 
 
-# M16: exactly the formats extract_document can deliver (pdf, OOXML and
-# plain text). classify_link must never promise a format the extractor
-# raises on — the model would be sent into a guaranteed failure loop.
-# Legacy/binary formats (.doc/.xls/.ppt/.odt/.ods/.odp/.rtf/.epub) now
-# classify as 'page'; if the model still calls extract_document on them,
-# the extractor answers with an actionable conversion hint.
+# M16: exactly the formats extract_document can deliver (pdf, OOXML +
+# legacy office via office-oxide >= 0.1.16, and plain text).
+# classify_link must never promise a format the extractor raises on —
+# the model would be sent into a guaranteed failure loop. Remaining
+# binary formats (.odt/.ods/.odp/.rtf/.epub) classify as 'page'; if the
+# model still calls extract_document on them, the extractor answers
+# with an actionable conversion hint.
 DOCUMENT_EXTENSIONS = frozenset({
     ".pdf", ".docx", ".xlsx", ".pptx",
+    ".doc", ".xls", ".ppt", ".xlsb",
     ".csv", ".txt", ".md",
     # Tier 3.10 (item 10): text-based web formats are extractable as text,
     # so links to them must route to extract_document, not page scraping.
@@ -475,7 +477,7 @@ class StructuredOxideParser:
         JSON for any extra keys.
         """
         # Try to get title/author from the IR (JSON string in
-        # office-oxide >= 0.1.10; older versions returned a dict).
+        # office-oxide >= 0.1.16; older versions returned a dict).
         ir: Dict[str, Any] = {}
         try:
             parsed = json.loads(doc.to_ir_json())
@@ -689,7 +691,7 @@ class StructuredOxideParser:
     ) -> List[ExtractedTable]:
         """
         Best-effort table extraction from office_oxide IR (JSON string in
-        office-oxide >= 0.1.10). Tables live uniformly under
+        office-oxide >= 0.1.16). Tables live uniformly under
         ``sections[].elements`` for every office format; the first row of
         each table is treated as the header row.
         """

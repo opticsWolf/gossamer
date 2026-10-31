@@ -4,6 +4,18 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.10.2] — Legacy office reads via office-oxide 0.1.16
+
+- `documents` extra floor raised to `office-oxide>=0.1.16` (process-abort
+  and memory-exhaustion hardening in 0.1.11–0.1.16; verified: all 182
+  office/document/structured tests green, `from_bytes`/`to_markdown`
+  unchanged). `extract_document` now delivers `.doc/.xls/.ppt/.xlsb`
+  (flat text, spreadsheet `tables_as=csv/json` for `.xls/.xlsb`, sheet
+  `pages=` for workbooks) instead of conversion hints; `classify_link`,
+  `normalize_url` and their Rust kernels agree on the widened set.
+  Tests: `tests/test_m16_document_formats.py` gate moved + four vendored
+  Apache POI fixtures (`tests/fixtures/legacy-*`).
+
 ## [0.10.1] — HuggingFace Hub adapters (models + papers, read-only)
 
 - New opt-in scholarly providers `huggingface` (model search/lookup) and

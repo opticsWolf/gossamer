@@ -1100,29 +1100,22 @@ class DocumentExtractor:
         """
         if fmt == "pdf":
             return require_pdf_oxide().from_bytes(data).to_markdown_all()
-        if fmt in ("docx", "xlsx", "pptx"):
-            if fmt == "xlsx" and tables_as in ("csv", "json"):
+        if fmt in ("docx", "xlsx", "pptx", "doc", "xls", "ppt", "xlsb"):
+            if fmt in ("xlsx", "xls", "xlsb") and tables_as in ("csv", "json"):
                 return (
-                    self._spreadsheet_csv(data)
+                    self._spreadsheet_csv(data, fmt)
                     if tables_as == "csv"
-                    else self._spreadsheet_json(data)
+                    else self._spreadsheet_json(data, fmt)
                 )
             return require_office_oxide().from_bytes(data, fmt).to_markdown()
-        # Known-but-unsupported legacy office formats: actionable error.
-        suffix = {
-            "doc": ".doc", "xls": ".xls", "ppt": ".ppt", "xlsb": ".xlsb",
-        }.get(fmt, f".{fmt}")
-        hint = self._UNSUPPORTED_FORMAT_HINTS.get(suffix)
-        if hint:
-            raise ValueError(f"Unsupported document format: {suffix} ({hint}).")
-        raise ValueError(f"Unsupported document format: {suffix}")
+        raise ValueError(f"Unsupported document format: .{fmt}")
 
     # Tier 1.2: page-range reads. The flat extractor joins all pages into
     # one string, so a range can only be served by re-deriving the
     # per-page structure via StructuredOxideParser (Rust, fast). Formats
-    # without per-page structure (DOCX/PPTX parse as one page, text
-    # formats have no pages) are refused with an actionable message.
-    _PAGED_EXTRACT_SUFFIXES = (".pdf", ".xlsx")
+    # without per-page structure (DOCX/PPTX/DOC/PPT parse as one page,
+    # text formats have no pages) are refused with an actionable message.
+    _PAGED_EXTRACT_SUFFIXES = (".pdf", ".xlsx", ".xls", ".xlsb")
 
     # Extensions authoritative for a stored original's name. An extension
     # outside this set (e.g. arXiv's /pdf/<id> -> ".06954v2") is treated as
@@ -1141,6 +1134,7 @@ class DocumentExtractor:
         "application/vnd.msword": "doc",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
         "application/vnd.ms-excel": "xls",
+        "application/vnd.ms-excel.sheet.binary.macroenabled.12": "xlsb",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
         "application/vnd.ms-powerpoint": "ppt",
     }
@@ -1163,7 +1157,7 @@ class DocumentExtractor:
                 {
                     "error": (
                         f"Page selection is supported for PDF (pages) and "
-                        f"XLSX (sheets); this source is "
+                        f"Excel workbooks (sheets); this source is "
                         f"{suffix or 'extensionless'}. Call extract_document "
                         f"without pages, or convert the file to PDF."
                     )
@@ -1322,9 +1316,6 @@ class DocumentExtractor:
     # still applies on top.
     _FEED_MAX_ENTRIES = 50
     _UNSUPPORTED_FORMAT_HINTS = {
-        ".doc": "convert the file to .docx",
-        ".xls": "convert the file to .xlsx",
-        ".ppt": "convert the file to .pptx",
         ".odt": "convert the file to .docx",
         ".ods": "convert the file to .xlsx",
         ".odp": "convert the file to .pptx",
@@ -1332,7 +1323,7 @@ class DocumentExtractor:
         ".epub": "convert the file to PDF",
     }
 
-    def _spreadsheet_csv(self, data: bytes) -> str:
+    def _spreadsheet_csv(self, data: bytes, fmt: str = "xlsx") -> str:
         """Render spreadsheet bytes as per-sheet CSV blocks.
 
         Uses the office IR (via ``office_ir_tables``) so the output keeps
@@ -1343,7 +1334,7 @@ class DocumentExtractor:
         import csv
         import io
 
-        doc = require_office_oxide().from_bytes(data, "xlsx")
+        doc = require_office_oxide().from_bytes(data, fmt)
         try:
             ir = json.loads(doc.to_ir_json())
         except Exception:
@@ -1357,14 +1348,14 @@ class DocumentExtractor:
                 blocks.append(f"## {title}\n\n{buf.getvalue().rstrip(chr(10))}")
         return "\n\n".join(blocks)
 
-    def _spreadsheet_json(self, data: bytes) -> str:
+    def _spreadsheet_json(self, data: bytes, fmt: str = "xlsx") -> str:
         """Render spreadsheet bytes as a JSON array of table objects.
 
         Shape per table: ``{"sheet": <title>, "headers": [...],
         "rows": [[...], ...]}`` — headers are the sheet's first row.
         Built from the office IR via ``office_ir_tables``.
         """
-        doc = require_office_oxide().from_bytes(data, "xlsx")
+        doc = require_office_oxide().from_bytes(data, fmt)
         try:
             ir = json.loads(doc.to_ir_json())
         except Exception:
@@ -1386,14 +1377,17 @@ class DocumentExtractor:
         if suffix == ".pdf":
             doc = require_pdf_oxide().from_bytes(data)
             return doc.to_markdown_all()
-        elif suffix in (".docx", ".xlsx", ".pptx"):
-            if suffix == ".xlsx" and tables_as in ("csv", "json"):
+        elif suffix in (".docx", ".xlsx", ".pptx",
+                        ".doc", ".xls", ".ppt", ".xlsb"):
+            if suffix in (".xlsx", ".xls", ".xlsb") and tables_as in ("csv", "json"):
+                fmt = suffix.lstrip(".")
                 return (
-                    self._spreadsheet_csv(data)
+                    self._spreadsheet_csv(data, fmt)
                     if tables_as == "csv"
-                    else self._spreadsheet_json(data)
+                    else self._spreadsheet_json(data, fmt)
                 )
-            # office-oxide >= 0.1.10 requires the format explicitly.
+            # office-oxide >= 0.1.16 reads OOXML and legacy formats alike;
+            # the format is required explicitly.
             doc = require_office_oxide().from_bytes(data, suffix.lstrip("."))
             return doc.to_markdown()
         elif suffix in self._TEXT_SUFFIXES:

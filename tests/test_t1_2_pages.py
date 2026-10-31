@@ -205,7 +205,7 @@ class TestPageRangeFormatGuards:
         tb = _toolbox(tmp_path)
         data = json.loads(tb.extract_document(str(path), pages="1"))
         assert "error" in data
-        assert "PDF (pages) and XLSX (sheets)" in data["error"]
+        assert "PDF (pages) and Excel workbooks (sheets)" in data["error"]
         assert ".txt" in data["error"]
 
 

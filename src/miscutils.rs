@@ -70,9 +70,10 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
-const DOCUMENT_EXTS: [&str; 11] = [
-    ".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt", ".md", ".json",
-    ".xml", ".rss", ".atom",
+const DOCUMENT_EXTS: [&str; 15] = [
+    ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+    ".xlsb", ".csv", ".txt", ".md", ".json", ".xml", ".rss",
+    ".atom",
 ];
 
 /// `structured_parser.classify_link`: document iff the URL path

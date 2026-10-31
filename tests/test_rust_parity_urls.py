@@ -22,7 +22,8 @@ from gossamer import _core
 # ── vendored originals (v0.8.0) ──────────────────────────────────
 
 _V_DOC_EXTS = frozenset({
-    ".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt", ".md",
+    ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+    ".xlsb", ".csv", ".txt", ".md",
     ".json", ".xml", ".rss", ".atom",
 })
 _V_TRACKING = ("utm_", "fbclid", "gclid", "mc_", "ref_")

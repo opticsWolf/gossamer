@@ -8,7 +8,10 @@ for formats that raise ValueError. Fix: narrow the advertised set to
 pdf + OOXML + plain text (CSV/TXT/MD handlers added), and answer
 known-but-unparseable binary formats with an actionable conversion
 hint. Tier 3.10 (item 10) extended the deliverable set with JSON,
-XML, and RSS/Atom handlers; the invariant below is unchanged.
+XML, and RSS/Atom handlers; office-oxide >= 0.1.16 added legacy
+.doc/.xls/.ppt/.xlsb reads, so those four moved back into the
+advertised set (fixtures: Apache POI test-data, Apache-2.0).
+The invariant below is unchanged.
 """
 
 import json
@@ -24,13 +27,15 @@ from gossamer.structured_parser import (
     classify_link,
 )
 
-# What _extract_from_bytes can genuinely deliver (M16 + Tier 3.10).
+# What _extract_from_bytes can genuinely deliver (M16 + Tier 3.10 +
+# office-oxide >= 0.1.16 legacy reads).
 SUPPORTED = {
     ".pdf", ".docx", ".xlsx", ".pptx",
+    ".doc", ".xls", ".ppt", ".xlsb",
     ".csv", ".txt", ".md",
     ".json", ".xml", ".rss", ".atom",
 }
-LEGACY = [".doc", ".xls", ".ppt", ".odt", ".ods", ".odp", ".rtf", ".epub"]
+LEGACY = [".odt", ".ods", ".odp", ".rtf", ".epub"]
 
 
 def _toolbox(tmp_path):
@@ -63,6 +68,62 @@ class TestAdvertiseOnlyWhatYouCanDeliver:
         # The M16 invariant: classify_link must never promise a format
         # that _extract_from_bytes raises on.
         assert DOCUMENT_EXTENSIONS <= SUPPORTED
+
+
+class TestLegacyOfficeExtraction:
+    # Real legacy binaries (Apache POI test-data, Apache-2.0):
+    # Word 6/95 .doc, BIFF8 .xls, BIFF12 .xlsb, PPT.
+    LEGACY_FIXTURES = {
+        "legacy-word6.doc": "quick brown fox",
+        "legacy-provinces.xls": "Provinces in China",
+        "legacy-simple.xlsb": "Microsoft Excel 2007 Beta",
+        "legacy-textbox.ppt": "Hello, World",
+    }
+
+    @pytest.mark.parametrize("fixture,needle", list(LEGACY_FIXTURES.items()))
+    def test_legacy_office_extracts_text(self, tmp_path, fixture, needle):
+        pytest.importorskip("office_oxide")
+        tb = _toolbox(tmp_path)
+        data = json.loads(tb.extract_document(f"tests/fixtures/{fixture}"))
+        assert "error" not in data, data.get("error")
+        assert needle in data["content"]
+
+    def test_legacy_xls_tables_as_csv(self, tmp_path):
+        pytest.importorskip("office_oxide")
+        tb = _toolbox(tmp_path)
+        data = json.loads(tb.extract_document(
+            "tests/fixtures/legacy-provinces.xls", tables_as="csv",
+        ))
+        assert "error" not in data, data.get("error")
+        assert "Provinces in China" in data["content"]
+        assert "|" not in data["content"].splitlines()[2]
+
+    def test_legacy_xls_tables_as_json(self, tmp_path):
+        pytest.importorskip("office_oxide")
+        tb = _toolbox(tmp_path)
+        data = json.loads(tb.extract_document(
+            "tests/fixtures/legacy-provinces.xls", tables_as="json",
+        ))
+        assert "error" not in data, data.get("error")
+        tables = json.loads(data["content"])
+        assert tables and tables[0]["sheet"] == "provinces"
+
+    def test_legacy_ppt_pages_still_refused(self, tmp_path):
+        pytest.importorskip("office_oxide")
+        tb = _toolbox(tmp_path)
+        data = json.loads(tb.extract_document(
+            "tests/fixtures/legacy-textbox.ppt", pages="1-2",
+        ))
+        assert "Page selection" in data["error"]
+
+    def test_legacy_xls_pages_select_sheets(self, tmp_path):
+        pytest.importorskip("office_oxide")
+        tb = _toolbox(tmp_path)
+        data = json.loads(tb.extract_document(
+            "tests/fixtures/legacy-provinces.xls", pages="1",
+        ))
+        assert "error" not in data, data.get("error")
+        assert "Provinces in China" in data["content"]
 
 
 class TestPlainTextExtraction:

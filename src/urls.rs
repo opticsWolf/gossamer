@@ -18,8 +18,9 @@ use unicode_normalization::UnicodeNormalization;
 // Mirrors gossamer.structured_parser.DOCUMENT_EXTENSIONS. A Python parity
 // test asserts behavioral agreement over every entry, so drift fails loudly.
 const DOCUMENT_EXTENSIONS: &[&str] = &[
-    ".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt", ".md", ".json", ".xml",
-    ".rss", ".atom",
+    ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+    ".xlsb", ".csv", ".txt", ".md", ".json", ".xml", ".rss",
+    ".atom",
 ];
 
 const TRACKING_PARAM_PREFIXES: &[&str] = &["utm_", "fbclid", "gclid", "mc_", "ref_"];

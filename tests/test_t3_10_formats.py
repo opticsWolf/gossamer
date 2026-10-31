@@ -22,9 +22,11 @@ from gossamer.structured_parser import (
     classify_link,
 )
 
-# What _extract_from_bytes can genuinely deliver after item 10.
+# What _extract_from_bytes can genuinely deliver after item 10 +
+# office-oxide >= 0.1.16 legacy reads.
 SUPPORTED = {
     ".pdf", ".docx", ".xlsx", ".pptx",
+    ".doc", ".xls", ".ppt", ".xlsb",
     ".csv", ".txt", ".md",
     ".json", ".xml", ".rss", ".atom",
 }

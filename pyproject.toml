@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gossamer-web"
-version = "0.10.1"
+version = "0.10.2"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -63,7 +63,7 @@ browser = ["browser-oxide>=0.1"]
 # extract_document / extract_document_structured require this extra.
 documents = [
     "pdf-oxide>=0.1",
-    "office-oxide>=0.1",
+    "office-oxide>=0.1.16",
 ]
 # §7: optional prompt-injection guard (JailGuard ONNX detector). The package
 # imports and runs without it; only an enabled guard needs the model.
