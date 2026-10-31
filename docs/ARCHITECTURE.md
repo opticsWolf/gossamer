@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.10.1)
+# gossamer — architecture (v0.10.3)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -76,7 +76,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Fetch | `fetch.py` | static/browser dispatch, page cache reads, robots gate order (S4: robots before rate-limit so disallowed fetches burn no delay), conditional revalidation (ETag/Last-Modified via `Cache.get_stale`; 304 re-freshens, 200 replaces), fetch telemetry choke point |
 | Search | `search.py` | provider failover/merge, result-level cache, within-provider dedup |
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
-| Documents | `document.py` | bytes → text via oxide converters, `pages=` slicing, `store=` persistence, figure extraction; JATS-first scholarly route (`prefer_jats`, DOI → publisher XML → `ExtractionResult`, `{url}#jats` cache, `resolved_doi`/`jats_source` provenance) |
+| Documents | `document.py` | bytes → text via oxide converters (OOXML + legacy `.doc/.xls/.ppt/.xlsb` since office-oxide 0.1.16), `pages=` slicing (PDF + workbooks), `store=` persistence, figure extraction; JATS-first scholarly route (`prefer_jats`, DOI → publisher XML → `ExtractionResult`, `{url}#jats` cache, `resolved_doi`/`jats_source` provenance) |
 | Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, caller-supplied sequential mirror attempts, classified failures |
 | Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution (plus opt-in Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is set, OpenAlex-first with provenance); no automatic download |
 | JATS helpers | `jats.py` | pure DOI/resolver helpers for the JATS-first route (EuropePMC/PMC-OA/PLOS parsing, tarball picking, lazy `bobine.convert_jats` loading); all network stays in `document.py` plumbing |

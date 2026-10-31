@@ -4,6 +4,12 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.10.3] — Documentation sync (legacy reads)
+
+- QUICKREF `extract_document` row, README Documents bullet, ARCHITECTURE
+  stamp (`v0.10.3`) + Documents collaborator row updated for the 0.10.2
+  legacy `.doc/.xls/.ppt/.xlsb` route; no code changes.
+
 ## [0.10.2] — Legacy office reads via office-oxide 0.1.16
 
 - `documents` extra floor raised to `office-oxide>=0.1.16` (process-abort
