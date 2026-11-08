@@ -17,6 +17,8 @@ mod textlinks;
 mod urls;
 mod bridge;
 mod fetch;
+mod jats;
+mod jats_mml;
 
 use pyo3::prelude::*;
 
@@ -33,6 +35,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bridge::extract_main_content_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(bridge::init_rust_logging, m)?)?;
     m.add_function(wrap_pyfunction!(fetch::configure_http, m)?)?;
+    m.add_function(wrap_pyfunction!(jats::jats_convert_jats, m)?)?;
     m.add_function(wrap_pyfunction!(bridge::extract_tables_from_html, m)?)?;
     m.add_function(wrap_pyfunction!(urls::normalize_url, m)?)?;
     m.add_function(wrap_pyfunction!(urls::canonical_url, m)?)?;

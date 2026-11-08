@@ -881,3 +881,10 @@ def meta_extract_twitter(html: str, base_url: str | None = None) -> str:
 def meta_extract_jsonld(html: str, base_url: str | None = None) -> str:
     """JSON-LD objects, as JSON (src/metaextract.rs)."""
     ...
+
+def jats_convert_jats(xml: str) -> str:
+    """JATS XML string to JSON ``{markdown, title, n_formulas, n_figures,
+    n_tables}`` (src/jats.rs; ported from bobine 0.8.0). Raises
+    ``ValueError`` on non-article roots, malformed XML, or unbalanced
+    ``$`` after math fusion."""
+    ...

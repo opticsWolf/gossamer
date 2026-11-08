@@ -4,6 +4,22 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.11.0] — In-house JATS kernel (bobine dependency removed)
+
+- Ported the JATS converter into `_core` (`src/jats.rs` +
+  `src/jats_mml.rs`, from bobine 0.8.0 `jats.rs`/`mml.rs` plus the
+  `split_cmds` half of `sanitize.rs`): pure `jats_convert_jats(xml)`
+  kernel returning `{markdown, title, n_formulas, n_figures, n_tables}`
+  JSON; `roxmltree 0.20` is the only new crate (house deps already
+  covered regex/unicode-normalization/serde_json).
+- `gossamer/jats.py:convert_jats_bytes` calls the kernel (no temp
+  files, no I/O); errors are house `ValueError` (`not a JATS article`
+  fall-through preserved). `bobine>=0.7.0` dropped from dependencies;
+  all 12 ported Rust unit tests + the handoff census (2/7/2,
+  `\tag{Eq 1/2}`, balanced dollars) pin the contract.
+- Clippy `-D warnings` clean on the port (`is_multiple_of`,
+  `while let`, explicit `\u{200b}`/`\u{2060}` escapes).
+
 ## [0.10.3] — Documentation sync (legacy reads)
 
 - QUICKREF `extract_document` row, README Documents bullet, ARCHITECTURE

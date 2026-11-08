@@ -1,10 +1,11 @@
 """JATS-first scholarly extraction route (bobine proposal §5).
 
-DOI → JATS XML (EuropePMC / PMC OA / PLOS) → ``bobine.convert_jats`` →
+DOI → JATS XML (EuropePMC / PMC OA / PLOS) → in-house ``_core``
+JATS kernel (ported from bobine 0.8.0 ``jats.rs``/``mml.rs``) →
 markdown. All network goes through the toolbox fetch plumbing
 (SSRF guard, robots, rate limit, byte cap); this module holds only the
-pure helpers (DOI handling, response parsing, tarball picking, bobine
-loading, byte conversion) so they stay unit-testable offline.
+pure helpers (DOI handling, response parsing, tarball picking, byte
+conversion) so they stay unit-testable offline.
 
 Handoff: ``docs/handoff_gossamer_jats.md``.
 """
@@ -12,22 +13,18 @@ Handoff: ``docs/handoff_gossamer_jats.md``.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 import tarfile
-import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-logger = logging.getLogger(__name__)
+from gossamer._core import jats_convert_jats
 
-BOBINE_FLOOR_VERSION = "0.7.0"
-BOBINE_HINT = (
-    "JATS extraction requires 'bobine>=0.7.0' — "
-    'install it with: pip install "bobine>=0.7.0"'
-)
+logger = logging.getLogger(__name__)
 
 EUROPEPMC_SEARCH_URL = (
     "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
@@ -47,15 +44,6 @@ PAGES_JATS_ERROR = (
 )
 
 _CITATION_DOI_RE = re.compile(r"10\.\d{4,9}/\S+", re.IGNORECASE)
-
-
-def require_bobine():
-    """Return the ``bobine`` module, or raise with an install hint."""
-    try:
-        import bobine  # type: ignore
-    except ImportError as exc:
-        raise ImportError(BOBINE_HINT) from exc
-    return bobine
 
 
 def extract_doi_candidate(text: str) -> Optional[str]:
@@ -271,44 +259,31 @@ def plos_journal_from_url(url: str) -> Optional[str]:
 
 
 def convert_jats_bytes(xml_bytes: bytes, filename: str = "article.xml") -> dict:
-    """Convert JATS XML bytes via bobine; return markdown + counts.
+    """Convert JATS XML bytes via the in-house ``_core`` kernel.
 
     Returns ``{"markdown", "title", "n_formulas", "n_figures",
-    "n_tables"}``. Raises ``RuntimeError``/``ImportError`` from bobine
-    with stable prefixes intact (callers map ``not a JATS article`` to
-    fall-through, everything else to a JSON error).
+    "n_tables"}``. Raises ``ValueError`` with stable prefixes intact
+    (callers map ``not a JATS article`` to fall-through, everything
+    else to a JSON error). Pure: no temp files, no I/O.
     """
-    bobine = require_bobine()
-    suffix = Path(filename).suffix.lower() or ".xml"
-    if suffix not in (".xml", ".jats", ".nxml"):
-        suffix = ".xml"
-    with tempfile.TemporaryDirectory(prefix="gossamer-jats-") as work_dir:
-        with tempfile.NamedTemporaryFile(
-            suffix=suffix, delete=False, prefix="gossamer-jats-src-"
-        ) as tmp:
-            tmp.write(xml_bytes)
-            tmp_path = tmp.name
-        try:
-            doc = bobine.convert_jats(tmp_path, work_dir)
-            md_path = str(getattr(doc, "md_path", ""))
-            markdown = ""
-            if md_path:
-                try:
-                    markdown = Path(md_path).read_text(encoding="utf-8")
-                except OSError:
-                    markdown = ""
-            return {
-                "markdown": markdown,
-                "title": str(getattr(doc, "title", "") or ""),
-                "n_formulas": int(getattr(doc, "n_formulas", 0) or 0),
-                "n_figures": int(getattr(doc, "n_figures", 0) or 0),
-                "n_tables": int(getattr(doc, "n_tables", 0) or 0),
-            }
-        finally:
-            try:
-                Path(tmp_path).unlink(missing_ok=True)
-            except OSError:
-                pass
+    _ = filename  # reserved: resolver paths keep the call shape.
+    try:
+        xml_text = xml_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"ValueError: XML parse: {exc}") from exc
+    try:
+        out = json.loads(jats_convert_jats(xml_text))
+    except ValueError:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        raise ValueError(f"ValueError: JATS conversion failed: {exc}") from exc
+    return {
+        "markdown": str(out.get("markdown", "") or ""),
+        "title": str(out.get("title", "") or ""),
+        "n_formulas": int(out.get("n_formulas", 0) or 0),
+        "n_figures": int(out.get("n_figures", 0) or 0),
+        "n_tables": int(out.get("n_tables", 0) or 0),
+    }
 
 
 def jats_cache_stem(source: str) -> str:

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "gossamer-web"
-version = "0.10.3"
+version = "0.11.0"
 requires-python = ">=3.10"
 description = "High-Performance LLM Web Researcher — Rust core, Oxide extractors, multi-provider search, token-aware truncation"
 readme = "README.md"
@@ -36,11 +36,8 @@ dependencies = [
     "tiktoken>=0.5",
     "ddgs>=2.0",
     # JATS-first scholarly route (docs/handoff_gossamer_jats.md):
-    # publisher full-text XML via bobine.convert_jats. Core dep (no
-    # models, no ONNX Runtime on this path); the import stays lazy
-    # (require_bobine) so a missing install fails with an action, not
-    # at import time.
-    "bobine>=0.7.0",
+    # publisher full-text XML via the in-house _core JATS kernel
+    # (ported from bobine 0.8.0 jats.rs/mml.rs) — no extra dependency.
     # Rust-backed extractors (same ecosystem as the _core module).
     # meta-oxide ships INSIDE _core now (src/metaextract.rs depends on
     # the meta_oxide Rust crate, vendored at vendor/meta_oxide) — no

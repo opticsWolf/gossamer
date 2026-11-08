@@ -1,9 +1,10 @@
 """JATS-first scholarly route (docs/handoff_gossamer_jats.md §5).
 
-Offline unit (no network, no models, no ORT): the vendored
-``jats-chem-olive-2024.xml`` fixture drives routing, fallback, flags,
-store, and parity through stubbed fetch + conversion layers.
-Live-marked tests need network + ``bobine>=0.7.0`` and never gate CI.
+Offline unit (no network, no models, no ORT, no third-party converter):
+the vendored ``jats-chem-olive-2024.xml`` fixture drives routing,
+fallback, flags, store, and parity through stubbed fetch + conversion
+layers; the real-conversion tests exercise the in-house ``_core`` JATS
+kernel directly. Live-marked tests need network and never gate CI.
 """
 
 from __future__ import annotations
@@ -98,7 +99,7 @@ def europepmc_search_bytes(pmcid="1234567", source="PMC"):
     }).encode()
 
 
-# ── pure helpers (no network, no bobine) ──
+# ── pure helpers (no network, no third-party converter) ──
 
 def test_parse_europepmc_search_prefers_pmc():
     payload = {"resultList": {"result": [
@@ -237,7 +238,7 @@ def test_jats_local_xml_not_article_falls_through(tmp_path, monkeypatch):
     feed = tmp_path / "feed.xml"
     feed.write_text("<rss><channel><title>t</title></channel></rss>", encoding="utf-8")
     def _boom(*a, **k):
-        raise RuntimeError("JATS error: not a JATS article (root=rss)")
+        raise ValueError("ValueError: not a JATS article (root=rss)")
     monkeypatch.setattr(J, "convert_jats_bytes", _boom)
     out = json.loads(tb.extract_document(str(feed)))
     # Falls through to the normal XML feed path, which delivers entries/raw.
@@ -344,10 +345,9 @@ def test_jats_prefer_false_skips_route(tmp_path, monkeypatch):
     assert not [u for u in calls if "europepmc" in u]
 
 
-# ── real conversion (bobine installed; no network, no models) ──
+# ── real conversion (in-house _core kernel; no network, no models) ──
 
 def test_jats_real_conversion_matches_handoff_census():
-    bobine = pytest.importorskip("bobine")  # noqa: F841
     out = J.convert_jats_bytes(FIXTURE.read_bytes(), FIXTURE.name)
     assert out["title"].startswith("Olive leaf extract-assisted green synthesis")
     assert (out["n_formulas"], out["n_figures"], out["n_tables"]) == (2, 7, 2)
@@ -366,11 +366,31 @@ def test_jats_real_conversion_matches_handoff_census():
     assert len(_re.findall(r"!\[", md)) == 7  # remote figure hrefs
 
 
-# ── live-marked (network + bobine; never gate CI) ──
+def test_jats_kernel_rejects_non_article():
+    with pytest.raises(ValueError, match="not a JATS article"):
+        J.convert_jats_bytes(b"<rss><channel><title>t</title></channel></rss>")
+
+
+def test_jats_kernel_rejects_malformed_xml():
+    with pytest.raises(ValueError, match="XML parse"):
+        J.convert_jats_bytes(b"<article><unclosed>")
+
+
+def test_jats_kernel_balances_dollar_heavy_prose():
+    # A literal `$` in JATS prose is escaped by prose_guard, so fused
+    # math stays balanced — the kernel never emits corrupt math (the
+    # hard-error path itself is pinned by the Rust `check_dollars`
+    # unit test in src/jats.rs).
+    out = J.convert_jats_bytes(
+        b"<article><body><p>costs $5 and $10 total</p></body></article>")
+    assert out["markdown"].count("$") % 2 == 0
+    assert "\\$" in out["markdown"]
+
+
+# ── live-marked (network only; never gate CI) ──
 
 @pytest.mark.slow
 def test_jats_live_europepmc_shape(tmp_path):
-    pytest.importorskip("bobine")
     tb = make_tb(tmp_path)
     out = json.loads(tb.extract_document(CHEM_DOI, tables_as="markdown"))
     assert out.get("jats_source") in ("europepmc", "pmc-oa", "plos") or "error" in out

@@ -153,7 +153,7 @@ class DocumentExtractor:
         prefer_jats : bool
             JATS-first scholarly route (default True): DOI-resolvable
             sources attempt publisher full-text XML (EuropePMC / PMC OA /
-            PLOS) via ``bobine.convert_jats`` before the PDF path.
+            PLOS) via the in-house ``_core`` JATS kernel before the PDF path.
             ``structured=True`` or ``tables_as != 'markdown'`` skips the
             route; ``pages=`` with a JATS-resolvable source errors
             (sections, not pages). ``store=True`` writes ``<stem>.xml``
@@ -450,11 +450,11 @@ class DocumentExtractor:
                 )
             try:
                 conv = J.convert_jats_bytes(xml_bytes, Path(source).name)
-            except (ImportError, RuntimeError):
+            except ValueError:
                 # Local .xml/.jats/.nxml keeps its existing contract (feed
                 # entries / raw-text fallback): any conversion failure —
-                # missing bobine extra, not-a-JATS feed, malformed XML —
-                # falls through to the normal path, never errors.
+                # not-a-JATS feed, malformed XML — falls through to the
+                # normal path, never errors.
                 return None
             return self._finish_jats_result(
                 source, conv, None, None, None, None,
@@ -547,9 +547,7 @@ class DocumentExtractor:
                 if J.is_xml_body(ft_prov.get("content_type"), xml_bytes):
                     try:
                         conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.xml")
-                    except ImportError as e:
-                        return json.dumps({"error": str(e)}, indent=2)
-                    except RuntimeError as e:
+                    except ValueError as e:
                         if "not a JATS article" in str(e):
                             pass  # try next tier
                         else:
@@ -643,9 +641,7 @@ class DocumentExtractor:
             return None
         try:
             conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.nxml")
-        except ImportError as e:
-            return json.dumps({"error": str(e)}, indent=2)
-        except RuntimeError as e:
+        except ValueError as e:
             if "not a JATS article" in str(e):
                 return None
             logger.error("JATS conversion failed for %s: %s", tgz_url, e)
@@ -695,7 +691,7 @@ class DocumentExtractor:
             return None
         try:
             conv = J.convert_jats_bytes(xml_bytes, f"{doi.split('/')[-1]}.xml")
-        except (ImportError, RuntimeError):
+        except ValueError:
             return None  # PLOS branch is best-effort only
         return self._finish_jats_result(
             source, conv, doi, "plos", plos_url, plos_prov,

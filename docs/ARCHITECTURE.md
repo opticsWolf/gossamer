@@ -1,4 +1,4 @@
-# gossamer — architecture (v0.10.3)
+# gossamer — architecture (v0.11.0)
 
 How the system fits together, why it is split the way it is, and where
 each behavior lives. Companion: [Quick reference](./QUICKREF.md) for
@@ -76,10 +76,10 @@ delegating to collaborator objects, all returning JSON strings.
 | Fetch | `fetch.py` | static/browser dispatch, page cache reads, robots gate order (S4: robots before rate-limit so disallowed fetches burn no delay), conditional revalidation (ETag/Last-Modified via `Cache.get_stale`; 304 re-freshens, 200 replaces), fetch telemetry choke point |
 | Search | `search.py` | provider failover/merge, result-level cache, within-provider dedup |
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
-| Documents | `document.py` | bytes → text via oxide converters (OOXML + legacy `.doc/.xls/.ppt/.xlsb` since office-oxide 0.1.16), `pages=` slicing (PDF + workbooks), `store=` persistence, figure extraction; JATS-first scholarly route (`prefer_jats`, DOI → publisher XML → `ExtractionResult`, `{url}#jats` cache, `resolved_doi`/`jats_source` provenance) |
+| Documents | `document.py` | bytes → text via oxide converters (OOXML + legacy `.doc/.xls/.ppt/.xlsb` since office-oxide 0.1.16), `pages=` slicing (PDF + workbooks), `store=` persistence, figure extraction; JATS-first scholarly route (`prefer_jats`, DOI → publisher XML → in-house `_core` kernel → `ExtractionResult`, `{url}#jats` cache, `resolved_doi`/`jats_source` provenance) |
 | Download | `downloader.py` | robots/SSRF-checked streaming to atomic local files, byte caps, PDF signature validation, caller-supplied sequential mirror attempts, classified failures |
 | Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution (plus opt-in Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is set, OpenAlex-first with provenance); no automatic download |
-| JATS helpers | `jats.py` | pure DOI/resolver helpers for the JATS-first route (EuropePMC/PMC-OA/PLOS parsing, tarball picking, lazy `bobine.convert_jats` loading); all network stays in `document.py` plumbing |
+| JATS helpers | `jats.py` | pure DOI/resolver helpers for the JATS-first route (EuropePMC/PMC-OA/PLOS parsing, tarball picking, byte conversion via the `_core` JATS kernel); all network stays in `document.py` plumbing |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
 | Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
 | Domain adapters | `research_providers.py` | 40 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
@@ -107,6 +107,7 @@ delegating to collaborator objects, all returning JSON strings.
 | `adapters/` | all 38 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
 | `metaextract.rs` | HTML metadata via the `meta_oxide` crate FFI + `sparse()`/normalizers matching `to_py_dict` shapes |
 | `xmlatom.rs` | ATOM/XML traversal (arXiv/PubMed), SDMX-ML (Bundesbank/BIS), namespace-URI resolution |
+| `jats.rs` + `jats_mml.rs` | in-house JATS converter (ported from bobine 0.8.0: `convert_jats_str` + MathML→LaTeX + `split_cmds`; `roxmltree` the only new crate) |
 | `ssrf.rs` | IP/DNS allow-list logic mirroring CPython `ipaddress` tables |
 | `robots.rs` | robots.txt parser (fetch half stays Python) |
 | `guard.rs` | prompt-injection regexes/heuristics, byte-identical scans |
