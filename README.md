@@ -10,6 +10,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.82%2B-orange)](https://rustup.rs)
 [![License](https://img.shields.io/badge/License-MIT%2FApache--2.0-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-11366%20passing%2C%2034%20skipped-brightgreen)](tests/)
+[![Website](https://img.shields.io/badge/website-gossamer-blue)](https://opticswolf.github.io/gossamer/)
 
 **Docs:** [Quick reference](./docs/QUICKREF.md) · [Architecture](./docs/ARCHITECTURE.md) · [Changelog](./CHANGELOG.md)
 
