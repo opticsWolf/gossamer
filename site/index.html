@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gossamer — High-Performance LLM Web Researcher</title>
+<meta name="description" content="A hybrid LLM web researcher: Rust parsing core, Oxide document extractors, Python orchestration. 40 domain adapters, 12 tools, hermetic tests.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#FAFAF7;
+  --paper-2:#F3F2EC;
+  --ink:#17171C;
+  --ink-soft:#4B4B55;
+  --ink-faint:#8A8A94;
+  --line:#E7E5DC;
+  --card:#FFFFFF;
+  --indigo:#4F46E5;
+  --violet:#7C3AED;
+  --coral:#FF5A36;
+  --amber:#F59E0B;
+  --teal:#0D9488;
+  --grad:linear-gradient(100deg,var(--indigo),var(--violet) 55%,var(--coral));
+  --glow-1:rgba(79,70,229,.14);
+  --glow-2:rgba(255,90,54,.12);
+  --radius:16px;
+  --shadow:0 1px 2px rgba(23,23,28,.05),0 12px 32px -12px rgba(23,23,28,.14);
+  --shadow-lg:0 2px 4px rgba(23,23,28,.06),0 28px 64px -20px rgba(79,70,229,.28);
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+::selection{background:rgba(124,58,237,.2)}
+a{color:inherit}
+/* ---------- backdrop ---------- */
+.backdrop{position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(900px 480px at 12% -4%,var(--glow-1),transparent 65%),
+    radial-gradient(820px 460px at 88% 6%,var(--glow-2),transparent 65%),
+    radial-gradient(1000px 600px at 50% 110%,rgba(13,148,136,.08),transparent 60%),
+    var(--paper);
+}
+.gridlines{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.5;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,black 30%,transparent 75%);
+  -webkit-mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,black 30%,transparent 75%);
+}
+/* ---------- nav ---------- */
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);
+  background:rgba(250,250,247,.78);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:1120px;margin:0 auto;padding:.8rem 1.5rem;
+  display:flex;align-items:center;gap:1.5rem}
+.brand{display:flex;align-items:center;gap:.6rem;font-weight:800;
+  font-family:'Space Grotesk',sans-serif;font-size:1.15rem;letter-spacing:-.01em;text-decoration:none}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--grad);
+  display:grid;place-items:center;color:#fff;font-size:.95rem;
+  box-shadow:0 6px 16px -6px rgba(124,58,237,.6)}
+.nav-links{display:flex;gap:1.25rem;margin-left:auto;font-size:.92rem;font-weight:500}
+.nav-links a{text-decoration:none;color:var(--ink-soft);transition:color .15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{font-size:.85rem;font-weight:600;text-decoration:none;color:#fff;
+  background:var(--ink);padding:.5rem 1rem;border-radius:999px;transition:transform .15s,box-shadow .15s}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 8px 20px -8px rgba(23,23,28,.5)}
+@media(max-width:760px){.nav-links{display:none}}
+/* ---------- layout ---------- */
+.wrap{max-width:1120px;margin:0 auto;padding:0 1.5rem}
+section{padding:4.5rem 0 1rem}
+.eyebrow{display:inline-flex;align-items:center;gap:.5rem;font-size:.78rem;
+  font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--violet);
+  background:rgba(124,58,237,.09);border:1px solid rgba(124,58,237,.22);
+  padding:.32rem .8rem;border-radius:999px;margin-bottom:1.1rem}
+h2.section-title{font-family:'Space Grotesk',sans-serif;font-size:clamp(1.6rem,3.4vw,2.4rem);
+  letter-spacing:-.02em;line-height:1.15;margin-bottom:.6rem}
+.section-sub{color:var(--ink-soft);max-width:640px;font-size:1.02rem}
+/* ---------- hero ---------- */
+.hero{padding:5.5rem 0 3rem;text-align:center;position:relative}
+.hero-badge{display:inline-flex;align-items:center;gap:.55rem;font-size:.83rem;
+  font-weight:500;color:var(--ink-soft);background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:.4rem .4rem .4rem 1rem;
+  box-shadow:var(--shadow);margin-bottom:1.6rem}
+.hero-badge .ver{font-family:var(--mono);font-size:.75rem;font-weight:600;color:#fff;
+  background:var(--grad);padding:.22rem .6rem;border-radius:999px}
+.hero h1{font-family:'Space Grotesk',sans-serif;font-weight:700;
+  font-size:clamp(2.6rem,6.4vw,4.6rem);letter-spacing:-.03em;line-height:1.04;margin-bottom:1.2rem}
+.hero h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.lead{color:var(--ink-soft);font-size:clamp(1rem,2vw,1.2rem);max-width:660px;margin:0 auto 2.2rem}
+.hero-ctas{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap;margin-bottom:3rem}
+.btn{display:inline-flex;align-items:center;gap:.5rem;font-weight:600;font-size:.95rem;
+  text-decoration:none;padding:.8rem 1.6rem;border-radius:12px;transition:transform .15s,box-shadow .15s}
+.btn-primary{color:#fff;background:var(--grad);box-shadow:0 14px 30px -12px rgba(124,58,237,.55)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 20px 40px -12px rgba(124,58,237,.6)}
+.btn-ghost{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+.btn-ghost:hover{transform:translateY(-2px)}
+/* terminal */
+.term{max-width:720px;margin:0 auto;text-align:left;background:#14141A;color:#E8E8EE;
+  border-radius:var(--radius);box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+.term-bar{display:flex;align-items:center;gap:.45rem;padding:.7rem 1rem;background:rgba(255,255,255,.04);
+  border-bottom:1px solid rgba(255,255,255,.07)}
+.dot{width:11px;height:11px;border-radius:50%}
+.term-body{padding:1.2rem 1.3rem;font-family:var(--mono);font-size:.85rem;line-height:1.75;overflow-x:auto}
+.term-body .c{color:#7DD3C8}.term-body .k{color:#C4B5FD}.term-body .s{color:#FBBF24}.term-body .d{color:#5B5B66}
+.prompt{color:#A5B4FC;user-select:none}
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;max-width:880px;margin:2.8rem auto 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:1.2rem .8rem;box-shadow:var(--shadow)}
+.stat b{display:block;font-family:'Space Grotesk',sans-serif;font-size:1.7rem;letter-spacing:-.02em}
+.stat b.g1{background:linear-gradient(100deg,var(--indigo),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat b.g2{background:linear-gradient(100deg,var(--violet),var(--coral));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat b.g3{background:linear-gradient(100deg,var(--coral),var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat b.g4{background:linear-gradient(100deg,var(--teal),var(--indigo));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat span{font-size:.82rem;color:var(--ink-faint);font-weight:500}
+@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+/* ---------- features ---------- */
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin-top:2.2rem}
+@media(max-width:900px){.feat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.feat-grid{grid-template-columns:1fr}}
+.feat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:1.5rem;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform .18s,box-shadow .18s}
+.feat:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.feat::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--fc,var(--grad));opacity:.85}
+.feat-ico{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
+  font-size:1.15rem;margin-bottom:.9rem;background:var(--paper-2);border:1px solid var(--line)}
+.feat h3{font-size:1rem;font-weight:700;margin-bottom:.4rem;letter-spacing:-.01em}
+.feat p{font-size:.88rem;color:var(--ink-soft)}
+.feat code{font-family:var(--mono);font-size:.78rem;background:var(--paper-2);
+  border:1px solid var(--line);padding:.1rem .35rem;border-radius:6px;color:var(--violet)}
+/* ---------- architecture flow ---------- */
+.flow{margin-top:2.2rem;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:2rem 1.5rem;overflow-x:auto}
+.flow-row{display:flex;align-items:stretch;gap:.6rem;min-width:760px}
+.fnode{flex:1;background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  padding:1rem .9rem;text-align:center;position:relative}
+.fnode.top{border-top:3px solid transparent;border-image:var(--grad) 1}
+.fnode b{display:block;font-size:.85rem;margin-bottom:.25rem}
+.fnode span{font-size:.75rem;color:var(--ink-faint);font-family:var(--mono)}
+.farrow{align-self:center;color:var(--coral);font-weight:800;font-size:1.1rem}
+.flow-note{margin-top:1.2rem;text-align:center;font-size:.88rem;color:var(--ink-soft)}
+.flow-note code{font-family:var(--mono);font-size:.78rem;background:var(--paper-2);
+  padding:.15rem .45rem;border-radius:6px;border:1px solid var(--line)}
+/* ---------- providers ---------- */
+.tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:1.8rem 0 1.2rem}
+.tab{font-family:inherit;font-size:.86rem;font-weight:600;padding:.55rem 1.1rem;border-radius:999px;
+  border:1px solid var(--line);background:var(--card);cursor:pointer;color:var(--ink-soft);transition:all .15s}
+.tab:hover{border-color:var(--violet);color:var(--ink)}
+.tab.active{color:#fff;background:var(--ink);border-color:var(--ink)}
+.prov-panel{display:none;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:1.4rem 1.5rem;box-shadow:var(--shadow)}
+.prov-panel.active{display:block;animation:fadeUp .3s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.chips{display:flex;flex-wrap:wrap;gap:.55rem}
+.chip{font-family:var(--mono);font-size:.8rem;background:var(--paper);border:1px solid var(--line);
+  padding:.35rem .75rem;border-radius:8px}
+.chip.key{border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.08)}
+.chip .lock{color:var(--amber)}
+.prov-note{margin-top:1rem;font-size:.85rem;color:var(--ink-soft)}
+/* ---------- code tabs ---------- */
+.codeblock{background:#14141A;border-radius:var(--radius);overflow:hidden;
+  box-shadow:var(--shadow-lg);border:1px solid rgba(255,255,255,.08);margin-top:2rem}
+.code-tabs{display:flex;gap:.25rem;padding:.6rem .8rem 0;background:rgba(255,255,255,.03)}
+.code-tab{font-family:var(--mono);font-size:.78rem;color:#9A9AA5;background:none;border:none;
+  padding:.55rem .95rem;border-radius:9px 9px 0 0;cursor:pointer}
+.code-tab.active{color:#fff;background:rgba(255,255,255,.07)}
+.code-pane{display:none;padding:1.2rem 1.4rem;font-family:var(--mono);font-size:.83rem;
+  line-height:1.75;overflow-x:auto;color:#E8E8EE}
+.code-pane.active{display:block}
+.code-pane .c{color:#6B7280}.code-pane .k{color:#C4B5FD}.code-pane .s{color:#FBBF24}
+.code-pane .f{color:#7DD3C8}.code-pane .n{color:#F0ABFC}
+.copybtn{float:right;font-family:var(--mono);font-size:.72rem;color:#9A9AA5;background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.3rem .7rem;cursor:pointer;margin:.6rem .8rem 0 0}
+.copybtn:hover{color:#fff;border-color:rgba(255,255,255,.25)}
+/* ---------- JATS spotlight ---------- */
+.spot{margin-top:2.2rem;border-radius:20px;padding:1px;background:var(--grad);box-shadow:var(--shadow-lg)}
+.spot-inner{background:#14141A;color:#EDEDF2;border-radius:19px;padding:2.4rem 2rem;
+  display:grid;grid-template-columns:1.1fr .9fr;gap:2rem;align-items:center;position:relative;overflow:hidden}
+.spot-inner::after{content:"";position:absolute;width:420px;height:420px;right:-140px;top:-140px;
+  background:radial-gradient(circle,rgba(124,58,237,.35),transparent 65%);pointer-events:none}
+@media(max-width:800px){.spot-inner{grid-template-columns:1fr}}
+.spot h3{font-family:'Space Grotesk',sans-serif;font-size:1.5rem;letter-spacing:-.02em;margin-bottom:.7rem}
+.spot h3 .grad{background:linear-gradient(100deg,#C4B5FD,#FDA4AF);-webkit-background-clip:text;background-clip:text;color:transparent}
+.spot p{font-size:.92rem;color:#B9B9C4;margin-bottom:1rem}
+.spot ul{list-style:none;font-size:.88rem;color:#D6D6DE;display:grid;gap:.45rem;margin-bottom:1.4rem}
+.spot ul li::before{content:"✓";color:#7DD3C8;font-weight:700;margin-right:.55rem}
+.math-demo{font-family:var(--mono);font-size:.8rem;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.1rem 1.2rem;line-height:2;position:relative;z-index:1}
+.math-demo .hl{color:#F0ABFC}.math-demo .dim{color:#6B7280}
+/* ---------- harness ---------- */
+.harness-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem;margin-top:2.2rem}
+@media(max-width:800px){.harness-grid{grid-template-columns:1fr}}
+.harness{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:1.4rem;box-shadow:var(--shadow)}
+.harness h3{font-size:.95rem;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem}
+.harness pre{font-family:var(--mono);font-size:.72rem;background:#14141A;color:#E8E8EE;
+  border-radius:10px;padding:.9rem 1rem;overflow-x:auto;line-height:1.7}
+/* ---------- docs links ---------- */
+.doc-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:2.2rem}
+@media(max-width:900px){.doc-cards{grid-template-columns:repeat(2,1fr)}}
+.doc-card{display:block;text-decoration:none;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:1.4rem 1.2rem;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s}
+.doc-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.doc-card b{display:block;margin-bottom:.3rem}
+.doc-card span{font-size:.84rem;color:var(--ink-soft)}
+.doc-card .go{color:var(--coral);font-weight:700}
+/* ---------- footer ---------- */
+footer{margin-top:5rem;border-top:1px solid var(--line);background:var(--paper-2)}
+.foot-inner{max-width:1120px;margin:0 auto;padding:2.5rem 1.5rem;display:flex;gap:1rem;
+  align-items:center;flex-wrap:wrap;font-size:.86rem;color:var(--ink-soft)}
+.foot-inner .spacer{flex:1}
+.foot-inner a{font-weight:600;text-decoration:none}
+.foot-inner a:hover{color:var(--violet)}
+/* reveal */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div class="backdrop"></div>
+<div class="gridlines"></div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top"><span class="brand-mark">◈</span>gossamer</a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#providers">Providers</a>
+      <a href="#start">Quick start</a>
+      <a href="#jats">JATS</a>
+      <a href="#docs">Docs</a>
+    </div>
+    <a class="nav-cta" href="https://github.com/opticsWolf/gossamer">GitHub ↗</a>
+  </div>
+</nav>
+
+<div class="wrap" id="top">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-badge"><span class="ver">v0.11.0</span> JATS kernel now in-house — zero converter deps</div>
+    <h1>Research the web<br><span class="grad">at machine speed.</span></h1>
+    <p class="lead">A hybrid LLM web researcher: a <strong>Rust parsing core</strong> for everything deterministic, <strong>Oxide extractors</strong> for documents, and a <strong>Python orchestration layer</strong> for caching, budgets, and multi-provider search.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="#start">Get started →</a>
+      <a class="btn btn-ghost" href="https://github.com/opticsWolf/gossamer">★ Star on GitHub</a>
+    </div>
+    <div class="term">
+      <div class="term-bar"><span class="dot" style="background:#FF5F57"></span><span class="dot" style="background:#FEBC2E"></span><span class="dot" style="background:#28C840"></span></div>
+      <div class="term-body"><span class="d"># scholarly paper, JATS-first: publisher full text when resolvable</span><br><span class="prompt">$</span> gossamer extract <span class="s">10.1371/journal.pone.0306040</span> --tables-as markdown<br><span class="c">✓ jats_source=europepmc · 2 formulas · 7 figures · GFM tables · math intact</span><br><span class="d"># …or the same twelve tools from MCP, with identical params</span><br><span class="prompt">$</span> gossamer research <span class="s">"EZB Leitzins"</span> --category financial</div>
+    </div>
+    <div class="stats">
+      <div class="stat reveal"><b class="g1">11,366</b><span>tests passing</span></div>
+      <div class="stat reveal"><b class="g2">40</b><span>domain adapters</span></div>
+      <div class="stat reveal"><b class="g3">12</b><span>MCP tools, CLI 1:1</span></div>
+      <div class="stat reveal"><b class="g4">13</b><span>metadata formats</span></div>
+    </div>
+  </header>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <span class="eyebrow">Why gossamer</span>
+    <h2 class="section-title">Deterministic where it counts,<br>flexible where it matters.</h2>
+    <p class="section-sub">Parsing, guards, budgets, and citations run in Rust — byte-identical every time. Search strategy, caching, and routing stay in Python, where iteration is cheap.</p>
+    <div class="feat-grid">
+      <div class="feat reveal" style="--fc:linear-gradient(100deg,#4F46E5,#7C3AED)"><div class="feat-ico">⚡</div><h3>Rust parsing core</h3><p>Response parsers, HTML metadata, SSRF/robots, budgets, citations, and scoring in <code>_core</code> (PyO3) — with differential parity tests against Python oracles.</p></div>
+      <div class="feat reveal" style="--fc:linear-gradient(100deg,#7C3AED,#EC4899)"><div class="feat-ico">📄</div><h3>Documents, all of them</h3><p>PDF, DOCX, XLSX, PPTX <em>plus legacy</em> DOC/XLS/PPT/XLSB, feeds, and office formats — tables as markdown, figures on demand with <code>store=True</code>.</p></div>
+      <div class="feat reveal" style="--fc:linear-gradient(100deg,#EC4899,#FF5A36)"><div class="feat-ico">🔬</div><h3>JATS-first scholarship</h3><p>DOI-resolvable papers take publisher full-text XML first (EuropePMC / PMC OA / PLOS) through the in-house kernel — fused math, <code>\tag{}</code> displays, real GFM tables.</p></div>
+      <div class="feat reveal" style="--fc:linear-gradient(100deg,#FF5A36,#F59E0B)"><div class="feat-ico">🕸️</div><h3>Bounded smart crawl</h3><p>Relevance-ranked BFS with BM25 idfs, thesaurus expansion, and anchor context. Documents collected, never fetched blindly.</p></div>
+      <div class="feat reveal" style="--fc:linear-gradient(100deg,#F59E0B,#0D9488)"><div class="feat-ico">📚</div><h3>Citations for free</h3><p>BibTeX, CSL-JSON, APA, and MLA straight from search results — deduped, no extra network calls.</p></div>
+      <div class="feat reveal" style="--fc:linear-gradient(100deg,#0D9488,#4F46E5)"><div class="feat-ico">🛡️</div><h3>Production posture</h3><p>TTL + size-cap caching, per-domain rate limits, robots/SSRF compliance, retries, and an optional JailGuard injection detector.</p></div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section id="architecture">
+    <span class="eyebrow">Under the hood</span>
+    <h2 class="section-title">Python decides.<br>Rust parses.</h2>
+    <p class="section-sub">One toolbox facade, one tool registry, JSON strings across the boundary. Twelve MCP tools, the CLI, and <code>execute_tool</code> are the same surface, param-for-param.</p>
+    <div class="flow reveal">
+      <div class="flow-row">
+        <div class="fnode top"><b>LLM Agent / You</b><span>MCP · CLI · skill</span></div>
+        <div class="farrow">→</div>
+        <div class="fnode top"><b>WebResearcherToolbox</b><span>facade, no logic</span></div>
+        <div class="farrow">→</div>
+        <div class="fnode top"><b>Collaborators</b><span>HTTP · keys · limits · 40 adapters</span></div>
+        <div class="farrow">→</div>
+        <div class="fnode top"><b>_core (Rust)</b><span>parsers · metadata · guards</span></div>
+      </div>
+      <p class="flow-note">Same surface everywhere: <code>web_search</code> · <code>inspect_html_page</code> · <code>extract_document</code> · <code>crawl</code> · <code>research_by_category</code> · …</p>
+    </div>
+  </section>
+
+  <!-- PROVIDERS -->
+  <section id="providers">
+    <span class="eyebrow">Coverage</span>
+    <h2 class="section-title">40 adapters, keyless-first.</h2>
+    <p class="section-sub">Keyed providers fail fast and name the exact variable — surface it, don't retry. Euro terms (<code>Leitzins</code>, <code>BVerfG</code>, <code>HICP</code>) route automatically.</p>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="p-scholarly">Scholarly</button>
+      <button class="tab" data-tab="p-legal">Legal</button>
+      <button class="tab" data-tab="p-patent">Patent</button>
+      <button class="tab" data-tab="p-financial">Financial</button>
+      <button class="tab" data-tab="p-geo">Geo</button>
+      <button class="tab" data-tab="p-general">General</button>
+    </div>
+    <div class="prov-panel active" id="p-scholarly"><div class="chips"><span class="chip">openalex ★</span><span class="chip">crossref</span><span class="chip">arxiv</span><span class="chip">zenodo</span><span class="chip">semanticscholar</span><span class="chip">huggingface</span><span class="chip">huggingface-papers</span></div><p class="prov-note">Explicit multi-search merges by DOI/arXiv ID and never fans out by default. ★ = default.</p></div>
+    <div class="prov-panel" id="p-legal"><div class="chips"><span class="chip">courtlistener</span><span class="chip">ecfr</span><span class="chip">federalregister</span><span class="chip">oldp</span><span class="chip">hudoc</span><span class="chip">govinfo</span></div><p class="prov-note">HUDOC covers the ECtHR; OLDP covers German open legal data.</p></div>
+    <div class="prov-panel" id="p-patent"><div class="chips"><span class="chip key"><span class="lock">🔑</span> epo</span><span class="chip key"><span class="lock">🔑</span> kipris</span><span class="chip key"><span class="lock">🔑</span> patentsview</span><span class="chip key"><span class="lock">🔑</span> lens</span><span class="chip">google-patents</span></div><p class="prov-note">Google Patents number lookup is keyless; Lens aggregates WO/EP/DE/CN/US (trial: non-commercial/academic).</p></div>
+    <div class="prov-panel" id="p-financial"><div class="chips"><span class="chip">yahoo</span><span class="chip">frankfurter</span><span class="chip">eurostat</span><span class="chip">bundesbank</span><span class="chip">bis</span><span class="chip">coingecko</span><span class="chip key"><span class="lock">🔑</span> alphavantage</span></div><p class="prov-note">Bundesbank and BIS speak SDMX-ML through the in-core XML kernel.</p></div>
+    <div class="prov-panel" id="p-geo"><div class="chips"><span class="chip">open-meteo</span><span class="chip">overpass</span></div><p class="prov-note">Weather and OpenStreetMap, no keys, no fuss.</p></div>
+    <div class="prov-panel" id="p-general"><div class="chips"><span class="chip">duckduckgo ★</span><span class="chip key"><span class="lock">🔑</span> google</span><span class="chip key"><span class="lock">🔑</span> bing</span><span class="chip key"><span class="lock">🔑</span> exa</span></div><p class="prov-note">Google/Bing/Exa opt in via <span style="font-family:var(--mono)">search_providers=</span>, with failover or merged results.</p></div>
+  </section>
+
+  <!-- QUICK START -->
+  <section id="start">
+    <span class="eyebrow">Quick start</span>
+    <h2 class="section-title">Running in five minutes.</h2>
+    <p class="section-sub">Rust 1.82+, Python 3.10+, maturin. Hermetic tests by default — no network, no models.</p>
+    <div class="codeblock reveal">
+      <button class="copybtn" data-copy="code-install">copy</button>
+      <div class="code-tabs">
+        <button class="code-tab active" data-code="code-install">install</button>
+        <button class="code-tab" data-code="code-use">use</button>
+        <button class="code-tab" data-code="code-async">async</button>
+      </div>
+      <div class="code-pane active" id="code-install"><span class="c"># clone, install deps, build the Rust core</span><br>git clone https://github.com/opticsWolf/gossamer <span class="k">&amp;&amp;</span> <span class="f">cd</span> gossamer<br>pip install -r requirements.txt<br>maturin develop --release<br><span class="c"># optional extras: browser rendering, MCP server, injection guard</span><br>pip install -e <span class="s">".[browser,mcp,guard]"</span></div>
+      <div class="code-pane" id="code-use"><span class="k">from</span> gossamer <span class="k">import</span> ToolboxConfig, WebResearcherToolbox<br><br>tools = WebResearcherToolbox(ToolboxConfig(cache_dir=<span class="s">"./cache"</span>))<br>results = tools.web_search(<span class="s">"latest AI research papers"</span>, max_results=<span class="n">5</span>, search_only=<span class="n">True</span>)<br>paper = tools.extract_document(<span class="s">"10.1371/journal.pone.0306040"</span>)  <span class="c"># JATS-first</span><br>cited = tools.export_citations(results, style=<span class="s">"bibtex"</span>)</div>
+      <div class="code-pane" id="code-async"><span class="c"># *_async offloads the blocking core to a thread pool —</span><br><span class="c"># the event loop stays responsive, I/O stays synchronous.</span><br>results = <span class="k">await</span> tools.search_web_async(<span class="s">"rust programming"</span>)</div>
+    </div>
+  </section>
+
+  <!-- JATS SPOTLIGHT -->
+  <section id="jats">
+    <span class="eyebrow">Spotlight · v0.11.0</span>
+    <h2 class="section-title">Scholarship deserves real math.</h2>
+    <div class="spot reveal">
+      <div class="spot-inner">
+        <div>
+          <h3>Publisher full text <span class="grad">before the PDF.</span></h3>
+          <p>DOI-resolvable sources take the JATS XML route — EuropePMC, PMC OA, PLOS — converted by an in-house Rust kernel ported from battle-tested converter code. No extra dependency, no models, no OCR guesswork.</p>
+          <ul>
+            <li>Fused inline math <b>$…$</b>, display blocks <b>$$\tag{N}$$</b></li>
+            <li>Real JATS tables as GFM pipes, figures as remote hrefs</li>
+            <li><b>2 / 7 / 2</b> census pinned by fixture + parity tests</li>
+            <li><b>pages=</b> with a JATS source errors loudly — sections, not pages</li>
+          </ul>
+        </div>
+        <div class="math-demo"><span class="dim">## Methods</span><br>Sulfonamide group (SO<span class="hl">$_{2}$</span>NH) and display:<br><br><span class="hl">$$x^{2} + y^{2} \tag{Eq 1}$$</span><br><br><span class="dim">![Fig 1: Schematic representation](…g001)</span><br><span class="dim">| col1 | col2 | → real GFM tables</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HARNESS -->
+  <section id="harness">
+    <span class="eyebrow">Harness integration</span>
+    <h2 class="section-title">Same server, every agent.</h2>
+    <p class="section-sub">One stdio server (<code style="font-family:var(--mono);font-size:.85em">python -m gossamer.mcp_server</code>), keys in the keystore — never in client configs. Shallowest first: CLI → MCP → bundled skill.</p>
+    <div class="harness-grid">
+      <div class="harness reveal"><h3>◈ pi <span style="color:var(--ink-faint);font-weight:400">mcp.json</span></h3><pre>{ "mcpServers": { "gossamer": {
+  "command": ".../.venv/Scripts/python.exe",
+  "args": ["-m", "gossamer.mcp_server"],
+  "directTools": true } } }</pre></div>
+      <div class="harness reveal"><h3>◈ Codex <span style="color:var(--ink-faint);font-weight:400">config.toml</span></h3><pre>[mcp_servers.gossamer]
+command = ".../python.exe"
+args = ["-m", "gossamer.mcp_server"]
+startup_timeout_sec = 30</pre></div>
+      <div class="harness reveal"><h3>◈ Skill <span style="color:var(--ink-faint);font-weight:400">bundled</span></h3><pre>gossamer skills list|show|install
+<span style="color:#6B7280"># ships in the wheel + skills://gossamer</span>
+gossamer extract DOI   <span style="color:#6B7280"># JATS-first</span>
+gossamer cite DOI</pre></div>
+    </div>
+  </section>
+
+  <!-- DOCS -->
+  <section id="docs">
+    <span class="eyebrow">Go deeper</span>
+    <h2 class="section-title">The manual, in layers.</h2>
+    <div class="doc-cards">
+      <a class="doc-card reveal" href="https://github.com/opticsWolf/gossamer/blob/dev_rust/docs/QUICKREF.md"><b>⚡ Quick reference</b><span>Every tool, every flag, every knob — one page.</span><br><span class="go">Read →</span></a>
+      <a class="doc-card reveal" href="https://github.com/opticsWolf/gossamer/blob/dev_rust/docs/ARCHITECTURE.md"><b>🏛️ Architecture</b><span>Kernels, error mapping, parity discipline, testing.</span><br><span class="go">Read →</span></a>
+      <a class="doc-card reveal" href="https://github.com/opticsWolf/gossamer/blob/dev_rust/CHANGELOG.md"><b>📒 Changelog</b><span>Per-version history, 0.11.0 back to the start.</span><br><span class="go">Read →</span></a>
+      <a class="doc-card reveal" href="https://github.com/opticsWolf/gossamer"><b>💻 Repository</b><span>Source, issues, MIT/Apache-2.0 — zero copyleft.</span><br><span class="go">Star →</span></a>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  <div class="foot-inner">
+    <a class="brand" href="#top" style="font-size:1rem"><span class="brand-mark" style="width:24px;height:24px;font-size:.8rem">◈</span>gossamer</a>
+    <span>Hybrid LLM web researcher · Rust core + Python orchestration</span>
+    <span class="spacer"></span>
+    <span>MIT / Apache-2.0 · <a href="https://github.com/opticsWolf/gossamer">GitHub</a> · <span id="year"></span></span>
+  </div>
+</footer>
+
+<script>
+// tabs (providers)
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.prov-panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.tab).classList.add('active');
+  });
+});
+// tabs (code)
+document.querySelectorAll('.code-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    const block=t.closest('.codeblock');
+    block.querySelectorAll('.code-tab').forEach(x=>x.classList.remove('active'));
+    block.querySelectorAll('.code-pane').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    block.querySelector('#'+t.dataset.code).classList.add('active');
+  });
+});
+// copy buttons
+document.querySelectorAll('.copybtn').forEach(b=>{
+  b.addEventListener('click',async ()=>{
+    const pane=b.closest('.codeblock').querySelector('.code-pane.active');
+    try{await navigator.clipboard.writeText(pane.innerText);b.textContent='copied ✓';
+      setTimeout(()=>b.textContent='copy',1400);}catch(e){b.textContent='select + ⌘C';}
+  });
+});
+// reveal on scroll
+const io=new IntersectionObserver(es=>es.forEach(e=>{
+  if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}
+}),{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+document.getElementById('year').textContent=new Date().getFullYear();
+</script>
+</body>
+</html>
