@@ -104,7 +104,7 @@ delegating to collaborator objects, all returning JSON strings.
 
 | Module | Kernels |
 |---|---|
-| `adapters/` | all 38 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
+| `adapters/` | all 40 provider row-builders (`*_parse_search/fetch`): `common` (shared error/type helpers), `finance`, `legal`, `scholar`, `patents`, `misc`, `tests` — `mod.rs` re-exports keep every `crate::adapters::*` path stable |
 | `metaextract.rs` | HTML metadata via the `meta_oxide` crate FFI + `sparse()`/normalizers matching `to_py_dict` shapes |
 | `xmlatom.rs` | ATOM/XML traversal (arXiv/PubMed), SDMX-ML (Bundesbank/BIS), namespace-URI resolution |
 | `jats.rs` + `jats_mml.rs` | in-house JATS converter (ported from bobine 0.8.0: `convert_jats_str` + MathML→LaTeX + `split_cmds`; `roxmltree` the only new crate) |
@@ -380,7 +380,7 @@ spot on hyperlink annotations.
 | Rust | `pyo3 0.27` (abi3) | bindings |
 | | `reqwest 0.12` + `tokio` | static fetch primitives |
 | | `scraper`, `html2md` | HTML parse → markdown |
-| | `serde/serde_json`, `quick-xml` | records, feeds |
+| | `serde/serde_json`, `quick-xml`, `roxmltree` | records, feeds, JATS/MathML |
 | | `tiktoken-rs` | in-core encodings |
 | | `meta_oxide` (vendored at `vendor/meta_oxide`, no default features) | metadata, in-core |
 | | `regex`, `blake2`, misc | scans, hashes, shims |

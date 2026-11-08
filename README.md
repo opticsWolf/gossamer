@@ -25,7 +25,7 @@ WebResearcherToolbox (agent_tools.py) — facade, no logic
        │  TOOL_REGISTRY (config.py): one source of truth
        ▼
 Collaborators (Python: HTTP, keys, rate limits, orchestration)
-fetch · search · crawl · document · discovery · 38 domain adapters
+fetch · search · crawl · document · discovery · 40 domain adapters
        │  JSON strings down, JSON strings up
        ▼
 _core (Rust): all response parsers, HTML metadata (in-core meta_oxide
