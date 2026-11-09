@@ -1,6 +1,6 @@
 """JATS-first scholarly extraction route (bobine proposal §5).
 
-DOI → JATS XML (EuropePMC / PMC OA / PLOS) → in-house ``_core``
+DOI → JATS XML (EuropePMC, with a PMC/{pmcid} retry, then PLOS) → in-house ``_core``
 JATS kernel (ported from bobine 0.8.0 ``jats.rs``/``mml.rs``) →
 markdown. All network goes through the toolbox fetch plumbing
 (SSRF guard, robots, rate limit, byte cap); this module holds only the
@@ -12,12 +12,9 @@ Handoff: ``docs/handoff_gossamer_jats.md``.
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import re
-import tarfile
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -32,7 +29,6 @@ EUROPEPMC_SEARCH_URL = (
 EUROPEPMC_FULLTEXT_TMPL = (
     "https://www.ebi.ac.uk/europepmc/webservices/rest/{source}/{id}/fullTextXML"
 )
-PMC_OA_URL = "https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi"
 PLOS_FILE_TMPL = (
     "https://journals.plos.org/{journal}/article/file?id={doi}&type=manuscript"
 )
@@ -153,9 +149,17 @@ def parse_europepmc_search(payload: dict) -> Optional[dict]:
     raw_id = str(chosen.get("id") or "").strip()
     if not raw_id:
         return None
-    pmcid = raw_id if raw_id.upper().startswith("PMC") else "PMC" + raw_id
+    # Prefer the record's own PMCID: for MED-sourced rows the numeric id
+    # is a PMID, and "PMC" + PMID fabricates a PMCID that does not
+    # exist (Tier-1 MED 404 + Tier-1b phantom 404). Fall back to the
+    # prefix construction only when the record carries no pmcid field.
+    claimed = str(chosen.get("pmcid") or "").strip()
+    pmcid = claimed if claimed.upper().startswith("PMC") else (
+        raw_id if raw_id.upper().startswith("PMC") else "PMC" + raw_id
+    )
     source = str(chosen.get("source") or "PMC").strip() or "PMC"
-    # The numeric id feeds the fullTextXML path; the PMCID feeds PMC OA.
+    # The numeric id feeds the source-scoped fullTextXML path; the PMCID
+    # feeds the Tier-1b PMC/{pmcid} retry.
     numeric = raw_id[3:] if raw_id.upper().startswith("PMC") else raw_id
     return {"source": source, "id": numeric, "pmcid": pmcid}
 
@@ -172,78 +176,6 @@ def is_xml_body(content_type: Optional[str], body: bytes) -> bool:
     if not stripped.startswith(b"<"):
         return False
     return "xml" in (content_type or "").lower()
-
-
-def parse_oa_tgz_link(xml_bytes: bytes) -> Optional[str]:
-    """``<link format="tgz" href="...">`` from a PMC OA ``oa.fcgi`` reply."""
-    try:
-        root = ET.fromstring(xml_bytes)
-    except (ET.ParseError, UnicodeDecodeError, ValueError):
-        return None
-
-    def _local(tag) -> str:
-        return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
-
-    for el in root.iter():
-        if _local(el.tag) != "link":
-            continue
-        if (el.get("format") or "").lower() != "tgz":
-            continue
-        href = el.get("href")
-        if href and href.strip():
-            return href.strip()
-    return None
-
-
-def pick_nxml(names: list[str], pmcid: Optional[str] = None) -> Optional[str]:
-    """The ``*.nxml`` member to convert (exactly one per package).
-
-    Preference: basename matching the PMCID, else the single ``*.nxml``,
-    else the first sorted ``*.nxml``.
-    """
-    nxml = [n for n in names if n.lower().endswith(".nxml")]
-    if not nxml:
-        return None
-    if len(nxml) == 1:
-        return nxml[0]
-    if pmcid:
-        base = pmcid.upper()
-        for name in sorted(nxml):
-            stem = Path(name).stem.upper()
-            if stem == base or stem.startswith(base):
-                return name
-    return sorted(nxml)[0]
-
-
-def extract_nxml_from_tgz(tgz_bytes: bytes, pmcid: Optional[str] = None) -> tuple[str, bytes]:
-    """Return ``(member_name, xml_bytes)`` from a PMC OA tarball.
-
-    Guards: gzip only, member cap, no absolute / ``..`` paths, size cap
-    per member (32 MiB).
-    """
-    names: list[str] = []
-    try:
-        with tarfile.open(fileobj=io.BytesIO(tgz_bytes), mode="r:gz") as tf:
-            members = tf.getmembers()
-            if len(members) > 512:
-                raise ValueError("PMC OA tarball lists too many members")
-            for m in members:
-                name = m.name or ""
-                if not name or name.startswith("/") or ".." in Path(name).parts:
-                    continue
-                names.append(name)
-            target = pick_nxml(names, pmcid)
-            if target is None:
-                raise ValueError("PMC OA tarball contains no .nxml file")
-            member = tf.getmember(target)
-            if member.size is not None and member.size > 32 * 1024 * 1024:
-                raise ValueError("PMC OA .nxml member too large")
-            fh = tf.extractfile(member)
-            if fh is None:
-                raise ValueError(f"cannot read {target} from PMC OA tarball")
-            return target, fh.read()
-    except (tarfile.TarError, OSError, EOFError) as exc:
-        raise ValueError(f"invalid PMC OA tarball: {exc}") from exc
 
 
 def plos_journal_from_url(url: str) -> Optional[str]:

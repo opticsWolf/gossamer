@@ -152,8 +152,9 @@ class DocumentExtractor:
             XLSX; other formats keep their markdown rendering.
         prefer_jats : bool
             JATS-first scholarly route (default True): DOI-resolvable
-            sources attempt publisher full-text XML (EuropePMC / PMC OA /
-            PLOS) via the in-house ``_core`` JATS kernel before the PDF path.
+            sources attempt publisher full-text XML (EuropePMC, with a
+            PMC/{pmcid} retry, then PLOS) via the in-house ``_core`` JATS
+            kernel before the PDF path.
             ``structured=True`` or ``tables_as != 'markdown'`` skips the
             route; ``pages=`` with a JATS-resolvable source errors
             (sections, not pages). ``store=True`` writes ``<stem>.xml``
@@ -533,60 +534,42 @@ class DocumentExtractor:
             picked = None
         if picked is not None:
             pmcid = picked["pmcid"]
-            ft_url = J.europepmc_fulltext_url(picked["source"], picked["id"])
-            try:
-                xml_bytes, ft_prov = self._fetch_jats_url(ft_url)
-            except ValueError:
-                xml_bytes, ft_prov = None, None  # SSRF/robots → tier-skip
-            except Exception as e:
-                logger.error("JATS fetch failed for %s: %s", ft_url, e)
-                return json.dumps(
-                    {"error": f"Document extraction failed: {e}"}, indent=2
-                )
-            if xml_bytes is not None and ft_prov is not None:
-                if J.is_xml_body(ft_prov.get("content_type"), xml_bytes):
-                    try:
-                        conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.xml")
-                    except ValueError as e:
-                        if "not a JATS article" in str(e):
-                            pass  # try next tier
-                        else:
-                            logger.error("JATS conversion failed for %s: %s", ft_url, e)
-                            return json.dumps(
-                                {"error": f"Document extraction failed: {e}"}, indent=2
-                            )
-                    else:
-                        return self._finish_jats_result(
-                            source, conv, resolved_doi, "europepmc", ft_url, ft_prov,
-                            store=store, store_dir=store_dir,
-                            include_images=include_images, xml_bytes=xml_bytes,
-                            cache_key=cache_key,
-                        )
-                # Fetched but not XML → "no full text": fall to PMC OA.
-                if pmcid is not None:
-                    oa_hit = self._try_pmc_oa(
-                        source, resolved_doi, pmcid, store=store,
-                        store_dir=store_dir, include_images=include_images,
-                        cache_key=cache_key,
+            candidates = [J.europepmc_fulltext_url(picked["source"], picked["id"])]
+            # Tier 1b: MED/{pmid} 404s for PMC-deposited records whose
+            # search row is MED-sourced — retry as PMC/{pmcid} (same
+            # corpus, zero new deps). Tier 2 (PMC OA oa.fcgi) removed:
+            # the endpoint 404s even for known-good PMCIDs (retired).
+            if picked["source"].upper() != "PMC":
+                candidates.append(J.europepmc_fulltext_url("PMC", pmcid))
+            for ft_url in candidates:
+                try:
+                    xml_bytes, ft_prov = self._fetch_jats_url(ft_url)
+                except ValueError:
+                    xml_bytes, ft_prov = None, None  # SSRF/robots → tier-skip
+                except Exception as e:  # noqa: BLE001 - 404 etc → next tier
+                    logger.warning("JATS fetch failed for %s: %s", ft_url, e)
+                    xml_bytes, ft_prov = None, None
+                if xml_bytes is None or ft_prov is None:
+                    continue
+                if not J.is_xml_body(ft_prov.get("content_type"), xml_bytes):
+                    continue  # "no full text" at this candidate → next
+                try:
+                    conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.xml")
+                except ValueError as e:
+                    if "not a JATS article" in str(e):
+                        continue  # wrong document kind → next candidate/tier
+                    logger.error("JATS conversion failed for %s: %s", ft_url, e)
+                    return json.dumps(
+                        {"error": f"Document extraction failed: {e}"}, indent=2
                     )
-                    if oa_hit is not None:
-                        return oa_hit
-                plos_hit = self._try_plos(
-                    source, resolved_doi, store=store, store_dir=store_dir,
-                    include_images=include_images, cache_key=cache_key,
-                )
-                if plos_hit is not None:
-                    return plos_hit
-                return None
-            # SSRF/robots skip on the fullTextXML URL → try OA, then PLOS.
-            if pmcid is not None:
-                oa_hit = self._try_pmc_oa(
-                    source, resolved_doi, pmcid, store=store,
-                    store_dir=store_dir, include_images=include_images,
+                return self._finish_jats_result(
+                    source, conv, resolved_doi, "europepmc", ft_url, ft_prov,
+                    store=store, store_dir=store_dir,
+                    include_images=include_images, xml_bytes=xml_bytes,
                     cache_key=cache_key,
                 )
-                if oa_hit is not None:
-                    return oa_hit
+            # All Tier-1 candidates exhausted: PLOS last resort, else fall
+            # through to the PDF path (never a hard error here).
             plos_hit = self._try_plos(
                 source, resolved_doi, store=store, store_dir=store_dir,
                 include_images=include_images, cache_key=cache_key,
@@ -602,58 +585,6 @@ class DocumentExtractor:
         if plos_hit is not None:
             return plos_hit
         return None
-
-    def _try_pmc_oa(
-        self, source: str, doi: str, pmcid: str, *, store: bool = False,
-        store_dir: Optional[str] = None, include_images: bool = False,
-        cache_key: Optional[str] = None,
-    ) -> Optional[str]:
-        """PMC OA fallback; ``None`` = no OA full text (try PLOS/fall through)."""
-        from gossamer import jats as J
-        from urllib.parse import quote as _quote
-
-        oa_url = f"{J.PMC_OA_URL}?id={_quote(pmcid, safe='')}"
-        try:
-            oa_bytes, _ = self._fetch_jats_url(oa_url)
-        except ValueError:
-            return None  # SSRF/robots → tier-skip
-        except Exception as e:  # noqa: BLE001 - OA index failure → tier-skip
-            logger.debug("PMC OA lookup failed for %s: %s", pmcid, e)
-            return None
-        tgz_url = J.parse_oa_tgz_link(oa_bytes)
-        if not tgz_url:
-            return None
-        try:
-            tgz_bytes, tgz_prov = self._fetch_jats_url(tgz_url)
-        except ValueError:
-            return None
-        except Exception as e:
-            logger.error("JATS fetch failed for %s: %s", tgz_url, e)
-            return json.dumps(
-                {"error": f"Document extraction failed: {e}"}, indent=2
-            )
-        try:
-            _member, xml_bytes = J.extract_nxml_from_tgz(tgz_bytes, pmcid)
-        except ValueError as e:
-            logger.debug("PMC OA tarball unusable for %s: %s", pmcid, e)
-            return None
-        if not J.is_xml_body("application/xml", xml_bytes):
-            return None
-        try:
-            conv = J.convert_jats_bytes(xml_bytes, f"{pmcid}.nxml")
-        except ValueError as e:
-            if "not a JATS article" in str(e):
-                return None
-            logger.error("JATS conversion failed for %s: %s", tgz_url, e)
-            return json.dumps(
-                {"error": f"Document extraction failed: {e}"}, indent=2
-            )
-        return self._finish_jats_result(
-            source, conv, doi, "pmc-oa", tgz_url, tgz_prov,
-            store=store, store_dir=store_dir,
-            include_images=include_images, xml_bytes=xml_bytes,
-            cache_key=cache_key,
-        )
 
     def _try_plos(
         self, source: str, doi: str, *, store: bool = False,

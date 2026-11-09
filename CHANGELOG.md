@@ -4,6 +4,25 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [0.11.1] — JATS route: Tier-1 404 no longer hard-aborts (report 2026-11-09)
+
+- Tier-1 fullTextXML fetch failure (e.g. `MED/{pmid}` 404 for
+  PMC-deposited records) now tier-skips to PLOS / PDF fall-through
+  instead of returning `{"error": ...}` — the abort skipped Tier 2,
+  Tier 3, *and* the PDF path. Verified live on
+  `10.1371/journal.pone.0331002` + `10.1371/journal.pmed.0020124`.
+- Added Tier 1b: when the search row is not PMC-sourced, retry
+  `PMC/{pmcid}` before PLOS. `parse_europepmc_search` now prefers the
+  record's own `pmcid` field over fabricating `"PMC" + PMID`
+  (the phantom `PMC40880529` 404'd and hid the retry).
+- Removed Tier 2 (PMC OA `oa.fcgi`): the endpoint 404s even for
+  known-good PMCIDs in all variants (retired). PLOS
+  `type=manuscript` confirmed live via GET (HEAD probes 403 —
+  bot-wall on HEAD only, not a verdict).
+- Note: EuropePMC's `PMC/{pmcid}` endpoint flapped 200→404 during
+  verification for a known-good PMCID — transient failures are now
+  survivable by construction (PLOS served both repro DOIs).
+
 ## [0.11.0] — In-house JATS kernel (bobine dependency removed)
 
 - Ported the JATS converter into `_core` (`src/jats.rs` +

@@ -78,7 +78,7 @@ check_sources(urls, mode="status")
 `extract_document(pages="10-20")` is 1-based inclusive for PDFs (sheet
 range for XLSX) and cannot combine with `store=True`; `include_images`
 needs `store=True` and is PDF-only. Scholarly extraction prefers publisher
-full text (JATS XML via EuropePMC / PMC OA / PLOS) when resolvable
+full text (JATS XML via EuropePMC, then PLOS) when resolvable
 (`prefer_jats=True`, default); `pages=` with a JATS-resolvable source
 errors, `structured=True` or `tables_as!="markdown"` skips the route,
 and `include_images` is a no-op on the JATS route (remote hrefs, not saved). `download_file(max_bytes=0)` uses the

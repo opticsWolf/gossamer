@@ -341,7 +341,7 @@ TOOL_REGISTRY = (
                 "prefer_jats",
                 bool,
                 True,
-                "JATS-first scholarly route (default true): DOI-resolvable sources try publisher full-text XML (EuropePMC / PMC OA / PLOS) via the in-house _core JATS kernel before the PDF path. pages= with a JATS-resolvable source errors; structured=true or tables_as != 'markdown' skips the route.",
+                "JATS-first scholarly route (default true): DOI-resolvable sources try publisher full-text XML (EuropePMC, then PLOS) via the in-house _core JATS kernel before the PDF path. pages= with a JATS-resolvable source errors; structured=true or tables_as != 'markdown' skips the route.",
             ),
         ),
     ),

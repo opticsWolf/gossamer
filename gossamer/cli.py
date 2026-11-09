@@ -163,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Rendering of spreadsheet (XLSX) tables (default: json)")
     p.add_argument("--prefer-jats", dest="prefer_jats", action="store_true",
                    default=True,
-                   help="JATS-first scholarly route (default on): DOI-resolvable sources try publisher full-text XML (EuropePMC / PMC OA / PLOS) before the PDF path. pages= with a JATS-resolvable source errors (sections, not pages); --store writes <stem>.xml + <stem>.md; --include-images is a no-op on the JATS route (remote hrefs, not saved).")
+                   help="JATS-first scholarly route (default on): DOI-resolvable sources try publisher full-text XML (EuropePMC, then PLOS) before the PDF path. pages= with a JATS-resolvable source errors (sections, not pages); --store writes <stem>.xml + <stem>.md; --include-images is a no-op on the JATS route (remote hrefs, not saved).")
     p.add_argument("--no-prefer-jats", dest="prefer_jats", action="store_false",
                    help="Disable the JATS-first route; always use the PDF path (also disables the pages=/JATS error)")
     _common(p)

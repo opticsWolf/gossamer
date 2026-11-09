@@ -9,9 +9,7 @@ kernel directly. Live-marked tests need network and never gate CI.
 
 from __future__ import annotations
 
-import io
 import json
-import tarfile
 from pathlib import Path
 
 import pytest
@@ -122,32 +120,6 @@ def test_parse_europepmc_search_none_without_pmc():
     assert J.parse_europepmc_search({}) is None
 
 
-def test_parse_oa_tgz_link():
-    xml = (b'<records><record id="PMC1">'
-           b'<link format="tgz" href="https://x/y.tar.gz"/></record></records>')
-    assert J.parse_oa_tgz_link(xml) == "https://x/y.tar.gz"
-    assert J.parse_oa_tgz_link(b"<records/>") is None
-    assert J.parse_oa_tgz_link(b"<records><record/></records>") is None
-
-
-def test_pick_nxml_prefers_pmcid():
-    names = ["a/readme.txt", "b/PMC1.nxml", "c/other.nxml"]
-    assert J.pick_nxml(names, "PMC1").endswith("PMC1.nxml")
-    assert J.pick_nxml(["x.nxml"]) == "x.nxml"
-    assert J.pick_nxml(["x.txt"]) is None
-
-
-def test_extract_nxml_from_tgz_roundtrip():
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        data = b"<article/>"
-        info = tarfile.TarInfo("oa_package/PMC1.nxml")
-        info.size = len(data)
-        tf.addfile(info, io.BytesIO(data))
-    name, out = J.extract_nxml_from_tgz(buf.getvalue(), "PMC1")
-    assert name.endswith(".nxml") and out == b"<article/>"
-
-
 def test_is_xml_body():
     assert J.is_xml_body("application/xml", b"  <article/>")
     assert J.is_xml_body("text/xml; charset=utf-8", b"<?xml version='1.0'?><a/>")
@@ -190,25 +162,85 @@ def test_jats_route_europepmc_hit(tmp_path, monkeypatch):
     assert out["content"].count("$$") % 2 == 0
 
 
-def test_jats_fallback_pmc_oa(tmp_path, monkeypatch):
+def test_parse_europepmc_search_prefers_record_pmcid():
+    # MED rows carry the true PMCID — never fabricate "PMC" + PMID
+    # (2026-11-09: the phantom PMC40880529 404'd and hid Tier 1b).
+    picked = J.parse_europepmc_search({"resultList": {"result": [
+        {"source": "MED", "id": "40880529", "inPMC": "Y",
+         "pmcid": "PMC12396762"}]}})
+    assert picked == {"source": "MED", "id": "40880529",
+                      "pmcid": "PMC12396762"}
+    # No pmcid field → legacy prefix construction still holds.
+    picked = J.parse_europepmc_search({"resultList": {"result": [
+        {"source": "PMC", "id": "765", "inPMC": "Y"}]}})
+    assert picked["pmcid"] == "PMC765"
+
+
+def _med_search_bytes():
+    # PLOS-sourced record: MED row, PMC-deposited (the 2026-11-09 404 shape).
+    return json.dumps({"resultList": {"result": [
+        {"source": "MED", "id": "40880529", "inPMC": "Y",
+         "pmcid": "PMC12396762"}]}}).encode()
+
+
+def _raise_404(url):
+    raise RuntimeError(f"Client error '404 Not Found' for url '{url}'")
+
+
+def test_jats_tier1b_pmc_retry_on_med_404(tmp_path, monkeypatch):
+    # Tier-1 MED/{pmid} 404 must retry PMC/{pmcid}, not hard-abort.
     tb = make_tb(tmp_path)
     tb._robots.is_allowed = lambda url: True  # noqa: SLF001
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
-        data = b"<article/>"
-        info = tarfile.TarInfo("oa_package/PMC999.nxml")
-        info.size = len(data)
-        tf.addfile(info, io.BytesIO(data))
-    oa_xml = (b'<records><record id="PMC999">' b'<link format="tgz" href="https://example.com/oa.tar.gz"/>' b'</record></records>')
-    stub_fetch(tb, {
-        "europepmc": (europepmc_search_bytes(pmcid="999"), "application/json", 200),
-        "fullTextXML": (b"<html>nope</html>", "text/html", 200),
-        "oa.fcgi": (oa_xml, "application/xml", 200),
-        "oa.tar.gz": (buf.getvalue(), "application/x-gzip", 200),
-    })
+    tb._oa_locator.locate = lambda doi: {  # noqa: SLF001
+        "doi": doi, "status": "closed_access", "candidates": []}
+    xml = FIXTURE.read_bytes()
+    def _fake(url):
+        if "europepmc" in url and "search" in url:
+            body, ctype = _med_search_bytes(), "application/json"
+        elif "/MED/" in url:
+            _raise_404(url)
+        elif "/PMC/PMC12396762/" in url:
+            body, ctype = xml, "application/xml"
+        else:
+            raise AssertionError(f"unexpected fetch: {url}")
+        return body, {
+            "fetched_at": "2026-11-09T00:00:00", "http_status": 200,
+            "final_url": url, "content_type": ctype,
+        }
+    tb._doc._fetch_document_url = _fake  # noqa: SLF001
     stub_convert(monkeypatch)
     out = json.loads(tb.extract_document(CHEM_DOI, tables_as="markdown"))
-    assert out["jats_source"] == "pmc-oa"
+    assert out["jats_source"] == "europepmc"
+    assert "PMC/PMC12396762" in (out.get("final_url") or "")
+    assert out["n_tables"] == 2
+
+
+def test_jats_tier1_404_falls_through_to_pdf(tmp_path, monkeypatch):
+    # Every JATS tier failing must fall through to the PDF path — never
+    # a hard {"error": ...} (2026-11-09 regression).
+    tb = make_tb(tmp_path)
+    tb._robots.is_allowed = lambda url: True  # noqa: SLF001
+    tb._oa_locator.locate = lambda doi: {  # noqa: SLF001
+        "doi": doi, "status": "closed_access", "candidates": []}
+    def _fake(url):
+        if "europepmc" in url and "search" in url:
+            body, ctype = _med_search_bytes(), "application/json"
+        elif "fullTextXML" in url:
+            _raise_404(url)
+        else:
+            raise AssertionError(f"unexpected fetch: {url}")
+        return body, {
+            "fetched_at": "2026-11-09T00:00:00", "http_status": 200,
+            "final_url": url, "content_type": ctype,
+        }
+    tb._doc._fetch_document_url = _fake  # noqa: SLF001
+    monkeypatch.setattr(tb._doc, "_download_and_extract",
+                        lambda *a, **k: ("pdf text", {"content_type": "application/pdf"}))
+    out = json.loads(tb.extract_document(
+        f"https://doi.org/{CHEM_DOI}", tables_as="markdown"))
+    assert "error" not in out
+    assert out.get("jats_source") is None
+    assert out["content"] == "pdf text"
 
 
 def test_jats_fallthrough_when_unresolvable(tmp_path, monkeypatch):
@@ -393,4 +425,4 @@ def test_jats_kernel_balances_dollar_heavy_prose():
 def test_jats_live_europepmc_shape(tmp_path):
     tb = make_tb(tmp_path)
     out = json.loads(tb.extract_document(CHEM_DOI, tables_as="markdown"))
-    assert out.get("jats_source") in ("europepmc", "pmc-oa", "plos") or "error" in out
+    assert out.get("jats_source") in ("europepmc", "plos") or "error" in out
