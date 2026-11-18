@@ -2,10 +2,12 @@
 Search provider interface and implementations.
 
 Abstracts web search behind a common `SearchProvider` protocol so the
-`WebResearcherToolbox` can plug in DuckDuckGo, Google, Bing, Exa, or any
-custom provider at runtime.
+`WebResearcherToolbox` can plug in DuckDuckGo, Google, Bing, Exa,
+BrowserOxide (the optional stealth engine), or any custom provider at
+runtime.
 """
 
+import importlib.util
 import logging
 import random
 import time
@@ -734,12 +736,26 @@ class ExaProvider(SearchProvider):
         return results
 
 
+def browser_oxide_available() -> bool:
+    """True when the optional ``browser_oxide`` package is importable.
+
+    Used to decide whether the stealth search provider can be registered
+    and whether the browser render path can be selected. Importing the
+    package is intentionally avoided here: ``find_spec`` is cheap and
+    does not start the Rust engine.
+    """
+    try:
+        return importlib.util.find_spec("browser_oxide") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 # ────────────────────────────────────────────────────────────────
 # 6. Provider Registry Helpers
 # ────────────────────────────────────────────────────────────────
 
 def get_default_providers() -> List[SearchProvider]:
-    """Return a list of providers that are actually available (keys configured)."""
+    """Return providers that are actually available (keys/extras present)."""
     providers: List[SearchProvider] = [DuckDuckGoProvider()]
 
     if _env_get("GOOGLE_API_KEY", "") and _env_get("GOOGLE_CX", ""):
@@ -751,11 +767,16 @@ def get_default_providers() -> List[SearchProvider]:
     if _env_get("EXA_API_KEY", ""):
         providers.append(ExaProvider())
 
+    # Last in failover order: the stealth engine is slow to start but can be
+    # selected explicitly with provider="browser".
+    if browser_oxide_available():
+        providers.append(BrowserOxideSearchProvider())
+
     return providers
 
 
 # ────────────────────────────────────────────────────────────────
-# 5. Browser-Oxide Stealth Search Provider
+# 7. Browser-Oxide Stealth Search Provider
 # ────────────────────────────────────────────────────────────────
 
 class BrowserOxideSearchProvider(SearchProvider):
@@ -769,8 +790,10 @@ class BrowserOxideSearchProvider(SearchProvider):
     Useful when plain-HTTP scraping gets blocked but you want search
     without any API keys. Requires ``browser_oxide`` to be installed.
 
-    Note: keep ONE instance per application; it persists its browser
-    engine across searches. Call :meth:`close` when done.
+    By default each search renders in a one-shot child process; with
+    ``GOSSAMER_BROWSER_ISOLATION=0`` the provider keeps one in-process
+    browser across searches instead. Keep one provider instance per
+    application either way, and call :meth:`close` when done.
     """
 
     name = "browser"
@@ -781,10 +804,13 @@ class BrowserOxideSearchProvider(SearchProvider):
         self,
         delay: Optional[Union[float, RateLimit]] = None,
         fetch_delay: Optional[float] = None,
+        jitter: Optional[float] = None,
     ):
         self._last_search = 0.0
         self._init_rate_limit(
-            delay if delay is not None else _DUCKDUCKGO_RATE_LIMIT, fetch_delay
+            delay if delay is not None else _DUCKDUCKGO_RATE_LIMIT,
+            fetch_delay,
+            jitter=jitter,
         )
         self._browser = None
 
@@ -836,12 +862,23 @@ class BrowserOxideSearchProvider(SearchProvider):
         return out
 
     def _render_results(self, query: str) -> str:
-        browser = self._get_browser()
         from urllib.parse import quote
-        page = browser.navigate(
-            self.SEARCH_URL.format(query=quote(query)),
-            max_iterations=8,
+
+        url = self.SEARCH_URL.format(query=quote(query))
+        # Native browser_oxide renders run in a one-shot child process by
+        # default; a crash/timeout becomes BrowserRenderError instead of
+        # killing the host. Disable with GOSSAMER_BROWSER_ISOLATION=0 to
+        # reuse the persistent in-process engine (debug only).
+        from gossamer.browser_isolation import (
+            browser_isolation_enabled,
+            render_browser_html,
         )
+
+        if browser_isolation_enabled():
+            return render_browser_html(url, max_iterations=8)
+
+        browser = self._get_browser()
+        page = browser.navigate(url, max_iterations=8)
         if page.is_challenge:
             raise RuntimeError(
                 f"Anti-bot challenge detected ({page.verdict}) during search"

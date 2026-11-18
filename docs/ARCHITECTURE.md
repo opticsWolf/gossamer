@@ -33,17 +33,21 @@ commands, [README](../README.md) for the user manual,
 
 Stdio server built on the `mcp` v2 SDK. Tools are registered by
 iterating `TOOL_REGISTRY` (P8 — no hand-written per-tool functions),
-each wrapper dispatching through `execute_tool`. A lazily-built
-toolbox singleton is configured from `GOSSAMER_*` env
-(`_config_from_env`). Entry points: `python -m gossamer.mcp_server`,
-`gossamer-mcp` (plus the legacy `stitch-web-researcher-mcp` alias).
+each wrapper dispatching through `execute_tool`. The wrapper annotations
+preserve registry descriptions/enums in the MCP input schema. A lazily-built
+toolbox singleton is configured from `GOSSAMER_*` env and `gossamer.json`
+via the shared `runtime_config.config_from_env` (also used by the CLI).
+Entry points: `python -m gossamer.mcp_server`, `gossamer-mcp` (plus the
+legacy `stitch-web-researcher-mcp` alias).
 
 ### CLI (`gossamer/cli.py`)
 
 `argparse` over subcommands 1:1 with the registry
 (`search research categories inspect batch download locate-pdf extract check discover
 crawl cache cite skills`). Entry points: `gossamer`, `python -m
-gossamer.cli`. Prints the same JSON the MCP tools return.
+gossamer.cli`. Prints the same JSON the MCP tools return. Toolbox options
+resolve through the same `runtime_config.config_from_env` as the MCP server;
+`--fetch-mode` overrides the baseline and `--use-smart` overrides one call.
 
 ### Skills (`gossamer/skills/gossamer/SKILL.md`)
 
@@ -73,7 +77,8 @@ delegating to collaborator objects, all returning JSON strings.
 
 | Collaborator | File | Owns |
 |---|---|---|
-| Fetch | `fetch.py` | static/browser dispatch, page cache reads, robots gate order (S4: robots before rate-limit so disallowed fetches burn no delay), conditional revalidation (ETag/Last-Modified via `Cache.get_stale`; 304 re-freshens, 200 replaces), fetch telemetry choke point |
+| Fetch | `fetch.py` | static/browser dispatch, strategy-aware page cache (`fetch_strategy` tag; explicit `use_smart` ignores an incompatible entry), robots gate order (S4: robots before rate-limit so disallowed fetches burn no delay), conditional revalidation (ETag/Last-Modified via `Cache.get_stale`; 304 re-freshens, 200 replaces), fetch telemetry choke point |
+| Browser isolation | `browser_isolation.py`, `browser_worker.py` | out-of-process `browser_oxide` render (one-shot child, JSON status + temp HTML), timeout/crash → `BrowserRenderError` so `browser-first`/`auto` can fall back; `GOSSAMER_BROWSER_ISOLATION=0` = in-process debug |
 | Search | `search.py` | provider failover/merge, result-level cache, within-provider dedup |
 | Crawl | `crawl.py` | priority-frontier BFS over the link graph (§6) |
 | Documents | `document.py` | bytes → text via oxide converters (OOXML + legacy `.doc/.xls/.ppt/.xlsb` since office-oxide 0.1.16), `pages=` slicing (PDF + workbooks), `store=` persistence, figure extraction; JATS-first scholarly route (`prefer_jats`, DOI → EuropePMC (+`PMC/{pmcid}` retry) → PLOS → in-house `_core` kernel → `ExtractionResult`, `{url}#jats` cache, `resolved_doi`/`jats_source` provenance; fetch failures tier-skip, never hard-abort) |
@@ -81,7 +86,7 @@ delegating to collaborator objects, all returning JSON strings.
 | Open access | `open_access.py` | DOI normalization and OpenAlex OA PDF/landing-page candidate resolution (plus opt-in Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is set, OpenAlex-first with provenance); no automatic download |
 | JATS helpers | `jats.py` | pure DOI/resolver helpers for the JATS-first route (EuropePMC/PMC-OA/PLOS parsing, tarball picking, byte conversion via the `_core` JATS kernel); all network stays in `document.py` plumbing |
 | Discovery | `discovery.py` | feed declarations + bounded `/sitemap.xml` probe |
-| Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa (DDG HTML parsing lives here — the one engine kept Python) |
+| Search engines | `search_providers.py` | `SearchProvider` ABC + DDG/Google/Bing/Exa + optional `BrowserOxideSearchProvider` (`provider="browser"`, added to the default provider list when `browser_oxide` is importable; DDG HTML parsing lives here — the one engine kept Python) |
 | Domain adapters | `research_providers.py` | 40 scholarly/legal/patent/financial/geo adapters on one politeness/quota contract; URL/params/keys/rate/retry in Python, row-building in Rust |
 | Routing | `research_categories.py` | keyword classifier (Euro terms folded in, no separate category) + provider factories |
 | Scholarly merge | `research_merge.py` | explicit DOI/arXiv-ID dedupe with canonical record, conflicts, and per-provider source records |
@@ -96,7 +101,43 @@ delegating to collaborator objects, all returning JSON strings.
 | Budgets | `budget.py` | output-budget enforcement with link-budget reservation |
 | Sections/links | `sections.py`, `text_links.py` | markdown shaping + `![]()`/bare-URL detection |
 | Net safety | `ssrf.py`, `robots.py`, `liveness.py`, `dedup.py` | SSRF allow-listing, robots compliance, reachability probes, result dedupe |
-| Secrets/config | `env.py`, `settings.py`, `keystore.py` | `GOSSAMER_*` (legacy `STITCH_*` honored), keystore, `gossamer.json` (§7) |
+| Secrets/config | `env.py`, `settings.py`, `keystore.py`, `runtime_config.py` | `GOSSAMER_*` (legacy `STITCH_*` honored), keystore, `gossamer.json` (§7); one env→`ToolboxConfig` mapping shared by CLI and MCP |
+
+### Render strategy (`use_smart` / `fetch_mode`)
+
+`fetch_mode` (`auto`/`browser`/`static`) is the process baseline from
+`GOSSAMER_FETCH_MODE`, `gossamer.json:fetch_mode`, or
+`ToolboxConfig(fetch_mode=...)`; `use_smart` is the per-call override.
+`_resolve_fetch_strategy` collapses the pair into four strategies:
+
+| Resolved | Meaning |
+|---|---|
+| `static-only` | Rust static fetch only |
+| `browser-only` | stealth browser only; failures propagate |
+| `browser-first` | stealth browser first, static on failure |
+| `auto` | static first; stealth on failure/non-text |
+
+`web_search` (when it fetches), `inspect_html_page`,
+`batch_inspect_pages`, and `crawl` all accept `use_smart`. Browser modes
+fetch sequentially in a batch. The page-cache entry stores a
+`fetch_strategy` tag: `auto` accepts any entry, `static-only` accepts only a
+static render, `browser-only` accepts only a browser render, and
+`browser-first` also accepts its own static fallback. An explicit strategy
+may therefore re-fetch an already-visited URL whose cached result came from
+the other engine. The structured HTML cache key includes the resolved
+strategy. Responses report `fetch_method` as `static`, `browser`, or
+`stealth-fallback`.
+
+Native `browser_oxide` renders are process-isolated: `browser_isolation.py`
+runs `browser_worker.py` as a one-shot child, enforces
+`GOSSAMER_BROWSER_TIMEOUT` (default 45s), and converts a crash/timeout into
+`BrowserRenderError`. The initial HTML is fetched, then the build phase can
+abort upstream (V8 deadline → `terminate_execution` → 64 GiB allocation
+failure on `example.com`); isolation keeps that from killing the CLI/MCP
+server, `browser-first` falls back to static, and strict browser failures
+return a normal error. The stealth search provider uses the same worker. `GOSSAMER_BROWSER_ISOLATION=0` restores the
+legacy in-process path for debugging. Evidence:
+`docs/browser_oxide_crash.md`.
 
 ## 4. Rust core (`src/`, `_core`)
 
@@ -386,7 +427,7 @@ spot on hyperlink annotations.
 | | `regex`, `blake2`, misc | scans, hashes, shims |
 | Python | `httpx`, `pydantic>=2.7`, `tiktoken`, `ddgs` | providers, schemas, search |
 | Oxide | `pdf_oxide`, `office_oxide` (`[documents]`) | document converters |
-| Opt | `mcp` (`[mcp]`), `browser-oxide` (`[browser]`), `jailguard` (`[guard]`) | server, JS rendering, guard model |
+| Opt | `mcp` (`[mcp]`), `browser-oxide` (`[browser]`), `jailguard` (`[guard]`) | server, JS rendering + stealth search, guard model |
 
 All MIT/Apache-2.0. No Python direct (git) references remain — the
 wheel is PyPI-clean.

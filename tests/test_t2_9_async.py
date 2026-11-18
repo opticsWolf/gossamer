@@ -41,11 +41,11 @@ class TestBatchAsyncDelegation:
         tb = _make_toolbox(tmp_path)
         calls: list = []
 
-        def _fake_batch(urls):
+        def _fake_batch(urls, use_smart="auto"):
             # Instance-attribute fake: invoked as _fake_batch(urls) -- no
             # self is bound (instance attributes bypass the descriptor
             # protocol).
-            calls.append(list(urls))
+            calls.append((list(urls), use_smart))
             return json.dumps(
                 [
                     {"url": u, "markdown": "m", "links": [], "metadata": {}}
@@ -60,7 +60,9 @@ class TestBatchAsyncDelegation:
                 ["https://a.example", "https://b.example"]
             )
         )
-        assert calls == [["https://a.example", "https://b.example"]]
+        assert calls == [
+            (["https://a.example", "https://b.example"], "auto")
+        ]
         parsed = json.loads(out)
         assert [e["url"] for e in parsed] == [
             "https://a.example",
@@ -73,12 +75,16 @@ class TestBatchAsyncDelegation:
         loop_thread = threading.get_ident()
         worker_threads: list = []
 
-        def _fake_batch(urls):
+        def _fake_batch(urls, use_smart="auto"):
             worker_threads.append(threading.get_ident())
             return json.dumps([])
 
         monkeypatch.setattr(tb, "batch_inspect_pages", _fake_batch)
-        asyncio.run(tb.batch_inspect_pages_async(["https://a.example"]))
+        asyncio.run(
+            tb.batch_inspect_pages_async(
+                ["https://a.example"], use_smart="browser"
+            )
+        )
         assert worker_threads, "batch implementation never ran"
         assert all(t != loop_thread for t in worker_threads), (
             "batch implementation ran on the event-loop thread instead of "

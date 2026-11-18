@@ -8,10 +8,10 @@ Planning history: local `planning/` (unsynced).
 
 | Tool | CLI | Essentials |
 |---|---|---|
-| `web_search` | `gossamer search QUERY` | `--search-only` (no fetch), `--max-results 5`, `--max-tokens`, `--depth 5`, `--provider` |
+| `web_search` | `gossamer search QUERY` | `--search-only` (no fetch), `--max-results 5`, `--max-tokens`, `--depth 5`, `--provider`, `--use-smart auto\|browser\|static` (fetch phase) |
 | `research_by_category` | `gossamer research QUERY` | `--category`, `--provider`, `--providers` (explicit scholarly merge), `--max-results 5`; OpenAlex-only `--filter` / `--select` / `--title` / `--author`; empty query prints taxonomy |
 | `inspect_html_page` | `gossamer inspect URL` | `--query` (focus slice), `--use-smart auto\|browser\|static`, `--offset 0`, `--max-chunks 1`, `--structured` |
-| `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved |
+| `batch_inspect_pages` | `gossamer batch URL…` | same shape per URL, caller order preserved; `--use-smart auto\|browser\|static` (browser = sequential) |
 | `download_file` | `gossamer download URL -o PATH` | `--min-bytes 1`, `--max-bytes 0` (configured cap), `--expect-format auto\|pdf`, `--overwrite`, `--resume`, `--try-mirrors URL…` (caller-supplied, sequential, policy-checked); fresh downloads stream to an atomic file, resume appends with Range/If-Range; does not extract |
 | `locate_pdf` | `gossamer locate-pdf DOI` | Returns OpenAlex OA candidates (plus Unpaywall v2 when `GOSSAMER_UNPAYWALL_EMAIL` is set) with source/license/version provenance; does not download |
 | `extract_document` | `gossamer extract SRC` | `--pages 10-20`, `--structured`, `--tables-as json\|markdown\|csv` (Excel tables incl. legacy `.xls`/`.xlsb`; default json, csv = one `## <sheet>` block per sheet), `--store [--store-dir D] [--include-images]` (PDF figures; needs `--store`), `[--prefer-jats \| --no-prefer-jats]` (default on: DOI-resolvable sources try publisher full-text XML first) |
@@ -20,6 +20,13 @@ Planning history: local `planning/` (unsynced).
 | `manage_cache` | `gossamer cache` | `prune` (default) \| `clear` \| `reset` |
 | `export_citations` | `gossamer cite` | `--style bibtex\|csl-json\|apa\|mla`, `--enrich`, `--no-dedupe`, `--from-pdf` (cite local PDFs via detected DOI) |
 | `check_sources` | `gossamer check URL…` | `--mode status\|content` |
+
+`--fetch-mode auto|browser|static` sets the render baseline for the whole
+CLI run; `--use-smart` is the per-command override. `auto` is static-first
+with a stealth fallback, `browser` is stealth-first (static fallback), and
+`static` never renders. A cached page is reused only when its render
+strategy satisfies the request; `fetch_method` reports `static`, `browser`,
+or `stealth-fallback`.
 
 CLI-only: `gossamer categories` prints the routing table (not an MCP
 tool; the toolbox method `research_categories()` backs it). Also CLI-only:
@@ -42,7 +49,7 @@ without `--force`.
 - **patent** → `epo` 🔑, `kipris` 🔑, `patentsview` 🔑, `lens` 🔑, `google-patents` (keyless number lookup; others fail fast without keys; `lens` aggregates WO/EP/DE/CN/US, trial is non-commercial/academic)
 - **financial** → `yahoo`, `frankfurter`, `eurostat`, `bundesbank`, `bis`, `coingecko`, `alphavantage` 🔑
 - **geo** → `open-meteo`, `overpass`
-- **general** → `duckduckgo` (Google/Bing/Exa 🔑 opt-in via `search_providers=`)
+- **general** → `duckduckgo` (Google/Bing/Exa 🔑 opt-in via `search_providers=`; `browser` = stealth DDG HTML engine, needs the `[browser]` extra)
 
 Keyed failures name the exact variable (`GOSSAMER_EPO_KEY`) — surface it, don't retry.
 
@@ -51,8 +58,11 @@ Keyed failures name the exact variable (`GOSSAMER_EPO_KEY`) — surface it, don'
 `cache_dir ./.gossamer_cache` · `cache_ttl_seconds 3600` · `cache_max_bytes 0` (=∞)
 · `ddgs_delay/jitter 1.0` · `domain_delay 0.5` · `max_markdown_chars 8000`
 · `max_tokens 0` (=∞) · `model_name gpt-4o` · `fetch_mode auto`
+(`GOSSAMER_FETCH_MODE` env / `gossamer.json:fetch_mode`; CLI `--fetch-mode`)
 · `respect_robots true` · `max_response_bytes 5 MiB` · `liveness_timeout 10s`
 · `search_merge false` · `conditional_revalidation true`.
+Env-only browser knobs: `GOSSAMER_BROWSER_ISOLATION 1` (child-process render;
+`0` = in-process debug mode) · `GOSSAMER_BROWSER_TIMEOUT 45s` (floor 5s).
 Env `GOSSAMER_*` beats file; `STITCH_*` legacy honored.
 
 ## Paths
@@ -77,7 +87,10 @@ GOSSAMER_LIVE=1 pytest tests/test_live_smoke.py        # opt-in drift check
 - `store=True` writes `<stem><ext>` + `<stem>.md` under `stored_documents/` (default).
 - Tables render by default; figures need `--store --include-images`; vector-only figures have no bytes.
 - Guard is off by default (`GuardConfig(enabled=True)` + `gossamer-web[guard]` extra to arm).
-- `use_smart="browser"` needs the `gossamer-web[browser]` extra (Windows/macOS only, no Linux wheels); without it browser requests fail and only static fetch runs.
+- `use_smart="browser"` / `--fetch-mode browser` needs the `gossamer-web[browser]` extra (Windows/macOS only, no Linux wheels); without it browser requests fall back to static (global `browser` mode errors clearly). Browser batches are sequential, so keep them small. An explicit `browser`/`static` request bypasses a cache entry from the other engine; `auto` accepts any.
+- Browser renders are child-process isolated by default: a native
+  `browser_oxide` abort/hang becomes `BrowserRenderError`: `browser-first`
+  falls back to static; strict browser failures return an error. `GOSSAMER_BROWSER_ISOLATION=0` is debug-only (in-process rendering can kill the host). `GOSSAMER_BROWSER_TIMEOUT` defaults to 45s. See [`browser_oxide_crash.md`](./browser_oxide_crash.md).
 - `~/.gossamer/` absent is normal (created only by `keystore --init`).
 - OpenAlex is keyless for casual use; optional `GOSSAMER_OPENALEX_KEY` raises the daily budget. `GOSSAMER_OPENALEX_EMAIL` adds an operator-supplied `mailto` contact; no placeholder is sent. OpenAlex 429s are two documented kinds: per-second (wait a moment) or daily budget (`not_enough_credits` — wait for the reset; the typed error carries `X-RateLimit-Reset` seconds).
 - Semantic Scholar is opt-in and keyless-capable; its shared pool can 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for an individual one-request-per-second allowance.

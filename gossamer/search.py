@@ -82,6 +82,7 @@ class SearchService:
         depth: int = 5,
         max_tokens: int = 0,
         provider: Optional[str] = None,
+        use_smart: str = "auto",
     ) -> str:
         """Unified web_search + research entry point (P8 tool ``web_search``).
 
@@ -106,6 +107,9 @@ class SearchService:
             Global token budget for the response (0 = toolbox default).
         provider : str, optional
             Search engine to prefer (registry default: "duckduckgo").
+        use_smart : {"auto", "browser", "static"}
+            Per-call render strategy for fetched pages (ignored when
+            ``search_only=True``).
         """
         if search_only:
             return self.search_web(
@@ -117,6 +121,7 @@ class SearchService:
             max_tokens=max_tokens,
             provider=provider,
             max_results=max_results,
+            use_smart=use_smart,
         )
 
     def search_web(

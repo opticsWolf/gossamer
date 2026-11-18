@@ -18,8 +18,10 @@ from gossamer._core import (
     init_rust_logging as _init_rust_logging,  # noqa: F401  # test seam
 )
 from gossamer.search_providers import (
+    BrowserOxideSearchProvider,
     DuckDuckGoProvider,
     RateLimit,
+    browser_oxide_available,
 )
 from gossamer import meta_extractor
 from gossamer.cache import Cache
@@ -161,6 +163,15 @@ class WebResearcherToolbox:
             self.providers = [
                 DuckDuckGoProvider(delay=config.ddgs_delay, jitter=config.ddgs_jitter)
             ]
+            # Optional stealth search engine. It is last in failover order
+            # (slow to start) but can be selected explicitly with
+            # provider="browser" once the [browser] extra is installed.
+            if browser_oxide_available():
+                self.providers.append(
+                    BrowserOxideSearchProvider(
+                        delay=config.ddgs_delay, jitter=config.ddgs_jitter
+                    )
+                )
         idx = config.default_provider_index
         try:
             self.default_provider = self.providers[idx]
@@ -461,6 +472,18 @@ class WebResearcherToolbox:
         with self._visit_lock:
             self._in_flight.discard(self._identity_key(url))
 
+    def _forget_visited(self, url: str) -> None:
+        """Remove a URL from the visited set so it can be fetched again.
+
+        Used when an explicit render strategy (``use_smart``) makes a
+        cached page entry unusable: the URL is visited but the cached
+        result was produced by the wrong engine, so the next fetch must be
+        allowed through. In-flight claims are untouched (S5).
+        """
+        key = self._identity_key(url)
+        with self._visit_lock:
+            self.visited_urls.pop(key, None)
+
     def _mark_visited(self, url: str) -> None:
         """Record a successful fetch (C3: success only, S5: locked).
 
@@ -530,12 +553,15 @@ class WebResearcherToolbox:
         depth: int = 5,
         max_tokens: int = 0,
         provider: Optional[str] = None,
+        use_smart: str = FetchMode.AUTO.value,
     ) -> str:
         """Unified web_search + research entry point (P8 tool ``web_search``).
 
         Thin delegation to SearchService (search.py). ``search_only=True``
         returns a pure provider search; ``search_only=False`` also fetches
         candidate pages via the toolbox research pipeline (``research``).
+        ``use_smart`` is the per-call render strategy for those fetched
+        pages (ignored when ``search_only=True``).
         """
         return self._search.web_search(
             query,
@@ -544,6 +570,7 @@ class WebResearcherToolbox:
             depth=depth,
             max_tokens=max_tokens,
             provider=provider,
+            use_smart=use_smart,
         )
 
     def research_by_category(
@@ -959,9 +986,11 @@ class WebResearcherToolbox:
     # Batch Inspection
     # ───────────────────────
 
-    def batch_inspect_pages(self, urls: list) -> str:
+    def batch_inspect_pages(
+        self, urls: list, use_smart: str = FetchMode.AUTO.value
+    ) -> str:
         """
-        Fetch multiple pages concurrently using the Rust batch engine.
+        Fetch multiple pages using the Rust batch engine.
 
         Pages already in the page cache are served straight from it (C6);
         only genuinely new URLs reach the fetch engine, and fetched pages
@@ -970,12 +999,18 @@ class WebResearcherToolbox:
         the caller's input order, and every entry has the same shape as an
         ``inspect_html_page`` result (metadata, cache_hit, fetch_method).
 
-        With ``fetch_mode="browser"`` every page is fetched sequentially
-        through the stealth browser instead (per-domain rate limits apply).
+        ``use_smart`` is the per-call render strategy. ``"browser"``
+        fetches every page sequentially through the stealth browser first
+        (per-domain rate limits apply), with static fallback; ``"static"``
+        keeps the parallel Rust engine and never renders; ``"auto"``
+        (default) follows ``fetch_mode`` and falls back to the stealth
+        browser for non-text pages.
         """
-        return self._fetch.batch_inspect_pages_impl(urls)
+        return self._fetch.batch_inspect_pages_impl(urls, use_smart=use_smart)
 
-    async def batch_inspect_pages_async(self, urls: list) -> str:
+    async def batch_inspect_pages_async(
+        self, urls: list, use_smart: str = FetchMode.AUTO.value
+    ) -> str:
         """Async version of batch_inspect_pages.
 
         "Async" here means *thread pool*: the shared blocking batch
@@ -985,7 +1020,7 @@ class WebResearcherToolbox:
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, self.batch_inspect_pages, urls
+            None, self.batch_inspect_pages, urls, use_smart
         )
 
     def download_file(
@@ -1128,6 +1163,7 @@ class WebResearcherToolbox:
         max_tokens: int = 0,
         provider: Optional[str] = None,
         max_results: Optional[int] = None,
+        use_smart: str = FetchMode.AUTO.value,
     ) -> str:
         """Run a small orchestrated research pass (Tier 3.13).
 
@@ -1139,7 +1175,14 @@ class WebResearcherToolbox:
            *depth* (hard cap ``_RESEARCH_MAX_PAGES``).
         3. Fetch each through the normal page pipeline
            (``_inspect_html_page_impl``) with cache, robots, rate
-           limits, and provenance.
+           limits, and provenance. ``use_smart`` selects the render
+           strategy for those fetches.
+
+        When the provider was recognized but not registered (for example
+        ``provider="browser"`` without the ``[browser]`` extra), the
+        search layer returns ``{"results": [...], "provider_fallback":
+        {...}}``; the results are still used and the fallback note is
+        surfaced in the reply instead of being discarded.
 
         The toolbox has no LLM: the returned JSON carries per-source
         status, markdown content, and provenance (plus the search
@@ -1171,14 +1214,22 @@ class WebResearcherToolbox:
 
         # 1) Plan: search the topic (search_web degrades to an error
         # dict instead of raising when every provider fails).
+        provider_fallback = None
         try:
-            results = json.loads(
+            payload = json.loads(
                 self.search_web(
                     topic, max_results=plan_results, provider=provider
                 )
             )
         except (json.JSONDecodeError, TypeError):
-            results = []
+            payload = []
+        if isinstance(payload, dict):
+            # An unregistered-but-recognized provider wraps the results
+            # with a provider_fallback note. Keep both.
+            provider_fallback = payload.get("provider_fallback")
+            results = payload.get("results") or []
+        else:
+            results = payload
         if not isinstance(results, list):
             results = []
 
@@ -1218,7 +1269,7 @@ class WebResearcherToolbox:
             record = {"url": url, "title": title, "snippet": snippet}
             try:
                 raw_page = self._fetch._inspect_html_page_impl(
-                    url, None, "", 0, 1
+                    url, use_smart, "", 0, 1
                 )
                 try:
                     page = json.loads(raw_page)
@@ -1256,6 +1307,8 @@ class WebResearcherToolbox:
             # duplicates before the fan-out (informational for the caller).
             "dropped_dupes": dropped_dupes,
         }
+        if provider_fallback:
+            result["provider_fallback"] = provider_fallback
         return self._budget._fit_json(
             lambda b: self._budget._shrink_research(result, b),
             self.max_markdown_chars,

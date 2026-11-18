@@ -148,3 +148,21 @@ class TestMcpSurface:
                 p.name for p in spec.params if p.required
             }
             assert set(schema["properties"]) == {p.name for p in spec.params}
+
+    def test_mcp_schema_preserves_registry_metadata(self):
+        """Descriptions and enums are part of the schema, not just prose."""
+        import asyncio
+
+        try:
+            from gossamer.mcp_server import build_server
+        except ImportError:
+            pytest.skip("mcp not installed")
+        server = build_server()
+        tools = {t.name: t for t in asyncio.run(server.list_tools())}
+        for spec in TOOL_REGISTRY:
+            props = tools[spec.name].input_schema["properties"]
+            for p in spec.params:
+                if p.description:
+                    assert props[p.name]["description"] == p.description
+                if p.enum:
+                    assert props[p.name]["enum"] == p.enum

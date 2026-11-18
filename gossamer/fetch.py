@@ -47,6 +47,8 @@ from gossamer.config import (
     FetchMode,
     ensure_str_list,
 )
+from gossamer.browser_isolation import render_browser_html
+from gossamer.search_providers import browser_oxide_available
 
 logger = logging.getLogger(__name__)
 # ── Rust `tracing` -> Python `logging` bridge (opt-in) ─────────
@@ -70,35 +72,15 @@ def _maybe_init_rust_logging() -> None:
     _rust_log_initialized = True
 # ── Smart fetch (browser_oxide with fallback) ──────────────────
 
-_browser_oxide_available = False
-try:
-    import browser_oxide
-    _browser_oxide_available = True
-except ImportError:
-    pass
+# ``browser_oxide`` is a native Rust extension that can abort the host on a
+# cold render. Never import it in the parent: ``browser_isolation`` runs the
+# actual render in a short-lived child process and converts a crash/hang into
+# ``BrowserRenderError``. Tests keep patching this module-level flag.
+_browser_oxide_available = browser_oxide_available()
 
 
-def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
-    """Fetch a page using browser_oxide (stealth headless browser).
-
-    Navigation runs in browser_oxide; link extraction and markdown
-    conversion run in the Rust core (``_core.process_rendered_html``),
-    so only ``browser_oxide`` itself needs to be installed.
-
-    Returns (markdown, links, metadata) tuple.
-    """
-    browser = browser_oxide.Browser(profile=browser_oxide.Profile.chrome())
-    try:
-        page = browser.navigate(url, max_iterations=5)
-        if page.is_challenge:
-            raise RuntimeError(
-                f"Anti-bot challenge detected ({page.verdict}) for {url}"
-            )
-        html = page.html
-    finally:
-        browser.close()
-
-    # Extract HTML metadata via meta-oxide
+def _process_browser_html(url: str, html: str) -> tuple[str, list[str], dict]:
+    """Turn rendered HTML into the browser fetch's (markdown, links, meta)."""
     metadata = meta_extractor.extract_all(html, url)
 
     # Debug visibility: record which main-content container the Rust core's
@@ -116,6 +98,30 @@ def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
     # surface the HTTP status or the post-redirect URL).
     metadata["provenance"] = _browser_provenance(url)
     return markdown, links, metadata
+
+
+def _fetch_with_browser_oxide(url: str) -> tuple[str, list[str], dict]:
+    """Fetch a page using browser_oxide (stealth headless browser).
+
+    The render itself runs in a child process by default (see
+    :mod:`gossamer.browser_isolation`); link extraction and markdown
+    conversion run in the Rust core (``_core.process_rendered_html``), so
+    only ``browser_oxide`` itself needs to be installed in the child's
+    environment.
+
+    Returns (markdown, links, metadata) tuple. Raises
+    :class:`gossamer.browser_isolation.BrowserRenderError` when the render
+    crashes, times out, or hits an anti-bot challenge; browser-first catches
+    that and falls back to the static path, while strict callers surface it as
+    a normal error.
+    """
+    if not _browser_oxide_available:
+        raise RuntimeError(
+            "browser_oxide is not installed; install the optional extra "
+            "(pip install \"gossamer-web[browser]\") or use use_smart='static'"
+        )
+    html = render_browser_html(url, max_iterations=5)
+    return _process_browser_html(url, html)
 
 
 # ───────────────────────────────
@@ -420,6 +426,62 @@ class FetchService:
         return md, links, meta, "browser"
 
 
+    def _strategy_for(self, use_smart: str) -> str:
+        """Resolve ``(fetch_mode, use_smart)`` into one of the four strategies."""
+        return _resolve_fetch_strategy(
+            self._tb.fetch_mode, _coerce_fetch_mode(use_smart)
+        )
+
+    @staticmethod
+    def _strategy_accepts(
+        strategy: str,
+        method: Optional[str],
+        cached_strategy: Optional[str] = None,
+    ) -> bool:
+        """Whether a cached result is compatible with a requested strategy.
+
+        ``auto`` accepts any result. ``static-only`` only accepts a static
+        render. Browser strategies accept a browser render; ``browser-first``
+        also accepts a static render *if that same strategy produced it*
+        (browser tried, then fell back) so the fallback is not retried on
+        every call.
+        """
+        if strategy == "auto":
+            return True
+        if strategy == "static-only":
+            return method == "static"
+        browser_rendered = method in ("browser", "stealth-fallback")
+        if strategy == "browser-only":
+            return browser_rendered
+        if strategy == "browser-first":
+            return browser_rendered or (
+                method == "static" and cached_strategy == "browser-first"
+            )
+        return False
+
+    def _cached_matches_strategy(self, cached, strategy: str) -> bool:
+        """Whether a cached ``(md, links, meta, method)`` tuple is usable."""
+        if cached is None:
+            return False
+        try:
+            method = cached[3]
+            meta = cached[2] or {}
+        except (IndexError, TypeError):
+            return False
+        return self._strategy_accepts(
+            strategy, method, meta.get("fetch_strategy")
+        )
+
+    def _raw_entry_matches_strategy(self, entry: dict, strategy: str) -> bool:
+        """Whether a raw page-cache entry dict is usable for *strategy*."""
+        if not entry:
+            return False
+        return self._strategy_accepts(
+            strategy,
+            entry.get("method"),
+            (entry.get("meta") or {}).get("fetch_strategy"),
+        )
+
     def _fetch_html(self, url: str, use_smart: str = FetchMode.AUTO.value):
         """Fetch an HTML page honoring ``self._tb.fetch_mode`` / ``use_smart``.
 
@@ -438,7 +500,13 @@ class FetchService:
         M12: the returned markdown has relative hrefs rewritten to
         absolute URLs so the body is self-contained for the model.
         """
+        strategy = self._strategy_for(use_smart)
         md, links, meta, method = self._fetch_html_dispatch(url, use_smart)
+        meta = dict(meta or {})
+        # Persisted with the cache entry so a later call can tell whether the
+        # stored result satisfies its requested render strategy (auto/static/
+        # browser, and browser-first fallback to static).
+        meta["fetch_strategy"] = strategy
         return _absolutize_markdown_links(md, url), links, meta, method
 
 
@@ -454,6 +522,7 @@ class FetchService:
         browser path served the page (the renderer exposes no raw DOM).
         """
         domain = _domain_of(url)
+        strategy = self._strategy_for(use_smart)
         started = time.perf_counter()
         try:
             result = self._dispatch_fetch(url, use_smart, keep_html=True)
@@ -469,6 +538,8 @@ class FetchService:
             domain, time.perf_counter() - started, nbytes
         )
         md, links, meta, method, html = result
+        meta = dict(meta or {})
+        meta["fetch_strategy"] = strategy
         return _absolutize_markdown_links(md, url), links, meta, method, html
 
 
@@ -795,15 +866,35 @@ class FetchService:
         if url_error is not None:
             return json.dumps(url_error, indent=2)
 
+        strategy = self._strategy_for(use_smart)
+
         # Tier 1.4: capture the raw (possibly expired) page entry before
         # the normal cache lookup purges it - an expired entry's ETag /
         # Last-Modified let us revalidate cheaply (304) instead of
-        # re-downloading the whole page.
+        # re-downloading the whole page. Skip it when the stored result was
+        # produced by a different render strategy than the caller asked for.
         stale_entry = None
         if self._tb.conditional_revalidation:
             stale_entry = self._stale_page_entry(url)
+            if stale_entry is not None and not self._raw_entry_matches_strategy(
+                stale_entry, strategy
+            ):
+                stale_entry = None
 
         cached = self._page_cache_get(url)
+        if cached is not None and not self._cached_matches_strategy(
+            cached, strategy
+        ):
+            logger.info(
+                "Ignoring cached %s result for %s (requested %s)",
+                cached[3], url, strategy,
+            )
+            cached = None
+        if cached is None and strategy != "auto":
+            # An explicit render strategy may re-fetch a URL that was already
+            # visited: the cached result was produced by another engine, or
+            # the TTL expired. In-flight claims are untouched (S5).
+            self._tb._forget_visited(url)
         from_cache = cached is not None
         revalidated = False
         if cached is None:
@@ -833,6 +924,10 @@ class FetchService:
                     outcome = self._revalidate_stale_entry(url, stale_entry)
                     if outcome is not None:
                         revalidated, cached = outcome
+                        md0, links0, meta0, method0 = cached
+                        meta0 = dict(meta0 or {})
+                        meta0.setdefault("fetch_strategy", strategy)
+                        cached = (md0, links0, meta0, method0)
                 if cached is None:
                     cached = self._fetch_html(url, use_smart)
             except Exception as e:
@@ -1085,9 +1180,11 @@ class FetchService:
         return compact
 
 
-    def batch_inspect_pages_impl(self, urls: list) -> str:
+    def batch_inspect_pages_impl(
+        self, urls: list, use_smart: str = FetchMode.AUTO.value
+    ) -> str:
         """
-        Fetch multiple pages concurrently using the Rust batch engine.
+        Fetch multiple pages using the Rust batch engine.
 
         Pages already in the page cache are served straight from it (C6);
         only genuinely new URLs reach the fetch engine, and fetched pages
@@ -1096,9 +1193,14 @@ class FetchService:
         the caller's input order, and every entry has the same shape as an
         ``inspect_html_page`` result (metadata, cache_hit, fetch_method).
 
-        With ``fetch_mode="browser"`` every page is fetched sequentially
-        through the stealth browser instead (per-domain rate limits apply).
+        ``use_smart`` selects the render strategy. Browser strategies
+        (``"browser"``, or ``fetch_mode="browser"`` with ``"auto"``) fetch
+        every page sequentially through the stealth browser instead, with
+        per-domain rate limits; ``"static"`` keeps the parallel Rust engine
+        and never renders; ``"auto"`` (default) follows ``fetch_mode`` and
+        falls back to the stealth browser for non-text pages.
         """
+        strategy = self._strategy_for(use_smart)
         # Normalize (C6: single-page inspection normalizes too, so the same
         # page can never occupy two cache/visited entries), then partition
         # into cached vs. uncached. Visited URLs are marked only after
@@ -1137,9 +1239,20 @@ class FetchService:
             seen.add(ckey)
             echo.setdefault(ckey, url)
             cached = self._page_cache_get(url)
-            if cached is not None:
+            if cached is not None and self._cached_matches_strategy(
+                cached, strategy
+            ):
                 cached_entries[ckey] = cached
                 continue
+            if cached is not None:
+                logger.info(
+                    "Ignoring cached %s result for %s (requested %s)",
+                    cached[3], url, strategy,
+                )
+            if strategy != "auto":
+                # Explicit render strategies may re-fetch an already-visited
+                # URL when the cached result used another engine or expired.
+                self._tb._forget_visited(url)
             if ckey in self._tb.visited_urls:
                 logger.warning("Skipping already-visited URL in batch: %s", url)
                 continue
@@ -1158,13 +1271,13 @@ class FetchService:
 
         try:
             fetched: dict[str, dict] = {}
-            if self._tb.fetch_mode == "browser":
+            if strategy in ("browser-only", "browser-first"):
                 for ckey, url in pending:
                     try:
                         # Sequential stealth-browser fetches honor the same
                         # per-domain politeness gap as single fetches.
                         self._tb._rate_limit_domain(url)
-                        entry = self._fetch_html(url)
+                        entry = self._fetch_html(url, use_smart)
                         self._tb._mark_visited(url)  # success only (C3)
                         self._page_cache_put(url, *entry)  # C6
                         self._tb._release_in_flight(url)  # S5
@@ -1215,6 +1328,7 @@ class FetchService:
                         # a single read of the same URL carry identical
                         # metadata instead of the batch shipping {}.
                         meta = self._tb._extract_html_metadata(entry.html, entry.url)
+                        meta["fetch_strategy"] = strategy
                         # B.6: the engine now returns HTTP provenance per URL;
                         # attach it so batch entries match single-page reads.
                         if entry.prov is not None:
@@ -1232,9 +1346,9 @@ class FetchService:
                         # JS-rendered SPA body) is re-fetched through the Python
                         # stealth-browser path, exactly like single-page auto,
                         # and the entry reports which method actually served it.
-                        # Only the non-text entries pay the browser cost; the
-                        # whole batch stays static-only for fetch_mode="static".
-                        if self._tb.fetch_mode == "auto" and not self._looks_like_text(md):
+                        # Only the non-text entries pay the browser cost; a
+                        # static-only request never renders.
+                        if strategy == "auto" and not self._looks_like_text(md):
                             try:
                                 f_md, f_links, f_meta, _ = self._browser_fetch(
                                     entry.url
@@ -1247,10 +1361,13 @@ class FetchService:
                             else:
                                 # Re-absolutize to match the static path (the
                                 # browser seam returns links absolutized, but
-                                # not through the same Python step), and label
-                                # it a stealth fallback per the auto strategy.
+                                # not through the same Python step), label it
+                                # a stealth fallback, and keep the strategy tag
+                                # so later browser requests reuse the cache.
                                 md = _absolutize_markdown_links(f_md, entry.url)
-                                links, meta = f_links, f_meta
+                                links = f_links
+                                meta = dict(f_meta or {})
+                                meta["fetch_strategy"] = strategy
                                 method = "stealth-fallback"
                         self._tb._mark_visited(entry.url)  # success only (C3)
                         # C6: store back into the shared page cache, overwriting

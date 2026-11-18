@@ -21,6 +21,14 @@ gossamer instead of guessing or raw curl loops.
   publication-number lookup only (not free-text search). Surface missing-key
   errors and do not retry hard authentication failures.
 - **Budgets**: keep crawls ≤ 15 pages, set `max_tokens`, extract page ranges.
+- **JS pages**: pass `use_smart="browser"` on `web_search`/`inspect_html_page`/
+  `batch_inspect_pages`/`crawl` (or CLI `--use-smart browser`); set
+  `GOSSAMER_FETCH_MODE=browser` for a global default. Needs the optional
+  `[browser]` extra; browser batches are sequential. Renders are
+  child-process isolated, so a native engine abort/hang becomes a fetch error:
+  browser-first falls back to static, strict browser failures return an error
+  (`GOSSAMER_BROWSER_TIMEOUT` 45s; `GOSSAMER_BROWSER_ISOLATION=0` is
+  debug-only).
 - **Keys**: `~/.gossamer/keys.json` (`python -m gossamer.keystore --init`);
   never put secrets in configs or prompts.
 

@@ -41,7 +41,9 @@ Configuration via environment variables (all optional):
     GOSSAMER_SEARCH_MERGE           (default 0 -- 1/true: cross-provider merge for search_web)
 
 Legacy STITCH_* spellings of every variable above remain honored as a
-fallback (the package was renamed from stitch-web-researcher).
+fallback (the package was renamed from stitch-web-researcher). Unset env
+vars inherit the matching ``gossamer.json`` value; the CLI resolves the
+same options via :mod:`gossamer.runtime_config` (explicit CLI flags win).
     GOSSAMER_GUARD_ENABLED          (default 0 -- §7 prompt-injection guard off)
     GOSSAMER_GUARD_SCOPES           (default "page_markdown,document_text")
     GOSSAMER_GUARD_MODE             (default "annotate"; annotate|redact|block)
@@ -52,19 +54,22 @@ fallback (the package was renamed from stitch-web-researcher).
 from __future__ import annotations
 
 import inspect
-import json
 import logging
 import threading
-from typing import Optional
+from typing import Annotated, Optional
 
 from mcp.server.mcpserver import MCPServer
+from pydantic import Field
 
 from gossamer.agent_tools import (
     TOOL_REGISTRY,
-    ToolboxConfig,
     WebResearcherToolbox,
 )
-from gossamer.guard import GuardConfig
+from gossamer.runtime_config import (
+    config_from_env as _config_from_env,
+    env_json_dict as _env_json_dict,  # noqa: F401 -- backwards-compatible re-export
+    env_value as _env,
+)
 from gossamer.skills import skill_description, skill_text
 
 logger = logging.getLogger(__name__)
@@ -76,140 +81,6 @@ logger = logging.getLogger(__name__)
 
 _toolbox: Optional[WebResearcherToolbox] = None
 _toolbox_lock = threading.Lock()
-
-
-def _env(name: str, default=None, cast=str, legacy=None):
-    # A malformed value warns and falls back to the default instead of
-    # crashing server startup on one typo (review A.6).
-    from gossamer.env import getenv
-
-    raw = getenv(name, None, legacy=legacy)
-    if raw in (None, ""):
-        return default
-    try:
-        return cast(raw)
-    except (TypeError, ValueError):
-        logging.getLogger(__name__).warning(
-            "GOSSAMER env %s=%r is not valid; using default %r", name, raw, default
-        )
-        return default
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    from gossamer.env import getenv_bool
-
-    return getenv_bool(name, default)
-
-
-def _env_json_dict(name: str) -> dict:
-    """Read a JSON object from *name*; return {} when unset or invalid.
-
-    Used for Tier 2.7 transport overrides (custom headers / cookies), which
-    are naturally expressed as JSON objects:
-    ``GOSSAMER_CUSTOM_HEADERS='{"Authorization": "Bearer ..."}'``.
-    """
-    from gossamer.env import getenv
-
-    raw = getenv(name, None)
-    if raw is None or raw.strip() == "":
-        return {}
-    try:
-        value = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        logging.getLogger(__name__).warning(
-            "GOSSAMER env %s is not valid JSON; ignoring", name
-        )
-        return {}
-    if not isinstance(value, dict):
-        logging.getLogger(__name__).warning(
-            "GOSSAMER env %s must be a JSON object; ignoring", name
-        )
-        return {}
-    return {str(k): str(v) for k, v in value.items()}
-
-
-def _guard_config_from_env():
-    """Build a :class:`GuardConfig` from GOSSAMER_GUARD_* env vars.
-
-    The §7 prompt-injection guard is off by default: it only activates when
-    ``GOSSAMER_GUARD_ENABLED`` is truthy (which implies the optional
-    ``jailguard`` dependency is installed via ``pip install ...[guard]``).
-    """
-    from gossamer.settings import load_config_file
-
-    try:
-        file_guard = load_config_file().get("guard", {}) or {}
-    except (OSError, ValueError):
-        file_guard = {}
-    if not isinstance(file_guard, dict):
-        file_guard = {}
-    if not _env_bool("GOSSAMER_GUARD_ENABLED", file_guard.get("enabled", False)):
-        return None
-    return GuardConfig(
-        enabled=True,
-        mode=_env("GOSSAMER_GUARD_MODE", file_guard.get("mode", "annotate")),
-        scopes=_env("GOSSAMER_GUARD_SCOPES", file_guard.get("scopes", "page_markdown,document_text")),
-        threshold=_env("GOSSAMER_GUARD_THRESHOLD", file_guard.get("threshold", 0.7), float),
-        max_chunks=_env("GOSSAMER_GUARD_MAX_CHUNKS", file_guard.get("max_chunks", 40), int),
-    )
-
-
-def _config_from_env() -> ToolboxConfig:
-    # Precedence: explicit env > gossamer.json > built-in defaults. Each
-    # _env() call falls back to the file value, so an unset variable
-    # inherits the file and a malformed one warns + falls back (A.6).
-    from gossamer.settings import load_config_file
-
-    try:
-        file_cfg = load_config_file()
-    except (OSError, ValueError) as exc:
-        logging.getLogger(__name__).warning("ignoring gossamer.json: %s", exc)
-        file_cfg = {}
-
-    def _f(key, default):
-        return file_cfg.get(key, default)
-
-    fetch_delay = _env("GOSSAMER_FETCH_DELAY", _f("fetch_delay", None), float)
-    return ToolboxConfig(
-        cache_dir=_env("GOSSAMER_CACHE_DIR", _f("cache_dir", ".gossamer_cache")),
-        cache_ttl_seconds=_env("GOSSAMER_CACHE_TTL_SECONDS", _f("cache_ttl_seconds", 3600), int),
-        cache_max_bytes=_env("GOSSAMER_CACHE_MAX_BYTES", _f("cache_max_bytes", 0), int),
-        cache_memory_entries=_env("GOSSAMER_CACHE_MEMORY_ENTRIES", _f("cache_memory_entries", 100), int),
-        max_response_bytes=_env(
-            "GOSSAMER_MAX_RESPONSE_BYTES", _f("max_response_bytes", 5 * 1024 * 1024), int,
-            legacy="STITCH_WEB_RESEARCHER_MAX_RESPONSE_BYTES",
-        ),
-        liveness_timeout=_env("GOSSAMER_LIVENESS_TIMEOUT", _f("liveness_timeout", 10.0), float),
-        ddgs_delay=_env("GOSSAMER_DDGS_DELAY", _f("ddgs_delay", 1.0), float),
-        ddgs_jitter=_env("GOSSAMER_DDGS_JITTER", _f("ddgs_jitter", 1.0), float),
-        domain_delay=_env("GOSSAMER_DOMAIN_DELAY", _f("domain_delay", 0.5), float),
-        fetch_delay=fetch_delay,
-        fetch_jitter=_env("GOSSAMER_FETCH_JITTER", _f("fetch_jitter", 1.0), float),
-        max_markdown_chars=_env("GOSSAMER_MAX_MARKDOWN_CHARS", _f("max_markdown_chars", 8000), int),
-        max_tokens=_env("GOSSAMER_MAX_TOKENS", _f("max_tokens", 0), int),
-        model_name=_env("GOSSAMER_MODEL_NAME", _f("model_name", "gpt-4o")),
-        max_links=_env("GOSSAMER_MAX_LINKS", _f("max_links", 20), int),
-        fetch_mode=_env("GOSSAMER_FETCH_MODE", _f("fetch_mode", "auto")),
-        candidate_cap=_env("GOSSAMER_CANDIDATE_CAP", _f("candidate_cap", 500), int),
-        max_concurrency=_env("GOSSAMER_MAX_CONCURRENCY", _f("max_concurrency", 8), int),
-        # S4: robots.txt compliance; operators can opt out explicitly.
-        respect_robots=_env_bool("GOSSAMER_RESPECT_ROBOTS", _f("respect_robots", True)),
-        # Tier 1.4: revalidate expired cached pages with ETag / Last-Modified
-        # before re-downloading; operators can opt out explicitly.
-        conditional_revalidation=_env_bool(
-            "GOSSAMER_CONDITIONAL_REVALIDATE", _f("conditional_revalidation", True)
-        ),
-        # §7: optional prompt-injection guard, off by default.
-        guard=_guard_config_from_env(),
-        # Tier 2.7: HTTP transport overrides (proxy / User-Agent / headers /
-        # cookies) for authenticated sources. Headers and cookies are JSON
-        # objects; proxy and User-Agent are plain strings.
-        http_proxy=_env("GOSSAMER_HTTP_PROXY", _f("http_proxy", None)),
-        user_agent=_env("GOSSAMER_USER_AGENT", _f("user_agent", None)),
-        custom_headers=_env_json_dict("GOSSAMER_CUSTOM_HEADERS") or _f("custom_headers", {}),
-        cookies=_env_json_dict("GOSSAMER_COOKIES") or _f("cookies", {}),
-        search_merge=_env_bool("GOSSAMER_SEARCH_MERGE", _f("search_merge", False)),
-    )
 
 
 def get_toolbox() -> WebResearcherToolbox:
@@ -247,6 +118,15 @@ INSTRUCTIONS = (
     "(PDF, DOCX, XLSX, PPTX) and text formats (TXT, MD, CSV, JSON, XML, "
     "RSS/Atom). Results are cached, rate-limited per domain, and "
     "token-budgeted.\n\n"
+    "## Rendering (JS pages / anti-bot)\n\n"
+    "Page fetches use a render strategy: `auto` (static first; stealth "
+    "browser on failure/non-text), `browser` (stealth first, static "
+    "fallback), or `static` (never renders). Select it per call with "
+    "`use_smart` on `web_search` (when not search_only), "
+    "`inspect_html_page`, `batch_inspect_pages`, and `crawl`, or set the "
+    "process default with the `GOSSAMER_FETCH_MODE` environment variable. "
+    "Browser rendering needs the optional `gossamer-web[browser]` extra; "
+    "`provider='browser'` is the corresponding stealth search engine.\n\n"
     "## Skill pack\n\n"
     "The `gossamer` agent skill ships inside this package and is readable "
     "as the resource `skills://gossamer` (routing, budgets, auth, cache "
@@ -264,16 +144,30 @@ def _mcp_tool_for(spec):
     definitions. Every call dispatches through ``execute_tool``."""
     parameters = []
     arg_lines = []
+    annotations = {}
     for p in spec.params:
+        # Preserve the registry's per-parameter description and enum in the
+        # MCP input schema. A bare annotation would drop both, leaving an
+        # agent with only the prose docstring instead of a machine-readable
+        # schema (the LLM function definitions already carry both).
+        annotation = p.type
+        field_kwargs = {}
+        if p.description:
+            field_kwargs["description"] = p.description
+        if p.enum:
+            field_kwargs["json_schema_extra"] = {"enum": list(p.enum)}
+        if field_kwargs:
+            annotation = Annotated[p.type, Field(**field_kwargs)]
         default = p.default if not p.required else inspect.Parameter.empty
         parameters.append(
             inspect.Parameter(
                 p.name,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
                 default=default,
-                annotation=p.type,
+                annotation=annotation,
             )
         )
+        annotations[p.name] = annotation
         arg_lines.append(f"    {p.name}: {p.description}".rstrip())
 
     def wrapper(**kwargs):
@@ -285,8 +179,8 @@ def _mcp_tool_for(spec):
         doc += "\n\nArgs:\n" + "\n".join(arg_lines)
     wrapper.__doc__ = doc
     wrapper.__signature__ = inspect.Signature(parameters=parameters)
-    wrapper.__annotations__ = {p.name: p.type for p in spec.params}
-    wrapper.__annotations__["return"] = str
+    annotations["return"] = str
+    wrapper.__annotations__ = annotations
     return wrapper
 
 

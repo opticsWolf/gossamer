@@ -163,7 +163,7 @@ class ToolSpec:
 TOOL_REGISTRY = (
     ToolSpec(
         "web_search",
-        "Unified web search + research. search_only=true (default false) is a pure provider search across engines (duckduckgo/google/bing/exa/browser) returning a deduped list. search_only=false also fetches up to depth candidate pages, returning one record per source with status, markdown, and provenance for a cited synthesis.",
+        "Unified web search + research. search_only=true (default false) is a pure provider search across engines (duckduckgo/google/bing/exa/browser) returning a deduped list. search_only=false also fetches up to depth candidate pages, returning one record per source with status, markdown, and provenance for a cited synthesis. When fetching, use_smart selects the render strategy.",
         "web_search",
         (
             ToolParam("query", str, description="The search query / research topic"),
@@ -197,6 +197,13 @@ TOOL_REGISTRY = (
                 "duckduckgo",
                 "Search engine to prefer, in both modes. search_only=false plans the research run through this provider. Falls back through other providers on failure.",
                 enum=["duckduckgo", "google", "bing", "exa", "browser"],
+            ),
+            ToolParam(
+                "use_smart",
+                str,
+                "auto",
+                "Render strategy for fetched pages: 'auto' (default; follows fetch_mode), 'browser' (stealth browser first, static fallback), or 'static' (never renders). Ignored when search_only=true.",
+                enum=["auto", "browser", "static"],
             ),
         ),
     ),
@@ -241,10 +248,17 @@ TOOL_REGISTRY = (
     ),
     ToolSpec(
         "batch_inspect_pages",
-        "Fetch multiple web pages concurrently. Returns markdown and links for each.",
+        "Fetch multiple web pages. Returns markdown and links for each. use_smart selects the render strategy: 'auto' (default; follows fetch_mode with a stealth fallback on non-text pages), 'browser' (stealth browser first, fetched sequentially, static fallback), or 'static' (never renders).",
         "batch_inspect_pages",
         (
             ToolParam("urls", list[str], description="List of URLs to inspect"),
+            ToolParam(
+                "use_smart",
+                str,
+                "auto",
+                "Render strategy: 'auto' (default; follows fetch_mode), 'browser' (stealth browser first; sequential), or 'static' (never renders).",
+                enum=["auto", "browser", "static"],
+            ),
         ),
     ),
     ToolSpec(

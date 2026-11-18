@@ -247,7 +247,7 @@ class TestToolboxMetadata:
         from gossamer.agent_tools import fetch_smart_page
 
         # fetch_smart_page falls back to fetch_and_extract without browser_oxide
-        result = fetch_smart_page("https://example.com")
+        result = fetch_smart_page("https://news.ycombinator.com/")
         assert isinstance(result, tuple)
         assert len(result) == 3
         md, links, metadata = result

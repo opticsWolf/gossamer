@@ -23,7 +23,12 @@ from urllib.parse import urlparse
 import httpx
 
 from gossamer._core import extract_tables_from_html
-from gossamer.config import FetchMode, normalize_url
+from gossamer.config import (
+    FetchMode,
+    _coerce_fetch_mode,
+    _resolve_fetch_strategy,
+    normalize_url,
+)
 from gossamer.guard import evaluate, wrap_untrusted
 from gossamer.models import ExtractionResult, _sha256_hex, _utc_now_iso
 from gossamer.ssrf import SsrfBlockedError
@@ -1598,10 +1603,25 @@ class DocumentExtractor:
         if url_error is not None:
             return json.dumps(url_error, indent=2)
 
+        # The structured payload does not store the render method itself, so
+        # the resolved strategy is part of its cache key. An explicit browser
+        # or static request can never be served a payload rendered by the
+        # other engine; the default auto key stays backward compatible.
+        strategy = _resolve_fetch_strategy(
+            self._tb.fetch_mode, _coerce_fetch_mode(use_smart)
+        )
+        cache_key = "structured:" + self._tb._cache_key(url)
+        if strategy != "auto":
+            cache_key += f"#strategy={strategy}"
+
         # Cache stores the untruncated payload JSON; budgets are re-applied
         # on every read so changed limits are honored. A cached result is
         # served on repeat visits too (C3: data beats a warning).
-        cached_json = self._tb.cache.get("structured:" + self._tb._cache_key(url))
+        cached_json = self._tb.cache.get(cache_key)
+        if cached_json is None and strategy != "auto":
+            # See FetchService: an explicit strategy may re-fetch a URL that
+            # was already visited under another strategy or after TTL expiry.
+            self._tb._forget_visited(url)
 
         try:
             if cached_json is not None:
@@ -1661,7 +1681,7 @@ class DocumentExtractor:
                 )
 
             payload_json = payload.to_json()
-            self._tb.cache.put("structured:" + self._tb._cache_key(url), payload_json)
+            self._tb.cache.put(cache_key, payload_json)
             self._tb._mark_visited(url)  # success only (C3)
             self._tb._release_in_flight(url)  # S5
             return self._tb._budget._fit_json(

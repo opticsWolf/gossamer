@@ -16,7 +16,7 @@ Two layers of coverage:
 
 * **Real browser_oxide (external HTTPS; slow + live-gated).** The stealth
   engine verifies TLS certs and speaks HTTP/2 over TLS, so it cannot reach
-  a self-signed local server; we exercise it against ``https://example.com``
+  a self-signed local server; we exercise it against ``https://news.ycombinator.com/``
   instead to prove the real engine is wired through the dispatch. These
   tests hit the live network with the real engine, so they are marked
   ``slow`` (excluded from the default suite via ``-m 'not slow'``) and
@@ -24,7 +24,9 @@ Two layers of coverage:
   ``GOSSAMER_LIVE=1``. Run them explicitly with
   ``GOSSAMER_LIVE=1 pytest -m slow tests/test_m17_fetch_mode_dispatch.py``.
   They were flaky under the parallel default suite (several engines fetch
-  example.com concurrently), which is why they are no longer part of it.
+  the live URL concurrently), which is why they are no longer part of it.
+  Renders are process-isolated, so an upstream native abort becomes a
+  normal fetch error instead of killing the pytest process.
 """
 
 import json
@@ -241,27 +243,27 @@ def real_browser():
     if not _live_enabled(os.environ.get("GOSSAMER_LIVE")):
         pytest.skip("live test (enable with GOSSAMER_LIVE=1)")
     try:
-        r = json.loads(make("browser").inspect_html_page("https://example.com"))
+        r = json.loads(make("browser").inspect_html_page("https://news.ycombinator.com/"))
         return (r.get("fetch_method") == "browser"
-                and "Example Domain" in (r.get("markdown") or ""))
+                and "Hacker News" in (r.get("markdown") or ""))
     except Exception:
         return False
 
 
 @pytest.mark.slow
 @pytest.mark.live
-class TestRealBrowserExampleCom:
+class TestRealBrowserLive:
     def test_browser_mode_uses_real_engine(self, real_browser):
         if not real_browser:
             pytest.skip("real browser_oxide unavailable (no network / engine)")
-        r = json.loads(make("browser").inspect_html_page("https://example.com"))
+        r = json.loads(make("browser").inspect_html_page("https://news.ycombinator.com/"))
         assert r["fetch_method"] == "browser"
-        assert "Example Domain" in r["markdown"]
+        assert "Hacker News" in r["markdown"]
 
     def test_auto_uses_static_for_static_page(self, real_browser):
         if not real_browser:
             pytest.skip("real browser_oxide unavailable (no network / engine)")
-        # example.com ships real static HTML, so auto must not waste the
+        # Hacker News ships real static HTML, so auto must not waste the
         # browser: it stays static.
-        r = json.loads(make("auto").inspect_html_page("https://example.com"))
+        r = json.loads(make("auto").inspect_html_page("https://news.ycombinator.com/"))
         assert r["fetch_method"] == "static"

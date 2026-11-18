@@ -40,7 +40,7 @@ Python decides, Rust parses. Details: [Architecture](./docs/ARCHITECTURE.md).
 ## Features
 
 - **Zero API Keys**: DuckDuckGo plus 20+ keyless domain adapters (OpenAlex, Eurostat, Bundesbank, HUDOC, …)
-- **Multi-Provider Search**: Google, Bing, Exa alongside DuckDuckGo with failover or merged results
+- **Multi-Provider Search**: Google, Bing, Exa alongside DuckDuckGo with failover or merged results, plus an optional `browser_oxide` stealth engine (`provider="browser"`)
 - **Domain Providers**: `research_by_category` classifies queries (incl. German/EU terms like *Leitzins*, *BVerfG*, *HICP*) into scholarly / legal / patent / financial / geo — keyless-first
 - **Patent Providers**: EPO OPS, KIPRIS, PatentsView, Lens (all key-gated, fail fast with the exact variable name; Lens aggregates WO/EP/DE/CN/US, trial is non-commercial/academic) + keyless Google Patents number lookup
 - **Documents**: PDF/DOCX/XLSX/PPTX plus legacy DOC/XLS/PPT/XLSB (office-oxide ≥ 0.1.16) plus TXT/MD/CSV/JSON/XML/feeds; tables render as markdown by default; `store=True, include_images=True` saves PDF figures; scholarly extraction prefers publisher JATS XML (EuropePMC, then PLOS, via the in-house `_core` JATS kernel, fused math + `\tag{}` displays) when the source is DOI-resolvable (`prefer_jats`, default on)
@@ -125,6 +125,71 @@ tools.get_llm_definitions()  # OpenAI-compatible function definitions
 tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 ```
 
+### JS rendering / stealth browser
+
+`use_smart` selects how a page is rendered. It is available on every
+page-fetching tool:
+
+| Value | Behavior |
+|---|---|
+| `auto` (default) | static Rust fetch first; stealth browser fallback when the static result is an error or non-text |
+| `browser` | stealth browser first, static fallback on failure |
+| `static` | static only; never launches the browser |
+
+The baseline is `fetch_mode` (`auto`/`browser`/`static`):
+`GOSSAMER_FETCH_MODE` env > `gossamer.json` `"fetch_mode"` >
+`ToolboxConfig(fetch_mode=...)` > `auto`. `use_smart` overrides it per call.
+The CLI also accepts `--fetch-mode` as a run-wide baseline and `--use-smart`
+per command.
+
+```bash
+gossamer inspect https://app.example.com --use-smart browser
+gossamer batch URL1 URL2 --use-smart static
+gossamer crawl https://example.com --use-smart browser --max-pages 5
+gossamer search "query" --use-smart browser   # applies to the fetch phase
+```
+
+```python
+tools.inspect_html_page(url, use_smart="browser")
+tools.batch_inspect_pages(urls, use_smart="static")
+tools.web_search("query", search_only=False, use_smart="browser")
+tools.crawl(root_url, use_smart="browser")
+```
+
+MCP exposes the same parameter: `inspect_html_page(use_smart=...)`,
+`batch_inspect_pages(..., use_smart=...)`, `crawl(..., use_smart=...)`, and
+`web_search(..., use_smart=...)`. Set the MCP process default with
+`GOSSAMER_FETCH_MODE=browser` in `mcp.json` or `gossamer.json`
+`"fetch_mode"`.
+
+`provider="browser"` is a separate stealth *search* engine (DuckDuckGo's
+HTML endpoint rendered in browser_oxide); it needs the same extra and is
+slower than DDG's plain HTTP path. It is registered last in the default
+failover order, so it only answers when the other configured engines fail
+(or when selected explicitly).
+
+Notes:
+
+- Install the optional extra with `pip install -e ".[browser]"`
+  (Windows/macOS; the upstream package has no Linux wheels). Without it,
+  `auto` never renders, `browser` falls back to static, and an explicit
+  global `browser` mode raises a clear missing-dependency error.
+- Browser batches are sequential and much slower than the static Rust batch.
+- A cached page is reused only when its render strategy satisfies the
+  request. An explicit `browser`/`static` request bypasses an incompatible
+  cache entry; `auto` accepts any. The result's `fetch_method` is `static`,
+  `browser`, or `stealth-fallback` (auto fallback).
+- Bot walls (Cloudflare challenges, CAPTCHAs) are not bypassed.
+- Browser renders run in a short-lived child process by default. A native
+  `browser_oxide` abort (e.g. the V8 deadline / 64 GiB allocation failure on
+  `example.com`) or hang becomes a normal fetch error: `browser-first` falls
+  back to static, other browser strategies return an error, and the CLI/MCP
+  server stays alive.
+  Tune the per-render timeout with `GOSSAMER_BROWSER_TIMEOUT` (default 45s).
+  `GOSSAMER_BROWSER_ISOLATION=0` restores in-process rendering for debugging
+  and also restores the host-abort risk. Details and the upstream repro:
+  [`docs/browser_oxide_crash.md`](docs/browser_oxide_crash.md).
+
 ---
 
 ## Domain Providers (`research_by_category`)
@@ -136,7 +201,7 @@ tools.execute_tool("inspect_html_page", {"url": "https://example.com"})
 | patent | EPO OPS, KIPRIS, PatentsView, Lens 🔑 + keyless Google Patents lookup |
 | financial | Yahoo, Frankfurter (FX), Eurostat, Bundesbank, BIS, CoinGecko, AlphaVantage 🔑 |
 | geo | Open-Meteo, Overpass |
-| general | DuckDuckGo (Google/Bing/Exa 🔑 opt-in) |
+| general | DuckDuckGo (Google/Bing/Exa 🔑 opt-in; `browser` stealth engine opt-in via `[browser]`) |
 
 Euro terms route automatically (`EZB`, `Leitzins`, `HICP`, `EGMR`, `BVerfG`, `DSGVO`, …). For precise OpenAlex queries, `gossamer research QUERY --provider openalex --filter 'type:article' --select 'id,title,doi' --title 'gradient index' --author 'Smith'` passes provider-native controls; those options are rejected for other providers. `--title`/`--author` map to the verified `title.search`/`raw_author_name.search` filters and combine with `--filter`. Explicit scholarly multi-search is opt-in via `gossamer research QUERY --providers openalex arxiv`; it merges by DOI/arXiv ID, preserves each source record, and never fans out by default.
 

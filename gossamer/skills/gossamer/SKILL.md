@@ -22,10 +22,10 @@ per-domain rate-limited, and token-budgeted.
   host without a repo checkout.
 - **CLI** (identical JSON, no MCP setup; 14 subcommands — the 12 MCP tools
   1:1, plus `categories` and `skills`): `search QUERY [--max-results N --max-tokens T
-  --search-only --provider P --depth D]` · `research QUERY [--category C
+  --search-only --provider P --depth D --use-smart auto|browser|static]` · `research QUERY [--category C
   --provider P --providers P… --max-results N --filter F --select F --title T --author A]` · `inspect URL [--query Q --offset N
   --max-chunks N --structured --use-smart auto|browser|static]` ·
-  `batch URL…` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --resume --try-mirrors URL…]` ·
+  `batch URL… [--use-smart auto|browser|static]` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --resume --try-mirrors URL…]` ·
   `locate-pdf DOI` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store
   --store-dir D --include-images]` · `check URL… [--mode status|content]` ·
   `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N
@@ -40,6 +40,8 @@ per-domain rate-limited, and token-budgeted.
   Claude Code / OpenCode skill directories. CLI defaults:
   `--max-results 5` (search/research), `--depth 5`, `--max-tokens 0`
   (budget default), crawl `--max-depth 3 --max-pages 15 --min-score 0.05`.
+  `--fetch-mode auto|browser|static` sets the render baseline for the whole
+  run; `--use-smart` overrides it per page-fetching command.
 
 ## Tool call signatures (defaults shown; one JSON envelope per call)
 
@@ -50,17 +52,20 @@ Required parameters have no default. `None`/empty means "not supplied";
 
 ```python
 web_search(query, search_only=False, max_results=5, depth=5,
-           max_tokens=0, provider="duckduckgo")
+           max_tokens=0, provider="duckduckgo", use_smart="auto")
 inspect_html_page(url, use_smart="auto", query=None, offset=0,
                   max_chunks=1, structured=False)
-batch_inspect_pages(urls)
+batch_inspect_pages(urls, use_smart="auto")
 crawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,
       min_score=0.05, excerpts=False, search_prior=False, seed_urls=[],
       use_smart="auto")
 ```
 
 `crawl` caps: `max_depth` hard cap 5, `max_pages` 1-50 (failed fetches do
-not count). `use_smart="browser"` needs the `gossamer-web[browser]` extra.
+not count). `use_smart` applies to every page-fetching tool (`web_search`
+when it fetches, `inspect_html_page`, `batch_inspect_pages`, `crawl`);
+`use_smart="browser"` needs the `gossamer-web[browser]` extra. Browser
+batches are sequential; `auto` is static-first with a stealth fallback.
 
 ### Documents & files
 
@@ -117,7 +122,8 @@ are valid only with `provider="openalex"` and rejected otherwise;
 - `financial` → `yahoo` (quotes) · `frankfurter` (FX) · `eurostat` /
   `bundesbank` / `bis` (EU macro) · `coingecko` (crypto)
 - `geo` → `open-meteo` / `overpass` (weather, places, coordinates)
-- anything else → general web search (`duckduckgo`)
+- anything else → general web search (`duckduckgo`; `browser` is the
+  stealth DDG HTML engine and needs the `gossamer-web[browser]` extra)
 
 `gossamer categories` prints this table live —
 prefer it over memory when unsure.
@@ -137,8 +143,16 @@ avoid immediate repeat calls and honor the provider's three-second minimum.
 ## Budgets (avoid harness timeouts)
 
 - `use_smart="browser"` (JS rendering) needs the `gossamer-web[browser]`
-  extra, Windows/macOS only — without it only static fetch runs, and even
-  with it bot-walled sites (Cloudflare challenges, CAPTCHAs) still fail.
+  extra, Windows/macOS only — without it browser-first falls back to
+  static and browser-only modes raise a clear dependency error. Even with
+  it, bot-walled sites (Cloudflare challenges, CAPTCHAs) still fail.
+  Explicit `browser`/`static` requests bypass a cached result produced by
+  the other engine; the reply's `fetch_method` reports `static`, `browser`,
+  or `stealth-fallback`. Browser batches are sequential, so keep them small.
+  Renders run in a child process (45s timeout): a native engine abort/hang
+  becomes a fetch error: browser-first falls back to static, strict browser
+  failures return an error, and the host stays alive.
+  `GOSSAMER_BROWSER_ISOLATION=0` is debug-only.
 - Keep `max_pages` ≤ 15 on crawls; set an explicit `max_tokens` budget.
 - Long extractions: `extract … --pages 10-20` instead of whole documents.
 - `check` URLs with `--mode status` before fetching the shaky ones.
@@ -163,6 +177,7 @@ wait or set that exact variable rather than looping retries.
 ## Config / cache (where stuff actually is)
 
 - Cache: `GOSSAMER_CACHE_DIR` (see `mcp.json`) > `gossamer.json:cache_dir` > `./.gossamer_cache`.
+- Render baseline: `GOSSAMER_FETCH_MODE` > `gossamer.json:fetch_mode` > `auto`; CLI `--fetch-mode` overrides it for one run, and `--use-smart`/`use_smart` overrides it per call.
 - Keys: `$GOSSAMER_KEYSTORE` > `gossamer.json:keystore` > `~/.gossamer/keys.json` (created only via `keystore --init`; absent = normal, not a broken install).
 - Check effective paths in `mcp.json` + `python -m gossamer.keystore --check`, not `~/.gossamer`.
 

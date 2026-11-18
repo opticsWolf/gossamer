@@ -6,7 +6,8 @@ entry, pi shell commands, cron jobs)::
     python -m gossamer.cli search "quantum error correction" --max-results 5
     gossamer research "ECB euro exchange rate" --provider frankfurter
     gossamer inspect https://example.com/paper --query "methods"
-    gossamer batch URL1 URL2
+    gossamer inspect https://app.example.com --use-smart browser
+    gossamer batch URL1 URL2 --use-smart browser
     gossamer extract report.pdf --pages 1-3
     gossamer check URL1 URL2 --mode content
     gossamer categories
@@ -21,7 +22,9 @@ entry, pi shell commands, cron jobs)::
 Output is the same JSON the MCP tools return (one document per call).
 Auth and options resolve exactly like the MCP server: explicit flags >
 ``GOSSAMER_*`` env > keystore file > ``gossamer.json`` > defaults.
-``--config`` / ``--keystore`` set the corresponding env vars for the run.
+``--config`` / ``--keystore`` set the corresponding env vars for the run;
+``--fetch-mode`` sets the baseline render strategy (``--use-smart`` is the
+per-call override).
 """
 
 from __future__ import annotations
@@ -35,7 +38,10 @@ from pathlib import Path
 
 
 def _build_toolbox(args) -> object:
-    from gossamer.agent_tools import ToolboxConfig, WebResearcherToolbox
+    import dataclasses
+
+    from gossamer.agent_tools import WebResearcherToolbox
+    from gossamer.runtime_config import config_from_env
 
     if getattr(args, "config", None):
         os.environ["GOSSAMER_CONFIG"] = args.config
@@ -43,10 +49,18 @@ def _build_toolbox(args) -> object:
         os.environ["GOSSAMER_KEYSTORE"] = args.keystore
     if getattr(args, "log_level", None):
         logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.WARNING))
-    kwargs = {}
+
+    # Share the MCP server's resolution order so ``GOSSAMER_*`` env and
+    # ``gossamer.json`` affect the CLI too. Explicit flags win over both.
+    config = config_from_env()
+    overrides = {}
     if getattr(args, "cache_dir", None):
-        kwargs["cache_dir"] = args.cache_dir
-    return WebResearcherToolbox(ToolboxConfig(**kwargs))
+        overrides["cache_dir"] = args.cache_dir
+    if getattr(args, "fetch_mode", None):
+        overrides["fetch_mode"] = args.fetch_mode
+    if overrides:
+        config = dataclasses.replace(config, **overrides)
+    return WebResearcherToolbox(config)
 
 
 def _common(parser: argparse.ArgumentParser) -> None:
@@ -60,6 +74,11 @@ def _common(parser: argparse.ArgumentParser) -> None:
                         help="Explicit keys.json path")
     parser.add_argument("--log-level", default=argparse.SUPPRESS,
                         help="DEBUG/INFO/WARNING/ERROR (default WARNING)")
+    parser.add_argument("--fetch-mode", default=argparse.SUPPRESS,
+                        choices=("auto", "browser", "static"),
+                        help="Baseline render strategy for page fetches: auto "
+                             "(default), browser, or static (env "
+                             "GOSSAMER_FETCH_MODE / gossamer.json fetch_mode)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,7 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Global flags work before the subcommand too (also accepted after it).
     _common(parser)
     parser.set_defaults(cache_dir=None, config=None, keystore=None,
-                         log_level=None)
+                         log_level=None, fetch_mode=None)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("search", help="Web search (+ optional fetch)")
@@ -83,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Candidate pages to fetch when not --search-only (default 5)")
     p.add_argument("--max-tokens", type=int, default=0,
                    help="Token budget for the fetched-page corpus")
+    p.add_argument("--use-smart", default="auto",
+                   choices=("auto", "browser", "static"),
+                   help="Render strategy for fetched pages (ignored with "
+                        "--search-only): auto (default; follows --fetch-mode), "
+                        "browser (stealth engine first, static fallback), or "
+                        "static (never renders)")
     _common(p)
 
     p = sub.add_parser("research", help="Domain-routed research (patents, law, finance, …)")
@@ -112,7 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("inspect", help="Fetch one page as markdown")
     p.add_argument("url", help="The URL to fetch")
     p.add_argument("--query", default=None)
-    p.add_argument("--use-smart", default="auto", choices=("auto", "browser", "static"))
+    p.add_argument("--use-smart", default="auto",
+                   choices=("auto", "browser", "static"),
+                   help="Render strategy: auto (default; follows --fetch-mode), "
+                        "browser (stealth engine first, static fallback), or "
+                        "static (never renders)")
     p.add_argument("--offset", type=int, default=0,
                    help="Skip the first N follow-up links when paging")
     p.add_argument("--max-chunks", type=int, default=1,
@@ -123,6 +152,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("batch", help="Fetch several pages at once")
     p.add_argument("urls", nargs="+", help="URLs to fetch")
+    p.add_argument("--use-smart", default="auto",
+                   choices=("auto", "browser", "static"),
+                   help="Render strategy: auto (default; follows --fetch-mode), "
+                        "browser (stealth engine first; fetched sequentially), "
+                        "or static (never renders)")
     _common(p)
 
     p = sub.add_parser("download", help="Download a remote file to a local path")
@@ -321,12 +355,17 @@ def main(argv=None) -> int:
     if args.command == "skills":
         # Skill management needs no toolbox (no cache/config side effects).
         return _run_skills(args)
-    toolbox = _build_toolbox(args)
+    try:
+        toolbox = _build_toolbox(args)
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(f"gossamer: error: {exc}", file=sys.stderr)
+        return 1
     commands = {
         "search": lambda: toolbox.web_search(
             args.query, search_only=args.search_only,
             max_results=args.max_results, depth=args.depth,
-            max_tokens=args.max_tokens, provider=args.provider),
+            max_tokens=args.max_tokens, provider=args.provider,
+            use_smart=args.use_smart),
         "research": lambda: toolbox.research_by_category(
             args.query, max_results=args.max_results,
             category=args.category, provider=args.provider,
@@ -337,7 +376,8 @@ def main(argv=None) -> int:
             args.url, use_smart=args.use_smart, query=args.query,
             offset=args.offset, max_chunks=args.max_chunks,
             structured=args.structured),
-        "batch": lambda: toolbox.batch_inspect_pages(args.urls),
+        "batch": lambda: toolbox.batch_inspect_pages(
+            args.urls, use_smart=args.use_smart),
         "download": lambda: toolbox.download_file(
             args.source, args.output_path, min_bytes=args.min_bytes,
             max_bytes=args.max_bytes, expected_format=args.expect_format,

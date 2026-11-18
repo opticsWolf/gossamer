@@ -30,6 +30,12 @@ SAMPLE_SERP = """
 """
 
 
+@pytest.fixture(autouse=True)
+def _in_process_browser(monkeypatch):
+    """These tests mock browser_oxide itself; keep rendering in-process."""
+    monkeypatch.setenv("GOSSAMER_BROWSER_ISOLATION", "0")
+
+
 @pytest.fixture()
 def provider(monkeypatch):
     """Provider whose browser returns a canned SERP."""

@@ -189,9 +189,16 @@ class TestGetDefaultProviders:
 class TestToolboxProviders:
     def test_default_provider_is_ddg(self):
         from gossamer.agent_tools import WebResearcherToolbox
+        from gossamer.search_providers import browser_oxide_available
+
         toolbox = WebResearcherToolbox()
         assert isinstance(toolbox.default_provider, DuckDuckGoProvider)
-        assert len(toolbox.providers) == 1
+        # DDG is always first; the optional stealth engine is registered
+        # last when its extra is installed, so provider="browser" works.
+        expected = ["duckduckgo"]
+        if browser_oxide_available():
+            expected.append("browser")
+        assert [p.name for p in toolbox.providers] == expected
 
     def test_custom_providers(self):
         from gossamer.agent_tools import WebResearcherToolbox

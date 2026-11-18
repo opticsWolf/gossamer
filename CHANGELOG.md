@@ -4,6 +4,37 @@ Reconstructed from git history on 2026-08-28 (prior to that, release notes
 lived in commit messages only). One line per version bump commit; tier/finding
 labels (C/S/M/P/T) reference `docs/CODE_REVIEW_2026-08-27.md`.
 
+## [Unreleased] — browser access parity
+
+- Render strategies are now exposed consistently: `use_smart` on
+  `web_search` (fetch phase), `inspect_html_page`,
+  `batch_inspect_pages`, and `crawl`; CLI `--use-smart` on the same
+  commands plus a run-wide `--fetch-mode`; MCP schemas now carry the
+  registry's per-parameter descriptions and enums.
+- `BrowserOxideSearchProvider` is registered automatically when
+  `browser_oxide` is importable, so `provider="browser"` actually selects
+  the stealth search engine. `research` now unwraps the
+  `{"results": ..., "provider_fallback": ...}` envelope instead of
+  discarding every result when a recognized provider is unregistered.
+- CLI and MCP share `runtime_config.config_from_env`; the CLI now honors
+  `GOSSAMER_*` env and `gossamer.json` toolbox options (previously it
+  silently ignored them, including `GOSSAMER_FETCH_MODE`).
+- Page-cache entries carry a `fetch_strategy` tag. Explicit `browser` or
+  `static` requests bypass an entry produced by the other engine, while
+  `auto` keeps accepting any entry; `browser-first` reuses its own static
+  fallback. Structured HTML cache keys are strategy-scoped.
+- Docs: README "JS rendering / stealth browser" section, QUICKREF/SKILL/
+  ARCHITECTURE updates, and explicit batch-browser/cache caveats.
+- Browser renders now run in a short-lived child process by default
+  (`browser_isolation.py` + `browser_worker.py`). A native `browser_oxide`
+  abort (the `example.com` V8-deadline/64 GiB failure) or hang becomes a
+  normal `BrowserRenderError`: `browser-first` falls back to static, strict
+  browser failures return an error, and the CLI/MCP server stays alive. The
+  stealth search provider uses the same worker. `GOSSAMER_BROWSER_ISOLATION=0` restores in-process rendering
+  (debug only); `GOSSAMER_BROWSER_TIMEOUT` defaults to 45s. Full evidence and
+  an upstream issue draft: `docs/browser_oxide_crash.md`. Live browser tests
+  now use Hacker News instead of the known-crashing `example.com`.
+
 ## [0.11.1] — JATS route: Tier-1 404 no longer hard-aborts (report 2026-11-09)
 
 - Tier-1 fullTextXML fetch failure (e.g. `MED/{pmid}` 404 for
