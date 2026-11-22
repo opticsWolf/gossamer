@@ -57,6 +57,39 @@ pub fn py_strip_chars<'a>(s: &'a str, chars: &[char]) -> &'a str {
     s.trim_matches(chars)
 }
 
+/// Python `str.splitlines()` boundaries, including C0/Unicode line separators.
+pub fn py_splitlines(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    while i < s.len() {
+        let b = bytes[i];
+        if b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c || (0x1c..=0x1e).contains(&b) {
+            out.push(&s[start..i]);
+            if b == b'\r' && i + 1 < s.len() && bytes[i + 1] == b'\n' {
+                i += 2;
+            } else {
+                i += 1;
+            }
+            start = i;
+            continue;
+        }
+        let c = s[i..].chars().next().unwrap_or('\0');
+        if c == '\u{85}' || c == '\u{2028}' || c == '\u{2029}' {
+            out.push(&s[start..i]);
+            i += c.len_utf8();
+            start = i;
+            continue;
+        }
+        i += c.len_utf8().max(1);
+    }
+    if start < s.len() {
+        out.push(&s[start..]);
+    }
+    out
+}
+
 /// Minimal Python `repr()` for error messages: single quotes unless the string holds a single quote
 /// but no double quote (CPython rule).
 pub fn py_repr(s: &str) -> String {
