@@ -21,7 +21,8 @@ pub struct AdapterError {
 }
 
 impl AdapterError {
-    fn new(message: impl Into<String>) -> Self {
+    /// Creates a canonical adapter error with a legacy-compatible message.
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             backtrace: Backtrace::capture(),

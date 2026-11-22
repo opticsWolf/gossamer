@@ -111,12 +111,6 @@ pub fn py_collapse_ws(s: &str) -> String {
         .join(" ")
 }
 
-/// Python `str.strip(chars)`: strip any of the given characters from
-/// both ends (e.g. `.strip(" —")` in the patent adapters).
-pub fn py_strip_chars<'a>(s: &'a str, chars: &[char]) -> &'a str {
-    s.trim_matches(chars)
-}
-
 /// Minor version of the running interpreter, recorded once by
 /// `#[pymodule]` at import. A handful of CPython error spellings
 /// changed across versions (`d[slice]`, `re.sub` and `s[str]`

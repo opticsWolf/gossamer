@@ -9,8 +9,8 @@ use serde_json::Value;
 
 pub use gossamer::adapters::common::{
     apply_limit, attr_error, attr_error_attr, is_truthy, json_type, py_str_value,
-    sequence_item_error, slice_len as slice_refs_len, slice_refs, str_subscript_error,
-    strip_tags_re, type_error_not_iterable, type_error_not_subscriptable,
+    sequence_item_error, slice_refs, str_subscript_error,
+    type_error_not_iterable, type_error_not_subscriptable,
 };
 
 pub(crate) fn subscript_keyerror(max_results: i64) -> String {

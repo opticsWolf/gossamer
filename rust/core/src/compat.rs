@@ -44,6 +44,19 @@ pub fn char_slice(s: &str, start: usize, end: usize) -> &str {
     if e < b { &s[b..b] } else { &s[b..e] }
 }
 
+/// Python whitespace collapsing using CPython's `str` whitespace set.
+pub fn py_collapse_ws(s: &str) -> String {
+    s.split(|c: char| c.is_whitespace() || c == '\u{85}' || ('\u{1C}'..='\u{1F}').contains(&c))
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+/// Python `str.strip(chars)`: strips any supplied character from both ends.
+pub fn py_strip_chars<'a>(s: &'a str, chars: &[char]) -> &'a str {
+    s.trim_matches(chars)
+}
+
 /// Minimal Python `repr()` for error messages: single quotes unless the string holds a single quote
 /// but no double quote (CPython rule).
 pub fn py_repr(s: &str) -> String {
