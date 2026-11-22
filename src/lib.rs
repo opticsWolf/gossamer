@@ -18,7 +18,6 @@ mod urls;
 mod bridge;
 mod fetch;
 mod jats;
-mod jats_mml;
 
 use pyo3::prelude::*;
 
