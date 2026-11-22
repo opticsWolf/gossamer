@@ -24,6 +24,25 @@ pub fn char_head(s: &str, n: usize) -> &str {
     }
 }
 
+/// `s[a:b]` by chars, clamped.
+pub fn char_slice(s: &str, start: usize, end: usize) -> &str {
+    let bytes: Vec<(usize, char)> = s.char_indices().collect();
+    let n = bytes.len();
+    let b = match bytes.get(start.min(n)) {
+        Some((i, _)) => *i,
+        None => s.len(),
+    };
+    let e = match bytes.get(end.min(n)) {
+        Some((i, _)) => *i,
+        None => s.len(),
+    };
+    if e < b {
+        &s[b..b]
+    } else {
+        &s[b..e]
+    }
+}
+
 /// Minimal Python `repr()` for error messages: single quotes unless the string holds a single quote
 /// but no double quote (CPython rule).
 pub fn py_repr(s: &str) -> String {
@@ -56,6 +75,12 @@ pub fn py_repr(s: &str) -> String {
     }
     out.push(close);
     out
+}
+
+/// Python `repr()` of a string list: `['a', 'b']`.
+pub fn py_list_repr(items: &[String]) -> String {
+    let inner: Vec<String> = items.iter().map(|s| py_repr(s)).collect();
+    format!("[{0}]", inner.join(", "))
 }
 
 fn is_py_printable(c: char) -> bool {

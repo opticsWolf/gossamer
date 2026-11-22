@@ -755,7 +755,6 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "tracing",
- "unic-ucd-category",
  "unicode-normalization",
  "url",
 ]
@@ -769,6 +768,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tiktoken-rs",
+ "unic-ucd-category",
  "unicode-normalization",
  "url",
 ]

@@ -56,10 +56,8 @@ shim `rust/original_entry.py`, not something to port.
   A second pass over `urls`/`dedupe`/`robots` added examples to `parse_robots`, `match_rules`, and
   `content_hash` (`M-CANONICAL-DOCS`), and made percent-escape panics include the offending bytes
   (`M-PANIC-MESSAGE`).
-- The Rust clone venv was installed without optional extras. A full `pytest` run reports 32 failures
-  and 2 collection errors from missing `documents` / `mcp` extras, unrelated to the port. Targeted
-  parity suites and the wheel rebuild pass; install `gossamer-web[documents,mcp]` before relying on
-  the full suite in this clone.
+- The Rust clone venv now has the `documents` and `mcp` extras installed. Full
+  `pytest -q -p no:cacheprovider` passes: 11391 passed / 36 skipped.
 - `audit-cargo` parses Cargo.lock in Rust; the OSV HTTP query still falls back to Python. This is
   intentional for wave 0.
 - PyO3 `check` remains faithful to the original non-Path error contract. Real archive checking is
@@ -88,13 +86,13 @@ Wave 1 continues file-by-file through `gossamer/`. The dynamic-code blocker is r
 end state: one pure Rust core crate with thin PyO3 wrappers.
 
 The pure core is established at `rust/core/` (`gossamer-web` published, `gossamer` as internal lib
-name). It now owns `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `robots`, `cacheutils`,
-`categories`, `miscutils`, `ssrf`, `tokens`, and `budget`. Legacy `src/textlinks.rs`,
+name). It now owns `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `guard`, `robots`,
+`cacheutils`, `categories`, `miscutils`, `ssrf`, `tokens`, and `budget`. Legacy `src/textlinks.rs`,
 `src/ssrf.rs`, `src/tokens.rs`, `src/budget.rs`, `src/urls.rs`, `src/dedupe.rs`, `src/robots.rs`,
-`src/cacheutils.rs`, `src/categories.rs`, and `src/miscutils.rs` are thin wrappers; `text-links-rs`
-delegates to the core scanner. `rust/core/tests/no_pyo3.rs` enforces ADR-012. The wheel rebuild and
-all Rust parity suites pass 9882 passed / 2 skipped combined. Next move another thin `_core`
-wrapper: `guard.rs`.
+`src/cacheutils.rs`, `src/categories.rs`, `src/miscutils.rs`, and `src/guard.rs` are thin wrappers;
+`text-links-rs` delegates to the core scanner. `rust/core/tests/no_pyo3.rs` enforces ADR-012. The
+wheel rebuild and full Python suite pass 11391 passed / 36 skipped. Next move another thin `_core`
+wrapper: `sections.rs`.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction

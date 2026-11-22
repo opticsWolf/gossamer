@@ -8,6 +8,7 @@ pub mod cacheutils;
 pub mod categories;
 pub mod compat;
 pub mod dedupe;
+pub mod guard;
 pub mod miscutils;
 pub mod robots;
 pub mod ssrf;

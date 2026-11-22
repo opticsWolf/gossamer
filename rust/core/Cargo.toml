@@ -17,6 +17,7 @@ regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 tiktoken-rs = "0.12"
+unic-ucd-category = "0.9"
 unicode-normalization = "0.1"
 url = "2.5"
 

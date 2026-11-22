@@ -61,14 +61,14 @@ the claims. Check them against each other at every checkpoint.
 - First file port: `gossamer/text_links.py` -> `rust/text-links-rs`, gate passed, 211/211 cases.
   Not wired into `rust/app` yet: there is no CLI command that calls `extract_links` directly.
 - ADR-012 pure core at `rust/core/`: crates.io name `gossamer-web`, internal lib name `gossamer`.
-  It now owns `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `robots`, `cacheutils`,
+  It now owns `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `guard`, `robots`, `cacheutils`,
   `categories`, `miscutils`, `ssrf`, `tokens`, and `budget`. Legacy `src/textlinks.rs`,
   `src/ssrf.rs`, `src/tokens.rs`, `src/budget.rs`, `src/urls.rs`, `src/dedupe.rs`, `src/robots.rs`,
-  `src/cacheutils.rs`, `src/categories.rs`, and `src/miscutils.rs` are thin PyO3 wrappers;
-  `text-links-rs` delegates to the core scanner.
+  `src/cacheutils.rs`, `src/categories.rs`, `src/miscutils.rs`, and `src/guard.rs` are thin PyO3
+  wrappers; `text-links-rs` delegates to the core scanner.
 - `rust/core/tests/no_pyo3.rs` enforces ADR-012: no PyO3 dependency or PyO3 types in core source.
-- Verification: core crate 36 unit tests + 2 guard tests + 18 doctests, `text-links-rs` gate
-  211/211, wheel rebuild, all `test_rust_parity_*` plus `test_s1_ssrf` 9882 passed / 2 skipped,
+- Verification: core crate 41 unit tests + 2 guard tests + 20 doctests, `text-links-rs` gate
+  211/211, wheel rebuild, full `pytest -q -p no:cacheprovider` 11391 passed / 36 skipped,
   app replay 32/32.
 
 ## Research prerequisites

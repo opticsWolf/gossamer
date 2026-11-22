@@ -92,12 +92,6 @@ fn is_py_printable(c: char) -> bool {
     !matches!(c, '\u{80}'..='\u{9f}')
 }
 
-/// Python `repr()` of a string list: `['a', 'b']` (single quotes).
-pub fn py_list_repr(items: &[String]) -> String {
-    let inner: Vec<String> = items.iter().map(|s| py_repr(s)).collect();
-    format!("[{0}]", inner.join(", "))
-}
-
 /// Python `str.splitlines()` boundaries: \n, \r, \r\n (one break),
 /// \x0b, \x0c, \x1c–\x1e, \x85, \u2028, \u2029. (Differs from Rust
 /// `.lines()` on \x0b/\x0c/\x1c–\x1e/\x85/\u2028/\u2029, which Rust
