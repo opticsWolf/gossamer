@@ -739,7 +739,6 @@ dependencies = [
 name = "gossamer-core"
 version = "0.11.1"
 dependencies = [
- "blake2",
  "gossamer-web",
  "html2md",
  "log",
@@ -765,6 +764,7 @@ dependencies = [
 name = "gossamer-web"
 version = "0.11.1"
 dependencies = [
+ "blake2",
  "regex",
  "serde_json",
  "sha2",
