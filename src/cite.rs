@@ -9,7 +9,6 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-pub use gossamer::cite::py_value_repr;
 use gossamer::cite::{
     CitationError, CitationErrorKind, Record, abstract_from_raw, apa_approx,
     citation_record_from_json as core_citation_record_from_json, mla_approx, to_bibtex, to_csl_json,

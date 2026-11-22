@@ -1,34 +1,9 @@
 //! Binding-layer adapter helpers.
 //!
 //! Parsing helpers live in the pure `gossamer::adapters::common` module (ADR-012). This file keeps
-//! the legacy `String`-error signatures, supplies the current interpreter version, and owns
-//! Python exception construction.
+//! It owns Python exception construction for legacy `String` errors.
 
 use pyo3::prelude::*;
-use serde_json::Value;
-
-pub use gossamer::adapters::common::{
-    attr_error, is_truthy, json_type, py_str_value,
-    sequence_item_error, slice_refs, str_subscript_error,
-    type_error_not_iterable, type_error_not_subscriptable,
-};
-
-pub(crate) fn subscript_keyerror(max_results: i64) -> String {
-    gossamer::adapters::common::subscript_keyerror(max_results, crate::pycompat::runtime_minor())
-}
-
-pub(crate) fn subscript_hits(
-    v: Option<&Value>,
-    max_results: i64,
-) -> Result<Vec<&Value>, String> {
-    gossamer::adapters::common::subscript_hits(v, max_results, crate::pycompat::runtime_minor())
-        .map_err(|e| e.message().to_owned())
-}
-
-pub(crate) fn strip_tags_impl(text: &Value) -> Result<String, String> {
-    gossamer::adapters::common::strip_tags_impl(text, crate::pycompat::runtime_minor())
-        .map_err(|e| e.message().to_owned())
-}
 
 pub(crate) fn to_py_err(py: Python, e: String) -> pyo3::PyErr {
     use pyo3::exceptions::{

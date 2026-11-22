@@ -5,3 +5,4 @@ pub mod finance;
 pub mod legal;
 pub mod misc;
 pub mod patents;
+pub mod scholar;

@@ -1,0 +1,2129 @@
+//! Scholarly-source adapter kernels.
+//!
+//! Pure response parsing for arXiv, PubMed, bioRxiv, chemRxiv, Semantic Scholar, OpenAlex, Crossref,
+//! and related scholarly APIs. Network access and Python exception construction stay in the binding
+//! layer. Immutable caches are performance-only (`M-AVOID-STATICS`).
+
+use serde_json::Value;
+
+use crate::adapters::common::{
+    AdapterError, attr_error, is_truthy, json_type, py_str_value, sequence_item_error, slice_refs,
+    str_subscript_error, strip_tags_impl, subscript_hits, subscript_keyerror,
+    type_error_not_iterable, type_error_not_subscriptable,
+};
+use crate::cite::py_value_repr;
+use crate::compat::{char_head, py_collapse_ws};
+
+type Result<T> = std::result::Result<T, AdapterError>;
+
+fn zenodo_names_impl(people: Option<&Value>) -> Result<String> {
+    let people = match people {
+        None => return Ok(String::new()),
+        Some(v) if !is_truthy(v) => return Ok(String::new()),
+        Some(v) => v,
+    };
+    // Iterate: lists item-wise; strings char-wise; dicts key-wise;
+    // anything else raises TypeError (not iterable).
+    if !matches!(
+        people,
+        Value::Array(_) | Value::String(_) | Value::Object(_)
+    ) {
+        return Err(AdapterError::new(type_error_not_iterable(json_type(
+            people,
+        ))));
+    }
+    // (rendered_text, original_type) pairs: only originally-string
+    // values survive `", ".join`; anything else raises TypeError.
+    let mut out: Vec<(String, &'static str)> = Vec::new();
+    if matches!(people, Value::Array(_)) {
+        let items: Vec<&Value> = match people {
+            Value::Array(a) => a.iter().collect(),
+            _ => Vec::new(),
+        };
+        for a in items {
+            match a {
+                Value::Object(m) => {
+                    // `a.get("name") or person_or_org-name or ""`.
+                    let direct = m.get("name").filter(|v| is_truthy(v));
+                    let via_poo = || -> Result<Option<(String, &'static str)>> {
+                        let poo = match m.get("person_or_org") {
+                            None => return Ok(None),
+                            Some(v) if !is_truthy(v) => return Ok(None),
+                            Some(Value::Object(pm)) => pm,
+                            Some(other) => {
+                                return Err(AdapterError::new(attr_error(json_type(other))));
+                            }
+                        };
+                        Ok(match poo.get("name") {
+                            None => None,
+                            Some(v) if !is_truthy(v) => None,
+                            Some(Value::String(s)) => Some((s.clone(), "str")),
+                            Some(v) => Some((py_value_repr(v), json_type(v))),
+                        })
+                    };
+                    let chosen: Option<(String, &'static str)> = match direct {
+                        Some(Value::String(s)) => Some((s.clone(), "str")),
+                        Some(v) => Some((py_value_repr(v), json_type(v))),
+                        None => via_poo()?,
+                    };
+                    if let Some((text, t)) = chosen
+                        && !text.is_empty() {
+                            out.push((text, t));
+                        }
+                }
+                _ => {
+                    // Falsy items skipped (`elif a:`); truthy rendered
+                    // via `str(a)` (always a string afterwards).
+                    if is_truthy(a) {
+                        out.push((py_value_repr(a), "str"));
+                    }
+                }
+            }
+        }
+    } else if let Value::String(st) = people {
+        for c in st.chars() {
+            out.push((c.to_string(), "str"));
+        }
+    } else if let Value::Object(m) = people {
+        for k in m.keys() {
+            // `elif "":` skips empty keys; every other key is truthy.
+            if !k.is_empty() {
+                out.push((k.clone(), "str"));
+            }
+        }
+    }
+    // `", ".join`: first non-string element raises with its index.
+    let mut rendered: Vec<String> = Vec::with_capacity(out.len());
+    for (i, (text, t)) in out.iter().enumerate() {
+        if *t != "str" {
+            return Err(AdapterError::new(sequence_item_error(i, t)));
+        }
+        rendered.push(text.clone());
+    }
+    Ok(rendered.join(", "))
+}
+
+fn zenodo_hit_impl(h: &Value, fallback_id: &str, runtime_minor: Option<u32>) -> Result<Value> {
+    let hm = match h {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(h)))),
+    };
+    // `h.get("metadata", {}) or {}`: missing/falsy → None (= {}).
+    // Truthy non-dicts raise on their first `.get` (resource_type read).
+    let m: Option<&serde_json::Map<String, Value>> = match hm.get("metadata") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(mm)) => Some(mm),
+        Some(other) => return Err(AdapterError::new(attr_error(json_type(other)))),
+    };
+    let links: Option<&serde_json::Map<String, Value>> = match hm.get("links") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(mm)) => Some(mm),
+        Some(other) => return Err(AdapterError::new(attr_error(json_type(other)))),
+    };
+    let rec_id = match hm.get("id") {
+        None => fallback_id.to_string(),
+        Some(v) => py_value_repr(v),
+    };
+    // `m.get("resource_type", {})`, then dict-navigate or `.get("id")`.
+    let rtype: Option<&Value> = match m {
+        None => None,
+        Some(mm) => match mm.get("resource_type") {
+            None => None,
+            Some(v) => Some(v),
+        },
+    };
+    let rtype_s: Option<Value> = match rtype {
+        None => None,
+        // Dicts navigate: dict `title` -> its `en` (missing -> "");
+        // missing/non-dict `title` -> `id` (missing -> "").
+        // Non-dicts are kept as-is for the `or ""` below.
+        Some(Value::Object(rm)) => match rm.get("title") {
+            Some(Value::Object(tm)) => tm.get("en").cloned(),
+            _ => rm.get("id").cloned(),
+        },
+        Some(v) => Some(v.clone()),
+    };
+    let rtype_out = match rtype_s {
+        None => Value::String(String::new()),
+        Some(v) if !is_truthy(&v) => Value::String(String::new()),
+        Some(v) => v,
+    };
+    // Hmm: `rtype or ""` applies to the NAVIGATED value; falsy → "".
+    // (Unreachable for missing (None→""), kept for symmetry.)
+    let title = match m {
+        None => Value::String(String::new()),
+        Some(mm) => mm
+            .get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    let url = match links {
+        Some(lm) => match lm.get("html") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => match lm.get("self_html") {
+                Some(v) if is_truthy(v) => v.clone(),
+                _ => {
+                    if rec_id.is_empty() {
+                        Value::String(String::new())
+                    } else {
+                        Value::String(format!("https://zenodo.org/records/{rec_id}"))
+                    }
+                }
+            },
+        },
+        None => {
+            if rec_id.is_empty() {
+                Value::String(String::new())
+            } else {
+                Value::String(format!("https://zenodo.org/records/{rec_id}"))
+            }
+        }
+    };
+    let published = match m {
+        None => Value::String(String::new()),
+        Some(mm) => mm
+            .get("publication_date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    let creators = match m {
+        None => None,
+        Some(mm) => mm
+            .get("creators")
+            .filter(|v| is_truthy(v))
+            .or_else(|| mm.get("contributors").filter(|v| is_truthy(v)))
+            .or_else(|| mm.get("authors").filter(|v| is_truthy(v))),
+    };
+    let authors = zenodo_names_impl(creators)?;
+    let description = match m {
+        None => Value::String(String::new()),
+        Some(mm) => mm
+            .get("description")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    };
+    let stripped = strip_tags_impl(&description, runtime_minor)?;
+    let snippet = char_head(&stripped, 240).to_string();
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("zenodo".to_string()));
+    rec.insert("id".to_string(), Value::String(rec_id));
+    rec.insert("title".to_string(), title);
+    rec.insert("url".to_string(), url);
+    rec.insert("published".to_string(), published);
+    rec.insert("authors".to_string(), Value::String(authors));
+    rec.insert("snippet".to_string(), Value::String(snippet));
+    let mut inner = serde_json::Map::new();
+    inner.insert("resource_type".to_string(), rtype_out);
+    let mut fields = serde_json::Map::new();
+    fields.insert("zenodo".to_string(), Value::Object(inner));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn zenodo_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `resp.json().get("hits", {})` — missing → {}; non-dict body already
+    // raised. Present (even falsy) kept; `.get("hits", [])` needs a dict.
+    let outer = match obj.get("hits") {
+        None => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+    let inner = match outer {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(outer)))),
+    };
+    let hits: Vec<&Value> = match inner.get("hits") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for h in hits {
+        out.push(zenodo_hit_impl(h, "", runtime_minor)?);
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn zenodo_parse_fetch_impl(
+    response_json: &str,
+    record_id_s: &str,
+    runtime_minor: Option<u32>,
+) -> Result<Value> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    zenodo_hit_impl(&body, record_id_s, runtime_minor)
+}
+
+pub(crate) fn biorxiv_paper_impl(
+    p: &Value,
+    server: &str,
+    runtime_minor: Option<u32>,
+) -> Result<Value> {
+    let m = match p {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(p)))),
+    };
+    let doi = m
+        .get("doi")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let url = if is_truthy(&doi) {
+        Value::String(format!(
+            "https://www.biorxiv.org/content/{0}",
+            py_value_repr(&doi)
+        ))
+    } else {
+        Value::String(String::new())
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("biorxiv".to_string()));
+    rec.insert("id".to_string(), doi);
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        m.get("date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    let abstract_raw = m
+        .get("abstract")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let stripped = strip_tags_impl(&abstract_raw, runtime_minor)?;
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(stripped.as_str(), 240).to_string()),
+    );
+    rec.insert(
+        "authors".to_string(),
+        m.get("authors")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    // NB: flat `fields`, with the instance's server threaded through.
+    let mut fields = serde_json::Map::new();
+    fields.insert("server".to_string(), Value::String(server.to_string()));
+    for key in ["category", "version", "type", "license"] {
+        fields.insert(
+            key.to_string(),
+            m.get(key).cloned().unwrap_or(Value::String(String::new())),
+        );
+    }
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn biorxiv_parse_collection_impl(
+    response_json: &str,
+    max_results: i64,
+    server: &str,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `resp.json().get("collection", [])`, then `papers[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("collection") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for p in hits {
+        out.push(biorxiv_paper_impl(p, server, runtime_minor)?);
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn biorxiv_parse_fetch_impl(
+    response_json: &str,
+    server: &str,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `papers = ...get("collection", [])`; `if not papers: return []`.
+    let papers = match obj.get("collection") {
+        None => return Ok(Vec::new()),
+        Some(v) if !is_truthy(v) => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+    // `papers[0]`: list (non-empty — falsy caught above), str (char),
+    // dict (KeyError 0), anything else TypeError.
+    let first = match papers {
+        Value::Array(a) => match a.first() {
+            Some(v) => v,
+            None => return Ok(Vec::new()),
+        },
+        Value::String(s) => match s.chars().next() {
+            Some(_) => return Err(AdapterError::new(attr_error("str"))),
+            None => return Ok(Vec::new()),
+        },
+        Value::Object(_) => return Err(AdapterError::new("KeyError: 0".to_string())),
+        other => {
+            return Err(AdapterError::new(type_error_not_subscriptable(json_type(
+                other,
+            ))));
+        }
+    };
+    Ok(vec![biorxiv_paper_impl(first, server, runtime_minor)?])
+}
+
+/// One `", ".join` element: whether it survives an `if n` truthiness
+/// filter, its rendered text, and its original type for the join
+/// `TypeError` (which reports the *surviving* index).
+/// Dicts read raw `name` (missing → ""); anything else renders via
+/// `str()` — always a string, whose truthiness is the text's.
+pub(crate) fn chemrxiv_part(v: &Value) -> (bool, String, &'static str) {
+    match v {
+        Value::Object(m) => match m.get("name") {
+            None => (false, String::new(), "str"),
+            Some(n) => (is_truthy(n), py_value_repr(n), json_type(n)),
+        },
+        _ => {
+            let s = py_value_repr(v);
+            (!s.is_empty(), s, "str")
+        }
+    }
+}
+
+pub(crate) fn chemrxiv_join(
+    parts: Vec<(bool, String, &'static str)>,
+    filter: bool,
+) -> Result<String> {
+    let kept: Vec<(String, &'static str)> = parts
+        .into_iter()
+        .filter(|(keep, _, _)| !filter || *keep)
+        .map(|(_, text, t)| (text, t))
+        .collect();
+    let mut out: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(AdapterError::new(sequence_item_error(i, t)));
+        }
+        out.push(text.clone());
+    }
+    Ok(out.join(", "))
+}
+
+/// `", ".join(...)` over authors (truthiness-filtered) or topics
+/// (unfiltered) list elements: lists item-wise, dicts key-wise
+/// (keys render as themselves), strings char-wise, anything else
+/// raises TypeError (not iterable).
+fn chemrxiv_names_impl(items: &Value, filter: bool) -> Result<String> {
+    match items {
+        Value::Array(a) => chemrxiv_join(a.iter().map(chemrxiv_part).collect(), filter),
+        Value::Object(m) => chemrxiv_join(
+            m.keys()
+                .map(|k| {
+                    let s = k.clone();
+                    (!s.is_empty(), s, "str")
+                })
+                .collect(),
+            filter,
+        ),
+        Value::String(s) => chemrxiv_join(
+            s.chars()
+                .map(|c| {
+                    let t = c.to_string();
+                    (true, t, "str")
+                })
+                .collect(),
+            filter,
+        ),
+        other => Err(AdapterError::new(type_error_not_iterable(json_type(other)))),
+    }
+}
+
+fn chemrxiv_item_impl(it: &Value, runtime_minor: Option<u32>) -> Result<Value> {
+    let m = match it {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(it)))),
+    };
+    // `authors = it.get("authors", [])`: missing → []; lists render
+    // per item (dicts read `name`); anything else — even a dict or a
+    // falsy value — renders whole as one `str()`.
+    let authors = match m.get("authors") {
+        None => String::new(),
+        Some(Value::Array(a)) => chemrxiv_join(a.iter().map(chemrxiv_part).collect(), true)?,
+        Some(v) => py_value_repr(v),
+    };
+    // `it.get("url", f"...{it.get('id', '')}")`.
+    let url = match m.get("url") {
+        Some(v) => v.clone(),
+        None => Value::String(format!(
+            "https://chemrxiv.org/engage/chemrxiv/public-article-details/{0}",
+            py_value_repr(m.get("id").unwrap_or(&Value::String(String::new())))
+        )),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("chemrxiv".to_string()));
+    rec.insert(
+        "id".to_string(),
+        Value::String(py_value_repr(
+            m.get("id").unwrap_or(&Value::String(String::new())),
+        )),
+    );
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("url".to_string(), url);
+    rec.insert(
+        "published".to_string(),
+        m.get("published_on")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    let abstract_raw = m
+        .get("abstract")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    let stripped = strip_tags_impl(&abstract_raw, runtime_minor)?;
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(stripped.as_str(), 240).to_string()),
+    );
+    rec.insert("authors".to_string(), Value::String(authors));
+    // `"topics": ", ".join(... for t in it.get("topics", []) or [])`.
+    let topics = match m.get("topics") {
+        None => String::new(),
+        Some(v) if !is_truthy(v) => String::new(),
+        Some(v) => chemrxiv_names_impl(v, false)?,
+    };
+    // NB: flat `fields` (no adapter-namespaced sub-object here).
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "doi".to_string(),
+        m.get("doi")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    fields.insert("topics".to_string(), Value::String(topics));
+    rec.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn chemrxiv_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    // `body.get("data", []) if isinstance(body, dict) else body`,
+    // then `items[:max_results]`.
+    let hits: Vec<&Value> = match &body {
+        Value::Object(m) => match m.get("data") {
+            None => Vec::new(),
+            Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+        },
+        other => subscript_hits(Some(other), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for it in hits {
+        out.push(chemrxiv_item_impl(it, runtime_minor)?);
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn chemrxiv_parse_fetch_impl(
+    response_json: &str,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    // `item = body.get("data", body) if isinstance(body, dict) else
+    // body`; falsy → []; lists index [0]; anything else rows as-is.
+    let item: &Value = match &body {
+        Value::Object(m) => m.get("data").unwrap_or(&body),
+        _ => &body,
+    };
+    if !is_truthy(item) {
+        return Ok(Vec::new());
+    }
+    match item {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(vec![chemrxiv_item_impl(v, runtime_minor)?]),
+            None => Ok(Vec::new()),
+        },
+        _ => Ok(vec![chemrxiv_item_impl(item, runtime_minor)?]),
+    }
+}
+
+/// `a.get("author", {}).get("display_name", "")` for one authorship:
+/// `a` must be a dict; `author` missing → ""; present values (even
+/// falsy) read as-is; non-dicts raise on the inner `.get`.
+fn openalex_author_name(a: &Value) -> Result<Value> {
+    let m = match a {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(a)))),
+    };
+    Ok(match m.get("author") {
+        None => Value::String(String::new()),
+        Some(Value::Object(am)) => am
+            .get("display_name")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+        Some(other) => return Err(AdapterError::new(attr_error(json_type(other)))),
+    })
+}
+
+fn openalex_work_impl(w: &Value, full: bool) -> Result<Value> {
+    let m = match w {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(w)))),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("openalex".to_string()));
+    rec.insert(
+        "id".to_string(),
+        m.get("id").cloned().unwrap_or(Value::String(String::new())),
+    );
+    // `w.get("title") or ""`: falsy titles fold to "".
+    rec.insert(
+        "title".to_string(),
+        match m.get("title") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => Value::String(String::new()),
+        },
+    );
+    // `w.get("doi") or w.get("id")`: no defaults — both may be None.
+    rec.insert(
+        "url".to_string(),
+        match m.get("doi") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => m.get("id").cloned().unwrap_or(Value::Null),
+        },
+    );
+    rec.insert(
+        "doi".to_string(),
+        m.get("doi")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "published".to_string(),
+        m.get("publication_date")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    if full {
+        // Authors render with the *filtered* join index on TypeError.
+        // `w.get("authorships", [])`: missing → []; lists item-wise;
+        // dicts/strings iterate (keys/chars) and fail per item;
+        // anything else raises TypeError.
+        let raw_authors: Vec<Value> = match m.get("authorships") {
+            None => Vec::new(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .map(openalex_author_name)
+                .collect::<Result<Vec<Value>>>()?,
+            Some(Value::String(s)) => s
+                .chars()
+                .map(|c| openalex_author_name(&Value::String(c.to_string())))
+                .collect::<Result<Vec<Value>>>()?,
+            Some(Value::Object(mm)) => mm
+                .keys()
+                .map(|k| openalex_author_name(&Value::String(k.clone())))
+                .collect::<Result<Vec<Value>>>()?,
+            Some(other) => {
+                return Err(AdapterError::new(type_error_not_iterable(json_type(other))));
+            }
+        };
+        let mut kept: Vec<(String, &'static str)> = Vec::new();
+        for name in raw_authors.iter() {
+            if !is_truthy(name) {
+                continue;
+            }
+            kept.push((py_value_repr(name), json_type(name)));
+        }
+        let mut authors: Vec<String> = Vec::with_capacity(kept.len());
+        for (i, (text, t)) in kept.iter().enumerate() {
+            if *t != "str" {
+                return Err(AdapterError::new(sequence_item_error(i, t)));
+            }
+            authors.push(text.clone());
+        }
+        let joined = authors.join(", ");
+        rec.insert("authors".to_string(), Value::String(joined.clone()));
+        rec.insert(
+            "citations".to_string(),
+            m.get("cited_by_count").cloned().unwrap_or(Value::from(0)),
+        );
+        rec.insert("snippet".to_string(), Value::String(joined));
+    }
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn openalex_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `resp.json().get("results", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for w in hits {
+        out.push(openalex_work_impl(w, true)?);
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn openalex_parse_fetch_impl(response_json: &str) -> Result<Value> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    openalex_work_impl(&body, false)
+}
+
+fn semanticscholar_text(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn semanticscholar_paper_impl(paper: &Value) -> Result<Value> {
+    let map = match paper {
+        Value::Object(map) => map,
+        _ => return Err(AdapterError::new(attr_error(json_type(paper)))),
+    };
+    let paper_id = semanticscholar_text(map.get("paperId"));
+    let title = semanticscholar_text(map.get("title"));
+    let doi = match map.get("externalIds") {
+        Some(Value::Object(ids)) => semanticscholar_text(ids.get("DOI")),
+        _ => String::new(),
+    };
+    let publication_date = semanticscholar_text(map.get("publicationDate"));
+    let year = map.get("year").cloned().unwrap_or(Value::Null);
+    let published = if publication_date.is_empty() {
+        semanticscholar_text(map.get("year"))
+    } else {
+        publication_date
+    };
+    let authors = match map.get("authors") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|author| match author {
+                Value::Object(author) => author.get("name"),
+                _ => None,
+            })
+            .map(|name| semanticscholar_text(Some(name)))
+            .filter(|name| !name.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => String::new(),
+    };
+    let abstract_text = semanticscholar_text(map.get("abstract"));
+    let url = {
+        let found = semanticscholar_text(map.get("url"));
+        if !found.is_empty() {
+            found
+        } else if !paper_id.is_empty() {
+            format!("https://www.semanticscholar.org/paper/{paper_id}")
+        } else {
+            String::new()
+        }
+    };
+    let mut record = serde_json::Map::new();
+    record.insert(
+        "source".to_string(),
+        Value::String("semanticscholar".to_string()),
+    );
+    record.insert("id".to_string(), Value::String(paper_id));
+    record.insert("title".to_string(), Value::String(title));
+    record.insert("url".to_string(), Value::String(url));
+    record.insert("doi".to_string(), Value::String(doi));
+    record.insert("published".to_string(), Value::String(published));
+    record.insert("authors".to_string(), Value::String(authors));
+    record.insert(
+        "citations".to_string(),
+        map.get("citationCount").cloned().unwrap_or(Value::from(0)),
+    );
+    record.insert(
+        "snippet".to_string(),
+        Value::String(char_head(&abstract_text, 240).to_string()),
+    );
+
+    let mut fields = serde_json::Map::new();
+    fields.insert("year".to_string(), year);
+    fields.insert(
+        "venue".to_string(),
+        map.get("venue").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "reference_count".to_string(),
+        map.get("referenceCount").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "open_access_pdf".to_string(),
+        map.get("openAccessPdf").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "fields_of_study".to_string(),
+        map.get("fieldsOfStudy").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "publication_types".to_string(),
+        map.get("publicationTypes").cloned().unwrap_or(Value::Null),
+    );
+    let mut namespaced = serde_json::Map::new();
+    namespaced.insert("semanticscholar".to_string(), Value::Object(fields));
+    record.insert("fields".to_string(), Value::Object(namespaced));
+    Ok(Value::Object(record))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn semanticscholar_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let map = match &body {
+        Value::Object(map) => map,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    let papers: Vec<&Value> = match map.get("data") {
+        None => Vec::new(),
+        Some(value) => subscript_hits(Some(value), max_results, runtime_minor)?,
+    };
+    papers.into_iter().map(semanticscholar_paper_impl).collect()
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn semanticscholar_parse_fetch_impl(response_json: &str) -> Result<Value> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    semanticscholar_paper_impl(&body)
+}
+
+// ── HuggingFace Hub (models + papers, read-only) ───────────────────────
+//
+// Record shape follows the scholarly adapters (`source/id/title/url/doi/
+// published/authors/citations/snippet/fields`). `citations` carries the
+// Hub popularity proxy (`downloads` for models, `upvotes` for papers);
+// model→paper linkage rides on `arxiv_ids` (informational only — models
+// never merge; see `research_merge._identifier_key`, which keys merges on
+// record-level `arxiv_id`, set only for papers).
+
+fn huggingface_text(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// `tags` entries after `prefix` (`arxiv:`, `dataset:`, `license:`);
+/// missing/non-list tags fold to empty.
+fn huggingface_tag_values(map: &serde_json::Map<String, Value>, prefix: &str) -> Vec<String> {
+    match map.get("tags") {
+        Some(Value::Array(tags)) => tags
+            .iter()
+            .filter_map(|tag| match tag {
+                Value::String(text) => text.strip_prefix(prefix).map(str::to_string),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn huggingface_fields(map: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "likes".to_string(),
+        map.get("likes").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "downloads".to_string(),
+        map.get("downloads").cloned().unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "pipeline_tag".to_string(),
+        Value::String(huggingface_text(map.get("pipeline_tag"))),
+    );
+    fields.insert(
+        "library_name".to_string(),
+        Value::String(huggingface_text(map.get("library_name"))),
+    );
+    fields.insert(
+        "tags".to_string(),
+        map.get("tags")
+            .filter(|tags| tags.is_array())
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new())),
+    );
+    for key in ["private", "gated", "disabled"] {
+        fields.insert(
+            key.to_string(),
+            map.get(key).cloned().unwrap_or(Value::Null),
+        );
+    }
+    fields.insert(
+        "sha".to_string(),
+        Value::String(huggingface_text(map.get("sha"))),
+    );
+    fields.insert(
+        "arxiv_ids".to_string(),
+        Value::Array(
+            huggingface_tag_values(map, "arxiv:")
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "datasets".to_string(),
+        Value::Array(
+            huggingface_tag_values(map, "dataset:")
+                .into_iter()
+                .map(Value::String)
+                .collect(),
+        ),
+    );
+    fields.insert(
+        "license".to_string(),
+        Value::String(
+            huggingface_tag_values(map, "license:")
+                .into_iter()
+                .next()
+                .unwrap_or_default(),
+        ),
+    );
+    fields
+}
+
+fn huggingface_model_impl(item: &Value) -> Result<Value> {
+    let map = match item {
+        Value::Object(map) => map,
+        _ => return Err(AdapterError::new(attr_error(json_type(item)))),
+    };
+    let model_id = huggingface_text(map.get("id"));
+    let url = if model_id.is_empty() {
+        String::new()
+    } else {
+        format!("https://huggingface.co/{model_id}")
+    };
+    let pipeline_tag = huggingface_text(map.get("pipeline_tag"));
+    let library_name = huggingface_text(map.get("library_name"));
+    let mut snippet_parts = Vec::new();
+    if !pipeline_tag.is_empty() {
+        snippet_parts.push(pipeline_tag.clone());
+    }
+    if !library_name.is_empty() {
+        snippet_parts.push(library_name.clone());
+    }
+    if let Some(Value::Number(likes)) = map.get("likes") {
+        snippet_parts.push(format!("likes {likes}"));
+    }
+    if let Some(Value::Number(downloads)) = map.get("downloads") {
+        snippet_parts.push(format!("downloads {downloads}"));
+    }
+    let namespaced = huggingface_fields(map);
+    let mut record = serde_json::Map::new();
+    record.insert(
+        "source".to_string(),
+        Value::String("huggingface".to_string()),
+    );
+    record.insert("id".to_string(), Value::String(model_id));
+    record.insert(
+        "title".to_string(),
+        Value::String(huggingface_text(map.get("id"))),
+    );
+    record.insert("url".to_string(), Value::String(url));
+    record.insert("doi".to_string(), Value::String(String::new()));
+    record.insert(
+        "published".to_string(),
+        Value::String(huggingface_text(map.get("lastModified"))),
+    );
+    record.insert(
+        "authors".to_string(),
+        Value::String(huggingface_text(map.get("author"))),
+    );
+    record.insert(
+        "citations".to_string(),
+        map.get("downloads")
+            .filter(|downloads| downloads.is_number())
+            .cloned()
+            .unwrap_or(Value::from(0)),
+    );
+    record.insert(
+        "snippet".to_string(),
+        Value::String(snippet_parts.join("; ")),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("huggingface".to_string(), Value::Object(namespaced));
+    record.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(record))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn huggingface_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let items = subscript_hits(Some(&body), max_results, runtime_minor)?;
+    items.into_iter().map(huggingface_model_impl).collect()
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn huggingface_parse_fetch_impl(response_json: &str) -> Result<Value> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let mut record = match huggingface_model_impl(&body)? {
+        Value::Object(record) => record,
+        _ => {
+            return Err(AdapterError::new(
+                "ValueError: huggingface model record is not an object".to_string(),
+            ));
+        }
+    };
+    let map = match &body {
+        Value::Object(map) => map,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    if let Some(Value::Object(namespaced)) = record
+        .get_mut("fields")
+        .and_then(|fields| fields.get_mut("huggingface"))
+    {
+        namespaced.insert(
+            "card_data".to_string(),
+            map.get("cardData").cloned().unwrap_or(Value::Null),
+        );
+        namespaced.insert(
+            "siblings".to_string(),
+            match map.get("siblings") {
+                Some(Value::Array(siblings)) => Value::Array(
+                    siblings
+                        .iter()
+                        .filter_map(|sibling| match sibling {
+                            Value::Object(entry) => match entry.get("rfilename") {
+                                Some(Value::String(name)) => Some(Value::String(name.clone())),
+                                _ => None,
+                            },
+                            _ => None,
+                        })
+                        .collect(),
+                ),
+                _ => Value::Array(Vec::new()),
+            },
+        );
+    }
+    Ok(Value::Object(record))
+}
+
+fn huggingface_paper_impl(item: &Value) -> Result<Value> {
+    let map = match item {
+        Value::Object(map) => map,
+        _ => return Err(AdapterError::new(attr_error(json_type(item)))),
+    };
+    // Daily Papers wraps the record in a `paper` envelope; a bare paper
+    // object (or a non-object envelope) falls back to the item itself.
+    let paper = match map.get("paper") {
+        Some(Value::Object(paper)) => paper,
+        _ => map,
+    };
+    let arxiv_id = huggingface_text(paper.get("id"));
+    let url = if arxiv_id.is_empty() {
+        String::new()
+    } else {
+        format!("https://huggingface.co/papers/{arxiv_id}")
+    };
+    let authors = match paper.get("authors") {
+        Some(Value::Array(authors)) => authors
+            .iter()
+            .filter_map(|author| match author {
+                Value::Object(author) => author.get("name"),
+                _ => None,
+            })
+            .map(|name| huggingface_text(Some(name)))
+            .filter(|name| !name.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => String::new(),
+    };
+    let summary = huggingface_text(paper.get("summary"));
+    let published = {
+        let dated = huggingface_text(paper.get("publishedAt"));
+        if !dated.is_empty() {
+            dated
+        } else {
+            huggingface_text(map.get("publishedAt"))
+        }
+    };
+    let mut namespaced = serde_json::Map::new();
+    namespaced.insert(
+        "upvotes".to_string(),
+        paper
+            .get("upvotes")
+            .filter(|upvotes| upvotes.is_number())
+            .cloned()
+            .unwrap_or(Value::from(0)),
+    );
+    let mut record = serde_json::Map::new();
+    record.insert(
+        "source".to_string(),
+        Value::String("huggingface-papers".to_string()),
+    );
+    record.insert("id".to_string(), Value::String(arxiv_id.clone()));
+    record.insert("arxiv_id".to_string(), Value::String(arxiv_id));
+    record.insert(
+        "title".to_string(),
+        Value::String(huggingface_text(paper.get("title"))),
+    );
+    record.insert("url".to_string(), Value::String(url));
+    record.insert("doi".to_string(), Value::String(String::new()));
+    record.insert("published".to_string(), Value::String(published));
+    record.insert("authors".to_string(), Value::String(authors));
+    record.insert("citations".to_string(), Value::from(0));
+    record.insert(
+        "snippet".to_string(),
+        Value::String(char_head(&summary, 240).to_string()),
+    );
+    let mut fields = serde_json::Map::new();
+    fields.insert("huggingface-papers".to_string(), Value::Object(namespaced));
+    record.insert("fields".to_string(), Value::Object(fields));
+    Ok(Value::Object(record))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn huggingface_papers_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let items = subscript_hits(Some(&body), max_results, runtime_minor)?;
+    items.into_iter().map(huggingface_paper_impl).collect()
+}
+
+/// `(w.get("title") or [""])[0]`: falsy titles fold to `[""]`;
+/// truthy lists index (empty impossible — falsy caught); truthy
+/// strings yield their first char; anything else raises TypeError.
+fn crossref_title(title: Option<&Value>) -> Result<Value> {
+    let t = match title {
+        None => return Ok(Value::String(String::new())),
+        Some(v) if !is_truthy(v) => return Ok(Value::String(String::new())),
+        Some(v) => v,
+    };
+    match t {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(v.clone()),
+            None => Ok(Value::String(String::new())),
+        },
+        Value::String(s) => Ok(Value::String(
+            s.chars().next().map(|c| c.to_string()).unwrap_or_default(),
+        )),
+        other => Err(AdapterError::new(type_error_not_subscriptable(json_type(
+            other,
+        )))),
+    }
+}
+
+/// `(w.get("published", {}) or {}).get("date-parts", [[""]])[0]`:
+/// missing/falsy published folds to `{}`; truthy non-dicts raise on
+/// `.get`; the date-parts default applies only when missing.
+fn crossref_published(published: Option<&Value>) -> Result<Value> {
+    let m = match published {
+        None => return Ok(Value::Array(vec![Value::String(String::new())])),
+        Some(v) if !is_truthy(v) => return Ok(Value::Array(vec![Value::String(String::new())])),
+        Some(Value::Object(m)) => m,
+        Some(other) => return Err(AdapterError::new(attr_error(json_type(other)))),
+    };
+    let parts = match m.get("date-parts") {
+        None => Value::Array(vec![Value::Array(vec![Value::String(String::new())])]),
+        Some(v) => v.clone(),
+    };
+    // `[0]`: lists (empty → IndexError), strings (chars; empty →
+    // IndexError), dicts (KeyError 0), anything else TypeError.
+    match &parts {
+        Value::Array(a) => match a.first() {
+            Some(v) => Ok(v.clone()),
+            None => Err(AdapterError::new(
+                "IndexError: list index out of range".to_string(),
+            )),
+        },
+        Value::String(s) => match s.chars().next() {
+            Some(c) => Ok(Value::String(c.to_string())),
+            None => Err(AdapterError::new(
+                "IndexError: string index out of range".to_string(),
+            )),
+        },
+        Value::Object(_) => Err(AdapterError::new("KeyError: 0".to_string())),
+        other => Err(AdapterError::new(type_error_not_subscriptable(json_type(
+            other,
+        )))),
+    }
+}
+
+/// `[a.get("family", a.get("name", "")) for a in ...]`: `a` must be a
+/// dict; the `name` default applies only when `family` is missing.
+fn crossref_author_name(a: &Value) -> Result<Value> {
+    let m = match a {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(a)))),
+    };
+    Ok(match m.get("family") {
+        Some(v) => v.clone(),
+        None => m
+            .get("name")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    })
+}
+
+fn crossref_work_impl(w: &Value, fallback_id: &Value, runtime_minor: Option<u32>) -> Result<Value> {
+    let m = match w {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(w)))),
+    };
+    // Evaluation order matches the original: title, then the author
+    // list, then published, then the abstract — an early field's
+    // error precedes any later field's.
+    let title = crossref_title(m.get("title"))?;
+    // `w.get("author", [])`: missing → []; present values iterate
+    // (lists item-wise, dicts key-wise, strings char-wise — failing
+    // per item); anything else raises TypeError.
+    let author_items: Vec<Value> = match m.get("author") {
+        None => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+        Some(Value::Object(mm)) => mm.keys().map(|k| Value::String(k.clone())).collect(),
+        Some(other) => return Err(AdapterError::new(type_error_not_iterable(json_type(other)))),
+    };
+    let mut raw_names: Vec<Value> = Vec::with_capacity(author_items.len());
+    for a in author_items.iter() {
+        raw_names.push(crossref_author_name(a)?);
+    }
+    // The author *join* runs after `published` in the original dict
+    // literal, so it is deferred until then.
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("crossref".to_string()));
+    rec.insert(
+        "id".to_string(),
+        m.get("DOI").cloned().unwrap_or(fallback_id.clone()),
+    );
+    rec.insert("title".to_string(), title);
+    // `w.get("URL")`: no default — missing reads None.
+    rec.insert(
+        "url".to_string(),
+        m.get("URL").cloned().unwrap_or(Value::Null),
+    );
+    rec.insert(
+        "doi".to_string(),
+        m.get("DOI")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "published".to_string(),
+        crossref_published(m.get("published"))?,
+    );
+    // `", ".join(a for a in authors if a)`: falsy dropped, then
+    // strict (runs after `published` in the dict literal).
+    let mut kept: Vec<(String, &'static str)> = Vec::new();
+    for name in raw_names.iter() {
+        if !is_truthy(name) {
+            continue;
+        }
+        kept.push((py_value_repr(name), json_type(name)));
+    }
+    let mut authors: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(AdapterError::new(sequence_item_error(i, t)));
+        }
+        authors.push(text.clone());
+    }
+    rec.insert("authors".to_string(), Value::String(authors.join(", ")));
+    // `(w.get("abstract") or "")[:240]`: falsy folds; truthy lists
+    // slice (kept as lists!); truthy strings head; else TypeError.
+    let abstract_folded = match m.get("abstract") {
+        None => Value::String(String::new()),
+        Some(v) if !is_truthy(v) => Value::String(String::new()),
+        Some(v) => v.clone(),
+    };
+    rec.insert(
+        "snippet".to_string(),
+        match &abstract_folded {
+            Value::String(s) => Value::String(char_head(s, 240).to_string()),
+            Value::Array(a) => Value::Array(a.iter().take(240).cloned().collect()),
+            Value::Object(_) => {
+                return Err(AdapterError::new(subscript_keyerror(240, runtime_minor)));
+            }
+            other => {
+                return Err(AdapterError::new(type_error_not_subscriptable(json_type(
+                    other,
+                ))));
+            }
+        },
+    );
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn crossref_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `msg = resp.json().get("message", {})` (missing → {}; present
+    // values kept as-is), then `msg.get("items", [])[:max_results]`.
+    let msg = match obj.get("message") {
+        None => Value::Object(serde_json::Map::new()),
+        Some(v) => v.clone(),
+    };
+    let msg_map = match &msg {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&msg)))),
+    };
+    let hits: Vec<&Value> = match msg_map.get("items") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for w in hits {
+        out.push(crossref_work_impl(
+            w,
+            &Value::String(String::new()),
+            runtime_minor,
+        )?);
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn crossref_parse_fetch_impl(
+    response_json: &str,
+    fallback: &Value,
+    runtime_minor: Option<u32>,
+) -> Result<Value> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    // `w = resp.json()["message"]`: direct indexing (missing key →
+    // KeyError; lists/strings index by integer only; anything else
+    // is not subscriptable).
+    let w = match &body {
+        Value::Object(m) => match m.get("message") {
+            Some(v) => v.clone(),
+            None => return Err(AdapterError::new("KeyError: message".to_string())),
+        },
+        Value::Array(_) => {
+            return Err(AdapterError::new(
+                "TypeError: list indices must be integers or slices, not str".to_string(),
+            ));
+        }
+        Value::String(_) => {
+            return Err(AdapterError::new(str_subscript_error(runtime_minor)));
+        }
+        other => {
+            return Err(AdapterError::new(type_error_not_subscriptable(json_type(
+                other,
+            ))));
+        }
+    };
+    crossref_work_impl(&w, fallback, runtime_minor)
+}
+
+fn openlibrary_search_row_impl(d: &Value, base: &str) -> Result<Value> {
+    let m = match d {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(d)))),
+    };
+    let key = m
+        .get("key")
+        .cloned()
+        .unwrap_or(Value::String(String::new()));
+    // `", ".join(d.get("author", []) or [])`: falsy folds; truthy
+    // values iterate strictly (lists item-wise, dicts key-wise,
+    // strings char-wise — non-strings raise at the raw index).
+    let author_vals: Vec<Value> = match m.get("author") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+        Some(Value::Object(mm)) => mm.keys().map(|k| Value::String(k.clone())).collect(),
+        Some(other) => return Err(AdapterError::new(type_error_not_iterable(json_type(other)))),
+    };
+    let mut authors: Vec<String> = Vec::with_capacity(author_vals.len());
+    for (i, a) in author_vals.iter().enumerate() {
+        match a {
+            Value::String(s) => authors.push(s.clone()),
+            _ => return Err(AdapterError::new(sequence_item_error(i, json_type(a)))),
+        }
+    }
+    // `", ".join(d.get("isbn", []) or [])[:120]`: strict join, then
+    // a char slice of the joined string (never raises).
+    let isbn_vals: Vec<Value> = match m.get("isbn") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+        Some(Value::Object(mm)) => mm.keys().map(|k| Value::String(k.clone())).collect(),
+        Some(other) => return Err(AdapterError::new(type_error_not_iterable(json_type(other)))),
+    };
+    let mut isbns: Vec<String> = Vec::with_capacity(isbn_vals.len());
+    for (i, v) in isbn_vals.iter().enumerate() {
+        match v {
+            Value::String(s) => isbns.push(s.clone()),
+            _ => return Err(AdapterError::new(sequence_item_error(i, json_type(v)))),
+        }
+    }
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("openlibrary".to_string()),
+    );
+    rec.insert("id".to_string(), key.clone());
+    rec.insert(
+        "title".to_string(),
+        m.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "url".to_string(),
+        if is_truthy(&key) {
+            Value::String(format!("{base}{0}", py_value_repr(&key)))
+        } else {
+            Value::String(String::new())
+        },
+    );
+    rec.insert(
+        "published".to_string(),
+        m.get("first_publish_year")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("authors".to_string(), Value::String(authors.join(", ")));
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(isbns.join(", ").as_str(), 120).to_string()),
+    );
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn openlibrary_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    base: &str,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `resp.json().get("docs", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("docs") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for d in hits {
+        out.push(openlibrary_search_row_impl(d, base)?);
+    }
+    Ok(out)
+}
+
+fn openlibrary_fetch_authors_impl(book: &serde_json::Map<String, Value>) -> Result<Vec<Value>> {
+    // `for a in book.get("authors", []) or []`: falsy folds; truthy
+    // values iterate (lists item-wise, dicts key-wise, strings
+    // char-wise); anything else raises TypeError. Strings append
+    // as-is; dicts append `name`, else `author.key` when that is a
+    // dict (missing → ""); anything else is silently skipped.
+    let items: Vec<Value> = match book.get("authors") {
+        None => Vec::new(),
+        Some(v) if !is_truthy(v) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::String(s)) => s.chars().map(|c| Value::String(c.to_string())).collect(),
+        Some(Value::Object(mm)) => mm.keys().map(|k| Value::String(k.clone())).collect(),
+        Some(other) => return Err(AdapterError::new(type_error_not_iterable(json_type(other)))),
+    };
+    let mut out = Vec::new();
+    for a in items.iter() {
+        match a {
+            Value::String(s) => out.push(Value::String(s.clone())),
+            Value::Object(am) => {
+                if let Some(name) = am.get("name") {
+                    out.push(name.clone());
+                } else if let Some(Value::Object(sub)) = am.get("author") {
+                    out.push(
+                        sub.get("key")
+                            .cloned()
+                            .unwrap_or(Value::String(String::new())),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn openlibrary_parse_fetch_impl(response_json: &str, key_s: &str, base: &str) -> Result<Value> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let book = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `key = book.get("key", key)`: missing → the request key.
+    let key = book
+        .get("key")
+        .cloned()
+        .unwrap_or(Value::String(key_s.to_string()));
+    // `", ".join(a for a in authors if a)`: falsy dropped, then
+    // strict at the surviving index.
+    let mut kept: Vec<(String, &'static str)> = Vec::new();
+    for a in openlibrary_fetch_authors_impl(book)?.iter() {
+        if !is_truthy(a) {
+            continue;
+        }
+        kept.push((py_value_repr(a), json_type(a)));
+    }
+    let mut authors: Vec<String> = Vec::with_capacity(kept.len());
+    for (i, (text, t)) in kept.iter().enumerate() {
+        if *t != "str" {
+            return Err(AdapterError::new(sequence_item_error(i, t)));
+        }
+        authors.push(text.clone());
+    }
+    let mut rec = serde_json::Map::new();
+    rec.insert(
+        "source".to_string(),
+        Value::String("openlibrary".to_string()),
+    );
+    rec.insert("id".to_string(), key.clone());
+    rec.insert(
+        "title".to_string(),
+        book.get("title")
+            .cloned()
+            .unwrap_or(Value::String(String::new())),
+    );
+    // Unconditional: `f"{BASE}{key}"` (no truthiness check here,
+    // unlike search).
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!("{base}{0}", py_value_repr(&key))),
+    );
+    // `book.get("first_publish_year") or ... or ""`: no defaults —
+    // missing reads propagate as None through the chain.
+    let published = match book.get("first_publish_year") {
+        Some(v) if is_truthy(v) => v.clone(),
+        _ => match book.get("first_publish_date") {
+            Some(v) if is_truthy(v) => v.clone(),
+            _ => match book.get("publish_date") {
+                Some(v) if is_truthy(v) => v.clone(),
+                _ => Value::String(String::new()),
+            },
+        },
+    };
+    rec.insert("published".to_string(), published);
+    rec.insert("authors".to_string(), Value::String(authors.join(", ")));
+    Ok(Value::Object(rec))
+}
+
+fn doaj_row_impl(r: &Value, runtime_minor: Option<u32>) -> Result<Value> {
+    let m = match r {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(r)))),
+    };
+    // `bib = r.get("bibjson", {}) or {}`: falsy folds; truthy
+    // non-dicts raise on the first `.get` (identifier read below —
+    // nothing raisable precedes it, so eager is exact).
+    let bib: Option<&serde_json::Map<String, Value>> = match m.get("bibjson") {
+        None => None,
+        Some(v) if !is_truthy(v) => None,
+        Some(Value::Object(bm)) => Some(bm),
+        Some(other) => return Err(AdapterError::new(attr_error(json_type(other)))),
+    };
+    // DOI hunt: non-dict identifier items are silently skipped;
+    // `id` reads raw (missing → None!). Present non-list identifiers
+    // iterate harmlessly (keys/chars never match the dict filter).
+    let mut dois: Vec<Value> = Vec::new();
+    if let Some(bm) = bib {
+        match bm.get("identifier") {
+            None => {}
+            Some(Value::Array(a)) => {
+                for i in a.iter() {
+                    if let Value::Object(im) = i
+                        && matches!(im.get("type"), Some(Value::String(t)) if t == "doi") {
+                            dois.push(im.get("id").cloned().unwrap_or(Value::Null));
+                        }
+                }
+            }
+            Some(Value::Object(_)) | Some(Value::String(_)) => {}
+            Some(other) => {
+                return Err(AdapterError::new(type_error_not_iterable(json_type(other))));
+            }
+        }
+    }
+    // `bib.get("author", [])` only when it is a list (double `.get`,
+    // same result — no side effects either way).
+    let author_items: Vec<&Value> = match bib {
+        None => Vec::new(),
+        Some(bm) => match bm.get("author") {
+            Some(Value::Array(a)) => a.iter().collect(),
+            _ => Vec::new(),
+        },
+    };
+    // Strict join at the raw index (no truthiness filter here).
+    let mut parts: Vec<(String, &'static str)> = Vec::new();
+    for a in author_items.iter() {
+        match a {
+            Value::Object(am) => match am.get("name") {
+                None => parts.push((String::new(), "str")),
+                Some(Value::String(s)) => parts.push((s.clone(), "str")),
+                Some(v) => parts.push((py_value_repr(v), json_type(v))),
+            },
+            _ => parts.push((py_value_repr(a), "str")),
+        }
+    }
+    let mut author_names: Vec<String> = Vec::with_capacity(parts.len());
+    for (i, (text, t)) in parts.iter().enumerate() {
+        if *t != "str" {
+            return Err(AdapterError::new(sequence_item_error(i, t)));
+        }
+        author_names.push(text.clone());
+    }
+    let title = match bib {
+        None => Value::String(String::new()),
+        Some(bm) => match bm.get("title") {
+            None => Value::String(String::new()),
+            Some(v) if !is_truthy(v) => Value::String(String::new()),
+            Some(v) => v.clone(),
+        },
+    };
+    let abstract_folded = match bib {
+        None => Value::String(String::new()),
+        Some(bm) => match bm.get("abstract") {
+            None => Value::String(String::new()),
+            Some(v) if !is_truthy(v) => Value::String(String::new()),
+            Some(v) => v.clone(),
+        },
+    };
+    let snippet = match &abstract_folded {
+        Value::String(s) => Value::String(char_head(s, 240).to_string()),
+        Value::Array(a) => Value::Array(a.iter().take(240).cloned().collect()),
+        Value::Object(_) => return Err(AdapterError::new(subscript_keyerror(240, runtime_minor))),
+        other => {
+            return Err(AdapterError::new(type_error_not_subscriptable(json_type(
+                other,
+            ))));
+        }
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("doaj".to_string()));
+    rec.insert(
+        "id".to_string(),
+        m.get("id").cloned().unwrap_or(Value::String(String::new())),
+    );
+    rec.insert("title".to_string(), title);
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!(
+            "https://doaj.org/article/{0}",
+            py_value_repr(m.get("id").unwrap_or(&Value::String(String::new())))
+        )),
+    );
+    // `dois[0] if dois else ""`: the first hit stays raw (even None).
+    rec.insert(
+        "doi".to_string(),
+        dois.into_iter()
+            .next()
+            .unwrap_or(Value::String(String::new())),
+    );
+    rec.insert(
+        "authors".to_string(),
+        Value::String(author_names.join(", ")),
+    );
+    rec.insert("snippet".to_string(), snippet);
+    Ok(Value::Object(rec))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn doaj_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    let obj = match &body {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&body)))),
+    };
+    // `resp.json().get("results", [])[:max_results]`.
+    let hits: Vec<&Value> = match obj.get("results") {
+        None => Vec::new(),
+        Some(v) => subscript_hits(Some(v), max_results, runtime_minor)?,
+    };
+    let mut out = Vec::new();
+    for r in hits {
+        out.push(doaj_row_impl(r, runtime_minor)?);
+    }
+    Ok(out)
+}
+
+/// `_bare_arxiv_id`: reduce an id or abs URL to the bare identifier.
+fn arxiv_bare_id(value: &str) -> String {
+    let mut ident = value.to_string();
+    for sep in ["arxiv.org/abs/", "arxiv.org/abs", "arxiv.org/"] {
+        if let Some((_, rest)) = ident.split_once(sep) {
+            ident = rest.to_string();
+        }
+    }
+    ident.trim_matches('/').to_string()
+}
+
+/// `_entry_field`: collapsed text of the first direct child with this
+/// local name ("" when absent).
+fn arxiv_field(entry: &crate::xmlatom::Node, name: &str) -> String {
+    match entry.child(name) {
+        None => String::new(),
+        Some(c) => py_collapse_ws(&c.text),
+    }
+}
+
+fn arxiv_entry_impl(entry: &crate::xmlatom::Node) -> Value {
+    let entry_id = arxiv_field(entry, "id");
+    let bare_id = arxiv_bare_id(&entry_id);
+    // DOI: the extension field, else the rel=related title=doi link.
+    let mut doi = arxiv_field(entry, "doi");
+    if doi.is_empty() {
+        for link in entry.children_named("link") {
+            if link.attr("title") == "doi" {
+                let href = link.attr("href").trim().to_string();
+                doi = match href.split_once("doi.org/") {
+                    Some((_, rest)) => rest.trim().to_string(),
+                    None => href,
+                };
+                break;
+            }
+        }
+    }
+    // Primary category: the extension, else the arxiv-scheme category.
+    let mut primary = String::new();
+    for pc in entry.children_named("primary_category") {
+        primary = pc.attr("term").to_string();
+        if !primary.is_empty() {
+            break;
+        }
+    }
+    if primary.is_empty() {
+        for cat in entry.children_named("category") {
+            if cat.attr("scheme").ends_with("schemas/atom") {
+                primary = cat.attr("term").to_string();
+                break;
+            }
+        }
+    }
+    let mut authors: Vec<String> = Vec::new();
+    for a in entry.children_named("author") {
+        let name = arxiv_field(a, "name");
+        if !name.is_empty() {
+            authors.push(name);
+        }
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert("primary_category".to_string(), Value::String(primary));
+    let mut arxiv = serde_json::Map::new();
+    arxiv.insert("arxiv".to_string(), Value::Object(fields));
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("arxiv".to_string()));
+    rec.insert("id".to_string(), Value::String(bare_id.clone()));
+    rec.insert(
+        "title".to_string(),
+        Value::String(arxiv_field(entry, "title")),
+    );
+    rec.insert(
+        "url".to_string(),
+        Value::String(if entry_id.is_empty() {
+            bare_id
+        } else {
+            entry_id
+        }),
+    );
+    rec.insert("doi".to_string(), Value::String(doi));
+    rec.insert(
+        "published".to_string(),
+        Value::String(arxiv_field(entry, "published")),
+    );
+    rec.insert("authors".to_string(), Value::String(authors.join(", ")));
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(
+            char_head(py_collapse_ws(&arxiv_field(entry, "summary")).as_str(), 240).to_string(),
+        ),
+    );
+    // `raw` is `ET.tostring(entry)`: re-attached by the wrapper from
+    // its own ElementTree parse (see below).
+    rec.insert("fields".to_string(), Value::Object(arxiv));
+    Value::Object(rec)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn arxiv_parse_search_impl(response_xml: &str, max_results: i64) -> Result<Vec<Value>> {
+    let root = crate::xmlatom::parse_document(response_xml)
+        .map_err(|e| AdapterError::new(e.to_string()))?;
+    // Append-then-break: any entries at all yield at least one record,
+    // even for `max_results <= 0`.
+    let mut out = Vec::new();
+    for entry in root.children_named("entry") {
+        out.push(arxiv_entry_impl(entry));
+        if out.len() as i64 >= max_results {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn arxiv_parse_fetch_impl(
+    response_xml: &str,
+    ident: &str,
+    url_fallback: &Value,
+) -> Result<Value> {
+    let root = crate::xmlatom::parse_document(response_xml)
+        .map_err(|e| AdapterError::new(e.to_string()))?;
+    let entries = root.children_named("entry");
+    // A valid entry's <id> contains 'abs/'; otherwise (or when empty)
+    // answer the error record with the entry summary ("" when empty).
+    let entry = entries.first().copied();
+    let valid = match entry {
+        Some(e) => arxiv_field(e, "id").contains("abs/"),
+        None => false,
+    };
+    if !valid {
+        let summary = match entry {
+            Some(e) => arxiv_field(e, "summary"),
+            None => String::new(),
+        };
+        let mut fields = serde_json::Map::new();
+        fields.insert("primary_category".to_string(), Value::String(String::new()));
+        let mut arxiv = serde_json::Map::new();
+        arxiv.insert("arxiv".to_string(), Value::Object(fields));
+        let mut rec = serde_json::Map::new();
+        rec.insert("source".to_string(), Value::String("arxiv".to_string()));
+        rec.insert("id".to_string(), Value::String(ident.to_string()));
+        rec.insert("title".to_string(), Value::String(String::new()));
+        rec.insert("url".to_string(), url_fallback.clone());
+        rec.insert("doi".to_string(), Value::String(String::new()));
+        rec.insert("published".to_string(), Value::String(String::new()));
+        rec.insert("authors".to_string(), Value::String(String::new()));
+        rec.insert("snippet".to_string(), Value::String(summary));
+        rec.insert("fields".to_string(), Value::Object(arxiv));
+        // `raw` is "": attached by the wrapper.
+        return Ok(Value::Object(rec));
+    }
+    Ok(arxiv_entry_impl(
+        entry.ok_or_else(|| AdapterError::new("missing arXiv entry".to_string()))?,
+    ))
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn pubmed_parse_search_impl(
+    response_json: &str,
+    max_results: i64,
+    runtime_minor: Option<u32>,
+) -> Result<Vec<Value>> {
+    let body: Value = serde_json::from_str(response_json)
+        .map_err(|e| AdapterError::new(format!("ValueError: {e}")))?;
+    // `resp.json()["esearchresult"]`: direct indexing (missing key →
+    // KeyError; lists/strings index by integer only; anything else is
+    // not subscriptable).
+    let esearch = match &body {
+        Value::Object(m) => match m.get("esearchresult") {
+            Some(v) => v.clone(),
+            None => return Err(AdapterError::new("KeyError: esearchresult".to_string())),
+        },
+        Value::Array(_) => {
+            return Err(AdapterError::new(
+                "TypeError: list indices must be integers or slices, not str".to_string(),
+            ));
+        }
+        Value::String(_) => {
+            return Err(AdapterError::new(str_subscript_error(runtime_minor)));
+        }
+        other => {
+            return Err(AdapterError::new(type_error_not_subscriptable(json_type(
+                other,
+            ))));
+        }
+    };
+    let emap = match &esearch {
+        Value::Object(m) => m,
+        _ => return Err(AdapterError::new(attr_error(json_type(&esearch)))),
+    };
+    // `.get("idlist", [])[:max_results]`: missing → []; lists slice;
+    // strings slice per char (uids render, never `.get`); dicts raise
+    // `KeyError(slice)`; anything else raises TypeError.
+    let hits: Vec<Value> = match emap.get("idlist") {
+        None => Vec::new(),
+        Some(Value::Array(a)) => slice_refs(a, max_results).into_iter().cloned().collect(),
+        Some(Value::String(s)) => {
+            let chars: Vec<char> = s.chars().collect();
+            let n = chars.len() as i64;
+            let end = (if max_results < 0 {
+                (n + max_results).max(0)
+            } else {
+                max_results.min(n)
+            }) as usize;
+            chars[..end]
+                .iter()
+                .map(|c| Value::String(c.to_string()))
+                .collect()
+        }
+        Some(Value::Object(_)) => {
+            return Err(AdapterError::new(subscript_keyerror(
+                max_results,
+                runtime_minor,
+            )));
+        }
+        Some(other) => {
+            return Err(AdapterError::new(type_error_not_subscriptable(json_type(
+                other,
+            ))));
+        }
+    };
+    let mut out = Vec::new();
+    for uid in hits.iter() {
+        let uid_s = py_str_value(uid);
+        let mut rec = serde_json::Map::new();
+        rec.insert("source".to_string(), Value::String("pubmed".to_string()));
+        rec.insert("id".to_string(), uid.clone());
+        rec.insert("title".to_string(), Value::String(String::new()));
+        rec.insert(
+            "url".to_string(),
+            Value::String(format!("https://pubmed.ncbi.nlm.nih.gov/{uid_s}/")),
+        );
+        rec.insert(
+            "snippet".to_string(),
+            Value::String(format!("PMID {uid_s}")),
+        );
+        out.push(Value::Object(rec));
+    }
+    Ok(out)
+}
+
+///
+/// # Errors
+///
+/// Returns `AdapterError` for malformed responses, unexpected shapes,
+/// or invalid adapter arguments.
+pub fn pubmed_parse_fetch_impl(response_xml: &str, rid_s: &str) -> Result<Option<Value>> {
+    let root = crate::xmlatom::parse_document(response_xml)
+        .map_err(|e| AdapterError::new(e.to_string()))?;
+    // `root.find("PubmedArticle")`: None answers the bare record in
+    // the wrapper (which owns the ET lookup); the kernel returns None.
+    let entry = match root.child("PubmedArticle") {
+        Some(e) => e,
+        None => return Ok(None),
+    };
+    // `entry.find("MedlineCitation")`: None raises AttributeError on
+    // the first `.findtext` below.
+    let mc = entry.child("MedlineCitation");
+    let pmid = match mc {
+        None => return Err(AdapterError::new(attr_error("NoneType"))),
+        Some(m) => m.child("PMID").map(|p| p.text.clone()),
+    };
+    // `article.findtext("ArticleTitle")`: article None raises here.
+    let article = mc
+        .ok_or_else(|| AdapterError::new("missing MedlineCitation".to_string()))?
+        .child("Article");
+    let title = match article {
+        None => return Err(AdapterError::new(attr_error("NoneType"))),
+        Some(a) => match a.child("ArticleTitle") {
+            None => String::new(),
+            Some(t) => py_collapse_ws(&t.text),
+        },
+    };
+    let mut authors: Vec<String> = Vec::new();
+    if let Some(alist) = article
+        .ok_or_else(|| AdapterError::new("missing Article".to_string()))?
+        .child("AuthorList")
+    {
+        for a in alist.children_named("Author") {
+            let last = a.child("LastName").map(|n| n.text.as_str());
+            let fore = a.child("ForeName").map(|n| n.text.as_str());
+            // `" ".join(x for x in (ln, fn) if x).strip()`: raw parts
+            // (uncollapsed), single-space join, ends stripped.
+            let mut parts: Vec<&str> = Vec::new();
+            if let Some(x) = last
+                && !x.is_empty() {
+                    parts.push(x);
+                }
+            if let Some(x) = fore
+                && !x.is_empty() {
+                    parts.push(x);
+                }
+            let name = parts.join(" ").trim().to_string();
+            if !name.is_empty() {
+                authors.push(name);
+            }
+        }
+    }
+    // `mc.findtext("PMID") or str(record_id)`: falsy PMIDs fold.
+    let uid = match pmid {
+        Some(t) if !t.is_empty() => t,
+        _ => rid_s.to_string(),
+    };
+    let mut rec = serde_json::Map::new();
+    rec.insert("source".to_string(), Value::String("pubmed".to_string()));
+    rec.insert("id".to_string(), Value::String(uid.clone()));
+    rec.insert("title".to_string(), Value::String(title.clone()));
+    rec.insert(
+        "url".to_string(),
+        Value::String(format!("https://pubmed.ncbi.nlm.nih.gov/{uid}/")),
+    );
+    rec.insert(
+        "snippet".to_string(),
+        Value::String(char_head(title.as_str(), 240).to_string()),
+    );
+    rec.insert("authors".to_string(), Value::String(authors.join(", ")));
+    // `raw` is `resp.text` verbatim: attached by the wrapper.
+    Ok(Some(Value::Object(rec)))
+}
