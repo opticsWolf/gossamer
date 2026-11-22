@@ -766,6 +766,8 @@ name = "gossamer-web"
 version = "0.11.1"
 dependencies = [
  "regex",
+ "serde_json",
+ "tiktoken-rs",
  "unicode-normalization",
 ]
 

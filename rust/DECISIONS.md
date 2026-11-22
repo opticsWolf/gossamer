@@ -183,6 +183,8 @@ is retired only after parity.
 
 Consequences:
 - No business logic may be added to the binding crate.
+- A source-level test (`rust/core/tests/no_pyo3.rs`) enforces that the core manifest and source
+  contain no PyO3 dependency or PyO3 types.
 - Public fallible core APIs return canonical error structs with a backtrace and helper methods
   (`M-ERRORS-CANONICAL-STRUCTS`), not `String` (`SsrfError` is the first example).
 - Version-dependent behavior is passed as an explicit parameter, not stored in a static

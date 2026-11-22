@@ -4,6 +4,19 @@
 //! byte-for-byte compatible with the legacy implementation. Interpreter-dependent behavior is
 //! passed in explicitly by callers rather than stored in a static (ADR-012, `M-AVOID-STATICS`).
 
+/// Char count (`len(s)` in Python).
+pub fn char_count(s: &str) -> usize {
+    s.chars().count()
+}
+
+/// `s[:n]` by chars, clamped (Python slicing never raises).
+pub fn char_head(s: &str, n: usize) -> &str {
+    match s.char_indices().nth(n) {
+        Some((i, _)) => &s[..i],
+        None => s,
+    }
+}
+
 /// Minimal Python `repr()` for error messages: single quotes unless the string holds a single quote
 /// but no double quote (CPython rule).
 pub fn py_repr(s: &str) -> String {

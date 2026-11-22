@@ -85,11 +85,11 @@ Wave 1 continues file-by-file through `gossamer/`. The dynamic-code blocker is r
 end state: one pure Rust core crate with thin PyO3 wrappers.
 
 The pure core is established at `rust/core/` (`gossamer-web` published, `gossamer` as internal lib
-name). It now owns `textlinks`, `compat`, `urlparts`, and `ssrf`. Legacy `src/textlinks.rs` and
-`src/ssrf.rs` are thin wrappers; `text-links-rs` delegates to the core scanner. The wheel rebuild,
-`tests/test_rust_parity_ssrf.py`, `tests/test_rust_parity_urls.py`, and `tests/test_s1_ssrf.py`
-all pass (615 passed / 1 skipped combined). Next move `src/budget.rs` into the pure core and keep
-its legacy wrapper delegating.
+name). It now owns `textlinks`, `compat`, `urlparts`, `ssrf`, `tokens`, and `budget`. Legacy
+`src/textlinks.rs`, `src/ssrf.rs`, `src/tokens.rs`, and `src/budget.rs` are thin wrappers;
+`text-links-rs` delegates to the core scanner. `rust/core/tests/no_pyo3.rs` enforces ADR-012.
+The wheel rebuild and targeted parity suites (`budget`, `tokens`, `ssrf`, `urls`, `s1_ssrf`) pass
+928 passed / 1 skipped combined. Next move another thin `_core` wrapper, for example `dedup.rs`.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
