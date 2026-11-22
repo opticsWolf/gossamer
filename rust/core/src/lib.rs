@@ -6,6 +6,7 @@
 pub mod budget;
 pub mod cacheutils;
 pub mod categories;
+pub mod cite;
 pub mod compat;
 pub mod dedupe;
 pub mod guard;
