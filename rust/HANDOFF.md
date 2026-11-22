@@ -4,7 +4,7 @@
 
 - Branch: `dev_rustify` in `D:\User\Documents\Rust\gossamer`.
 - **Wave 0 is complete.** All three bridgeable entry points are ported, gated, and wired.
-- **Wave 1 is in progress.** `gossamer/` is claimed; research is done and the first file port is gated.
+- **Wave 1 is complete.** All deterministic `_core` kernels live in the pure core; Python-facing Rust modules are thin adapters.
 
 | Unit / crate | Gate | Diff | Notes |
 |---|---|---|---|
@@ -20,9 +20,9 @@ Front door replay:
 Fallback rate: 68.8% (22/32 cases answered by the original)
 ```
 
-`rust-anything map --write` reports 3 of 6 whole-app units ported. `gossamer/text_links.py` is a
-file-level sub-unit of wave 1 and is not counted there yet. The extra `rust/` unit is the replay
-shim `rust/original_entry.py`, not something to port.
+`rust-anything map --write` reports 4 of 6 whole-app units ported; the remaining two are
+`gossamer/skills/` plus scripts already counted as separate crates, and `benchmarks.py` (wave 2).
+The extra `rust/` unit is the replay shim `rust/original_entry.py`, not something to port.
 
 ## Files that matter now
 
@@ -47,7 +47,7 @@ shim `rust/original_entry.py`, not something to port.
 
 ## What is in progress / broken
 
-- Nothing broken at the wave-0 checkpoint or the current wave-1 checkpoint.
+- Nothing broken at the wave-0 or wave-1 checkpoints.
 - ADR-012 core code was reviewed against `/skill:rust-guidelines` (correctness, docs, FFI-adjacent
   error mapping, libraries/UX, libraries/resilience, project, AI). Fixes applied: `SsrfError` is a
   canonical struct with backtrace (`M-ERRORS-CANONICAL-STRUCTS`); interpreter version is an explicit
@@ -81,22 +81,24 @@ shim `rust/original_entry.py`, not something to port.
 
 ## Next unit
 
-Wave 1 continues file-by-file through `gossamer/`. The dynamic-code blocker is resolved in
-`rust/research/dynamic-code.md`, all ADR-006 dependency research is done, and ADR-012 fixes the
-end state: one pure Rust core crate with thin PyO3 wrappers.
+Wave 1 is complete. The dynamic-code blocker is resolved in `rust/research/dynamic-code.md`,
+all ADR-006 dependency research is done, and ADR-012 fixed the end state: one pure Rust core crate
+with thin PyO3 wrappers.
 
 The pure core is established at `rust/core/` (`gossamer-web` published, `gossamer` as internal lib
-name). It now owns `adapters::common`, `adapters::patents`, `textlinks`, `compat`, `urlparts`,
-`urls`, `dedupe`, `cite`, `fetch`, `guard`, `jats`, `jats_mml`, `metaextract`, `robots`, `sections`,
-`tables`, `cacheutils`, `categories`, `miscutils`, `ssrf`, `tokens`, `xmlatom`, and `budget`.
-Legacy `src/textlinks.rs`,
-`src/ssrf.rs`, `src/tokens.rs`, `src/budget.rs`, `src/urls.rs`, `src/dedupe.rs`, `src/robots.rs`,
-`src/cacheutils.rs`, `src/categories.rs`, `src/miscutils.rs`, `src/guard.rs`, `src/sections.rs`,
-`src/metaextract.rs`, `src/xmlatom.rs`, `src/jats.rs`, `src/cite.rs`, `src/fetch.rs`,
-`src/bridge.rs`, `src/adapters/common.rs`, and `src/adapters/patents.rs` are thin wrappers;
-`text-links-rs` delegates to the core scanner. `rust/core/tests/no_pyo3.rs` enforces ADR-012.
-Source-level M9/M15 tests now read the core fetch path. The wheel rebuild and full Python suite pass
-11391 passed / 36 skipped. Next move to `adapters/finance.rs`.
+name). It owns every deterministic kernel, including
+`adapters::{common,patents,finance,misc,legal,scholar}`, `textlinks`, `compat`, `urlparts`, `urls`,
+`dedupe`, `cite`, `fetch`, `guard`, `jats`, `jats_mml`, `metaextract`, `robots`, `sections`, `tables`,
+`cacheutils`, `categories`, `miscutils`, `ssrf`, `tokens`, `xmlatom`, and `budget`. All root `src/*.rs`
+modules are thin binding, logging, or class-shape adapters. `rust/core/tests/no_pyo3.rs` enforces
+ADR-012. Source-level M9/M15 tests now read the core fetch path. The wheel rebuild and full Python
+suite pass 11391 passed / 36 skipped. Framework-level `/skill:rust-guidelines` checks were run at
+each adapter checkpoint; canonical errors, explicit runtime-version parameters, documented immutable
+caches, and value-bearing panic messages are in place.
+
+Next checkpoint: wave 2 (`benchmarks.py`), then the Python orchestration modules (`cache.py`,
+`document.py`, `search.py`, `mcp_server.py`, `cli.py`) under a new ADR if CLI/env/MCP contracts
+would change.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
@@ -104,7 +106,7 @@ paths) is ported.
 
 ## Checkpoint rule
 
-Stop after each wave. Wave 0 is done and wave 1 is in progress with user go-ahead.
+Stop after each wave. Waves 0 and 1 are done; wave 2 awaits user go-ahead.
 
 ## Skill to load next
 

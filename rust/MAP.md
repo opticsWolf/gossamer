@@ -15,9 +15,9 @@ crate with thin PyO3 wrappers.
 |---|---:|---:|---|---|---|
 | `gossamer/skills/` | 0 | 140 | done (2026-11-22) | this session | gate passed; wired to `skills`; 662/662 diff, 21/21 replay |
 | `scripts/` | 0 | 150 | done (2026-11-22) | this session | two crates gated; wired to `audit-cargo` and `verify-bundled-assets` |
-| `gossamer/` | 1 | 17,931 | claimed (2026-11-22) | this session | dynamic-code unblocked; ADR-012 pure-core cutover; split into 39 files |
+| `gossamer/` | 1 | 17,931 | done (2026-11-22) | this session | ADR-012 pure-core cutover complete; all `_core` kernels lifted; Python wrappers stay as compatibility surface |
 | `benchmarks.py` | 2 | 321 | open | — | after wave 1 |
-| `gossamer/text_links.py` | 1 | 49 | done (2026-11-22) | this session | 211/211; next thin wrapper is `ssrf.py` |
+| `gossamer/text_links.py` | 1 | 49 | done (2026-11-22) | this session | 211/211; delegates to pure core scanner |
 
 `rust-anything map --write` generates the measured `rust/PORT_MAP.md`; this file is the plan and
 the claims. Check them against each other at every checkpoint.
@@ -61,19 +61,31 @@ the claims. Check them against each other at every checkpoint.
 - First file port: `gossamer/text_links.py` -> `rust/text-links-rs`, gate passed, 211/211 cases.
   Not wired into `rust/app` yet: there is no CLI command that calls `extract_links` directly.
 - ADR-012 pure core at `rust/core/`: crates.io name `gossamer-web`, internal lib name `gossamer`.
-  It now owns `adapters::common`, `adapters::patents`, `textlinks`, `compat`, `urlparts`, `urls`,
-  `dedupe`, `cite`,
-  `fetch`, `guard`, `jats`, `jats_mml`, `metaextract`, `robots`, `sections`, `tables`,
-  `cacheutils`, `categories`, `miscutils`, `ssrf`, `tokens`, `xmlatom`, and `budget`. Legacy `src/textlinks.rs`,
-  `src/ssrf.rs`, `src/tokens.rs`, `src/budget.rs`, `src/urls.rs`, `src/dedupe.rs`, `src/robots.rs`,
-  `src/cacheutils.rs`, `src/categories.rs`, `src/miscutils.rs`, `src/guard.rs`, `src/sections.rs`,
-  `src/metaextract.rs`, `src/xmlatom.rs`, `src/jats.rs`, `src/cite.rs`, `src/fetch.rs`,
-  `src/bridge.rs`, `src/adapters/common.rs`, and `src/adapters/patents.rs` are thin wrappers;
+  It now owns all deterministic kernels, including `adapters::{common,patents,finance,misc,legal,scholar}`,
+  `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `cite`, `fetch`, `guard`, `jats`, `jats_mml`,
+  `metaextract`, `robots`, `sections`, `tables`, `cacheutils`, `categories`, `miscutils`, `ssrf`,
+  `tokens`, `xmlatom`, and `budget`. Legacy `src/*.rs` modules are thin PyO3 or logging adapters;
   `text-links-rs` delegates to the core scanner.
 - `rust/core/tests/no_pyo3.rs` enforces ADR-012: no PyO3 dependency or PyO3 types in core source.
 - Verification: core crate 67 unit tests + 2 guard tests + 53 doctests, `text-links-rs` gate
   211/211, wheel rebuild, full `pytest -q -p no:cacheprovider` 11391 passed / 36 skipped,
   app replay 32/32.
+
+## Checkpoint 2 — wave 1 complete (2026-11-22)
+
+- All deterministic `_core` kernels now live in `rust/core/`; root `src/*.rs` files are thin
+  compatibility surfaces. No PyO3 tokens or interpreter-global business state remain in core.
+- Adapter cutover order: `common` → `patents` → `finance` → `misc` → `legal` → `scholar`.
+  Each unit uses canonical `AdapterError` values and explicit `Option<u32>` interpreter-version
+  inputs where CPython error spellings vary.
+- Core invariants: `rust/core/tests/no_pyo3.rs` passes; no unsafe code; immutable regex caches are
+  documented as performance-only; panic messages include offending values.
+- Verification: 67 unit + 2 guard + 53 doctests, clippy workspace clean, wheel rebuilt,
+  full Python suite 11391 passed / 36 skipped, `text-links-rs` gate 211/211, app replay 32/32.
+- Fallback remains 68.8% (22/32): expected because the standalone front door does not yet cover
+  Python orchestration. Wave 2 / final cutover must drive this to 0%.
+- Next: wave 2 (`benchmarks.py`) and then Python orchestration modules (`cache.py`, `document.py`,
+  `search.py`, `mcp_server.py`, `cli.py`) under a new checkpoint and ADR if CLI/schema breaks.
 
 ## Research prerequisites
 
