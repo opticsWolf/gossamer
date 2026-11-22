@@ -53,6 +53,9 @@ shim `rust/original_entry.py`, not something to port.
   canonical struct with backtrace (`M-ERRORS-CANONICAL-STRUCTS`); interpreter version is an explicit
   parameter instead of a static (`M-AVOID-STATICS`); const-parse panics include values
   (`M-PANIC-MESSAGE`); public functions have `# Errors`/`# Examples` (`M-CANONICAL-DOCS`).
+  A second pass over `urls`/`dedupe`/`robots` added examples to `parse_robots`, `match_rules`, and
+  `content_hash` (`M-CANONICAL-DOCS`), and made percent-escape panics include the offending bytes
+  (`M-PANIC-MESSAGE`).
 - The Rust clone venv was installed without optional extras. A full `pytest` run reports 32 failures
   and 2 collection errors from missing `documents` / `mcp` extras, unrelated to the port. Targeted
   parity suites and the wheel rebuild pass; install `gossamer-web[documents,mcp]` before relying on

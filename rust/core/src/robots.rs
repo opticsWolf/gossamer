@@ -114,6 +114,17 @@ fn split_lines_py(text: &str) -> Vec<&str> {
 ///
 /// Group selection: exact UA match beats substring; strictly greater wins (first wins ties), then
 /// the first `*` group. Delay falls back to the first `*` group carrying one.
+///
+/// # Examples
+///
+/// ```
+/// use gossamer::robots::parse_robots;
+///
+/// let text = "User-agent: *\nDisallow: /private\nCrawl-delay: 2\n";
+/// let (rules, delay) = parse_robots(text, "any-bot");
+/// assert_eq!(rules, vec![(false, "/private".to_string())]);
+/// assert_eq!(delay, Some(2.0));
+/// ```
 pub fn parse_robots(text: &str, user_agent: &str) -> (Vec<(bool, String)>, Option<f64>) {
     let mut groups: Vec<Group> = Vec::new();
     let mut current: Option<Group> = None;
@@ -217,6 +228,16 @@ pub fn parse_robots(text: &str, user_agent: &str) -> (Vec<(bool, String)>, Optio
 }
 
 /// Evaluates robots rules; longest matching path wins, ties go to Allow.
+///
+/// # Examples
+///
+/// ```
+/// use gossamer::robots::match_rules;
+///
+/// let rules = vec![(false, "/tmp".to_string()), (true, "/tmp/public".to_string())];
+/// assert!(!match_rules(&rules, "/tmp/x"));
+/// assert!(match_rules(&rules, "/tmp/public/x"));
+/// ```
 pub fn match_rules(rules: &[(bool, String)], path: &str) -> bool {
     let mut best: Option<(usize, bool)> = None;
     for (allow, rule_path) in rules {

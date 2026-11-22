@@ -235,6 +235,14 @@ pub fn canonical_url(
 }
 
 /// Returns the SHA-256 hex digest of optional text.
+///
+/// # Examples
+///
+/// ```
+/// use gossamer::urls::content_hash;
+///
+/// assert_eq!(content_hash(Some("")), content_hash(None));
+/// ```
 pub fn content_hash(text: Option<&str>) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.unwrap_or("").as_bytes());

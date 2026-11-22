@@ -249,8 +249,12 @@ pub fn unquote_plus(s: &str) -> String {
             }
             b'%' => match b.get(i + 1..i + 3) {
                 Some(hex) if hex.iter().all(|c| c.is_ascii_hexdigit()) => {
-                    let text = std::str::from_utf8(hex).expect("ASCII hex must be UTF-8");
-                    out.push(u8::from_str_radix(text, 16).expect("two ASCII hex digits"));
+                    let text = std::str::from_utf8(hex)
+                        .unwrap_or_else(|e| panic!("percent-escape {hex:?} is not UTF-8: {e}"));
+                    out.push(
+                        u8::from_str_radix(text, 16)
+                            .unwrap_or_else(|e| panic!("percent-escape {hex:?} is invalid: {e}")),
+                    );
                     i += 3;
                 }
                 _ => {
