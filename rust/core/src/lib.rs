@@ -9,6 +9,7 @@ pub mod categories;
 pub mod cite;
 pub mod compat;
 pub mod dedupe;
+pub mod fetch;
 pub mod guard;
 pub mod jats;
 pub mod jats_mml;

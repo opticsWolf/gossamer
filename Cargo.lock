@@ -761,13 +761,18 @@ name = "gossamer-web"
 version = "0.11.1"
 dependencies = [
  "blake2",
+ "html2md",
+ "log",
  "meta_oxide",
  "quick-xml",
  "regex",
+ "reqwest",
  "roxmltree",
+ "scraper 0.22.0",
  "serde_json",
  "sha2",
  "tiktoken-rs",
+ "tokio",
  "unic-ucd-category",
  "unicode-normalization",
  "url",
