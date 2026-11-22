@@ -1,0 +1,211 @@
+{"fn": "extract_links", "args": ["straße"], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["line1\nline2emoji 👍🏽 mix", 255], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["emoji 👍🏽 mix", 42], "ok": []}
+{"fn": "extract_links", "args": ["日本語のテキスト"], "ok": []}
+{"fn": "extract_links", "args": ["a..b", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣ", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} items", 2], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣ日本語のテキスト"], "ok": []}
+{"fn": "extract_links", "args": [".leading", 100], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣ"], "ok": []}
+{"fn": "extract_links", "args": ["hello", 1], "ok": []}
+{"fn": "extract_links", "args": ["😀", 7], "ok": []}
+{"fn": "extract_links", "args": [".leading", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["İstanbula", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["abc", 255], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["é", -1], "ok": []}
+{"fn": "extract_links", "args": ["Hello World", 0], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.jsoné", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["HELLO"], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} itemsa😀b😀c", 1], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.ts", -100], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", 42], "ok": []}
+{"fn": "extract_links", "args": ["😀", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣ", -1], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", 2], "ok": []}
+{"fn": "extract_links", "args": ["line1\nline2", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["emoji 👍🏽 mix", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["ünïcödé", 0], "ok": []}
+{"fn": "extract_links", "args": ["İstanbul", 255], "ok": []}
+{"fn": "extract_links", "args": ["ünïcödé"], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.path", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.json", 1], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["é", 255], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} items", 100], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c", -1], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", 100], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c./x/**/*.json", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["😀", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["a..b", 2], "ok": []}
+{"fn": "extract_links", "args": ["trailing.Hello World", 7], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", -1], "ok": []}
+{"fn": "extract_links", "args": ["trailing."], "ok": []}
+{"fn": "extract_links", "args": ["a😀b😀ca😀b😀c", 2], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.ts", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", 255], "ok": []}
+{"fn": "extract_links", "args": ["tab\tseparatedhello", 7], "ok": []}
+{"fn": "extract_links", "args": ["étrailing.", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", 0], "ok": []}
+{"fn": "extract_links", "args": ["é", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} items"], "ok": []}
+{"fn": "extract_links", "args": ["a..b", 100], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣ", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.jsonabc", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["emoji 👍🏽 mix", 2], "ok": []}
+{"fn": "extract_links", "args": ["  padded  "], "ok": []}
+{"fn": "extract_links", "args": [".leading", 0], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c"], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", 1], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", 7], "ok": []}
+{"fn": "extract_links", "args": ["ab", -100], "ok": []}
+{"fn": "extract_links", "args": ["hellohello world", 7], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.json"], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", 42], "ok": []}
+{"fn": "extract_links", "args": ["HELLO", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["  padded  ", 0], "ok": []}
+{"fn": "extract_links", "args": ["straße", -1], "ok": []}
+{"fn": "extract_links", "args": ["İstanbul", 2], "ok": []}
+{"fn": "extract_links", "args": ["İstanbul"], "ok": []}
+{"fn": "extract_links", "args": ["  padded  ", 255], "ok": []}
+{"fn": "extract_links", "args": ["é", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["😀", 255], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.ts", -1], "ok": []}
+{"fn": "extract_links", "args": ["ab", 7], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.ts", 2], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", -100], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.pathİstanbul", -100], "ok": []}
+{"fn": "extract_links", "args": ["İstanbulkey_name-1"], "ok": []}
+{"fn": "extract_links", "args": ["tab\tseparated", 7], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣa😀b😀c"], "ok": []}
+{"fn": "extract_links", "args": ["hello", 2147483647], "ok": []}
+{"fn": "extract_links", "args": [":", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["é"], "ok": []}
+{"fn": "extract_links", "args": ["ab", 0], "ok": []}
+{"fn": "extract_links", "args": ["helloa😀b😀c", 100], "ok": []}
+{"fn": "extract_links", "args": ["a.b.c", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["﻿bom", 7], "ok": []}
+{"fn": "extract_links", "args": ["Hello Worldkey_name-1", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["﻿bom", 42], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c", 7], "ok": []}
+{"fn": "extract_links", "args": ["İstanbul", -1], "ok": []}
+{"fn": "extract_links", "args": ["HELLO", 42], "ok": []}
+{"fn": "extract_links", "args": ["﻿bom", -1], "ok": []}
+{"fn": "extract_links", "args": ["a.b.c"], "ok": []}
+{"fn": "extract_links", "args": ["HELLO", 255], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1", 1], "ok": []}
+{"fn": "extract_links", "args": ["a😀b😀c", 7], "ok": []}
+{"fn": "extract_links", "args": ["﻿bom./x/**/*.json"], "ok": []}
+{"fn": "extract_links", "args": ["hello world", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["HELLO", 1], "ok": []}
+{"fn": "extract_links", "args": ["", 0], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.ts", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["a😀b😀c", 100], "ok": []}
+{"fn": "extract_links", "args": ["İstanbul", 0], "ok": []}
+{"fn": "extract_links", "args": ["日本語のテキスト./x/**/*.json", 42], "ok": []}
+{"fn": "extract_links", "args": ["ΣΊΣΥΦΟΣabc", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["a"], "ok": []}
+{"fn": "extract_links", "args": [":"], "ok": []}
+{"fn": "extract_links", "args": ["a", 2], "ok": []}
+{"fn": "extract_links", "args": ["a..b", -100], "ok": []}
+{"fn": "extract_links", "args": ["HELLO", 7], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.json", 7], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} items", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["﻿bom", 100], "ok": []}
+{"fn": "extract_links", "args": ["abcΣΊΣΥΦΟΣ", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["aİstanbul", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["ünïcödéa"], "ok": []}
+{"fn": "extract_links", "args": ["a.b.chello world", 1], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c", 1], "ok": []}
+{"fn": "extract_links", "args": ["ab"], "ok": []}
+{"fn": "extract_links", "args": ["ünïcödé", -100], "ok": []}
+{"fn": "extract_links", "args": ["line1\nline2", 42], "ok": []}
+{"fn": "extract_links", "args": ["abc", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["a😀b😀c", -1], "ok": []}
+{"fn": "extract_links", "args": [".leading", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1"], "ok": []}
+{"fn": "extract_links", "args": [":", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["tab\tseparated", -100], "ok": []}
+{"fn": "extract_links", "args": ["", 1], "ok": []}
+{"fn": "extract_links", "args": ["hello", 42], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} itemsé", -1], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} items", 42], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.json", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.json", 42], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.pathkey_name-1"], "ok": []}
+{"fn": "extract_links", "args": ["hello worlda", 7], "ok": []}
+{"fn": "extract_links", "args": ["hello", 2], "ok": []}
+{"fn": "extract_links", "args": ["😀", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["tab\tseparated", 100], "ok": []}
+{"fn": "extract_links", "args": ["abc", 42], "ok": []}
+{"fn": "extract_links", "args": ["emoji 👍🏽 mix", 7], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.path", 2], "ok": []}
+{"fn": "extract_links", "args": [".leading", -1], "ok": []}
+{"fn": "extract_links", "args": ["./x/**/*.jsonns:key.path", 100], "ok": []}
+{"fn": "extract_links", "args": ["aba:b:c", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["HELLOabc", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["ab", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["tab\tseparated", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["ab", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["straße", 7], "ok": []}
+{"fn": "extract_links", "args": [":", -100], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.path", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["{name} has {count} items", -100], "ok": []}
+{"fn": "extract_links", "args": ["key_name-1ünïcödé", -1], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.path😀", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["ab", 100], "ok": []}
+{"fn": "extract_links", "args": [":./x/**/*.json", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["ünïcödé", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.ts", 255], "ok": []}
+{"fn": "extract_links", "args": ["Hello Worldhello world"], "ok": []}
+{"fn": "extract_links", "args": [":", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["a", -1], "ok": []}
+{"fn": "extract_links", "args": ["éabc", 42], "ok": []}
+{"fn": "extract_links", "args": ["a.b.c", 2], "ok": []}
+{"fn": "extract_links", "args": ["tab\tseparated"], "ok": []}
+{"fn": "extract_links", "args": ["emoji 👍🏽 mix", 255], "ok": []}
+{"fn": "extract_links", "args": ["a..b"], "ok": []}
+{"fn": "extract_links", "args": ["ns:key.path"], "ok": []}
+{"fn": "extract_links", "args": [":{name} has {count} items", 1], "ok": []}
+{"fn": "extract_links", "args": ["a", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["::", 2], "ok": []}
+{"fn": "extract_links", "args": ["日本語のテキスト", 0], "ok": []}
+{"fn": "extract_links", "args": ["hello", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["src/a/b.tsa😀b😀c", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["a:b:c😀", 7], "ok": []}
+{"fn": "extract_links", "args": ["a.b.c", 1], "ok": []}
+{"fn": "extract_links", "args": ["Hello World", 2147483647], "ok": []}
+{"fn": "extract_links", "args": ["a..b", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["hello world", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["", 255], "ok": []}
+{"fn": "extract_links", "args": ["日本語のテキストünïcödé", 100], "ok": []}
+{"fn": "extract_links", "args": ["a.b.c", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["﻿bom", 255], "ok": []}
+{"fn": "extract_links", "args": ["ab", 9223372036854775807], "ok": []}
+{"fn": "extract_links", "args": ["Hello World", -1], "ok": []}
+{"fn": "extract_links", "args": [".leading", 42], "ok": []}
+{"fn": "extract_links", "args": ["  padded  abc", 255], "ok": []}
+{"fn": "extract_links", "args": ["trailing.", -100], "ok": []}
+{"fn": "extract_links", "args": [":", 255], "ok": []}
+{"fn": "extract_links", "args": ["hello", -2147483648], "ok": []}
+{"fn": "extract_links", "args": ["İstanbul", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["HELLO", -100], "ok": []}
+{"fn": "extract_links", "args": ["abc"], "ok": []}
+{"fn": "extract_links", "args": ["straßens:key.path", 7], "ok": []}
+{"fn": "extract_links", "args": ["  padded  ", {"$undefined": true}], "ok": []}
+{"fn": "extract_links", "args": ["See https://example.com/report and www.example.com/docs.", 50], "ok": ["https://example.com/report", "http://www.example.com/docs"]}
+{"fn": "extract_links", "args": ["see example.com/docs for details", 50], "ok": []}
+{"fn": "extract_links", "args": ["Go to https://example.com/a, then https://example.com/a.", 1], "ok": ["https://example.com/a"]}
+{"fn": "extract_links", "args": ["CJK：https://example.com/中，next www.example.com/文。", 50], "ok": ["https://example.com/中", "http://www.example.com/文"]}
+{"fn": "extract_links", "args": ["trailing (https://example.com/x) [y](https://example.com/z).", 50], "ok": ["https://example.com/x", "https://example.com/z"]}
+{"fn": "extract_links", "args": ["", 50], "ok": []}
+{"fn": "extract_links", "args": ["https://example.com", 0], "ok": []}
+{"fn": "extract_links", "args": ["https://example.com", -3], "ok": []}
+{"fn": "extract_links", "args": ["https://example.com?x=1#frag; ", 9223372036854775807], "ok": ["https://example.com?x=1#frag"]}
+{"fn": "extract_links", "args": ["http://example.com/a http://example.com/b www.example.com/c http://example.com/a", 2], "ok": ["http://example.com/a", "http://example.com/b"]}
+{"fn": "extract_links", "args": ["münchen.de https://münchen.de/ü?q=ü", 50], "ok": ["https://münchen.de/ü?q=ü"]}

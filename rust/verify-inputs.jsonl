@@ -1,0 +1,6 @@
+{"fn": "check", "args": ["rust\\fixtures\\good.whl"]}
+{"fn": "check", "args": ["rust\\fixtures\\bad-marker.whl"]}
+{"fn": "check", "args": ["rust\\fixtures\\missing.whl"]}
+{"fn": "check", "args": ["rust\\fixtures\\good.tar.gz"]}
+{"fn": "check", "args": ["rust\\fixtures\\bad.tar.gz"]}
+{"fn": "check", "args": ["rust\\fixtures\\does-not-exist.zip"]}

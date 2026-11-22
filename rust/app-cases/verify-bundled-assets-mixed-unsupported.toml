@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["verify-bundled-assets", "rust/fixtures/good.whl", "rust/fixtures/unsupported.zip"]
+status.code = 1
+fs.sandbox = true

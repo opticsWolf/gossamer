@@ -1,0 +1,3 @@
+usage: gossamer skills install [-h] [--dest DIR] [--project] [--skill NAME]
+                               [--force]
+gossamer skills install: error: argument --skill: expected one argument

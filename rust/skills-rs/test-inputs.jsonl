@@ -1,0 +1,8 @@
+{"fn": "skill_names", "args": []}
+{"fn": "skill_text", "args": ["gossamer"]}
+{"fn": "install", "args": [{"$repr": "WindowsPath"}]}
+{"fn": "install", "args": [{"$repr": "WindowsPath"}], "kwargs": {"names": ["not-a-skill"]}}
+{"fn": "default_destinations", "args": []}
+{"fn": "default_destinations", "args": [], "kwargs": {"project": true}}
+{"fn": "skill_description", "args": ["gossamer"]}
+{"fn": "install", "args": [{"$repr": "WindowsPath"}], "kwargs": {"names": null, "force": false}}

@@ -1,0 +1,43 @@
+usage: gossamer extract [-h] [--pages PAGES] [--structured] [--store]
+                        [--store-dir STORE_DIR] [--include-images]
+                        [--tables-as {markdown,csv,json}] [--prefer-jats]
+                        [--no-prefer-jats] [--cache-dir CACHE_DIR]
+                        [--config CONFIG] [--keystore KEYSTORE]
+                        [--log-level LOG_LEVEL]
+                        [--fetch-mode {auto,browser,static}]
+                        source
+
+positional arguments:
+  source                Local file path or remote URL
+
+options:
+  -h, --help            show this help message and exit
+  --pages PAGES         PDF page range, e.g. 10-20
+  --structured          Structured payload (metadata/tables/links) where
+                        supported
+  --store               Write original + markdown under --store-dir
+  --store-dir STORE_DIR
+                        Directory for the stored original + extracted
+                        markdown/resources (with --store)
+  --include-images      PDF only, needs --store: also save figures
+  --tables-as {markdown,csv,json}
+                        Rendering of spreadsheet (XLSX) tables (default: json)
+  --prefer-jats         JATS-first scholarly route (default on): DOI-
+                        resolvable sources try publisher full-text XML
+                        (EuropePMC, then PLOS) before the PDF path. pages=
+                        with a JATS-resolvable source errors (sections, not
+                        pages); --store writes <stem>.xml + <stem>.md;
+                        --include-images is a no-op on the JATS route (remote
+                        hrefs, not saved).
+  --no-prefer-jats      Disable the JATS-first route; always use the PDF path
+                        (also disables the pages=/JATS error)
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

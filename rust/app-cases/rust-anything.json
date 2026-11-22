@@ -1,0 +1,16 @@
+{
+  "schema": "rust-anything/app-cases@1",
+  "name": "gossamer",
+  "run": [
+    ".venv/Scripts/python.exe",
+    "rust/original_entry.py"
+  ],
+  "normalize": [
+    "key-order",
+    "timestamps"
+  ],
+  "timeout_secs": 60,
+  "fresh": [
+    "rust/fixtures"
+  ]
+}

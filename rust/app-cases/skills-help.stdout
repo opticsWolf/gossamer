@@ -1,0 +1,11 @@
+usage: gossamer skills [-h] {list,show,install} ...
+
+positional arguments:
+  {list,show,install}
+    list               List the bundled skills and what triggers them
+    show               Print one bundled SKILL.md verbatim
+    install            Copy the bundled skills into agent discovery
+                       directories
+
+options:
+  -h, --help           show this help message and exit

@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["verify-bundled-assets", "rust/fixtures/missing.whl"]
+status.code = 1
+fs.sandbox = true

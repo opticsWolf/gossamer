@@ -1,0 +1,5 @@
+{"fn": "load_registry_packages", "args": [""]}
+{"fn": "load_registry_packages", "args": ["[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"]}
+{"fn": "load_registry_packages", "args": ["[[package]]\nname = \"local\"\nversion = \"0.1.0\"\n"]}
+{"fn": "load_registry_packages", "args": ["[[package]]\nname = \"gitdep\"\nversion = \"0.2.0\"\nsource = \"git+https://example.com/repo#abc\"\n"]}
+{"fn": "load_registry_packages", "args": ["[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n[[package]]\nname = \"local\"\nversion = \"0.1.0\"\n\n[[package]]\nname = \"gitdep\"\nversion = \"0.2.0\"\nsource = \"git+https://example.com/repo#abc\"\n\n[[package]]\nname = \"pyo3\"\nversion = \"0.30.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"]}

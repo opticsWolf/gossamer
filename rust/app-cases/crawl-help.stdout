@@ -1,0 +1,41 @@
+usage: gossamer crawl [-h] [--query QUERY] [--max-depth MAX_DEPTH]
+                      [--max-pages MAX_PAGES] [--same-host]
+                      [--min-score MIN_SCORE] [--excerpts] [--search-prior]
+                      [--seed-urls [SEED_URLS ...]]
+                      [--use-smart {auto,browser,static}]
+                      [--cache-dir CACHE_DIR] [--config CONFIG]
+                      [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                      [--fetch-mode {auto,browser,static}]
+                      root_url
+
+positional arguments:
+  root_url              Root URL to start the traversal
+
+options:
+  -h, --help            show this help message and exit
+  --query QUERY
+  --max-depth MAX_DEPTH
+  --max-pages MAX_PAGES
+  --same-host
+  --min-score MIN_SCORE
+                        Minimum relevance score to keep a page
+  --excerpts            Add a keyword-densest 300-char excerpt per page
+                        (raises the payload; pair with a lower --max-pages)
+  --search-prior        Run one site-scoped web search first and feed its
+                        top-5 into the frontier, exempt from --min-score
+  --seed-urls [SEED_URLS ...]
+                        Extra starting URLs, SSRF-checked and pushed at depth
+                        0 (their children are depth 1)
+  --use-smart {auto,browser,static}
+                        Render strategy: auto (default), browser (stealth
+                        engine first), or static (never renders)
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

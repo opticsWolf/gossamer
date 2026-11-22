@@ -1,0 +1,37 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "scripts/audit_cargo.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "audit-cargo-rs",
+  "exports": [
+    {
+      "name": "load_registry_packages",
+      "file": "scripts/audit_cargo.py",
+      "line": 27,
+      "params": [
+        {
+          "name": "lock_text",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "tuple[]",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": [
+    {
+      "name": "main",
+      "file": "scripts/audit_cargo.py",
+      "line": 43,
+      "reason": "a command-line entry point: it stays in Python, and `app front-door` takes the command line over when the whole app moves"
+    }
+  ]
+}

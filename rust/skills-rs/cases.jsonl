@@ -1,0 +1,662 @@
+{"fn": "skill_names", "args": [], "ok": {"$tuple": ["gossamer"]}}
+{"fn": "skill_text", "args": ["tab\tseparated"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abc"], "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語のテキスト"], "error": "SkillNotFound: \"unknown skill '日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_text", "args": ["{name} has {count} items"], "error": "SkillNotFound: \"unknown skill '{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing.ünïcödé"], "error": "SkillNotFound: \"unknown skill 'trailing.ünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello world"], "error": "SkillNotFound: \"unknown skill 'hello world'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:c"], "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbul"], "error": "SkillNotFound: \"unknown skill 'İstanbul'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2hello"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2hello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2:"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2:'; available: gossamer\""}
+{"fn": "skill_text", "args": ["é"], "error": "SkillNotFound: \"unknown skill 'é'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a😀b😀c"], "error": "SkillNotFound: \"unknown skill 'a😀b😀c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.json"], "error": "SkillNotFound: \"unknown skill './x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing.abc"], "error": "SkillNotFound: \"unknown skill 'trailing.abc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  "], "error": "SkillNotFound: \"unknown skill '  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["ab"], "error": "SkillNotFound: \"unknown skill 'ab'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀"], "error": "SkillNotFound: \"unknown skill '😀'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straßekey_name-1"], "error": "SkillNotFound: \"unknown skill 'straßekey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語のテキストtrailing."], "error": "SkillNotFound: \"unknown skill '日本語のテキストtrailing.'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ünïcödé"], "error": "SkillNotFound: \"unknown skill 'ünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["HELLO"], "error": "SkillNotFound: \"unknown skill 'HELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éünïcödé"], "error": "SkillNotFound: \"unknown skill 'éünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello"], "error": "SkillNotFound: \"unknown skill 'hello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing.ns:key.path"], "error": "SkillNotFound: \"unknown skill 'trailing.ns:key.path'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1"], "error": "SkillNotFound: \"unknown skill 'key_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a"], "error": "SkillNotFound: \"unknown skill 'a'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straße"], "error": "SkillNotFound: \"unknown skill 'straße'; available: gossamer\""}
+{"fn": "skill_text", "args": ["﻿bom"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_text", "args": [":"], "error": "SkillNotFound: \"unknown skill ':'; available: gossamer\""}
+{"fn": "skill_text", "args": ["Hello World"], "error": "SkillNotFound: \"unknown skill 'Hello World'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ns:key.path{name} has {count} items"], "error": "SkillNotFound: \"unknown skill 'ns:key.path{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_text", "args": ["tab\tseparatedtrailing."], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparatedtrailing.'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.tsabc"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tsabc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'key_name-1日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_text", "args": ["emoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hellokey_name-1"], "error": "SkillNotFound: \"unknown skill 'hellokey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leading"], "error": "SkillNotFound: \"unknown skill '.leading'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語のテキストHELLO"], "error": "SkillNotFound: \"unknown skill '日本語のテキストHELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abcsrc/a/b.ts"], "error": "SkillNotFound: \"unknown skill 'abcsrc/a/b.ts'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  straße"], "error": "SkillNotFound: \"unknown skill '  padded  straße'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ns:key.path"], "error": "SkillNotFound: \"unknown skill 'ns:key.path'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.ts"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.tsünïcödé"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tsünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a..b"], "error": "SkillNotFound: \"unknown skill 'a..b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1line1\nline2"], "error": "SkillNotFound: \"unknown skill 'key_name-1line1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leadingkey_name-1"], "error": "SkillNotFound: \"unknown skill '.leadingkey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語のテキストhello world"], "error": "SkillNotFound: \"unknown skill '日本語のテキストhello world'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leadingtrailing."], "error": "SkillNotFound: \"unknown skill '.leadingtrailing.'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing."], "error": "SkillNotFound: \"unknown skill 'trailing.'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.tsΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tsΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ns:key.pathİstanbul"], "error": "SkillNotFound: \"unknown skill 'ns:key.pathİstanbul'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a.b.c"], "error": "SkillNotFound: \"unknown skill 'a.b.c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abcHELLO"], "error": "SkillNotFound: \"unknown skill 'abcHELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello:"], "error": "SkillNotFound: \"unknown skill 'hello:'; available: gossamer\""}
+{"fn": "skill_text", "args": [""], "error": "SkillNotFound: \"unknown skill ''; available: gossamer\""}
+{"fn": "skill_text", "args": ["HELLOstraße"], "error": "SkillNotFound: \"unknown skill 'HELLOstraße'; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbulns:key.path"], "error": "SkillNotFound: \"unknown skill 'İstanbulns:key.path'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ababc"], "error": "SkillNotFound: \"unknown skill 'ababc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abİstanbul"], "error": "SkillNotFound: \"unknown skill 'abİstanbul'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello world:"], "error": "SkillNotFound: \"unknown skill 'hello world:'; available: gossamer\""}
+{"fn": "skill_text", "args": ["Hello Worldline1\nline2"], "error": "SkillNotFound: \"unknown skill 'Hello Worldline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.jsonabc"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonabc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abline1\nline2"], "error": "SkillNotFound: \"unknown skill 'abline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["helloünïcödé"], "error": "SkillNotFound: \"unknown skill 'helloünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ünïcödé./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'ünïcödé./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["aünïcödé"], "error": "SkillNotFound: \"unknown skill 'aünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["tab\tseparatedline1\nline2"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparatedline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ΣΊΣΥΦΟΣ﻿bom"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣ\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_text", "args": ["aemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'aemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abkey_name-1"], "error": "SkillNotFound: \"unknown skill 'abkey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded    padded  "], "error": "SkillNotFound: \"unknown skill '  padded    padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.tsns:key.path"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tsns:key.path'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a😀b😀ca.b.c"], "error": "SkillNotFound: \"unknown skill 'a😀b😀ca.b.c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀{name} has {count} items"], "error": "SkillNotFound: \"unknown skill '😀{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a..bünïcödé"], "error": "SkillNotFound: \"unknown skill 'a..bünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀HELLO"], "error": "SkillNotFound: \"unknown skill '😀HELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["HELLOemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'HELLOemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀hello"], "error": "SkillNotFound: \"unknown skill '😀hello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ünïcödéa..b"], "error": "SkillNotFound: \"unknown skill 'ünïcödéa..b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abc{name} has {count} items"], "error": "SkillNotFound: \"unknown skill 'abc{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_text", "args": ["{name} has {count} itemsHELLO"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemsHELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ab﻿bom"], "error": "SkillNotFound: \"unknown skill 'ab\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀é"], "error": "SkillNotFound: \"unknown skill '😀é'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.jsonab"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonab'; available: gossamer\""}
+{"fn": "skill_text", "args": ["Hello World  padded  "], "error": "SkillNotFound: \"unknown skill 'Hello World  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:c  padded  "], "error": "SkillNotFound: \"unknown skill 'a:b:c  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["ab./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'ab./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["emoji 👍🏽 mixabc"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mixabc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:cHello World"], "error": "SkillNotFound: \"unknown skill 'a:b:cHello World'; available: gossamer\""}
+{"fn": "skill_text", "args": ["HELLOünïcödé"], "error": "SkillNotFound: \"unknown skill 'HELLOünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2  padded  "], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["tab\tseparateda.b.c"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparateda.b.c'; available: gossamer\""}
+{"fn": "skill_text", "args": [":hello world"], "error": "SkillNotFound: \"unknown skill ':hello world'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  line1\nline2"], "error": "SkillNotFound: \"unknown skill '  padded  line1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.jsonline1\nline2"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing.emoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'trailing.emoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["Hello Worldabc"], "error": "SkillNotFound: \"unknown skill 'Hello Worldabc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'key_name-1./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straße.leading"], "error": "SkillNotFound: \"unknown skill 'straße.leading'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ünïcödéHELLO"], "error": "SkillNotFound: \"unknown skill 'ünïcödéHELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語のテキスト日本語のテキスト"], "error": "SkillNotFound: \"unknown skill '日本語のテキスト日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éhello world"], "error": "SkillNotFound: \"unknown skill 'éhello world'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello worlda"], "error": "SkillNotFound: \"unknown skill 'hello worlda'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing.HELLO"], "error": "SkillNotFound: \"unknown skill 'trailing.HELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ns:key.patha"], "error": "SkillNotFound: \"unknown skill 'ns:key.patha'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straßehello"], "error": "SkillNotFound: \"unknown skill 'straßehello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀tab\tseparated"], "error": "SkillNotFound: \"unknown skill '😀tab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_text", "args": ["tab\tseparated日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparated日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_text", "args": ["{name} has {count} itemshello"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemshello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2a:b:c"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2a:b:c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["é  padded  "], "error": "SkillNotFound: \"unknown skill 'é  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  a"], "error": "SkillNotFound: \"unknown skill '  padded  a'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éa..b"], "error": "SkillNotFound: \"unknown skill 'éa..b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abhello"], "error": "SkillNotFound: \"unknown skill 'abhello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1ns:key.path"], "error": "SkillNotFound: \"unknown skill 'key_name-1ns:key.path'; available: gossamer\""}
+{"fn": "skill_text", "args": ["helloab"], "error": "SkillNotFound: \"unknown skill 'helloab'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.ts😀"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts😀'; available: gossamer\""}
+{"fn": "skill_text", "args": ["﻿bom.leading"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom.leading'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straßesrc/a/b.ts"], "error": "SkillNotFound: \"unknown skill 'straßesrc/a/b.ts'; available: gossamer\""}
+{"fn": "skill_text", "args": ["﻿bomtab\tseparated"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomtab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abc.leading"], "error": "SkillNotFound: \"unknown skill 'abc.leading'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語のテキストtab\tseparated"], "error": "SkillNotFound: \"unknown skill '日本語のテキストtab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a..b  padded  "], "error": "SkillNotFound: \"unknown skill 'a..b  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": [".leadingHello World"], "error": "SkillNotFound: \"unknown skill '.leadingHello World'; available: gossamer\""}
+{"fn": "skill_text", "args": ["{name} has {count} itemsünïcödé"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemsünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straßeΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'straßeΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leadinga.b.c"], "error": "SkillNotFound: \"unknown skill '.leadinga.b.c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a😀b😀c😀"], "error": "SkillNotFound: \"unknown skill 'a😀b😀c😀'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a.b.chello"], "error": "SkillNotFound: \"unknown skill 'a.b.chello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ünïcödéé"], "error": "SkillNotFound: \"unknown skill 'ünïcödéé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'éemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a..ba:b:c"], "error": "SkillNotFound: \"unknown skill 'a..ba:b:c'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leadingtab\tseparated"], "error": "SkillNotFound: \"unknown skill '.leadingtab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:cstraße"], "error": "SkillNotFound: \"unknown skill 'a:b:cstraße'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a.b.ca:b:c"], "error": "SkillNotFound: \"unknown skill 'a.b.ca:b:c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["﻿bomİstanbul"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomİstanbul'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a..ba..b"], "error": "SkillNotFound: \"unknown skill 'a..ba..b'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leading﻿bom"], "error": "SkillNotFound: \"unknown skill '.leading\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_text", "args": ["helloabc"], "error": "SkillNotFound: \"unknown skill 'helloabc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.tskey_name-1"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tskey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["trailing.a..b"], "error": "SkillNotFound: \"unknown skill 'trailing.a..b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["emoji 👍🏽 mixtab\tseparated"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mixtab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1trailing."], "error": "SkillNotFound: \"unknown skill 'key_name-1trailing.'; available: gossamer\""}
+{"fn": "skill_text", "args": ["{name} has {count} itemsemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemsemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éé"], "error": "SkillNotFound: \"unknown skill 'éé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀  padded  "], "error": "SkillNotFound: \"unknown skill '😀  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbulemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'İstanbulemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1hello"], "error": "SkillNotFound: \"unknown skill 'key_name-1hello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀.leading"], "error": "SkillNotFound: \"unknown skill '😀.leading'; available: gossamer\""}
+{"fn": "skill_text", "args": ["straße  padded  "], "error": "SkillNotFound: \"unknown skill 'straße  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello worldkey_name-1"], "error": "SkillNotFound: \"unknown skill 'hello worldkey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:c日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'a:b:c日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a..ba😀b😀c"], "error": "SkillNotFound: \"unknown skill 'a..ba😀b😀c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbul.leading"], "error": "SkillNotFound: \"unknown skill 'İstanbul.leading'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a.b.c﻿bom"], "error": "SkillNotFound: \"unknown skill 'a.b.c\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  ab"], "error": "SkillNotFound: \"unknown skill '  padded  ab'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1é"], "error": "SkillNotFound: \"unknown skill 'key_name-1é'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:c./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'a:b:c./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:chello"], "error": "SkillNotFound: \"unknown skill 'a:b:chello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:cabc"], "error": "SkillNotFound: \"unknown skill 'a:b:cabc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀Hello World"], "error": "SkillNotFound: \"unknown skill '😀Hello World'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.jsoné"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsoné'; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbulé"], "error": "SkillNotFound: \"unknown skill 'İstanbulé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  ΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill '  padded  ΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  emoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill '  padded  emoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a:b:cünïcödé"], "error": "SkillNotFound: \"unknown skill 'a:b:cünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ünïcödéhello"], "error": "SkillNotFound: \"unknown skill 'ünïcödéhello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hello worldhello"], "error": "SkillNotFound: \"unknown skill 'hello worldhello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["﻿bom:"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom:'; available: gossamer\""}
+{"fn": "skill_text", "args": ["﻿bom😀"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom😀'; available: gossamer\""}
+{"fn": "skill_text", "args": ["helloa😀b😀c"], "error": "SkillNotFound: \"unknown skill 'helloa😀b😀c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a.b.cns:key.path"], "error": "SkillNotFound: \"unknown skill 'a.b.cns:key.path'; available: gossamer\""}
+{"fn": "skill_text", "args": ["😀abc"], "error": "SkillNotFound: \"unknown skill '😀abc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abhello world"], "error": "SkillNotFound: \"unknown skill 'abhello world'; available: gossamer\""}
+{"fn": "skill_text", "args": [":line1\nline2"], "error": "SkillNotFound: \"unknown skill ':line1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.jsonemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ΣΊΣΥΦΟΣ  padded  "], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣ  padded  '; available: gossamer\""}
+{"fn": "skill_text", "args": ["ns:key.patha:b:c"], "error": "SkillNotFound: \"unknown skill 'ns:key.patha:b:c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["tab\tseparatedHello World"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparatedHello World'; available: gossamer\""}
+{"fn": "skill_text", "args": ["line1\nline2a..b"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2a..b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["key_name-1a:b:c"], "error": "SkillNotFound: \"unknown skill 'key_name-1a:b:c'; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbul日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'İstanbul日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_text", "args": ["helloemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'helloemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ns:key.pathkey_name-1"], "error": "SkillNotFound: \"unknown skill 'ns:key.pathkey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["Hello Worldstraße"], "error": "SkillNotFound: \"unknown skill 'Hello Worldstraße'; available: gossamer\""}
+{"fn": "skill_text", "args": [".leading😀"], "error": "SkillNotFound: \"unknown skill '.leading😀'; available: gossamer\""}
+{"fn": "skill_text", "args": ["src/a/b.ts./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_text", "args": ["aHello World"], "error": "SkillNotFound: \"unknown skill 'aHello World'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éline1\nline2"], "error": "SkillNotFound: \"unknown skill 'éline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_text", "args": ["./x/**/*.json:"], "error": "SkillNotFound: \"unknown skill './x/**/*.json:'; available: gossamer\""}
+{"fn": "skill_text", "args": ["éHELLO"], "error": "SkillNotFound: \"unknown skill 'éHELLO'; available: gossamer\""}
+{"fn": "skill_text", "args": ["{name} has {count} itemshello world"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemshello world'; available: gossamer\""}
+{"fn": "skill_text", "args": ["İstanbulsrc/a/b.ts"], "error": "SkillNotFound: \"unknown skill 'İstanbulsrc/a/b.ts'; available: gossamer\""}
+{"fn": "skill_text", "args": ["  padded  a..b"], "error": "SkillNotFound: \"unknown skill '  padded  a..b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["abckey_name-1"], "error": "SkillNotFound: \"unknown skill 'abckey_name-1'; available: gossamer\""}
+{"fn": "skill_text", "args": ["hellohello"], "error": "SkillNotFound: \"unknown skill 'hellohello'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ΣΊΣΥΦΟΣünïcödé"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣünïcödé'; available: gossamer\""}
+{"fn": "skill_text", "args": ["héllo wörld"], "error": "SkillNotFound: \"unknown skill 'héllo wörld'; available: gossamer\""}
+{"fn": "skill_text", "args": ["👍🏽 thumbs"], "error": "SkillNotFound: \"unknown skill '👍🏽 thumbs'; available: gossamer\""}
+{"fn": "skill_text", "args": ["日本語"], "error": "SkillNotFound: \"unknown skill '日本語'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ılık ırmak"], "error": "SkillNotFound: \"unknown skill 'ılık ırmak'; available: gossamer\""}
+{"fn": "skill_text", "args": ["👨‍👩‍👧 family"], "error": "SkillNotFound: \"unknown skill '👨\\\\u200d👩\\\\u200d👧 family'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a b"], "error": "SkillNotFound: \"unknown skill 'a\\\\xa0b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a😀b"], "error": "SkillNotFound: \"unknown skill 'a😀b'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a²b x½ y①"], "error": "SkillNotFound: \"unknown skill 'a²b x½ y①'; available: gossamer\""}
+{"fn": "skill_text", "args": ["aⅠb Ⅻ"], "error": "SkillNotFound: \"unknown skill 'aⅠb Ⅻ'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a𐐀b 𝐀bc"], "error": "SkillNotFound: \"unknown skill 'a𐐀b 𝐀bc'; available: gossamer\""}
+{"fn": "skill_text", "args": ["कि ٣٤"], "error": "SkillNotFound: \"unknown skill 'कि ٣٤'; available: gossamer\""}
+{"fn": "skill_text", "args": ["Iı İi"], "error": "SkillNotFound: \"unknown skill 'Iı İi'; available: gossamer\""}
+{"fn": "skill_text", "args": ["K K k"], "error": "SkillNotFound: \"unknown skill 'K K k'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ſ s S"], "error": "SkillNotFound: \"unknown skill 'ſ s S'; available: gossamer\""}
+{"fn": "skill_text", "args": ["x‍y 👨‍👩‍👧"], "error": "SkillNotFound: \"unknown skill 'x\\\\u200dy 👨\\\\u200d👩\\\\u200d👧'; available: gossamer\""}
+{"fn": "skill_text", "args": ["a b c　d"], "error": "SkillNotFound: \"unknown skill 'a\\\\xa0b\\\\u2009c\\\\u3000d'; available: gossamer\""}
+{"fn": "skill_text", "args": ["١٢٣ ٤٥"], "error": "SkillNotFound: \"unknown skill '١٢٣ ٤٥'; available: gossamer\""}
+{"fn": "skill_text", "args": ["𝟘𝟙 ²³"], "error": "SkillNotFound: \"unknown skill '𝟘𝟙 ²³'; available: gossamer\""}
+{"fn": "skill_text", "args": ["snake_case foo-bar o'neil"], "error": "SkillNotFound: 'unknown skill \"snake_case foo-bar o\\'neil\"; available: gossamer'"}
+{"fn": "skill_text", "args": ["ǅungla Ǆ"], "error": "SkillNotFound: \"unknown skill 'ǅungla Ǆ'; available: gossamer\""}
+{"fn": "skill_text", "args": ["one\r\ntwo threefour"], "error": "SkillNotFound: \"unknown skill 'one\\\\r\\\\ntwo\\\\u2028three\\\\x85four'; available: gossamer\""}
+{"fn": "skill_text", "args": ["café café"], "error": "SkillNotFound: \"unknown skill 'café café'; available: gossamer\""}
+{"fn": "skill_text", "args": ["ΣΑΣ σας ς"], "error": "SkillNotFound: \"unknown skill 'ΣΑΣ σας ς'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀cΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'a😀b😀cΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abHello World"], "error": "SkillNotFound: \"unknown skill 'abHello World'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a"], "error": "SkillNotFound: \"unknown skill 'a'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ünïcödé"], "error": "SkillNotFound: \"unknown skill 'ünïcödé'; available: gossamer\""}
+{"fn": "skill_description", "args": [".leading"], "error": "SkillNotFound: \"unknown skill '.leading'; available: gossamer\""}
+{"fn": "skill_description", "args": ["😀"], "error": "SkillNotFound: \"unknown skill '😀'; available: gossamer\""}
+{"fn": "skill_description", "args": ["src/a/b.tshello"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tshello'; available: gossamer\""}
+{"fn": "skill_description", "args": [".leadingemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill '.leadingemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_description", "args": ["Hello World"], "error": "SkillNotFound: \"unknown skill 'Hello World'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abc.leading"], "error": "SkillNotFound: \"unknown skill 'abc.leading'; available: gossamer\""}
+{"fn": "skill_description", "args": ["emoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_description", "args": ["straße"], "error": "SkillNotFound: \"unknown skill 'straße'; available: gossamer\""}
+{"fn": "skill_description", "args": ["HELLO"], "error": "SkillNotFound: \"unknown skill 'HELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語のテキスト"], "error": "SkillNotFound: \"unknown skill '日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:"], "error": "SkillNotFound: \"unknown skill 'a:'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ns:key.path"], "error": "SkillNotFound: \"unknown skill 'ns:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": [":"], "error": "SkillNotFound: \"unknown skill ':'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語のテキストünïcödé"], "error": "SkillNotFound: \"unknown skill '日本語のテキストünïcödé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ünïcödé.leading"], "error": "SkillNotFound: \"unknown skill 'ünïcödé.leading'; available: gossamer\""}
+{"fn": "skill_description", "args": ["src/a/b.ts﻿bom"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["straße日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'straße日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ab"], "error": "SkillNotFound: \"unknown skill 'ab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  "], "error": "SkillNotFound: \"unknown skill '  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.json"], "error": "SkillNotFound: \"unknown skill './x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": [".leadinga"], "error": "SkillNotFound: \"unknown skill '.leadinga'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1﻿bom"], "error": "SkillNotFound: \"unknown skill 'key_name-1\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": [""], "error": "SkillNotFound: \"unknown skill ''; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bom"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["é"], "error": "SkillNotFound: \"unknown skill 'é'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΊΣΥΦΟΣ:"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣ:'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello"], "error": "SkillNotFound: \"unknown skill 'hello'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:b:c﻿bom"], "error": "SkillNotFound: \"unknown skill 'a:b:c\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1"], "error": "SkillNotFound: \"unknown skill 'key_name-1'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a..b:"], "error": "SkillNotFound: \"unknown skill 'a..b:'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a..b"], "error": "SkillNotFound: \"unknown skill 'a..b'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1emoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'key_name-1emoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀c"], "error": "SkillNotFound: \"unknown skill 'a😀b😀c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["src/a/b.ts"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:b:c"], "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbul"], "error": "SkillNotFound: \"unknown skill 'İstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a.b.c"], "error": "SkillNotFound: \"unknown skill 'a.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello worldΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'hello worldΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["src/a/b.ts😀"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts😀'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbul./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'İstanbul./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello world"], "error": "SkillNotFound: \"unknown skill 'hello world'; available: gossamer\""}
+{"fn": "skill_description", "args": ["straßeé"], "error": "SkillNotFound: \"unknown skill 'straßeé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ünïcödéİstanbul"], "error": "SkillNotFound: \"unknown skill 'ünïcödéİstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀cns:key.path"], "error": "SkillNotFound: \"unknown skill 'a😀b😀cns:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abc"], "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1a😀b😀c"], "error": "SkillNotFound: \"unknown skill 'key_name-1a😀b😀c'; available: gossamer\""}
+{"fn": "skill_description", "args": [":ns:key.path"], "error": "SkillNotFound: \"unknown skill ':ns:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ns:key.pathhello world"], "error": "SkillNotFound: \"unknown skill 'ns:key.pathhello world'; available: gossamer\""}
+{"fn": "skill_description", "args": ["tab\tseparated"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a.b.cline1\nline2"], "error": "SkillNotFound: \"unknown skill 'a.b.cline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_description", "args": ["trailing."], "error": "SkillNotFound: \"unknown skill 'trailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:b:c  padded  "], "error": "SkillNotFound: \"unknown skill 'a:b:c  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["abcİstanbul"], "error": "SkillNotFound: \"unknown skill 'abcİstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["tab\tseparated./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparated./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a.b.cHELLO"], "error": "SkillNotFound: \"unknown skill 'a.b.cHELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} items"], "error": "SkillNotFound: \"unknown skill '{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbulé"], "error": "SkillNotFound: \"unknown skill 'İstanbulé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["src/a/b.tstab\tseparated"], "error": "SkillNotFound: \"unknown skill 'src/a/b.tstab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_description", "args": [":é"], "error": "SkillNotFound: \"unknown skill ':é'; available: gossamer\""}
+{"fn": "skill_description", "args": ["trailing.trailing."], "error": "SkillNotFound: \"unknown skill 'trailing.trailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["😀line1\nline2"], "error": "SkillNotFound: \"unknown skill '😀line1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} items./x/**/*.json"], "error": "SkillNotFound: \"unknown skill '{name} has {count} items./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["trailing.﻿bom"], "error": "SkillNotFound: \"unknown skill 'trailing.\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2tab\tseparated"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2tab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_description", "args": ["tab\tseparateda..b"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparateda..b'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbul﻿bom"], "error": "SkillNotFound: \"unknown skill 'İstanbul\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["helloa.b.c"], "error": "SkillNotFound: \"unknown skill 'helloa.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:b:cé"], "error": "SkillNotFound: \"unknown skill 'a:b:cé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded    padded  "], "error": "SkillNotFound: \"unknown skill '  padded    padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["straßens:key.path"], "error": "SkillNotFound: \"unknown skill 'straßens:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2﻿bom"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a..b  padded  "], "error": "SkillNotFound: \"unknown skill 'a..b  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bomünïcödé"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomünïcödé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語のテキストΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill '日本語のテキストΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:b:ca.b.c"], "error": "SkillNotFound: \"unknown skill 'a:b:ca.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["emoji 👍🏽 mix日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mix日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ab  padded  "], "error": "SkillNotFound: \"unknown skill 'ab  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["aΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'aΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  ns:key.path"], "error": "SkillNotFound: \"unknown skill '  padded  ns:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語のテキストHELLO"], "error": "SkillNotFound: \"unknown skill '日本語のテキストHELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["aba.b.c"], "error": "SkillNotFound: \"unknown skill 'aba.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.json./x/**/*.json"], "error": "SkillNotFound: \"unknown skill './x/**/*.json./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bomhello world"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomhello world'; available: gossamer\""}
+{"fn": "skill_description", "args": [":a"], "error": "SkillNotFound: \"unknown skill ':a'; available: gossamer\""}
+{"fn": "skill_description", "args": ["éhello"], "error": "SkillNotFound: \"unknown skill 'éhello'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abchello world"], "error": "SkillNotFound: \"unknown skill 'abchello world'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abcΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'abcΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["helloabc"], "error": "SkillNotFound: \"unknown skill 'helloabc'; available: gossamer\""}
+{"fn": "skill_description", "args": ["HELLOtrailing."], "error": "SkillNotFound: \"unknown skill 'HELLOtrailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["éemoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill 'éemoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2ab"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2ab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'key_name-1./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.jsonab"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello  padded  "], "error": "SkillNotFound: \"unknown skill 'hello  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["HELLO{name} has {count} items"], "error": "SkillNotFound: \"unknown skill 'HELLO{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_description", "args": ["straße.leading"], "error": "SkillNotFound: \"unknown skill 'straße.leading'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hellons:key.path"], "error": "SkillNotFound: \"unknown skill 'hellons:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} itemsab"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemsab'; available: gossamer\""}
+{"fn": "skill_description", "args": [".leadingsrc/a/b.ts"], "error": "SkillNotFound: \"unknown skill '.leadingsrc/a/b.ts'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello﻿bom"], "error": "SkillNotFound: \"unknown skill 'hello\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["emoji 👍🏽 mixa:b:c"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mixa:b:c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  HELLO"], "error": "SkillNotFound: \"unknown skill '  padded  HELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abHELLO"], "error": "SkillNotFound: \"unknown skill 'abHELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語のテキストhello world"], "error": "SkillNotFound: \"unknown skill '日本語のテキストhello world'; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bomsrc/a/b.ts"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomsrc/a/b.ts'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} items.leading"], "error": "SkillNotFound: \"unknown skill '{name} has {count} items.leading'; available: gossamer\""}
+{"fn": "skill_description", "args": [".leadinghello world"], "error": "SkillNotFound: \"unknown skill '.leadinghello world'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a{name} has {count} items"], "error": "SkillNotFound: \"unknown skill 'a{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1{name} has {count} items"], "error": "SkillNotFound: \"unknown skill 'key_name-1{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_description", "args": ["aab"], "error": "SkillNotFound: \"unknown skill 'aab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ns:key.path  padded  "], "error": "SkillNotFound: \"unknown skill 'ns:key.path  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.jsonHELLO"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonHELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ns:key.pathtrailing."], "error": "SkillNotFound: \"unknown skill 'ns:key.pathtrailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀c😀"], "error": "SkillNotFound: \"unknown skill 'a😀b😀c😀'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ésrc/a/b.ts"], "error": "SkillNotFound: \"unknown skill 'ésrc/a/b.ts'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ünïcödé日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'ünïcödé日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a:b:ca"], "error": "SkillNotFound: \"unknown skill 'a:b:ca'; available: gossamer\""}
+{"fn": "skill_description", "args": ["😀ΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill '😀ΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} itemsstraße"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemsstraße'; available: gossamer\""}
+{"fn": "skill_description", "args": ["trailing.ΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'trailing.ΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbulab"], "error": "SkillNotFound: \"unknown skill 'İstanbulab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΊΣΥΦΟΣΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["😀abc"], "error": "SkillNotFound: \"unknown skill '😀abc'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ns:key.pathHELLO"], "error": "SkillNotFound: \"unknown skill 'ns:key.pathHELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.jsonhello"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsonhello'; available: gossamer\""}
+{"fn": "skill_description", "args": ["helloa:b:c"], "error": "SkillNotFound: \"unknown skill 'helloa:b:c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀cstraße"], "error": "SkillNotFound: \"unknown skill 'a😀b😀cstraße'; available: gossamer\""}
+{"fn": "skill_description", "args": ["tab\tseparatedΣΊΣΥΦΟΣ"], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparatedΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΊΣΥΦΟΣİstanbul"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣİstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["aé"], "error": "SkillNotFound: \"unknown skill 'aé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abkey_name-1"], "error": "SkillNotFound: \"unknown skill 'abkey_name-1'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hellohello"], "error": "SkillNotFound: \"unknown skill 'hellohello'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbulİstanbul"], "error": "SkillNotFound: \"unknown skill 'İstanbulİstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": [":emoji 👍🏽 mix"], "error": "SkillNotFound: \"unknown skill ':emoji 👍🏽 mix'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} items  padded  "], "error": "SkillNotFound: \"unknown skill '{name} has {count} items  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello world./x/**/*.json"], "error": "SkillNotFound: \"unknown skill 'hello world./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abca:b:c"], "error": "SkillNotFound: \"unknown skill 'abca:b:c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["tab\tseparatedtrailing."], "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparatedtrailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["straßestraße"], "error": "SkillNotFound: \"unknown skill 'straßestraße'; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.json日本語のテキスト"], "error": "SkillNotFound: \"unknown skill './x/**/*.json日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  .leading"], "error": "SkillNotFound: \"unknown skill '  padded  .leading'; available: gossamer\""}
+{"fn": "skill_description", "args": ["é  padded  "], "error": "SkillNotFound: \"unknown skill 'é  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["Hello Worldhello world"], "error": "SkillNotFound: \"unknown skill 'Hello Worldhello world'; available: gossamer\""}
+{"fn": "skill_description", "args": ["src/a/b.ts日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'src/a/b.ts日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿boma"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffboma'; available: gossamer\""}
+{"fn": "skill_description", "args": ["😀:"], "error": "SkillNotFound: \"unknown skill '😀:'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΊΣΥΦΟΣa.b.c"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣa.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["é日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'é日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["./x/**/*.jsona"], "error": "SkillNotFound: \"unknown skill './x/**/*.jsona'; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bom😀"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom😀'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abtrailing."], "error": "SkillNotFound: \"unknown skill 'abtrailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello worldé"], "error": "SkillNotFound: \"unknown skill 'hello worldé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["line1\nline2İstanbul"], "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2İstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abca😀b😀c"], "error": "SkillNotFound: \"unknown skill 'abca😀b😀c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["İstanbulHello World"], "error": "SkillNotFound: \"unknown skill 'İstanbulHello World'; available: gossamer\""}
+{"fn": "skill_description", "args": ["{name} has {count} itemsİstanbul"], "error": "SkillNotFound: \"unknown skill '{name} has {count} itemsİstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abc﻿bom"], "error": "SkillNotFound: \"unknown skill 'abc\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ünïcödé  padded  "], "error": "SkillNotFound: \"unknown skill 'ünïcödé  padded  '; available: gossamer\""}
+{"fn": "skill_description", "args": ["😀a"], "error": "SkillNotFound: \"unknown skill '😀a'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1abc"], "error": "SkillNotFound: \"unknown skill 'key_name-1abc'; available: gossamer\""}
+{"fn": "skill_description", "args": [":./x/**/*.json"], "error": "SkillNotFound: \"unknown skill ':./x/**/*.json'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  tab\tseparated"], "error": "SkillNotFound: \"unknown skill '  padded  tab\\\\tseparated'; available: gossamer\""}
+{"fn": "skill_description", "args": ["aİstanbul"], "error": "SkillNotFound: \"unknown skill 'aİstanbul'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a..ba..b"], "error": "SkillNotFound: \"unknown skill 'a..ba..b'; available: gossamer\""}
+{"fn": "skill_description", "args": ["éline1\nline2"], "error": "SkillNotFound: \"unknown skill 'éline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello worldtrailing."], "error": "SkillNotFound: \"unknown skill 'hello worldtrailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀ca.b.c"], "error": "SkillNotFound: \"unknown skill 'a😀b😀ca.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["emoji 👍🏽 mix:"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mix:'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b😀ca😀b😀c"], "error": "SkillNotFound: \"unknown skill 'a😀b😀ca😀b😀c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1a..b"], "error": "SkillNotFound: \"unknown skill 'key_name-1a..b'; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bomab"], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["straßeab"], "error": "SkillNotFound: \"unknown skill 'straßeab'; available: gossamer\""}
+{"fn": "skill_description", "args": ["trailing.ns:key.path"], "error": "SkillNotFound: \"unknown skill 'trailing.ns:key.path'; available: gossamer\""}
+{"fn": "skill_description", "args": ["helloline1\nline2"], "error": "SkillNotFound: \"unknown skill 'helloline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_description", "args": ["abline1\nline2"], "error": "SkillNotFound: \"unknown skill 'abline1\\\\nline2'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語のテキストabc"], "error": "SkillNotFound: \"unknown skill '日本語のテキストabc'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ns:key.patha.b.c"], "error": "SkillNotFound: \"unknown skill 'ns:key.patha.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a..bkey_name-1"], "error": "SkillNotFound: \"unknown skill 'a..bkey_name-1'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  abc"], "error": "SkillNotFound: \"unknown skill '  padded  abc'; available: gossamer\""}
+{"fn": "skill_description", "args": ["helloünïcödé"], "error": "SkillNotFound: \"unknown skill 'helloünïcödé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["﻿bomtrailing."], "error": "SkillNotFound: \"unknown skill '\\\\ufeffbomtrailing.'; available: gossamer\""}
+{"fn": "skill_description", "args": ["key_name-1a"], "error": "SkillNotFound: \"unknown skill 'key_name-1a'; available: gossamer\""}
+{"fn": "skill_description", "args": ["  padded  key_name-1"], "error": "SkillNotFound: \"unknown skill '  padded  key_name-1'; available: gossamer\""}
+{"fn": "skill_description", "args": [":{name} has {count} items"], "error": "SkillNotFound: \"unknown skill ':{name} has {count} items'; available: gossamer\""}
+{"fn": "skill_description", "args": ["emoji 👍🏽 mixHELLO"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mixHELLO'; available: gossamer\""}
+{"fn": "skill_description", "args": ["aünïcödé"], "error": "SkillNotFound: \"unknown skill 'aünïcödé'; available: gossamer\""}
+{"fn": "skill_description", "args": ["Hello World日本語のテキスト"], "error": "SkillNotFound: \"unknown skill 'Hello World日本語のテキスト'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a﻿bom"], "error": "SkillNotFound: \"unknown skill 'a\\\\ufeffbom'; available: gossamer\""}
+{"fn": "skill_description", "args": ["emoji 👍🏽 mixHello World"], "error": "SkillNotFound: \"unknown skill 'emoji 👍🏽 mixHello World'; available: gossamer\""}
+{"fn": "skill_description", "args": ["hello worlda.b.c"], "error": "SkillNotFound: \"unknown skill 'hello worlda.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["Hello Worlda.b.c"], "error": "SkillNotFound: \"unknown skill 'Hello Worlda.b.c'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΊΣΥΦΟΣkey_name-1"], "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣkey_name-1'; available: gossamer\""}
+{"fn": "skill_description", "args": ["héllo wörld"], "error": "SkillNotFound: \"unknown skill 'héllo wörld'; available: gossamer\""}
+{"fn": "skill_description", "args": ["👍🏽 thumbs"], "error": "SkillNotFound: \"unknown skill '👍🏽 thumbs'; available: gossamer\""}
+{"fn": "skill_description", "args": ["日本語"], "error": "SkillNotFound: \"unknown skill '日本語'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ılık ırmak"], "error": "SkillNotFound: \"unknown skill 'ılık ırmak'; available: gossamer\""}
+{"fn": "skill_description", "args": ["👨‍👩‍👧 family"], "error": "SkillNotFound: \"unknown skill '👨\\\\u200d👩\\\\u200d👧 family'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a b"], "error": "SkillNotFound: \"unknown skill 'a\\\\xa0b'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a😀b"], "error": "SkillNotFound: \"unknown skill 'a😀b'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a²b x½ y①"], "error": "SkillNotFound: \"unknown skill 'a²b x½ y①'; available: gossamer\""}
+{"fn": "skill_description", "args": ["aⅠb Ⅻ"], "error": "SkillNotFound: \"unknown skill 'aⅠb Ⅻ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a𐐀b 𝐀bc"], "error": "SkillNotFound: \"unknown skill 'a𐐀b 𝐀bc'; available: gossamer\""}
+{"fn": "skill_description", "args": ["कि ٣٤"], "error": "SkillNotFound: \"unknown skill 'कि ٣٤'; available: gossamer\""}
+{"fn": "skill_description", "args": ["Iı İi"], "error": "SkillNotFound: \"unknown skill 'Iı İi'; available: gossamer\""}
+{"fn": "skill_description", "args": ["K K k"], "error": "SkillNotFound: \"unknown skill 'K K k'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ſ s S"], "error": "SkillNotFound: \"unknown skill 'ſ s S'; available: gossamer\""}
+{"fn": "skill_description", "args": ["x‍y 👨‍👩‍👧"], "error": "SkillNotFound: \"unknown skill 'x\\\\u200dy 👨\\\\u200d👩\\\\u200d👧'; available: gossamer\""}
+{"fn": "skill_description", "args": ["a b c　d"], "error": "SkillNotFound: \"unknown skill 'a\\\\xa0b\\\\u2009c\\\\u3000d'; available: gossamer\""}
+{"fn": "skill_description", "args": ["١٢٣ ٤٥"], "error": "SkillNotFound: \"unknown skill '١٢٣ ٤٥'; available: gossamer\""}
+{"fn": "skill_description", "args": ["𝟘𝟙 ²³"], "error": "SkillNotFound: \"unknown skill '𝟘𝟙 ²³'; available: gossamer\""}
+{"fn": "skill_description", "args": ["snake_case foo-bar o'neil"], "error": "SkillNotFound: 'unknown skill \"snake_case foo-bar o\\'neil\"; available: gossamer'"}
+{"fn": "skill_description", "args": ["ǅungla Ǆ"], "error": "SkillNotFound: \"unknown skill 'ǅungla Ǆ'; available: gossamer\""}
+{"fn": "skill_description", "args": ["one\r\ntwo threefour"], "error": "SkillNotFound: \"unknown skill 'one\\\\r\\\\ntwo\\\\u2028three\\\\x85four'; available: gossamer\""}
+{"fn": "skill_description", "args": ["café café"], "error": "SkillNotFound: \"unknown skill 'café café'; available: gossamer\""}
+{"fn": "skill_description", "args": ["ΣΑΣ σας ς"], "error": "SkillNotFound: \"unknown skill 'ΣΑΣ σας ς'; available: gossamer\""}
+{"fn": "default_destinations", "args": [], "kwargs": {"project": false}, "ok": {"$tuple": [{"$repr": "WindowsPath"}, {"$repr": "WindowsPath"}]}}
+{"fn": "default_destinations", "args": [], "kwargs": {}, "ok": {"$tuple": [{"$repr": "WindowsPath"}, {"$repr": "WindowsPath"}]}}
+{"fn": "default_destinations", "args": [], "kwargs": {"project": true}, "ok": {"$tuple": [{"$repr": "WindowsPath"}, {"$repr": "WindowsPath"}]}}
+{"fn": "default_destinations", "args": [], "kwargs": {}, "ok": {"$tuple": [{"$repr": "WindowsPath"}, {"$repr": "WindowsPath"}]}}
+{"fn": "install", "args": ["x"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [".leading"], "kwargs": {"names": ["ns:key.path"], "force": true}, "error": "SkillNotFound: \"unknown skill 'ns:key.path'; available: gossamer\""}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["Hello World", "  padded  abc", "a.b.c"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["日本語のテキスト"], "kwargs": {"names": ["a", "ns:key.path"], "force": false}, "error": "SkillNotFound: \"unknown skill 'a'; available: gossamer\""}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {"names": ["Hello World"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [true], "kwargs": {"names": ["﻿bom"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": [], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["HELLO", "line1\nline2", "hello world"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["hello", "hello"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {"names": ["emoji 👍🏽 mix", "Hello World", "a"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["ünïcödé"], "kwargs": {"names": ["abc", "hello world"]}, "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["tab\tseparated"], "kwargs": {"names": ["abc", "ünïcödéé", "tab\tseparated"], "force": false}, "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "install", "args": ["line1\nline2line1\nline2"], "kwargs": {"names": ["İstanbul", "a:b:c", "é"], "force": false}, "error": "SkillNotFound: \"unknown skill 'İstanbul'; available: gossamer\""}
+{"fn": "install", "args": [{}], "kwargs": {"names": [".leading:", "  padded  ab"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["src/a/b.ts./x/**/*.json"], "kwargs": {"names": ["ΣΊΣΥΦΟΣ", "trailing."], "force": false}, "error": "SkillNotFound: \"unknown skill 'ΣΊΣΥΦΟΣ'; available: gossamer\""}
+{"fn": "install", "args": ["ΣΊΣΥΦΟΣ"], "kwargs": {"names": ["straße"], "force": true}, "error": "SkillNotFound: \"unknown skill 'straße'; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": ["./x/**/*.json"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["ΣΊΣΥΦΟΣ"], "kwargs": {"names": ["hello"], "force": true}, "error": "SkillNotFound: \"unknown skill 'hello'; available: gossamer\""}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {"names": ["é"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["src/a/b.ts"], "kwargs": {"names": ["straßea😀b😀c", "a..b", "a..bemoji 👍🏽 mix"], "force": true}, "error": "SkillNotFound: \"unknown skill 'straßea😀b😀c'; available: gossamer\""}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["abc"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [true], "kwargs": {"names": []}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["trailing../x/**/*.json"], "kwargs": {"names": ["😀"], "force": true}, "error": "SkillNotFound: \"unknown skill '😀'; available: gossamer\""}
+{"fn": "install", "args": ["src/a/b.ts"], "kwargs": {"names": ["hello"], "force": false}, "error": "SkillNotFound: \"unknown skill 'hello'; available: gossamer\""}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["日本語のテキスト", "a"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["Hello World", "abc"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["a"], "kwargs": {"names": ["a:b:c", "日本語のテキスト"], "force": true}, "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": [".leading", "hello"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["a.b.cns:key.path"], "kwargs": {"names": [], "force": true}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'a.b.cns:key.path\\\\gossamer'"}
+{"fn": "install", "args": ["line1\nline2"], "kwargs": {"names": ["line1\nline2a.b.c"]}, "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2a.b.c'; available: gossamer\""}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["ns:key.path", "ΣΊΣΥΦΟΣ﻿bom"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [true], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [null], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["src/a/b.ts"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["ünïcödé"], "kwargs": {"names": []}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["ΣΊΣΥΦΟΣ😀"], "kwargs": {"force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [{}], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["abc", "ΣΊΣΥΦΟΣ", "ünïcödé"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["HELLO"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["😀", "hello worldline1\nline2", "ns:key.path"], "force": false}, "error": "SkillNotFound: \"unknown skill '😀'; available: gossamer\""}
+{"fn": "install", "args": [""], "kwargs": {"names": ["😀", "İstanbula😀b😀c", "日本語のテキスト"], "force": true}, "error": "SkillNotFound: \"unknown skill '😀'; available: gossamer\""}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["abc", "straße"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": [], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [0], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": [".leadingabc", "abc"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [null], "kwargs": {"names": ["{name} has {count} items", "emoji 👍🏽 mix", "tab\tseparated"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": ["HELLO"], "kwargs": {"names": ["a.b.c", "a:b:c"], "force": false}, "error": "SkillNotFound: \"unknown skill 'a.b.c'; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": ["  padded  trailing.", "tab\tseparated"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["日本語のテキスト"], "kwargs": {"names": [], "force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["hello world"], "force": true}, "error": "SkillNotFound: \"unknown skill 'hello world'; available: gossamer\""}
+{"fn": "install", "args": ["trailing."], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [null], "kwargs": {"names": ["emoji 👍🏽 mix", "😀", "a"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["./x/**/*.json", "hello world"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["ünïcödéHello World", ""], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["hello world"], "kwargs": {"names": [""], "force": false}, "error": "SkillNotFound: \"unknown skill ''; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": ["emoji 👍🏽 mix", "src/a/b.tsa"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["ünïcödéab"], "kwargs": {"names": ["HELLO"], "force": false}, "error": "SkillNotFound: \"unknown skill 'HELLO'; available: gossamer\""}
+{"fn": "install", "args": ["src/a/b.tsa😀b😀c"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [{}], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [0], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["a😀b😀c"], "kwargs": {"names": ["a:b:c", "é"], "force": true}, "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "install", "args": [0], "kwargs": {"names": [".leading", "ünïcödé"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["key_name-1"], "kwargs": {"names": ["a.b.c", "ns:key.path"], "force": true}, "error": "SkillNotFound: \"unknown skill 'a.b.c'; available: gossamer\""}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["emoji 👍🏽 mix"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["Hello World"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [null], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["﻿bom"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["a"], "kwargs": {"force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [0], "kwargs": {"force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["src/a/b.ts"], "kwargs": {"names": ["key_name-1", "Hello World", "a😀b😀c"], "force": false}, "error": "SkillNotFound: \"unknown skill 'key_name-1'; available: gossamer\""}
+{"fn": "install", "args": ["  padded  "], "kwargs": {"names": ["tab\tseparated", "key_name-1"], "force": true}, "error": "SkillNotFound: \"unknown skill 'tab\\\\tseparated'; available: gossamer\""}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": [], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [true], "kwargs": {"names": ["key_name-1./x/**/*.json", "ΣΊΣΥΦΟΣ"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["x"], "kwargs": {"names": [], "force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "updated"}}]}
+{"fn": "install", "args": ["{name} has {count} items"], "kwargs": {"names": ["İstanbul", "line1\nline2", "﻿bom"]}, "error": "SkillNotFound: \"unknown skill 'İstanbul'; available: gossamer\""}
+{"fn": "install", "args": ["emoji 👍🏽 mix"], "kwargs": {"names": ["straße:", "﻿bomkey_name-1"], "force": true}, "error": "SkillNotFound: \"unknown skill 'straße:'; available: gossamer\""}
+{"fn": "install", "args": ["Hello World"], "kwargs": {"force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "updated"}}]}
+{"fn": "install", "args": ["Hello World"], "kwargs": {"names": ["straße", "a.b.c"], "force": false}, "error": "SkillNotFound: \"unknown skill 'straße'; available: gossamer\""}
+{"fn": "install", "args": [":"], "kwargs": {"names": ["HELLO", "a.b.c"]}, "error": "SkillNotFound: \"unknown skill 'HELLO'; available: gossamer\""}
+{"fn": "install", "args": [".leading"], "kwargs": {"force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["line1\nline2"], "kwargs": {"names": []}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'line1\\nline2\\\\gossamer'"}
+{"fn": "install", "args": ["line1\nline2Hello World"], "kwargs": {"names": ["", "a.b.c"], "force": false}, "error": "SkillNotFound: \"unknown skill ''; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": ["straße"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["ünïcödé"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["tab\tseparated"], "kwargs": {"force": false}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'tab\\tseparated\\\\gossamer'"}
+{"fn": "install", "args": [null], "kwargs": {"names": [], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["a"], "kwargs": {"names": ["straße", "line1\nline2"], "force": true}, "error": "SkillNotFound: \"unknown skill 'straße'; available: gossamer\""}
+{"fn": "install", "args": [0], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["Hello WorldΣΊΣΥΦΟΣ", ".leading"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["é"], "kwargs": {"names": ["src/a/b.ts", "a.b.c", "Hello World"], "force": false}, "error": "SkillNotFound: \"unknown skill 'src/a/b.ts'; available: gossamer\""}
+{"fn": "install", "args": ["İstanbul"], "kwargs": {"names": [], "force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["ab"], "kwargs": {"names": [".leading", "trailing.{name} has {count} items"], "force": false}, "error": "SkillNotFound: \"unknown skill '.leading'; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"names": ["ns:key.path", "ΣΊΣΥΦΟΣ"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["﻿bom日本語のテキスト"], "kwargs": {"names": [], "force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["a.b.c"], "kwargs": {"names": ["trailing.", "hello worldİstanbul", "a😀b😀c"], "force": true}, "error": "SkillNotFound: \"unknown skill 'trailing.'; available: gossamer\""}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": []}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["straße"], "kwargs": {"names": ["ns:key.path", "ünïcödé", "a:b:c"], "force": false}, "error": "SkillNotFound: \"unknown skill 'ns:key.path'; available: gossamer\""}
+{"fn": "install", "args": [true], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["日本語のテキスト"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["line1\nline2ΣΊΣΥΦΟΣ"], "kwargs": {}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'line1\\nline2ΣΊΣΥΦΟΣ\\\\gossamer'"}
+{"fn": "install", "args": [true], "kwargs": {"names": [":", "  padded    padded  "], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["a:b:cΣΊΣΥΦΟΣ", "Hello World"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["a"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "skipped"}}]}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["İstanbul", "ns:key.path", "straße"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["./x/**/*.json"], "kwargs": {"force": true}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'x\\\\**\\\\*.json\\\\gossamer'"}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["a:b:c", "", "{name} has {count} items"], "force": true}, "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["a", "ΣΊΣΥΦΟΣ", "  padded  "], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [".leading"], "kwargs": {"names": ["a.b.c", "a..b"], "force": false}, "error": "SkillNotFound: \"unknown skill 'a.b.c'; available: gossamer\""}
+{"fn": "install", "args": ["a"], "kwargs": {"names": [], "force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "updated"}}]}
+{"fn": "install", "args": ["ns:key.path"], "kwargs": {"names": ["key_name-1.leading"]}, "error": "SkillNotFound: \"unknown skill 'key_name-1.leading'; available: gossamer\""}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["a.b.ctab\tseparated", "src/a/b.ts"], "force": false}, "error": "SkillNotFound: \"unknown skill 'a.b.ctab\\\\tseparated'; available: gossamer\""}
+{"fn": "install", "args": ["hello world"], "kwargs": {}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "skipped"}}]}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["a😀b😀cünïcödé"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [true], "kwargs": {"names": [], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": ["ünïcödé"], "kwargs": {"force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "updated"}}]}
+{"fn": "install", "args": ["ns:key.path"], "kwargs": {"force": true}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'ns:key.path\\\\gossamer'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["emoji 👍🏽 mix", "İstanbul", "./x/**/*.json"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["hello world"], "kwargs": {"names": ["abcHELLO", "hello worldab", "ünïcödé"], "force": true}, "error": "SkillNotFound: \"unknown skill 'abcHELLO'; available: gossamer\""}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["ab", "ünïcödé"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["a..b"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["İstanbul", "tab\tseparated", "a😀b😀c"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [0], "kwargs": {"names": ["hello world{name} has {count} items", "ünïcödé", "Hello World"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["😀", "😀", "é"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [null], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["abc", "Hello World"], "force": true}, "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "install", "args": [[]], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["abc"], "kwargs": {"names": ["line1\nline2", ".leading"], "force": false}, "error": "SkillNotFound: \"unknown skill 'line1\\\\nline2'; available: gossamer\""}
+{"fn": "install", "args": ["a😀b😀c"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["HELLO"], "kwargs": {"names": ["key_name-1"], "force": false}, "error": "SkillNotFound: \"unknown skill 'key_name-1'; available: gossamer\""}
+{"fn": "install", "args": ["abc"], "kwargs": {"names": [], "force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [0], "kwargs": {"names": ["Hello World", "ns:key.path", "é"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": [0], "kwargs": {"names": [".leading"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["hello"], "kwargs": {"names": ["./x/**/*.json"], "force": false}, "error": "SkillNotFound: \"unknown skill './x/**/*.json'; available: gossamer\""}
+{"fn": "install", "args": [{}], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["abca"], "kwargs": {"names": ["HELLO"], "force": true}, "error": "SkillNotFound: \"unknown skill 'HELLO'; available: gossamer\""}
+{"fn": "install", "args": [{"a": "b"}], "kwargs": {"names": ["﻿bom", "ünïcödé", "src/a/b.ts"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["src/a/b.ts"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["a😀b😀c", "a..b"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["straße", "a.b.c", "hello"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [true], "kwargs": {"names": ["ünïcödé", "./x/**/*.json.leading", "é"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [true], "kwargs": {"names": ["😀"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [{}], "kwargs": {"names": ["{name} has {count} items", "a😀b😀c"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [0], "kwargs": {"names": ["ΣΊΣΥΦΟΣ"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["emoji 👍🏽 mix"], "kwargs": {"names": [], "force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["日本語のテキスト  padded  "], "kwargs": {"names": ["﻿bom{name} has {count} items", "İstanbul", "line1\nline2ΣΊΣΥΦΟΣ"]}, "error": "SkillNotFound: \"unknown skill '\\\\ufeffbom{name} has {count} items'; available: gossamer\""}
+{"fn": "install", "args": ["a.b.c"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [""], "kwargs": {"names": []}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["日本語のテキストHELLO"], "force": true}, "error": "SkillNotFound: \"unknown skill '日本語のテキストHELLO'; available: gossamer\""}
+{"fn": "install", "args": [0], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["./x/**/*.jsona..b"], "kwargs": {"force": false}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'x\\\\**\\\\*.jsona..b\\\\gossamer'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["abcİstanbul", "a", "a.b.c"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [null], "kwargs": {"names": ["ünïcödé", ".leadingΣΊΣΥΦΟΣ", "straße"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": [".leadingstraße", "Hello World:"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": [], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["abc"], "kwargs": {"names": ["ahello world"], "force": false}, "error": "SkillNotFound: \"unknown skill 'ahello world'; available: gossamer\""}
+{"fn": "install", "args": ["﻿bom"], "kwargs": {"names": ["trailing.", "ns:key.path", "./x/**/*.json.leading"], "force": false}, "error": "SkillNotFound: \"unknown skill 'trailing.'; available: gossamer\""}
+{"fn": "install", "args": ["İstanbulé"], "kwargs": {"force": true}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": ["﻿bom"], "kwargs": {"names": ["İstanbultab\tseparated", "ns:key.pathhello", "tab\tseparated"], "force": false}, "error": "SkillNotFound: \"unknown skill 'İstanbultab\\\\tseparated'; available: gossamer\""}
+{"fn": "install", "args": ["emoji 👍🏽 mix./x/**/*.json"], "kwargs": {"names": ["a.b.c﻿bom", "ns:key.path"], "force": true}, "error": "SkillNotFound: \"unknown skill 'a.b.c\\\\ufeffbom'; available: gossamer\""}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["abc", "abc"], "force": false}, "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "install", "args": [0], "kwargs": {"names": ["hello", "a.b.c"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["line1\nline2ΣΊΣΥΦΟΣ"], "kwargs": {}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'line1\\nline2ΣΊΣΥΦΟΣ\\\\gossamer'"}
+{"fn": "install", "args": ["ab"], "kwargs": {"names": ["Hello World"], "force": false}, "error": "SkillNotFound: \"unknown skill 'Hello World'; available: gossamer\""}
+{"fn": "install", "args": [{"a": {"b": "c"}}], "kwargs": {"names": ["ab", "tab\tseparated"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": ["trailing."], "kwargs": {"names": []}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "skipped"}}]}
+{"fn": "install", "args": ["ünïcödé"], "kwargs": {"names": ["a", "trailing.", "key_name-1"]}, "error": "SkillNotFound: \"unknown skill 'a'; available: gossamer\""}
+{"fn": "install", "args": ["tab\tseparated./x/**/*.json"], "kwargs": {"force": true}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'tab\\tseparated.\\\\x\\\\**\\\\*.json\\\\gossamer'"}
+{"fn": "install", "args": ["a..b"], "kwargs": {"names": ["trailing."], "force": true}, "error": "SkillNotFound: \"unknown skill 'trailing.'; available: gossamer\""}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["./x/**/*.jsonns:key.path", "é", "abc"]}, "error": "SkillNotFound: \"unknown skill './x/**/*.jsonns:key.path'; available: gossamer\""}
+{"fn": "install", "args": [""], "kwargs": {"names": ["ns:key.path{name} has {count} items", "a"]}, "error": "SkillNotFound: \"unknown skill 'ns:key.path{name} has {count} items'; available: gossamer\""}
+{"fn": "install", "args": ["hello  padded  "], "kwargs": {"names": ["a:b:c"], "force": true}, "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "install", "args": [null], "kwargs": {"names": [""]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": [{}], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["ünïcödé", "ΣΊΣΥΦΟΣ", "ab"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [null], "kwargs": {"force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'NoneType'"}
+{"fn": "install", "args": ["key_name-1"], "kwargs": {"names": ["a:b:c", "  padded  "], "force": false}, "error": "SkillNotFound: \"unknown skill 'a:b:c'; available: gossamer\""}
+{"fn": "install", "args": ["ns:key.path"], "kwargs": {"names": [], "force": false}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'ns:key.path\\\\gossamer'"}
+{"fn": "install", "args": [true], "kwargs": {"names": ["﻿bom{name} has {count} items", "hello worldab"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'bool'"}
+{"fn": "install", "args": [0], "kwargs": {"names": ["src/a/b.ts", "::"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["line1\nline2"], "kwargs": {"force": false}, "error": "OSError: [WinError 123] Die Syntax für den Dateinamen, Verzeichnisnamen oder die Datenträgerbezeichnung ist falsch: 'line1\\nline2\\\\gossamer'"}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["{name} has {count} items"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["a..b"], "kwargs": {"force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [[]], "kwargs": {"names": ["ab"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": [["a", 1]], "kwargs": {"names": ["HELLO"], "force": true}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'list'"}
+{"fn": "install", "args": ["a"], "kwargs": {"names": ["abc", ":", "İstanbul"]}, "error": "SkillNotFound: \"unknown skill 'abc'; available: gossamer\""}
+{"fn": "install", "args": ["a.b.cstraße"], "kwargs": {"names": ["ünïcödé"]}, "error": "SkillNotFound: \"unknown skill 'ünïcödé'; available: gossamer\""}
+{"fn": "install", "args": ["straße"], "kwargs": {}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "installed"}}]}
+{"fn": "install", "args": [0], "kwargs": {"names": ["{name} has {count} itemstrailing.", "  padded  a:b:c"], "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'int'"}
+{"fn": "install", "args": ["x"], "kwargs": {"names": [], "force": false}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "skipped"}}]}
+{"fn": "install", "args": ["x"], "kwargs": {"names": ["b", "a", "B", "é", "10", "9", "a"], "force": false}, "error": "SkillNotFound: \"unknown skill 'b'; available: gossamer\""}
+{"fn": "install", "args": ["x"], "kwargs": {}, "ok": [{"$object": "InstallResult", "attrs": {"path": {"$repr": "WindowsPath"}, "status": "skipped"}}]}
+{"fn": "skill_names", "args": [], "ok": {"$tuple": ["gossamer"]}}
+{"fn": "skill_text", "args": ["gossamer"], "ok": "---\nname: gossamer\ndescription: Web research toolkit (search, fetch pages as markdown, extract documents, patent/legal/financial domain research). Use whenever the task needs current external information — docs, APIs, papers, case law, market data, patents — instead of guessing from training data. Prefers cached, rate-limited, token-budgeted tools over raw curl/fetch loops.\n---\n\n# Gossamer\n\nWeb research toolkit: search the web, fetch pages as LLM-friendly markdown\nwith follow-up links, and extract text/tables from documents (PDF, DOCX,\nXLSX, PPTX, feeds). Domain adapters route scholarly / legal / patent /\nfinancial / geo queries to the right APIs. Everything is cached,\nper-domain rate-limited, and token-budgeted.\n\n## Access (use whichever the harness provides)\n\n- **MCP tools** (`gossamer_*` in pi with directTools, or plain names in\n  Codex/Claude Code): `web_search`, `inspect_html_page`,\n  `batch_inspect_pages`, `download_file`, `locate_pdf`, `extract_document`,\n  `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,\n  `export_citations`, `check_sources`.\n- **MCP resource** `skills://gossamer`: this file, readable from any MCP\n  host without a repo checkout.\n- **CLI** (identical JSON, no MCP setup; 14 subcommands — the 12 MCP tools\n  1:1, plus `categories` and `skills`): `search QUERY [--max-results N --max-tokens T\n  --search-only --provider P --depth D --use-smart auto|browser|static]` · `research QUERY [--category C\n  --provider P --providers P… --max-results N --filter F --select F --title T --author A]` · `inspect URL [--query Q --offset N\n  --max-chunks N --structured --use-smart auto|browser|static]` ·\n  `batch URL… [--use-smart auto|browser|static]` · `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --resume --try-mirrors URL…]` ·\n  `locate-pdf DOI` · `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store\n  --store-dir D --include-images]` · `check URL… [--mode status|content]` ·\n  `discover URL` · `crawl ROOT [--query Q --max-depth D --max-pages N\n  --min-score S --same-host --excerpts --search-prior --seed-urls U…\n  --use-smart auto|browser|static]` · `cache [--action prune|clear|reset]` ·\n  `cite DOI|URL|PDF… [--style bibtex|csl-json|apa|mla --enrich --no-dedupe --from-pdf]` ·\n  `categories` ·\n  `skills list|show|install [--dest DIR…] [--project] [--skill NAME…] [--force]`.\n  Run via the project venv\n  (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows); `skills\n  show gossamer` prints this file, and `skills install` copies it into\n  Claude Code / OpenCode skill directories. CLI defaults:\n  `--max-results 5` (search/research), `--depth 5`, `--max-tokens 0`\n  (budget default), crawl `--max-depth 3 --max-pages 15 --min-score 0.05`.\n  `--fetch-mode auto|browser|static` sets the render baseline for the whole\n  run; `--use-smart` overrides it per page-fetching command.\n\n## Tool call signatures (defaults shown; one JSON envelope per call)\n\nRequired parameters have no default. `None`/empty means \"not supplied\";\n`0` budgets mean \"toolbox default\".\n\n### Search & read\n\n```python\nweb_search(query, search_only=False, max_results=5, depth=5,\n           max_tokens=0, provider=\"duckduckgo\", use_smart=\"auto\")\ninspect_html_page(url, use_smart=\"auto\", query=None, offset=0,\n                  max_chunks=1, structured=False)\nbatch_inspect_pages(urls, use_smart=\"auto\")\ncrawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,\n      min_score=0.05, excerpts=False, search_prior=False, seed_urls=[],\n      use_smart=\"auto\")\n```\n\n`crawl` caps: `max_depth` hard cap 5, `max_pages` 1-50 (failed fetches do\nnot count). `use_smart` applies to every page-fetching tool (`web_search`\nwhen it fetches, `inspect_html_page`, `batch_inspect_pages`, `crawl`);\n`use_smart=\"browser\"` needs the `gossamer-web[browser]` extra. Browser\nbatches are sequential; `auto` is static-first with a stealth fallback.\n\n### Documents & files\n\n```python\nextract_document(source, pages=None, structured=False, store=False,\n                 store_dir=None, include_images=False, tables_as=\"json\",\n                 prefer_jats=True)\ndownload_file(source, output_path, min_bytes=1, max_bytes=0,\n              expected_format=\"auto\", overwrite=False, resume=False,\n              fallback_urls=[])\ndiscover_resources(url)\ncheck_sources(urls, mode=\"status\")\n```\n\n`extract_document(pages=\"10-20\")` is 1-based inclusive for PDFs (sheet\nrange for XLSX) and cannot combine with `store=True`; `include_images`\nneeds `store=True` and is PDF-only. Scholarly extraction prefers publisher\nfull text (JATS XML via EuropePMC, then PLOS) when resolvable\n(`prefer_jats=True`, default); `pages=` with a JATS-resolvable source\nerrors, `structured=True` or `tables_as!=\"markdown\"` skips the route,\nand `include_images` is a no-op on the JATS route (remote hrefs, not saved). `download_file(max_bytes=0)` uses the\nconfigured cap; `fallback_urls` are caller-supplied mirrors, each checked\nindependently. `check_sources(mode=\"status\")` is a HEAD probe;\n`\"content\"` is a GET for hosts that reject HEAD.\n\n### Research & citations\n\n```python\nresearch_by_category(query=None, category=None, max_results=5,\n                     provider=None, filter=None, select=None, title=None,\n                     author=None, providers=[])\nlocate_pdf(doi)\nexport_citations(results, style=\"bibtex\", enrich=False, dedupe=True,\n                 from_pdf=False)\nmanage_cache(action=\"prune\")\n```\n\n`research_by_category(query)` with no category auto-routes; omit `query`\nentirely to get the provider taxonomy. `filter`/`select`/`title`/`author`\nare valid only with `provider=\"openalex\"` and rejected otherwise;\n`providers=[...]` is scholarly-only and mutually exclusive with\n`provider`. `locate_pdf` locates candidates, it never downloads.\n\n## Routing (don't guess — classify first)\n\n`research` auto-routes, or pick explicitly. Category → default provider:\n\n- `scholarly` → `openalex` by default; `crossref`, `arxiv`, `zenodo`, `semanticscholar`, `huggingface` (models + cards), and `huggingface-papers` (Daily Papers, arXiv-joined, search-only) are opt-in scholarly providers. Hub search is conjunctive — prefer short queries (`stable diffusion model`, not full sentences)\n- `legal` → `courtlistener` (US case law) · `oldp` (German cases) ·\n  `hudoc` (ECtHR) · `ecfr`/`federalregister`/`govinfo` (US regs)\n- `patent` → `epo` (worldwide via INPADOC) · `kipris` (Korea) ·\n  `patentsview` (USPTO) · `lens` (WO/EP/DE/CN/US aggregator) — key-gated, fail fast without keys ·\n  `google-patents` (keyless number lookup; free text via `site:patents.google.com` search)\n- `financial` → `yahoo` (quotes) · `frankfurter` (FX) · `eurostat` /\n  `bundesbank` / `bis` (EU macro) · `coingecko` (crypto)\n- `geo` → `open-meteo` / `overpass` (weather, places, coordinates)\n- anything else → general web search (`duckduckgo`; `browser` is the\n  stealth DDG HTML engine and needs the `gossamer-web[browser]` extra)\n\n`gossamer categories` prints this table live —\nprefer it over memory when unsure.\n\n`research --filter F --select F --title T --author A` passes OpenAlex-native controls and is valid\nonly with `--provider openalex`; gossamer rejects these options for other\nproviders rather than silently ignoring them. `--title`/`--author` map to the verified\n`title.search`/`raw_author_name.search` filters and combine with `--filter`. `--providers` explicitly runs a\nsequential scholarly merge by DOI/arXiv ID; it never runs by default and keeps\nall per-provider source records.\n\nProvider failures from `research` keep `results` as an empty list and put the\nmessage in a top-level `error` field. The CLI exits nonzero for these failures.\nFor arXiv HTTP 406, which can reflect a temporary upstream edge/IP limit,\navoid immediate repeat calls and honor the provider's three-second minimum.\n\n## Budgets (avoid harness timeouts)\n\n- `use_smart=\"browser\"` (JS rendering) needs the `gossamer-web[browser]`\n  extra, Windows/macOS only — without it browser-first falls back to\n  static and browser-only modes raise a clear dependency error. Even with\n  it, bot-walled sites (Cloudflare challenges, CAPTCHAs) still fail.\n  Explicit `browser`/`static` requests bypass a cached result produced by\n  the other engine; the reply's `fetch_method` reports `static`, `browser`,\n  or `stealth-fallback`. Browser batches are sequential, so keep them small.\n  Renders run in a child process (45s timeout): a native engine abort/hang\n  becomes a fetch error: browser-first falls back to static, strict browser\n  failures return an error, and the host stays alive.\n  `GOSSAMER_BROWSER_ISOLATION=0` is debug-only.\n- Keep `max_pages` ≤ 15 on crawls; set an explicit `max_tokens` budget.\n- Long extractions: `extract … --pages 10-20` instead of whole documents.\n- `check` URLs with `--mode status` before fetching the shaky ones.\n\n## Auth\n\nAPI keys live in the keystore (`~/.gossamer/keys.json`;\n`python -m gossamer.keystore --init`), never in harness configs or prompts.\nKeyed providers raise an actionable error naming the exact variable\n(e.g. `GOSSAMER_EPO_KEY`) — surface it to the user instead of retrying.\nOpenAlex works keyless for casual use; `GOSSAMER_OPENALEX_KEY` is optional\nand raises the API's daily budget. Set `GOSSAMER_OPENALEX_EMAIL` to send your\nown `mailto` contact; gossamer does not invent a default email. OpenAlex\n429s come in two documented kinds: a per-second rate limit (wait a moment\nand retry) and a daily credit-budget refusal (`not_enough_credits` — wait\nfor the daily reset; the typed error carries `X-RateLimit-Reset` seconds).\nSemantic Scholar can run keyless, but its unauthenticated pool is shared and\nmay return 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for the\nindividual one-request-per-second allowance; if keyless use returns 429,\nwait or set that exact variable rather than looping retries.\n\n## Config / cache (where stuff actually is)\n\n- Cache: `GOSSAMER_CACHE_DIR` (see `mcp.json`) > `gossamer.json:cache_dir` > `./.gossamer_cache`.\n- Render baseline: `GOSSAMER_FETCH_MODE` > `gossamer.json:fetch_mode` > `auto`; CLI `--fetch-mode` overrides it for one run, and `--use-smart`/`use_smart` overrides it per call.\n- Keys: `$GOSSAMER_KEYSTORE` > `gossamer.json:keystore` > `~/.gossamer/keys.json` (created only via `keystore --init`; absent = normal, not a broken install).\n- Check effective paths in `mcp.json` + `python -m gossamer.keystore --check`, not `~/.gossamer`.\n\n## Cache behavior (when a result is cached)\n\n- Page/document reads are cached: `inspect`/`extract` responses carry `cache_hit: true` when served from cache; repeat reads within the TTL skip the network. Paging (`--offset`/`--max-chunks`, `--pages`) reads the cached full text, so re-reads stay cheap.\n- `search` results are cached per query for the configured TTL; repeats do not re-query the provider. Provider adapters (`research --provider …`) are live calls with per-domain rate limits, not result caches.\n- `check`, `download`, `locate-pdf`, and `cite` are never cached: `check` probes liveness, `download` writes files, `locate-pdf` resolves current OA state, and `cite` formats on demand.\n- Maintenance: `cache --action prune` drops expired/over-cap entries (keeps valid ones and visited URLs); `clear` wipes caches plus visited URLs for fully fresh fetches; `reset` forgets visited URLs only, to retry a failed page without clearing caches.\n- No global PATH shim is provided: run the CLI from the project venv (`…/.venv/Scripts/python.exe -m gossamer.cli …` on Windows) or via MCP tools.\n\n## Documents (PDF limits that matter)\n\n- Tables render as markdown tables by default — no flag needed.\n- Figures need `extract … --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.\n- Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).\n- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and never bypass bot walls. Add `--resume` to continue an existing partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges keep the partial file). `--try-mirrors` accepts only caller-supplied, known OA/repository URLs; each is checked independently and attempts are returned with provenance.\n\n## Literature collection workflow\n\n1. Search via `research QUERY --category scholarly --max-results N`; use `--providers openalex arxiv` only when you explicitly want a sequential multi-provider merge.\n2. Probe candidate pages with `check URL --mode status` before spending a full fetch/download.\n3. For a DOI, run `locate-pdf DOI`, inspect the returned `candidates`, and prefer an OA PDF URL with clear source/license metadata. This step locates candidates; it does not fetch the file. OpenAlex runs first; Unpaywall v2 is queried only when `GOSSAMER_UNPAYWALL_EMAIL` is configured and OpenAlex yields nothing usable.\n4. Download with `download URL -o paper.pdf --expect-format pdf`. If a known OA repository mirror is already available, pass it with `--try-mirrors URL…`; each URL is still checked independently and no challenge is bypassed.\n5. Parse the saved file with `extract paper.pdf`; add `--store --store-dir DIR` if you also want the extracted Markdown/resources persisted.\n6. Export a citation with `cite DOI --style bibtex` (or another supported style), or `cite paper.pdf [--from-pdf]` to cite a downloaded PDF via its detected DOI. Review license/access terms before redistributing any full text.\n"}
+{"fn": "install", "args": [{"$repr": "WindowsPath"}], "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "install", "args": [{"$repr": "WindowsPath"}], "kwargs": {"names": ["not-a-skill"]}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}
+{"fn": "default_destinations", "args": [], "ok": {"$tuple": [{"$repr": "WindowsPath"}, {"$repr": "WindowsPath"}]}}
+{"fn": "default_destinations", "args": [], "kwargs": {"project": true}, "ok": {"$tuple": [{"$repr": "WindowsPath"}, {"$repr": "WindowsPath"}]}}
+{"fn": "skill_description", "args": ["gossamer"], "ok": "Web research toolkit (search, fetch pages as markdown, extract documents, patent/legal/financial domain research). Use whenever the task needs current external information — docs, APIs, papers, case law, market data, patents — instead of guessing from training data. Prefers cached, rate-limited, token-budgeted tools over raw curl/fetch loops."}
+{"fn": "install", "args": [{"$repr": "WindowsPath"}], "kwargs": {"names": null, "force": false}, "error": "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not 'dict'"}

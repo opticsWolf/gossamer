@@ -1,0 +1,29 @@
+usage: gossamer cite [-h] [--style {bibtex,csl-json,apa,mla}] [--enrich]
+                     [--no-dedupe] [--from-pdf] [--cache-dir CACHE_DIR]
+                     [--config CONFIG] [--keystore KEYSTORE]
+                     [--log-level LOG_LEVEL]
+                     [--fetch-mode {auto,browser,static}]
+                     results [results ...]
+
+positional arguments:
+  results               DOIs, URLs, local PDF paths, or JSON result objects
+
+options:
+  -h, --help            show this help message and exit
+  --style {bibtex,csl-json,apa,mla}
+  --enrich              One canonical DOI lookup per unique DOI to fill in a
+                        missing venue/abstract (best-effort)
+  --no-dedupe           Keep records sharing a DOI/URL instead of collapsing
+                        them
+  --from-pdf            Treat every input as a local PDF and cite its detected
+                        DOI
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

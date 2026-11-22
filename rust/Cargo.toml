@@ -1,0 +1,45 @@
+[workspace]
+resolver = "3"
+members = [
+  "app",
+  "core",
+  "audit-cargo-rs",
+  "port-error",
+  "skills-rs",
+  "text-links-rs",
+  "verify-bundled-assets-rs",
+]
+default-members = ["app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+clap = "4"
+flate2 = "1"
+gossamer = { package = "gossamer-web", path = "core" }
+port-error = { path = "port-error" }
+pyo3 = { version = "0.30", features = ["abi3-py39"] }
+regex = "1"
+serde = "1"
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "unbounded_depth"] }
+tar = "0.4"
+zip = "2"
+
+audit-cargo-rs = { path = "audit-cargo-rs", default-features = false }
+skills-rs = { path = "skills-rs", default-features = false }
+verify-bundled-assets-rs = { path = "verify-bundled-assets-rs", default-features = false }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.lints.rust]
+unused_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+
+[profile.release]
+lto = true

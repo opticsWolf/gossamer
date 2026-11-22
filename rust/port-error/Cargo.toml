@@ -1,0 +1,13 @@
+[package]
+name = "port-error"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Shared error type for Rust port units"
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,132 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/skills/",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "skills-rs",
+  "exports": [
+    {
+      "name": "skill_names",
+      "file": "gossamer/skills/__init__.py",
+      "line": 44,
+      "params": [],
+      "returns": "tuple",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "skill_text",
+      "file": "gossamer/skills/__init__.py",
+      "line": 67,
+      "params": [
+        {
+          "name": "name",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "skill_description",
+      "file": "gossamer/skills/__init__.py",
+      "line": 94,
+      "params": [
+        {
+          "name": "name",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "default_destinations",
+      "file": "gossamer/skills/__init__.py",
+      "line": 116,
+      "params": [
+        {
+          "name": "project",
+          "ts_type": "boolean",
+          "optional": true,
+          "rest": false,
+          "default": "False",
+          "keyword_only": true
+        }
+      ],
+      "returns": "tuple",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "install",
+      "file": "gossamer/skills/__init__.py",
+      "line": 141,
+      "params": [
+        {
+          "name": "destination",
+          "ts_type": "string | Path",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "names",
+          "ts_type": "string[] | undefined",
+          "optional": true,
+          "rest": false,
+          "default": "None",
+          "keyword_only": true
+        },
+        {
+          "name": "force",
+          "ts_type": "boolean",
+          "optional": true,
+          "rest": false,
+          "default": "False",
+          "keyword_only": true
+        }
+      ],
+      "returns": "InstallResult[]",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": [
+    {
+      "name": "iter_skills",
+      "file": "gossamer/skills/__init__.py",
+      "line": 110,
+      "reason": "generator: returns a lazy iterator"
+    },
+    {
+      "name": "SkillNotFound",
+      "file": "gossamer/skills/__init__.py",
+      "line": 32,
+      "reason": "class: inherits from KeyError"
+    },
+    {
+      "name": "InstallResult",
+      "file": "gossamer/skills/__init__.py",
+      "line": 37,
+      "reason": "class: decorated with `@dataclass`, public class attribute `path`, public class attribute `status`"
+    }
+  ]
+}

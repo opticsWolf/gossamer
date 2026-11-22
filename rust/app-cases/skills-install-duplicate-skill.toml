@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["skills", "install", "--dest", "tmp-skills-dup", "--skill", "gossamer", "--skill", "gossamer"]
+status.code = 0
+fs.sandbox = true

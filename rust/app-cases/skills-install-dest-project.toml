@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["skills", "install", "--dest", "tmp-skills", "--project"]
+status.code = 1
+fs.sandbox = true

@@ -1,0 +1,11 @@
+{"fn":"extract_links","args":["See https://example.com/report and www.example.com/docs.",50]}
+{"fn":"extract_links","args":["see example.com/docs for details",50]}
+{"fn":"extract_links","args":["Go to https://example.com/a, then https://example.com/a.",1]}
+{"fn":"extract_links","args":["CJK：https://example.com/中，next www.example.com/文。",50]}
+{"fn":"extract_links","args":["trailing (https://example.com/x) [y](https://example.com/z).",50]}
+{"fn":"extract_links","args":["",50]}
+{"fn":"extract_links","args":["https://example.com",0]}
+{"fn":"extract_links","args":["https://example.com",-3]}
+{"fn":"extract_links","args":["https://example.com?x=1#frag; ",9223372036854775807]}
+{"fn":"extract_links","args":["http://example.com/a http://example.com/b www.example.com/c http://example.com/a",2]}
+{"fn":"extract_links","args":["münchen.de https://münchen.de/ü?q=ü",50]}

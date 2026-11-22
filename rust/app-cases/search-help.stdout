@@ -1,0 +1,38 @@
+usage: gossamer search [-h] [--max-results MAX_RESULTS] [--search-only]
+                       [--provider PROVIDER] [--depth DEPTH]
+                       [--max-tokens MAX_TOKENS]
+                       [--use-smart {auto,browser,static}]
+                       [--cache-dir CACHE_DIR] [--config CONFIG]
+                       [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                       [--fetch-mode {auto,browser,static}]
+                       query
+
+positional arguments:
+  query                 The search query / research topic
+
+options:
+  -h, --help            show this help message and exit
+  --max-results MAX_RESULTS
+                        Provider results to request (default 5)
+  --search-only         Return provider results only; skip page fetching
+  --provider PROVIDER   Search engine to prefer
+                        (duckduckgo/google/bing/exa/browser)
+  --depth DEPTH         Candidate pages to fetch when not --search-only
+                        (default 5)
+  --max-tokens MAX_TOKENS
+                        Token budget for the fetched-page corpus
+  --use-smart {auto,browser,static}
+                        Render strategy for fetched pages (ignored with
+                        --search-only): auto (default; follows --fetch-mode),
+                        browser (stealth engine first, static fallback), or
+                        static (never renders)
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

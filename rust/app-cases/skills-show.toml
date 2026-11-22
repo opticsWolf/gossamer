@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["skills", "show", "gossamer"]
+status.code = 0
+fs.sandbox = true

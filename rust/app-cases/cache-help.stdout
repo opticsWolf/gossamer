@@ -1,0 +1,21 @@
+usage: gossamer cache [-h] [--action {prune,clear,reset}]
+                      [--cache-dir CACHE_DIR] [--config CONFIG]
+                      [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                      [--fetch-mode {auto,browser,static}]
+
+options:
+  -h, --help            show this help message and exit
+  --action {prune,clear,reset}
+                        prune drops expired/over-cap entries (keeps valid ones
+                        and visited URLs); clear wipes caches plus visited
+                        URLs; reset forgets visited URLs only
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

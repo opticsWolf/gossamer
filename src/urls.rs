@@ -30,17 +30,6 @@ pub(crate) fn has_scheme_pub(s: &str) -> bool {
     has_scheme(s)
 }
 
-pub(crate) fn sanitize_pub(s: &str) -> String {
-    sanitize_for_split(s)
-}
-
-/// `urlsplit` netloc validation (bracket matching, bracketed-host
-/// rules, NFKC) for callers that parse URLs themselves (SSRF guard).
-/// Raises propagate exactly where `urlparse` would raise them.
-pub(crate) fn validate_netloc_pub(netloc: &str) -> Result<(), String> {
-    validate_netloc(netloc)
-}
-
 /// Python `urlparse` scheme detection: scheme chars before the first
 /// ':', with a leading ASCII letter required from 3.11 on (3.10 took
 /// any scheme-chars run, so `'127.0.0.1:8000/x'` had scheme

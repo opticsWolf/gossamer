@@ -1,0 +1,36 @@
+usage: gossamer [-h] [--cache-dir CACHE_DIR] [--config CONFIG]
+                [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                [--fetch-mode {auto,browser,static}]
+                {search,research,categories,inspect,batch,download,locate-pdf,extract,check,discover,crawl,cache,cite,skills} ...
+
+Web research toolkit (direct CLI)
+
+positional arguments:
+  {search,research,categories,inspect,batch,download,locate-pdf,extract,check,discover,crawl,cache,cite,skills}
+    search              Web search (+ optional fetch)
+    research            Domain-routed research (patents, law, finance, …)
+    categories          List research categories + providers
+    inspect             Fetch one page as markdown
+    batch               Fetch several pages at once
+    download            Download a remote file to a local path
+    locate-pdf          Find OA PDF/landing-page candidates for a DOI
+    extract             Extract a document (PDF/DOCX/XLSX/…) or feed
+    check               Probe URL reachability
+    discover            Find feeds + sitemap pages for a site
+    crawl               Relevance-ranked link-graph traversal
+    cache               Cache maintenance (prune/clear/reset)
+    cite                Format DOIs/URLs as citations
+    skills              Bundled agent skill packs (list/show/install)
+
+options:
+  -h, --help            show this help message and exit
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

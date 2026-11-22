@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "D:\User\Documents\Rust\gossamer\rust\original_entry.py", line 28, in <module>
+    raise SystemExit(main(sys.argv[1:]))
+                     ~~~~^^^^^^^^^^^^^^
+  File "D:\User\Documents\Rust\gossamer\scripts\verify_bundled_assets.py", line 77, in main
+    problems = check(artifact)
+  File "D:\User\Documents\Rust\gossamer\scripts\verify_bundled_assets.py", line 52, in check
+    found = dict(_payloads(artifact))
+  File "D:\User\Documents\Rust\gossamer\scripts\verify_bundled_assets.py", line 48, in _payloads
+    raise ValueError(f"unsupported artifact: {artifact}")
+ValueError: unsupported artifact: rust\fixtures\unsupported.zip

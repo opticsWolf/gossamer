@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["download", "--help"]
+status.code = 0
+fs.sandbox = true

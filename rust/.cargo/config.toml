@@ -1,0 +1,4 @@
+# Keep all workspace build artifacts under rust/app/target, which is where rust-anything's
+# app replay looks for the front-door binary.
+[build]
+target-dir = "app/target"

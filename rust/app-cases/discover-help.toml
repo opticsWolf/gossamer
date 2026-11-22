@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["discover", "--help"]
+status.code = 0
+fs.sandbox = true

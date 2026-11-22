@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["definitely-not-a-command"]
+status.code = 2
+fs.sandbox = true

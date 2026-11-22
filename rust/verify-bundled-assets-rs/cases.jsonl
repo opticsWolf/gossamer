@@ -1,0 +1,10 @@
+{"fn": "check", "args": [{}], "error": "AttributeError: 'dict' object has no attribute 'suffix'"}
+{"fn": "check", "args": [{"a": {"b": "c"}}], "error": "AttributeError: 'dict' object has no attribute 'suffix'"}
+{"fn": "check", "args": [{"a": "b"}], "error": "AttributeError: 'dict' object has no attribute 'suffix'"}
+{"fn": "check", "args": [null], "error": "AttributeError: 'NoneType' object has no attribute 'suffix'"}
+{"fn": "check", "args": [0], "error": "AttributeError: 'int' object has no attribute 'suffix'"}
+{"fn": "check", "args": ["x"], "error": "AttributeError: 'str' object has no attribute 'suffix'"}
+{"fn": "check", "args": [[]], "error": "AttributeError: 'list' object has no attribute 'suffix'"}
+{"fn": "check", "args": [["a", 1]], "error": "AttributeError: 'list' object has no attribute 'suffix'"}
+{"fn": "check", "args": [true], "error": "AttributeError: 'bool' object has no attribute 'suffix'"}
+{"fn": "check", "args": [{"$repr": "WindowsPath"}], "error": "AttributeError: 'dict' object has no attribute 'suffix'"}

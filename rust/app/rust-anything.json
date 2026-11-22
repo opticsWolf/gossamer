@@ -1,0 +1,51 @@
+{
+  "schema": "rust-anything/front-door@1",
+  "name": "gossamer",
+  "commands": [
+    "batch",
+    "cache",
+    "categories",
+    "check",
+    "cite",
+    "crawl",
+    "discover",
+    "download",
+    "extract",
+    "inspect",
+    "locate-pdf",
+    "research",
+    "search",
+    "skills",
+    "audit-cargo",
+    "verify-bundled-assets"
+  ],
+  "units": [
+    {
+      "name": "skills",
+      "crate": "skills-rs",
+      "path": "../skills-rs",
+      "commands": [
+        "skills"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_SKILLS"
+    },
+    {
+      "name": "audit-cargo",
+      "crate": "audit-cargo-rs",
+      "path": "../audit-cargo-rs",
+      "commands": [
+        "audit-cargo"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_AUDIT_CARGO"
+    },
+    {
+      "name": "verify-bundled-assets",
+      "crate": "verify-bundled-assets-rs",
+      "path": "../verify-bundled-assets-rs",
+      "commands": [
+        "verify-bundled-assets"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_VERIFY_BUNDLED_ASSETS"
+    }
+  ]
+}

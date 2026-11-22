@@ -1,0 +1,32 @@
+usage: gossamer inspect [-h] [--query QUERY]
+                        [--use-smart {auto,browser,static}] [--offset OFFSET]
+                        [--max-chunks MAX_CHUNKS] [--structured]
+                        [--cache-dir CACHE_DIR] [--config CONFIG]
+                        [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                        [--fetch-mode {auto,browser,static}]
+                        url
+
+positional arguments:
+  url                   The URL to fetch
+
+options:
+  -h, --help            show this help message and exit
+  --query QUERY
+  --use-smart {auto,browser,static}
+                        Render strategy: auto (default; follows --fetch-mode),
+                        browser (stealth engine first, static fallback), or
+                        static (never renders)
+  --offset OFFSET       Skip the first N follow-up links when paging
+  --max-chunks MAX_CHUNKS
+                        Follow-up link chunks to return after the page
+  --structured          Return structured payload (metadata/tables/links)
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

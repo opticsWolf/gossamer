@@ -1,0 +1,43 @@
+usage: gossamer research [-h] [--max-results MAX_RESULTS]
+                         [--category CATEGORY] [--provider PROVIDER]
+                         [--filter FILTER] [--select SELECT] [--title TITLE]
+                         [--author AUTHOR]
+                         [--providers PROVIDERS [PROVIDERS ...]]
+                         [--cache-dir CACHE_DIR] [--config CONFIG]
+                         [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                         [--fetch-mode {auto,browser,static}]
+                         query
+
+positional arguments:
+  query                 The research topic
+
+options:
+  -h, --help            show this help message and exit
+  --max-results MAX_RESULTS
+                        Provider results to request (default 5)
+  --category CATEGORY   Research category
+                        (scholarly/legal/patent/financial/geo); default auto-
+                        routes the query
+  --provider PROVIDER   Provider within the category (default: category
+                        default)
+  --filter FILTER       OpenAlex-native filter (only with --provider openalex)
+  --select SELECT       OpenAlex-native field projection (only with --provider
+                        openalex)
+  --title TITLE         OpenAlex title search via verified title.search filter
+                        (only with --provider openalex)
+  --author AUTHOR       OpenAlex author search via verified
+                        raw_author_name.search filter (only with --provider
+                        openalex)
+  --providers PROVIDERS [PROVIDERS ...]
+                        Explicit sequential scholarly providers to merge
+                        (mutually exclusive with --provider)
+  --cache-dir CACHE_DIR
+                        Cache directory (default: ./.gossamer_cache)
+  --config CONFIG       Explicit gossamer.json path
+  --keystore KEYSTORE   Explicit keys.json path
+  --log-level LOG_LEVEL
+                        DEBUG/INFO/WARNING/ERROR (default WARNING)
+  --fetch-mode {auto,browser,static}
+                        Baseline render strategy for page fetches: auto
+                        (default), browser, or static (env GOSSAMER_FETCH_MODE
+                        / gossamer.json fetch_mode)

@@ -1,0 +1,5 @@
+usage: gossamer [-h] [--cache-dir CACHE_DIR] [--config CONFIG]
+                [--keystore KEYSTORE] [--log-level LOG_LEVEL]
+                [--fetch-mode {auto,browser,static}]
+                {search,research,categories,inspect,batch,download,locate-pdf,extract,check,discover,crawl,cache,cite,skills} ...
+gossamer: error: unrecognized arguments: --bogus
