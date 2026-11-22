@@ -632,10 +632,7 @@ fn test_rdfa_property_typeof_same_element_no_recursion() {
     let result = extract(html, None).unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].type_of, Some(vec!["summary".to_string()]));
-    assert_eq!(
-        result[0].properties.get("x"),
-        Some(&vec![RdfaValue::Literal("text".to_string())])
-    );
+    assert_eq!(result[0].properties.get("x"), Some(&vec![RdfaValue::Literal("text".to_string())]));
 }
 
 #[test]
@@ -652,10 +649,7 @@ fn test_rdfa_property_typeof_nested_no_recursion() {
     assert_eq!(values.len(), 1);
     match &values[0] {
         RdfaValue::Item(nested) => {
-            assert_eq!(
-                nested.type_of,
-                Some(vec!["inner".to_string()])
-            );
+            assert_eq!(nested.type_of, Some(vec!["inner".to_string()]));
             assert_eq!(
                 nested.properties.get("p"),
                 Some(&vec![RdfaValue::Literal("text".to_string())])

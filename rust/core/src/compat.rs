@@ -41,11 +41,7 @@ pub fn char_slice(s: &str, start: usize, end: usize) -> &str {
         Some((i, _)) => *i,
         None => s.len(),
     };
-    if e < b {
-        &s[b..b]
-    } else {
-        &s[b..e]
-    }
+    if e < b { &s[b..b] } else { &s[b..e] }
 }
 
 /// Minimal Python `repr()` for error messages: single quotes unless the string holds a single quote

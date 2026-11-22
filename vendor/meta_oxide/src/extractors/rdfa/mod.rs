@@ -205,8 +205,7 @@ fn extract_item_with_context(
     // into this same element as a "nested" item (property+typeof on
     // one element would otherwise recurse without bound).
     let item_root = element.id();
-    let properties =
-        extract_properties_with_context(element, base_url, prefix_ctx, &item_root)?;
+    let properties = extract_properties_with_context(element, base_url, prefix_ctx, &item_root)?;
     item.properties = properties;
 
     Ok(item)
@@ -225,8 +224,7 @@ fn extract_properties_with_context(
     if let Some(property_name) = html_utils::get_attr(element, "property") {
         // Expand CURIE in property name
         let expanded_name = prefix_ctx.expand_curie(&property_name);
-        let value =
-            extract_property_value_with_context(element, base_url, prefix_ctx, item_root)?;
+        let value = extract_property_value_with_context(element, base_url, prefix_ctx, item_root)?;
         properties.entry(expanded_name).or_default().push(value);
     }
 
@@ -243,12 +241,8 @@ fn extract_properties_with_context(
             }
 
             // Extract properties from child
-            let child_properties = extract_properties_with_context(
-                &child_element,
-                base_url,
-                prefix_ctx,
-                item_root,
-            )?;
+            let child_properties =
+                extract_properties_with_context(&child_element, base_url, prefix_ctx, item_root)?;
             for (key, values) in child_properties {
                 properties.entry(key).or_default().extend(values);
             }
@@ -302,9 +296,7 @@ fn extract_property_value_with_context(
     // without bound (extract_item -> properties -> value -> item -> ...).
     // In that case the typeof side is already captured by the enclosing
     // item extraction, so fall through to the text/URI value below.
-    if html_utils::get_attr(element, "typeof").is_some()
-        && element.id() != *item_root
-    {
+    if html_utils::get_attr(element, "typeof").is_some() && element.id() != *item_root {
         // A nested typeof element becomes its own item (which sets a
         // fresh item root for its subtree).
         let nested_item = extract_item_with_context(element, base_url, prefix_ctx)?;

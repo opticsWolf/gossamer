@@ -88,10 +88,7 @@ fn check_bracketed_host(hostname: &str) -> Result<(), String> {
     if hostname.contains('%') {
         let i = hostname.find('%').unwrap_or(hostname.len());
         let (addr, zone) = (&hostname[..i], &hostname[i + 1..]);
-        if !zone.is_empty()
-            && !zone.contains('%')
-            && addr.parse::<std::net::Ipv6Addr>().is_ok()
-        {
+        if !zone.is_empty() && !zone.contains('%') && addr.parse::<std::net::Ipv6Addr>().is_ok() {
             return Ok(());
         }
         return Err(not_ip_addr(hostname));
@@ -140,7 +137,10 @@ fn check_nfkc_netloc(netloc: &str) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns CPython-style netloc validation messages.
-pub fn split_validated(san: &str, runtime_minor: Option<u32>) -> Result<(String, Option<String>), String> {
+pub fn split_validated(
+    san: &str,
+    runtime_minor: Option<u32>,
+) -> Result<(String, Option<String>), String> {
     let (scheme, rest) = match san.find(':') {
         Some(i) if has_scheme(&san[..i + 1], runtime_minor) => {
             (san[..i].to_ascii_lowercase(), san[i + 1..].to_string())
@@ -185,7 +185,11 @@ pub fn hostinfo_parts(authority: &str) -> (String, Option<String>) {
             let port = &hostinfo[i + 1..];
             (
                 hostinfo[..i].to_string(),
-                if port.is_empty() { None } else { Some(port.to_string()) },
+                if port.is_empty() {
+                    None
+                } else {
+                    Some(port.to_string())
+                },
             )
         }
         None => (hostinfo.to_string(), None),

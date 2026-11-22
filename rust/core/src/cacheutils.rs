@@ -6,8 +6,8 @@
 
 use std::sync::OnceLock;
 
-use blake2::digest::Digest;
 use blake2::Blake2b128;
+use blake2::digest::Digest;
 use regex::Regex;
 
 use crate::compat::char_head;

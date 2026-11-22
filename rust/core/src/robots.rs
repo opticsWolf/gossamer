@@ -201,11 +201,9 @@ pub fn parse_robots(text: &str, user_agent: &str) -> (Vec<(bool, String)>, Optio
         }
     }
     if chosen.is_none() {
-        chosen = groups.iter().position(|g| {
-            g.agents
-                .iter()
-                .any(|a| a.trim().to_lowercase() == "*")
-        });
+        chosen = groups
+            .iter()
+            .position(|g| g.agents.iter().any(|a| a.trim().to_lowercase() == "*"));
     }
     let Some(ci) = chosen else {
         return (Vec::new(), None);
@@ -214,10 +212,7 @@ pub fn parse_robots(text: &str, user_agent: &str) -> (Vec<(bool, String)>, Optio
     if delay.is_none() {
         for group in &groups {
             if group.crawl_delay.is_some()
-                && group
-                    .agents
-                    .iter()
-                    .any(|a| a.trim().to_lowercase() == "*")
+                && group.agents.iter().any(|a| a.trim().to_lowercase() == "*")
             {
                 delay = group.crawl_delay;
                 break;

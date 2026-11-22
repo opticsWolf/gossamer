@@ -9,8 +9,8 @@ use std::error::Error;
 use std::fmt;
 use std::sync::OnceLock;
 
-use tiktoken_rs::tokenizer::{get_tokenizer, Tokenizer};
 use tiktoken_rs::CoreBPE;
+use tiktoken_rs::tokenizer::{Tokenizer, get_tokenizer};
 
 /// Canonical token-budget error (`M-ERRORS-CANONICAL-STRUCTS`).
 #[derive(Debug)]

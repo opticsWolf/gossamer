@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 
 use crate::compat::py_repr;
 use crate::urlparts::{
-    authority_end, hostinfo_parts, hostname_value, join_url, parse_qsl_keep_blank,
-    port_value, quote_plus, sanitize_for_split, split_validated,
+    authority_end, hostinfo_parts, hostname_value, join_url, parse_qsl_keep_blank, port_value,
+    quote_plus, sanitize_for_split, split_validated,
 };
 
 // Mirrors gossamer.structured_parser.DOCUMENT_EXTENSIONS. A Python parity test asserts behavioral
@@ -137,7 +137,10 @@ fn normalize_inner(
         .unwrap_or("");
     let (hostname, _) = hostinfo_parts(authority);
     if hostname_value(&hostname).is_none() {
-        return Err(format!("Cannot parse {} as a URL (no host)", py_repr(raw_str)));
+        return Err(format!(
+            "Cannot parse {} as a URL (no host)",
+            py_repr(raw_str)
+        ));
     }
     Ok(s)
 }
@@ -196,9 +199,7 @@ fn canonical_inner(
         if query_mode == "drop-tracking" {
             items.retain(|(k, _)| {
                 let lower = k.to_lowercase();
-                !TRACKING_PARAM_PREFIXES
-                    .iter()
-                    .any(|p| lower.starts_with(p))
+                !TRACKING_PARAM_PREFIXES.iter().any(|p| lower.starts_with(p))
             });
         }
         let mut keyed: Vec<(String, String)> = items

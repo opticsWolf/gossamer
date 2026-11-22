@@ -11,7 +11,7 @@ use std::fmt;
 use serde_json::Value;
 
 use crate::compat::{char_count, char_head};
-use crate::tokens::{count_tokens, default_ellipsis, truncate_to_tokens, TokenError};
+use crate::tokens::{TokenError, count_tokens, default_ellipsis, truncate_to_tokens};
 
 const TRUNCATE_MARKER: &str = "\n\n... [truncated]";
 const SNIPPET_SUFFIX: &str = "...";
@@ -114,7 +114,8 @@ pub fn truncate_text(
 ) -> Result<String, BudgetError> {
     let mut out = text.to_string();
     if token_limit > 0 {
-        out = truncate_to_tokens(&out, token_limit, model, default_ellipsis()).map_err(token_error)?;
+        out = truncate_to_tokens(&out, token_limit, model, default_ellipsis())
+            .map_err(token_error)?;
     }
     if char_count(&out) > char_limit {
         out = format!("{}{TRUNCATE_MARKER}", char_head(&out, char_limit));
@@ -317,10 +318,7 @@ pub fn shrink_payload(payload_json: &str, budget: Option<usize>) -> Result<Strin
         return Ok(payload_json.to_string());
     };
     let mut payload: Value = serde_json::from_str(payload_json).map_err(|_| {
-        BudgetError::new(
-            BudgetErrorKind::Value,
-            "invalid ParsedDocumentPayload JSON",
-        )
+        BudgetError::new(BudgetErrorKind::Value, "invalid ParsedDocumentPayload JSON")
     })?;
     if let Value::Object(root) = &mut payload
         && let Some(Value::Array(pages)) = root.get_mut("pages")
@@ -333,10 +331,7 @@ pub fn shrink_payload(payload_json: &str, budget: Option<usize>) -> Result<Strin
                     {
                         pm.insert(
                             key.to_string(),
-                            Value::String(format!(
-                                "{}{TRUNCATE_MARKER}",
-                                char_head(text, budget)
-                            )),
+                            Value::String(format!("{}{TRUNCATE_MARKER}", char_head(text, budget))),
                         );
                     }
                 }
@@ -376,8 +371,17 @@ mod tests {
         });
         let out = shrink_research(&serde_json::to_string(&doc).unwrap(), Some(8)).unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["sources"][0]["result"]["markdown"], "01234567\n\n... [truncated]");
-        assert_eq!(v["sources"][0]["result"]["follow_up_links"].as_array().unwrap().len(), 5);
+        assert_eq!(
+            v["sources"][0]["result"]["markdown"],
+            "01234567\n\n... [truncated]"
+        );
+        assert_eq!(
+            v["sources"][0]["result"]["follow_up_links"]
+                .as_array()
+                .unwrap()
+                .len(),
+            5
+        );
         assert_eq!(v["sources"][0]["snippet"], "abcdefgh...");
     }
 

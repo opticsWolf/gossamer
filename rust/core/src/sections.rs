@@ -16,8 +16,7 @@ const HEADING_PATTERN: &str = concat!(
     r"|^(?P<setext>[^\n]+?)[ \t]*\n[ \t]*(?:=|-){2,}[ \t]*$",
 );
 const ASCII_TOKEN_PATTERN: &str = "[a-z0-9]+";
-const CJK_RUN_PATTERN: &str =
-    "[\u{3040}-\u{30ff}\u{4e00}-\u{9fff}\u{ac00}-\u{d7af}]+";
+const CJK_RUN_PATTERN: &str = "[\u{3040}-\u{30ff}\u{4e00}-\u{9fff}\u{ac00}-\u{d7af}]+";
 
 /// Compiles a documented constant pattern, including the pattern in any bug panic (`M-PANIC-MESSAGE`).
 fn compile_pattern(pattern: &'static str) -> Regex {
@@ -357,7 +356,10 @@ mod tests {
         assert_eq!(secs[0].anchor, "(intro)");
         assert_eq!(secs[1].anchor, "Alpha");
         assert_eq!(secs[2].anchor, "Title");
-        assert_eq!(secs[1].offset, md[..md.find("# Alpha").unwrap()].chars().count());
+        assert_eq!(
+            secs[1].offset,
+            md[..md.find("# Alpha").unwrap()].chars().count()
+        );
     }
 
     #[test]

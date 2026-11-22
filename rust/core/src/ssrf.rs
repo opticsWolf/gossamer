@@ -136,7 +136,11 @@ fn parse_v6(s: &str) -> (u128, u128) {
     let len: u32 = len
         .parse()
         .unwrap_or_else(|e| panic!("const CIDR {s:?} has invalid prefix {len:?}: {e}"));
-    let mask = if len == 0 { 0 } else { u128::MAX << (128 - len) };
+    let mask = if len == 0 {
+        0
+    } else {
+        u128::MAX << (128 - len)
+    };
     (u128::from(ip), mask)
 }
 
@@ -300,7 +304,11 @@ pub fn check_url_impl(
         None | Some("") => default_port,
         Some(p) => match p.parse::<u32>() {
             Ok(n) if n <= 65535 => {
-                if n == 0 { default_port } else { n as u16 }
+                if n == 0 {
+                    default_port
+                } else {
+                    n as u16
+                }
             }
             _ => return Err(SsrfError::new(format!("URL has an invalid port: {url}"))),
         },
@@ -315,8 +323,9 @@ pub fn check_url_impl(
     } else if let Ok(ip) = host.parse::<IpAddr>() {
         return check_ip(&host, &ip);
     }
-    let addrs = resolve(&host, port)
-        .map_err(|e| SsrfError::new(format!("DNS resolution failed for {}: {e}", py_repr(&host))))?;
+    let addrs = resolve(&host, port).map_err(|e| {
+        SsrfError::new(format!("DNS resolution failed for {}: {e}", py_repr(&host)))
+    })?;
     if addrs.is_empty() {
         return Err(SsrfError::new(format!(
             "DNS returned no addresses for {}",
@@ -342,11 +351,7 @@ fn check_ip_zone(host: &str, ip: &IpAddr, zone: &str) -> Result<(), SsrfError> {
         let rendered = if zone.is_empty() {
             render_ip(ip)
         } else {
-            format!(
-                "{}%{}",
-                render_ip(ip).to_lowercase(),
-                zone.to_lowercase()
-            )
+            format!("{}%{}", render_ip(ip).to_lowercase(), zone.to_lowercase())
         };
         return Err(SsrfError::new(format!(
             "Host {} ({}) is not a public address",
@@ -408,9 +413,11 @@ mod tests {
 
     #[test]
     fn metadata_and_loopback_blocked() {
-        assert!(blocked("http://169.254.169.254/latest")
-            .unwrap()
-            .contains("not a public address"));
+        assert!(
+            blocked("http://169.254.169.254/latest")
+                .unwrap()
+                .contains("not a public address")
+        );
         assert!(blocked("http://127.0.0.1/admin").is_some());
         assert!(blocked("http://[::1]/").is_some());
         assert!(blocked("http://[fd00:ec2::254]/").is_some());
@@ -428,9 +435,11 @@ mod tests {
 
     #[test]
     fn scheme_host_port_and_names() {
-        assert!(blocked("ftp://example.com/")
-            .unwrap()
-            .contains("not allowed for fetching"));
+        assert!(
+            blocked("ftp://example.com/")
+                .unwrap()
+                .contains("not allowed for fetching")
+        );
         assert!(blocked("http:///").unwrap().contains("no host"));
         assert!(
             blocked("http://example.com:abc/")

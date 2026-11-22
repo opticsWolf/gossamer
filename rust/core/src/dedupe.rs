@@ -169,8 +169,18 @@ mod tests {
     #[test]
     fn doi_beats_url_and_is_case_insensitive() {
         let items = vec![
-            item(Some("10.1/ABC "), Some("https://a.example/1"), Some("T"), Some("S")),
-            item(Some("10.1/abc"), Some("https://b.example/2"), Some("U"), Some("V")),
+            item(
+                Some("10.1/ABC "),
+                Some("https://a.example/1"),
+                Some("T"),
+                Some("S"),
+            ),
+            item(
+                Some("10.1/abc"),
+                Some("https://b.example/2"),
+                Some("U"),
+                Some("V"),
+            ),
         ];
         let (kept, dropped) = dedupe_plan(&items, &default_by(), None);
         assert_eq!(kept, vec![0]);

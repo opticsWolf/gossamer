@@ -32,9 +32,6 @@ tiktoken-rs = "0.12.0"
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 serde = "1.0.229"
 quick-xml = "0.42.0"
-# Vendored (see vendor/README.md): the fork remote is gone and crates.io
-# 0.1.1 predates the gating/RDFa/output fixes our parity suites pin.
-meta_oxide = { path = "vendor/meta_oxide", default-features = false }
 
 [profile.release]
 strip = true   # Remove debug symbols

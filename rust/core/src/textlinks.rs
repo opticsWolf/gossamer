@@ -12,8 +12,7 @@ use regex::Regex;
 // tests/test_rust_parity_urls.py so prose glue never leaks into a URL.
 const TRAILING_PUNCT: &[char] = &['.', ',', ';', ':', '!', '?', '…', '"', '\''];
 
-const URL_PATTERN: &str =
-    r#"(?:https?://|www\.)[^\s<>"')\]\}，。、；！？（）【】「」『』]+"#;
+const URL_PATTERN: &str = r#"(?:https?://|www\.)[^\s<>"')\]\}，。、；！？（）【】「」『』]+"#;
 
 static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(URL_PATTERN)
@@ -64,7 +63,10 @@ mod tests {
 
     #[test]
     fn finds_http_and_promotes_www() {
-        let links = scan_text_links("See https://example.com/report and www.example.com/docs.", 50);
+        let links = scan_text_links(
+            "See https://example.com/report and www.example.com/docs.",
+            50,
+        );
         assert_eq!(
             links,
             vec![
@@ -76,7 +78,10 @@ mod tests {
 
     #[test]
     fn strips_trailing_punctuation_and_dedupes() {
-        let links = scan_text_links("Go to https://example.com/a, then https://example.com/a.", 50);
+        let links = scan_text_links(
+            "Go to https://example.com/a, then https://example.com/a.",
+            50,
+        );
         assert_eq!(links, vec!["https://example.com/a".to_string()]);
     }
 

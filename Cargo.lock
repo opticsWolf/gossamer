@@ -742,7 +742,6 @@ dependencies = [
  "gossamer-web",
  "html2md",
  "log",
- "meta_oxide",
  "pyo3",
  "quick-xml",
  "regex",
@@ -764,6 +763,7 @@ name = "gossamer-web"
 version = "0.11.1"
 dependencies = [
  "blake2",
+ "meta_oxide",
  "regex",
  "serde_json",
  "sha2",
