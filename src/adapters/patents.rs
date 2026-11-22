@@ -40,12 +40,6 @@ pub fn epo_parse_fetch_impl(response_xml: &str) -> Result<Value, String> {
     gossamer::adapters::patents::epo_parse_fetch_impl(response_xml).map_err(map_err)
 }
 
-pub fn kipris_parse_impl(
-    response_xml: &str,
-) -> Result<Vec<serde_json::Map<String, Value>>, String> {
-    gossamer::adapters::patents::kipris_parse_impl(response_xml).map_err(map_err)
-}
-
 pub fn kipris_parse_search_impl(
     response_xml: &str,
     max_results: i64,
