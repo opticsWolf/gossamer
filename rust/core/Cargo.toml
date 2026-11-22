@@ -14,8 +14,10 @@ path = "src/lib.rs"
 [dependencies]
 regex = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
 tiktoken-rs = "0.12"
 unicode-normalization = "0.1"
+url = "2.5"
 
 [lints]
 workspace = true
