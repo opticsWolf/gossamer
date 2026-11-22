@@ -624,6 +624,23 @@ pub fn extract_links_with_text(
 // 5. Process rendered HTML (shared between static and smart fetch)
 // ────────────────────────────────────────────────────────────────
 
+/// Returns the selected main-content label and its markdown rendering.
+///
+/// # Examples
+///
+/// ```
+/// use gossamer::fetch::extract_main_markdown;
+///
+/// let (label, md) = extract_main_markdown("<article><p>hello</p></article>");
+/// assert_eq!(label, "article");
+/// assert!(md.contains("hello"));
+/// ```
+pub fn extract_main_markdown(html: &str) -> (String, String) {
+    let document = Html::parse_document(html);
+    let (label, fragment, _removed) = extract_main_content_anchored(&document);
+    (label, parse_html(&fragment))
+}
+
 /// Converts already-fetched HTML into markdown, unique links, and hidden-node count.
 ///
 /// # Errors
@@ -1162,8 +1179,3 @@ pub fn fetch_conditional_single(
         Ok((false, html, md, links, removed, meta, etag2, lm2))
     })
 }
-
-/// One extracted table: (caption or `table-N`, headers, rows).
-/// Rows are rectangular -- colspan/rowspan cells are expanded and covered
-/// cells filled with the empty string.
-pub type ExtractedTableGrid = (String, Vec<String>, Vec<Vec<String>>);

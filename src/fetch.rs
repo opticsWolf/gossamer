@@ -9,13 +9,11 @@ use pyo3::prelude::*;
 
 use super::bridge::PyLogLogger;
 
-pub use gossamer::fetch::{
-    extract_links_with_text, extract_main_content_anchored, max_response_bytes,
-};
+pub use gossamer::fetch::{extract_links_with_text, max_response_bytes};
 
 pub type FullPage = gossamer::fetch::FullPage;
 pub type ConditionalPage = gossamer::fetch::ConditionalPage;
-pub type ExtractedTableGrid = gossamer::fetch::ExtractedTableGrid;
+pub type ExtractedTableGrid = gossamer::tables::ExtractedTableGrid;
 pub type PyBatchResult = gossamer::fetch::BatchResult;
 type BatchOutcome =
     Vec<(String, Result<gossamer::fetch::BatchPage, String>)>;

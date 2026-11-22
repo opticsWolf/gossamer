@@ -87,14 +87,15 @@ end state: one pure Rust core crate with thin PyO3 wrappers.
 
 The pure core is established at `rust/core/` (`gossamer-web` published, `gossamer` as internal lib
 name). It now owns `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `cite`, `fetch`, `guard`,
-`jats`, `jats_mml`, `metaextract`, `robots`, `sections`, `cacheutils`, `categories`, `miscutils`,
-`ssrf`, `tokens`, `xmlatom`, and `budget`. Legacy `src/textlinks.rs`, `src/ssrf.rs`,
+`jats`, `jats_mml`, `metaextract`, `robots`, `sections`, `tables`, `cacheutils`, `categories`,
+`miscutils`, `ssrf`, `tokens`, `xmlatom`, and `budget`. Legacy `src/textlinks.rs`, `src/ssrf.rs`,
 `src/tokens.rs`, `src/budget.rs`, `src/urls.rs`, `src/dedupe.rs`, `src/robots.rs`,
 `src/cacheutils.rs`, `src/categories.rs`, `src/miscutils.rs`, `src/guard.rs`, `src/sections.rs`,
-`src/metaextract.rs`, `src/xmlatom.rs`, `src/jats.rs`, `src/cite.rs`, and `src/fetch.rs` are thin
-wrappers; `text-links-rs` delegates to the core scanner. `rust/core/tests/no_pyo3.rs` enforces ADR-012.
-Source-level M9/M15 tests now read the core fetch path. The wheel rebuild and full Python suite pass
-11391 passed / 36 skipped. Next move to `bridge.rs`.
+`src/metaextract.rs`, `src/xmlatom.rs`, `src/jats.rs`, `src/cite.rs`, `src/fetch.rs`, and
+`src/bridge.rs` are thin wrappers; `text-links-rs` delegates to the core scanner.
+`rust/core/tests/no_pyo3.rs` enforces ADR-012. Source-level M9/M15 tests now read the core fetch
+path. The wheel rebuild and full Python suite pass 11391 passed / 36 skipped. Next move to the
+`adapters/` subtree.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
