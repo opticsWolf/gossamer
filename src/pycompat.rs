@@ -1,17 +1,7 @@
 //! Python-compatibility string primitives shared by ported modules.
 //!
 //! Python `str` semantics that Rust does not provide out of the box:
-//! `strip()`-set trimming, char-based (never byte-based) slicing, and
-//! char-index measurement. Centralized so every port behaves identically.
-
-/// Python `str.strip()` set: ASCII whitespace + 0x1C–0x1F + NEL +
-/// everything Unicode-White_Space. (Differs from Rust `.trim()` on
-/// 0x1C–0x1F and U+0085.)
-pub fn py_strip(s: &str) -> &str {
-    s.trim_matches(|c: char| {
-        c.is_whitespace() || c == '\u{85}' || ('\u{1C}'..='\u{1F}').contains(&c)
-    })
-}
+//! char-based (never byte-based) slicing and char-index measurement.
 
 /// `s[:n]` by chars, clamped (Python slicing never raises).
 pub fn char_head(s: &str, n: usize) -> &str {

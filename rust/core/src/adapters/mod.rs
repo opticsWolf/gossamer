@@ -2,5 +2,6 @@
 
 pub mod common;
 pub mod finance;
+pub mod legal;
 pub mod misc;
 pub mod patents;

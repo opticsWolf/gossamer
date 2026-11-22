@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 use serde_json::Value;
 
 pub use gossamer::adapters::common::{
-    attr_error, attr_error_attr, is_truthy, json_type, py_str_value,
+    attr_error, is_truthy, json_type, py_str_value,
     sequence_item_error, slice_refs, str_subscript_error,
     type_error_not_iterable, type_error_not_subscriptable,
 };
