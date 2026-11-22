@@ -8,11 +8,6 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-/// Scheme detection used by the legacy robots wrapper.
-pub(crate) fn has_scheme_pub(s: &str) -> bool {
-    gossamer::urls::has_scheme(s, crate::pycompat::runtime_minor())
-}
-
 #[pyfunction]
 #[pyo3(signature = (raw, base = None))]
 pub fn normalize_url(raw: Option<&str>, base: Option<&str>) -> PyResult<String> {

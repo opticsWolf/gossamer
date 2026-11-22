@@ -6,6 +6,7 @@
 pub mod budget;
 pub mod compat;
 pub mod dedupe;
+pub mod robots;
 pub mod ssrf;
 pub mod tokens;
 pub mod textlinks;
