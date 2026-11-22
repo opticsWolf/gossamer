@@ -61,15 +61,16 @@ the claims. Check them against each other at every checkpoint.
 - First file port: `gossamer/text_links.py` -> `rust/text-links-rs`, gate passed, 211/211 cases.
   Not wired into `rust/app` yet: there is no CLI command that calls `extract_links` directly.
 - ADR-012 pure core at `rust/core/`: crates.io name `gossamer-web`, internal lib name `gossamer`.
-  It now owns `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `cite`, `fetch`, `guard`, `jats`,
-  `jats_mml`, `metaextract`, `robots`, `sections`, `tables`, `cacheutils`, `categories`,
-  `miscutils`, `ssrf`, `tokens`, `xmlatom`, and `budget`. Legacy `src/textlinks.rs`,
+  It now owns `adapters::common`, `textlinks`, `compat`, `urlparts`, `urls`, `dedupe`, `cite`,
+  `fetch`, `guard`, `jats`, `jats_mml`, `metaextract`, `robots`, `sections`, `tables`,
+  `cacheutils`, `categories`, `miscutils`, `ssrf`, `tokens`, `xmlatom`, and `budget`. Legacy `src/textlinks.rs`,
   `src/ssrf.rs`, `src/tokens.rs`, `src/budget.rs`, `src/urls.rs`, `src/dedupe.rs`, `src/robots.rs`,
   `src/cacheutils.rs`, `src/categories.rs`, `src/miscutils.rs`, `src/guard.rs`, `src/sections.rs`,
-  `src/metaextract.rs`, `src/xmlatom.rs`, `src/jats.rs`, `src/cite.rs`, `src/fetch.rs`, and
-  `src/bridge.rs` are thin wrappers; `text-links-rs` delegates to the core scanner.
+  `src/metaextract.rs`, `src/xmlatom.rs`, `src/jats.rs`, `src/cite.rs`, `src/fetch.rs`,
+  `src/bridge.rs`, and `src/adapters/common.rs` are thin wrappers; `text-links-rs` delegates to the
+  core scanner.
 - `rust/core/tests/no_pyo3.rs` enforces ADR-012: no PyO3 dependency or PyO3 types in core source.
-- Verification: core crate 67 unit tests + 2 guard tests + 50 doctests, `text-links-rs` gate
+- Verification: core crate 67 unit tests + 2 guard tests + 52 doctests, `text-links-rs` gate
   211/211, wheel rebuild, full `pytest -q -p no:cacheprovider` 11391 passed / 36 skipped,
   app replay 32/32.
 
