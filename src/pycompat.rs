@@ -13,42 +13,12 @@ pub fn py_strip(s: &str) -> &str {
     })
 }
 
-/// Char count (`len(s)` in Python).
-pub fn char_count(s: &str) -> usize {
-    s.chars().count()
-}
-
 /// `s[:n]` by chars, clamped (Python slicing never raises).
 pub fn char_head(s: &str, n: usize) -> &str {
     match s.char_indices().nth(n) {
         Some((i, _)) => &s[..i],
         None => s,
     }
-}
-
-/// `s[a:b]` by chars, clamped.
-pub fn char_slice(s: &str, start: usize, end: usize) -> &str {
-    let bytes: Vec<(usize, char)> = s.char_indices().collect();
-    let n = bytes.len();
-    let b = match bytes.get(start.min(n)) {
-        Some((i, _)) => *i,
-        None => s.len(),
-    };
-    let e = match bytes.get(end.min(n)) {
-        Some((i, _)) => *i,
-        None => s.len(),
-    };
-    if e < b {
-        &s[b..b]
-    } else {
-        &s[b..e]
-    }
-}
-
-/// Byte offset → char index (regex crate yields byte spans; Python
-/// `re` on `str` yields char spans).
-pub fn byte_to_char_idx(text: &str, byte: usize) -> usize {
-    text[..byte.min(text.len())].chars().count()
 }
 
 /// Minimal Python-`repr()` for error messages: single quotes unless the

@@ -24,6 +24,11 @@ pub fn char_head(s: &str, n: usize) -> &str {
     }
 }
 
+/// Byte offset → Python char index (`regex` yields byte spans; Python `re` on `str` yields chars).
+pub fn byte_to_char_idx(text: &str, byte: usize) -> usize {
+    text[..byte.min(text.len())].chars().count()
+}
+
 /// `s[a:b]` by chars, clamped.
 pub fn char_slice(s: &str, start: usize, end: usize) -> &str {
     let bytes: Vec<(usize, char)> = s.char_indices().collect();

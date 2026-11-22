@@ -11,6 +11,7 @@ pub mod dedupe;
 pub mod guard;
 pub mod miscutils;
 pub mod robots;
+pub mod sections;
 pub mod ssrf;
 pub mod tokens;
 pub mod textlinks;
