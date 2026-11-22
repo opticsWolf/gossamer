@@ -4,6 +4,13 @@
 //! byte-for-byte compatible with the legacy implementation. Interpreter-dependent behavior is
 //! passed in explicitly by callers rather than stored in a static (ADR-012, `M-AVOID-STATICS`).
 
+/// Python `str.strip()` set: ASCII whitespace + 0x1C–0x1F + NEL + Unicode White_Space.
+pub fn py_strip(s: &str) -> &str {
+    s.trim_matches(|c: char| {
+        c.is_whitespace() || c == '\u{85}' || ('\u{1C}'..='\u{1F}').contains(&c)
+    })
+}
+
 /// Char count (`len(s)` in Python).
 pub fn char_count(s: &str) -> usize {
     s.chars().count()
