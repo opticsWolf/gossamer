@@ -418,5 +418,37 @@ def main(argv=None) -> int:
     return 0
 
 
+# >>> rust-anything: orchestration-rs is on. `rust-anything disable ../rust/orchestration-rs` removes this block.
+def _rust_anything_orchestration_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_ORCHESTRATION") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/orchestration-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("orchestration_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_route"]})
+
+
+_rust_anything_orchestration_rs()
+del _rust_anything_orchestration_rs
+# <<< rust-anything: orchestration-rs
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _service_route(token):
+    lowered = str(token).strip().lower()
+    commands = {
+        "search", "research", "categories", "inspect", "batch", "download",
+        "locate-pdf", "extract", "check", "discover", "crawl", "cache", "cite",
+        "skills", "benchmarks", "audit-cargo", "verify-bundled-assets",
+    }
+    return lowered if lowered in commands else None

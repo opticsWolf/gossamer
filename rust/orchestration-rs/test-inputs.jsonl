@@ -1,0 +1,4 @@
+{"fn": "_service_payload_skeleton", "args": ["# hi", "https://x.test", {}, 5]}
+{"fn": "_service_tool_envelope", "args": ["web_search", {"query": "x"}, {"ok": true}]}
+{"fn": "_service_route", "args": [" INSPECT "]}
+{"fn": "_service_route", "args": ["bogus"]}

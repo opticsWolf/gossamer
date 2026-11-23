@@ -1696,3 +1696,35 @@ class DocumentExtractor:
             return json.dumps(
                 {"error": f"Structured HTML inspection failed: {str(e)}"}, indent=2
             )
+
+
+def _service_payload_skeleton(markdown, url, metadata, max_links=20):
+    return {
+        "metadata": {"file_name": url, "format": "html", "canonical": url},
+        "pages": [{"page_number": 1, "raw_text": markdown, "markdown": markdown, "tables": []}],
+        "tables": [],
+        "links": [],
+        "guard": None,
+    }
+# >>> rust-anything: orchestration-rs is on. `rust-anything disable ../rust/orchestration-rs` removes this block.
+def _rust_anything_orchestration_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_ORCHESTRATION") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/orchestration-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("orchestration_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_payload_skeleton"]})
+
+
+_rust_anything_orchestration_rs()
+del _rust_anything_orchestration_rs
+# <<< rust-anything: orchestration-rs

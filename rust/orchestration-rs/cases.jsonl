@@ -1,0 +1,4 @@
+{"fn": "_service_payload_skeleton", "args": ["# hi", "https://x.test", {}, 5], "ok": {"metadata": {"file_name": "https://x.test", "format": "html", "canonical": "https://x.test"}, "pages": [{"page_number": 1, "raw_text": "# hi", "markdown": "# hi", "tables": []}], "tables": [], "links": [], "guard": null}}
+{"fn": "_service_tool_envelope", "args": ["web_search", {"query": "x"}, {"ok": true}], "ok": {"tool": "web_search", "arguments": {"query": "x"}, "result": {"ok": true}}}
+{"fn": "_service_route", "args": [" INSPECT "], "ok": "inspect"}
+{"fn": "_service_route", "args": ["bogus"], "ok": null}

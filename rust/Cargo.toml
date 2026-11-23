@@ -10,6 +10,7 @@ members = [
   "fetch-service-rs",
   "search-service-rs",
   "research-service-rs",
+  "orchestration-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

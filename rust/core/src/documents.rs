@@ -236,3 +236,15 @@ mod tests {
         assert_eq!(absolutize_markdown_links(input, "https://x.test/p"), input);
     }
 }
+
+/// Build a structured payload skeleton from fetched markdown and metadata.
+pub fn payload_from_markdown(markdown: &str, url: &str, _metadata: &Value, max_links: i64) -> Value {
+    let links = follow_up_candidates(&Value::Array(Vec::new()), max_links);
+    json!({
+        "metadata": {"file_name": url, "format": "html", "canonical": url},
+        "pages": [{"page_number": 1, "raw_text": markdown, "markdown": markdown, "tables": []}],
+        "tables": [],
+        "links": links,
+        "guard": Value::Null,
+    })
+}
