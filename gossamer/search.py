@@ -422,3 +422,71 @@ class SearchService:
             None, self.search_web, query, max_results, provider
         )
 
+
+
+# ── Rust service seams ─────────────────────────────────────────
+def _service_dedup_results(results):
+    from gossamer.config import canonical_url
+
+    seen = set()
+    out = []
+    for item in results:
+        if isinstance(item, dict):
+            url = item.get("url")
+            if isinstance(url, str) and url:
+                try:
+                    key = canonical_url(url, query="keep")
+                except ValueError:
+                    key = ""
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+        out.append(item)
+    return out
+
+
+def _service_fallback_note(provider_name, registered):
+    from gossamer.search_providers import resolve_provider_name
+
+    if not provider_name:
+        return None
+    canonical = resolve_provider_name(provider_name)
+    if canonical is None or canonical in registered:
+        return None
+    return {"requested": canonical, "reason": "provider not registered", "used": list(registered)}
+
+
+def _service_resolve_order(provider_name, registered):
+    from gossamer.search_providers import resolve_provider_name
+
+    names = list(registered)
+    if not provider_name:
+        return names
+    canonical = resolve_provider_name(provider_name)
+    if not canonical:
+        return names
+    matched = [name for name in names if name == canonical]
+    return matched + [name for name in names if name != canonical]
+# >>> rust-anything: search-service-rs is on. `rust-anything disable ../rust/search-service-rs` removes this block.
+def _rust_anything_search_service_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_SEARCH_SERVICE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/search-service-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("search_service_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_dedup_results", "_service_fallback_note", "_service_resolve_order"]})
+
+
+_rust_anything_search_service_rs()
+del _rust_anything_search_service_rs
+# <<< rust-anything: search-service-rs

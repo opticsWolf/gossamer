@@ -8,6 +8,7 @@ members = [
   "config-rs",
   "documents-rs",
   "fetch-service-rs",
+  "search-service-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

@@ -1,0 +1,5 @@
+{"fn": "_service_dedup_results", "args": [[{"url": "https://WWW.Example.com/a?x=1"}, {"url": "https://example.com/a?x=1"}, {"url": "not a url"}]], "ok": [{"url": "https://WWW.Example.com/a?x=1"}, {"url": "not a url"}]}
+{"fn": "_service_fallback_note", "args": ["ddg", ["google", "duckduckgo"]], "ok": null}
+{"fn": "_service_fallback_note", "args": ["bing", ["google"]], "ok": {"requested": "bing", "reason": "provider not registered", "used": ["google"]}}
+{"fn": "_service_resolve_order", "args": ["ddg", ["google", "duckduckgo"]], "ok": ["duckduckgo", "google"]}
+{"fn": "_service_resolve_order", "args": [null, ["google", "duckduckgo"]], "ok": ["google", "duckduckgo"]}

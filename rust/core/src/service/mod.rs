@@ -4,3 +4,4 @@
 //! modules own the deterministic decisions that surround them.
 
 pub mod fetch;
+pub mod search;
