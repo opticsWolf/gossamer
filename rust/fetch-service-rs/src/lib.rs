@@ -178,6 +178,65 @@ fn service_format_follow_ups(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_dispatch_decision_inner(
+    url: String,
+    strategy: String,
+    static_result: Option<Bound<'_, PyAny>>,
+    static_error: Option<String>,
+    browser_result: Option<Bound<'_, PyAny>>,
+    browser_error: Option<String>,
+    browser_available: bool,
+    keep_html: bool,
+) -> Result<Value, String> {
+    let static_result: Option<Value> = match &static_result {
+        None => None,
+        Some(v) => Some(crate::pyconv::FromPy::from_py(v)?),
+    };
+    let browser_result: Option<Value> = match &browser_result {
+        None => None,
+        Some(v) => Some(crate::pyconv::FromPy::from_py(v)?),
+    };
+    let out = port::service_dispatch_decision(
+        url,
+        strategy,
+        static_result,
+        static_error,
+        browser_result,
+        browser_error,
+        browser_available,
+        keep_html,
+    )?;
+    Ok(out)
+}
+
+/// `_service_dispatch_decision`.
+#[pyfunction]
+#[pyo3(name = "_service_dispatch_decision", signature = (url, strategy, static_result, static_error, browser_result, browser_error, browser_available, keep_html))]
+fn service_dispatch_decision(
+    py: Python<'_>,
+    url: String,
+    strategy: String,
+    static_result: Option<Bound<'_, PyAny>>,
+    static_error: Option<String>,
+    browser_result: Option<Bound<'_, PyAny>>,
+    browser_error: Option<String>,
+    browser_available: bool,
+    keep_html: bool,
+) -> PyResult<Py<PyAny>> {
+    service_dispatch_decision_inner(
+        url,
+        strategy,
+        static_result,
+        static_error,
+        browser_result,
+        browser_error,
+        browser_available,
+        keep_html,
+    )
+    .map_err(error)
+    .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -189,5 +248,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_slice_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(service_compact_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(service_format_follow_ups, m)?)?;
+    m.add_function(wrap_pyfunction!(service_dispatch_decision, m)?)?;
     Ok(())
 }

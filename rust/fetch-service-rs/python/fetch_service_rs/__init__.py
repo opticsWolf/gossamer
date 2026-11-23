@@ -116,8 +116,21 @@ def _candidates(fn):
     return call
 
 
+def _decision(fn):
+    def call(*args, **kwargs):
+        args = tuple(_enc(a) for a in args)
+        kwargs = {k: _enc(v) for k, v in kwargs.items()}
+        out = _dec(fn(*args, **kwargs))
+        if isinstance(out, dict) and isinstance(out.get("value"), list):
+            out["value"] = tuple(out["value"])
+        return out
+    call.__name__ = fn.__name__
+    return call
+
+
 _service_slice_markdown = _tuple_result(_native._service_slice_markdown)
 _service_compact_metadata = _native._service_compact_metadata
 _service_format_follow_ups = _candidates(_native._service_format_follow_ups)
+_service_dispatch_decision = _decision(_native._service_dispatch_decision)
 
-__all__ = ['_service_strategy_for', '_service_strategy_accepts', '_service_cached_matches_strategy', '_service_raw_entry_matches_strategy', '_service_looks_like_text', '_service_slice_markdown', '_service_compact_metadata', '_service_format_follow_ups']
+__all__ = ['_service_strategy_for', '_service_strategy_accepts', '_service_cached_matches_strategy', '_service_raw_entry_matches_strategy', '_service_looks_like_text', '_service_slice_markdown', '_service_compact_metadata', '_service_format_follow_ups', '_service_dispatch_decision']

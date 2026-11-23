@@ -23,3 +23,9 @@
 {"fn": "_service_compact_metadata", "args": [{"meta": {"title": "T", "canonical": "https://old.test"}, "opengraph": {"title": "OG"}, "twitter": {"card": "summary"}, "jsonld": [{"a": 1}, {"b": 2}, {"c": 3}], "rel_links": {"canonical": ["https://new.test"], "alternate": ["/rss"]}, "hidden_blocks_removed": 4}]}
 {"fn": "_service_compact_metadata", "args": [{}]}
 {"fn": "_service_format_follow_ups", "args": [[{"$tuple": ["https://x.test/a", " A "]}, {"$tuple": ["https://x.test/a", "dup"]}, {"$tuple": ["https://x.test/r.pdf", ""]}]]}
+{"fn": "_service_dispatch_decision", "args": ["https://x.test", "static-only", {"$tuple": ["# md", [], {}, "static"]}, null, null, null, false, false]}
+{"fn": "_service_dispatch_decision", "args": ["https://x.test", "browser-only", {"$tuple": ["# md", [], {}, "static"]}, null, null, null, true, false]}
+{"fn": "_service_dispatch_decision", "args": ["https://x.test", "browser-first", {"$tuple": ["# md", [], {}, "static"]}, null, {"$tuple": ["# b", [], {}, "browser"]}, "boom", true, false]}
+{"fn": "_service_dispatch_decision", "args": ["https://x.test", "auto", {"$tuple": ["\u0000\u0001", [], {}, "static"]}, null, null, null, false, false]}
+{"fn": "_service_looks_like_text", "args": ["\u0000\u0001"]}
+{"fn": "_service_dispatch_decision", "args": ["https://x.test", "auto", null, "boom", null, null, false, false]}

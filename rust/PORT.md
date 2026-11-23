@@ -86,6 +86,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   state. This unit is the deterministic decision layer those callers use,
   not a full transport port.
 
+### Unit 4a — FetchService dispatch decision (done 2026-11-23)
+
+- Core: `gossamer::service::fetch::dispatch_decision` chooses static/browser
+  outcomes from already-computed results, keeping I/O in Python.
+- Binding: `rust/fetch-service-rs` export `_service_dispatch_decision`, enabled
+  with the same kill switch as unit 3.
+- Recorded: 31/31 cases, gate passed, CodeRadar reindexed after review.
+- Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
+  and `batch_inspect_pages_impl`.
+
 ## Current state
 
 - `dev_rustify` at `57d3ef0`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.

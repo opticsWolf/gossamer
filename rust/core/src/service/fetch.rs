@@ -347,3 +347,67 @@ mod tests {
         assert_eq!(out["alternates"][0], "/rss");
     }
 }
+
+/// Pure dispatch decision for a fetch strategy.
+///
+/// Static and browser I/O stay with the caller; this function only chooses
+/// which already-computed outcome should be returned, or reports that the
+/// browser must be invoked.
+///
+/// # Errors
+/// [`FetchServiceError`] when `auto` falls back and no browser is installed.
+fn as_sequence(value: &Value) -> Option<&Vec<Value>> {
+    value
+        .get("$tuple")
+        .and_then(Value::as_array)
+        .or_else(|| value.as_array())
+}
+
+pub fn dispatch_decision(
+    url: &str,
+    strategy: &str,
+    static_result: Option<&Value>,
+    static_error: Option<&str>,
+    browser_result: Option<&Value>,
+    browser_error: Option<&str>,
+    browser_available: bool,
+) -> Result<Value, FetchServiceError> {
+    match strategy {
+        "static-only" => Ok(json!({"kind": "result", "value": static_result})),
+        "browser-only" => match browser_result {
+            Some(result) => Ok(json!({"kind": "result", "value": result})),
+            None => Ok(json!({"kind": "browser"})),
+        },
+        "browser-first" => {
+            if browser_error.is_none() {
+                Ok(json!({"kind": "result", "value": browser_result}))
+            } else {
+                Ok(json!({"kind": "result", "value": static_result}))
+            }
+        }
+        "auto" => {
+            let static_text = static_result
+                .and_then(as_sequence)
+                .and_then(|items| items.first())
+                .and_then(Value::as_str);
+            if static_error.is_none() && static_text.is_some_and(looks_like_text) {
+                return Ok(json!({"kind": "result", "value": static_result}));
+            }
+            if let Some(result) = browser_result {
+                return Ok(json!({"kind": "result", "value": result}));
+            }
+            if let Some(error) = browser_error {
+                return Err(FetchServiceError::new(error.to_string()));
+            }
+            if !browser_available {
+                return Err(FetchServiceError::new(format!(
+                    "Fetch failed for {url} and browser_oxide is not installed"
+                )));
+            }
+            Ok(json!({"kind": "browser"}))
+        }
+        other => Err(FetchServiceError::new(format!(
+            "unknown fetch strategy: {other}"
+        ))),
+    }
+}

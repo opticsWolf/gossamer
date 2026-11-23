@@ -87,3 +87,31 @@ def test_format_follow_ups():
         ("https://x.test/a", "A", "page"),
         ("https://x.test/r.pdf", "(untitled)", "document"),
     ]
+
+
+def test_dispatch_decision_table():
+    result = ("# md", [], {}, "static")
+    assert fetch_mod._service_dispatch_decision(
+        "https://x.test", "static-only", result, None, None, None, False, False
+    ) == {"kind": "result", "value": result}
+    assert fetch_mod._service_dispatch_decision(
+        "https://x.test", "browser-only", result, None, None, None, True, False
+    ) == {"kind": "browser"}
+    assert fetch_mod._service_dispatch_decision(
+        "https://x.test",
+        "browser-first",
+        result,
+        None,
+        ("# b", [], {}, "browser"),
+        "boom",
+        True,
+        False,
+    )["value"][3] == "static"
+    with pytest.raises(RuntimeError):
+        fetch_mod._service_dispatch_decision(
+            "https://x.test", "auto", ("\u0000\u0001", [], {}, "static"), None, None, None, False, False
+        )
+    with pytest.raises(RuntimeError):
+        fetch_mod._service_dispatch_decision(
+            "https://x.test", "auto", None, "boom", None, None, False, False
+        )

@@ -1555,7 +1555,7 @@ def _rust_anything_fetch_service_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_strategy_for", "_service_strategy_accepts", "_service_cached_matches_strategy", "_service_raw_entry_matches_strategy", "_service_looks_like_text", "_service_slice_markdown", "_service_compact_metadata", "_service_format_follow_ups"]})
+    globals().update({name: getattr(native, name) for name in ["_service_strategy_for", "_service_strategy_accepts", "_service_cached_matches_strategy", "_service_raw_entry_matches_strategy", "_service_looks_like_text", "_service_slice_markdown", "_service_compact_metadata", "_service_format_follow_ups", "_service_dispatch_decision"]})
 
 
 _rust_anything_fetch_service_rs()
@@ -1596,3 +1596,116 @@ def _rust_anything_fetch_methods():
 _rust_anything_fetch_methods()
 del _rust_anything_fetch_methods
 # <<< rust-anything: FetchService kernels
+
+
+def _service_dispatch_decision(
+    url: str,
+    strategy: str,
+    static_result,
+    static_error,
+    browser_result,
+    browser_error,
+    browser_available: bool,
+    keep_html: bool,
+):
+    """Pure dispatch decision; static/browser I/O stays with the caller."""
+    if strategy == "static-only":
+        return {"kind": "result", "value": static_result}
+    if strategy == "browser-only":
+        return {"kind": "browser"}
+    if strategy == "browser-first":
+        if browser_error is None:
+            return {"kind": "result", "value": browser_result}
+        return {"kind": "result", "value": static_result}
+    # auto: static first, browser fallback on failure or non-text content.
+    if static_error is None and static_result is not None:
+        markdown = static_result[0] if isinstance(static_result, (tuple, list)) else ""
+        if _service_looks_like_text(markdown):
+            return {"kind": "result", "value": static_result}
+    if not browser_available:
+        raise RuntimeError(
+            f"Fetch failed for {url} and browser_oxide is not installed"
+        )
+    return {"kind": "browser"}
+
+
+def _rebind_dispatch_decision():
+    import os
+    import sys
+    if os.environ.get("RUST_ANYTHING_MODE") == "old" or os.environ.get(
+        "RUST_ANYTHING_UNIT_FETCH_SERVICE"
+    ) == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/fetch-service-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        from fetch_service_rs import _service_dispatch_decision as rust_decision
+        globals()["_service_dispatch_decision"] = rust_decision
+    finally:
+        sys.path.remove(at)
+
+
+_rebind_dispatch_decision()
+del _rebind_dispatch_decision
+
+# >>> rust-anything: dispatch decision is on
+def _rust_anything_dispatch_decision():
+    import os
+
+    if os.environ.get("RUST_ANYTHING_MODE") == "old" or os.environ.get(
+        "RUST_ANYTHING_UNIT_FETCH_SERVICE"
+    ) == "original":
+        return
+
+    def dispatch(self, url, use_smart=FetchMode.AUTO.value, keep_html=False):
+        strategy = _service_strategy_for(self._tb.fetch_mode, use_smart)
+        static_result = static_error = None
+        browser_result = browser_error = None
+        if strategy in ("static-only", "auto", "browser-first"):
+            try:
+                static_result = (
+                    self._static_fetch(url, keep_html=True)
+                    if keep_html
+                    else self._static_fetch(url)
+                )
+            except Exception as exc:
+                static_error = str(exc)
+        static_ok = (
+            static_error is None
+            and static_result is not None
+            and _service_looks_like_text(static_result[0])
+        )
+        needs_browser = strategy in ("browser-only", "browser-first") or (
+            strategy == "auto" and not static_ok
+        )
+        if needs_browser:
+            if strategy == "auto" and not _browser_oxide_available:
+                browser_error = "browser_oxide is not installed"
+            else:
+                try:
+                    md, links, meta, method = self._browser_fetch(url)
+                    browser_result = (
+                        (md, links, meta, method, None) if keep_html
+                        else (md, links, meta, method)
+                    )
+                except Exception as exc:
+                    browser_error = str(exc)
+            if strategy == "auto" and browser_result is not None:
+                browser_result = tuple(
+                    "stealth-fallback" if i == 3 else part
+                    for i, part in enumerate(browser_result)
+                )
+        decision = _service_dispatch_decision(
+            url, strategy, static_result, static_error,
+            browser_result, browser_error, _browser_oxide_available, keep_html,
+        )
+        if decision["kind"] == "result":
+            return decision["value"]
+        raise RuntimeError(f"No fetch result for {url}")
+
+    FetchService._dispatch_fetch = dispatch
+
+
+_rust_anything_dispatch_decision()
+del _rust_anything_dispatch_decision
+# <<< rust-anything: dispatch decision

@@ -26,6 +26,11 @@ pub fn service_strategy_for(fetch_mode: String, use_smart: String) -> Result<Str
         .map_err(failure)
 }
 
+/// RuntimeError prefix for dispatch failures.
+fn runtime_failure(error: kernels::FetchServiceError) -> String {
+    format!("RuntimeError: {}", error.message())
+}
+
 /// Port of `_service_strategy_accepts`.
 pub fn service_strategy_accepts(
     strategy: String,
@@ -102,4 +107,28 @@ pub fn service_format_follow_ups(anchored_links: Vec<Value>) -> Result<Vec<Value
             Value::Object(wrapper)
         })
         .collect())
+}
+
+/// Port of `_service_dispatch_decision`.
+pub fn service_dispatch_decision(
+    url: String,
+    strategy: String,
+    static_result: Option<Value>,
+    static_error: Option<String>,
+    browser_result: Option<Value>,
+    browser_error: Option<String>,
+    browser_available: bool,
+    keep_html: bool,
+) -> Result<Value, String> {
+    let _ = keep_html;
+    kernels::dispatch_decision(
+        &url,
+        &strategy,
+        static_result.as_ref(),
+        static_error.as_deref(),
+        browser_result.as_ref(),
+        browser_error.as_deref(),
+        browser_available,
+    )
+    .map_err(runtime_failure)
 }
