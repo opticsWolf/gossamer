@@ -84,3 +84,25 @@ def getenv_bool(new: str, default: bool, legacy=None) -> bool:
     if raw is None:
         return default
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
+# >>> rust-anything: config-rs is on. `rust-anything disable ../rust/config-rs` removes this block.
+def _rust_anything_config_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CONFIG") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/config-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("config_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["getenv", "getenv_bool"]})
+
+
+_rust_anything_config_rs()
+del _rust_anything_config_rs
+# <<< rust-anything: config-rs

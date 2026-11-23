@@ -46,10 +46,32 @@ If this file and those disagree, this file wins for *decisions*; the ADRs win fo
 Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.py`
 (ported after 4, before 7).
 
+## Unit log
+
+### Unit 1 — config resolution (done 2026-11-23)
+
+- Core: `rust/core/src/config.rs` (discovery, precedence, keystore, templates,
+  CPython-shaped JSON detail, `ConfigStore` mtime cache).
+- Binding crate: `rust/config-rs` — thin delegator, switched on with
+  `rust-anything enable` (marked block in `gossamer/env.py` and
+  `gossamer/settings.py`, reversible with `disable`, kill switch
+  `RUST_ANYTHING_UNIT_CONFIG=original`).
+- Recorded from `tests/test_rust_parity_config.py` plus explicit inputs:
+  **24/24 cases**, gate passed, bench 0.96x (parity; not a speed port).
+- Python suite: 11397 passed / 36 skipped.
+- Deviation to remember: `record --from-tests` on `tests/test_settings.py`
+  captured calls whose results depend on `monkeypatch`ed env and `tmp_path`,
+  so they cannot be replayed out of process. The replayable pins live in
+  `tests/test_rust_parity_config.py`; environment precedence is proven by
+  `tests/test_settings.py` itself, which now runs against the Rust code.
+- `lookup_key` is intentionally not an exported case: its variadic signature
+  is not representable in the recorded-case format. It stays in core and is
+  exercised through `getenv` and the Python suite.
+
 ## Current state
 
 - `dev_rustify` at `57d3ef0`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
-- Rust owns: deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
+- Rust owns: `env`/`settings` config resolution (unit 1), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, `cache` maintenance, `categories`, document URL rejection,
   search provider aliases/errors, CLI help/error text, MCP schema constant.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,

@@ -1,0 +1,202 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/env.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "config-rs",
+  "exports": [
+    {
+      "name": "getenv",
+      "file": "gossamer/env.py",
+      "line": 47,
+      "params": [
+        {
+          "name": "new",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "default",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        },
+        {
+          "name": "legacy",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "find_config_file",
+      "file": "gossamer/settings.py",
+      "line": 42,
+      "params": [
+        {
+          "name": "explicit",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "find_keystore_file",
+      "file": "gossamer/settings.py",
+      "line": 62,
+      "params": [
+        {
+          "name": "explicit",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "clear_caches",
+      "file": "gossamer/settings.py",
+      "line": 96,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "load_json_file",
+      "file": "gossamer/settings.py",
+      "line": 101,
+      "params": [
+        {
+          "name": "path",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "load_config_file",
+      "file": "gossamer/settings.py",
+      "line": 118,
+      "params": [
+        {
+          "name": "explicit",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "load_keystore",
+      "file": "gossamer/settings.py",
+      "line": 134,
+      "params": [
+        {
+          "name": "explicit",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "keystore_template",
+      "file": "gossamer/settings.py",
+      "line": 201,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "config_template",
+      "file": "gossamer/settings.py",
+      "line": 206,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "getenv_bool",
+      "file": "gossamer/env.py",
+      "line": 77,
+      "params": [
+        {
+          "name": "new",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "default",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "legacy",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

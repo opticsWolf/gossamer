@@ -5,6 +5,7 @@ members = [
   "core",
   "audit-cargo-rs",
   "benchmarks-rs",
+  "config-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

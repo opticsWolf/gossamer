@@ -1,0 +1,7 @@
+{
+  "cache_dir": ".gossamer_cache",
+  "max_tokens": 11,
+  "respect_robots": true,
+  "keystore": "keys.json",
+  "keys": {"OPENALEX_KEY": "inline-key"}
+}

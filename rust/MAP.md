@@ -171,6 +171,15 @@ the claims. Check them against each other at every checkpoint.
 - Final verification: workspace tests and clippy clean, root `cargo check` OK, maturin OK, Python
   suite 11391 passed / 36 skipped, `git diff --check` clean apart from LF→CRLF warnings.
 
+## Checkpoint 11 — config resolution (2026-11-23)
+
+- Orchestration units now live in `rust/core` (ADR-014 in `rust/PORT.md` decision 1);
+  `rust/<unit>-rs` crates are thin binding harnesses only.
+- Unit 1 (`gossamer/env.py` + `gossamer/settings.py`) ported to `gossamer::config`
+  and enabled through `rust/config-rs`: 24/24 recorded cases, gate passed,
+  bench 0.96x, Python suite 11397 passed / 36 skipped.
+- Next units: `documents` payload schema, `service::fetch`, `service::search`/`providers`.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).

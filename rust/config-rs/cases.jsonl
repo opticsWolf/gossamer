@@ -1,0 +1,24 @@
+{"fn": "load_config_file", "args": ["fixtures/array.json"], "error": "FileNotFoundError: config file not found: fixtures/array.json"}
+{"fn": "load_config_file", "args": ["fixtures/absent.json"], "error": "FileNotFoundError: config file not found: fixtures/absent.json"}
+{"fn": "load_json_file", "args": ["fixtures/array.json"], "error": "FileNotFoundError: config file not found: fixtures/array.json"}
+{"fn": "load_json_file", "args": ["fixtures/absent.json"], "error": "FileNotFoundError: config file not found: fixtures/absent.json"}
+{"fn": "load_keystore", "args": ["fixtures/keys.json"], "error": "FileNotFoundError: keystore file not found: fixtures/keys.json"}
+{"fn": "load_keystore", "args": ["fixtures/absent.json"], "error": "FileNotFoundError: keystore file not found: fixtures/absent.json"}
+{"fn": "find_config_file", "args": ["fixtures/absent.json"], "ok": null}
+{"fn": "find_keystore_file", "args": ["fixtures/absent.json"], "ok": null}
+{"fn": "load_config_file", "args": ["D:\\User\\Documents\\Rust\\gossamer/rust/config-rs/fixtures/array.json"], "error": "ValueError: gossamer.json must hold an object: D:\\User\\Documents\\Rust\\gossamer/rust/config-rs/fixtures/array.json"}
+{"fn": "load_config_file", "args": ["D:\\User\\Documents\\Rust\\gossamer/rust/config-rs/fixtures/good.json"], "ok": {"cache_dir": ".gossamer_cache", "max_tokens": 11, "respect_robots": true, "keystore": "keys.json", "keys": {"OPENALEX_KEY": "inline-key"}}}
+{"fn": "load_keystore", "args": ["D:\\User\\Documents\\Rust\\gossamer/rust/config-rs/fixtures/keys.json"], "ok": {"OPENALEX_KEY": "k1", "GOSSAMER_BING_API_KEY": "k2", "EXA_API_KEY": ""}}
+{"fn": "load_keystore", "args": ["D:\\User\\Documents\\Rust\\gossamer/rust/config-rs/fixtures/array.json"], "error": "ValueError: keystore must hold an object: D:\\User\\Documents\\Rust\\gossamer\\rust\\config-rs\\fixtures\\array.json"}
+{"fn": "load_json_file", "args": ["D:\\User\\Documents\\Rust\\gossamer/rust/config-rs/fixtures/good.json"], "ok": {"cache_dir": ".gossamer_cache", "max_tokens": 11, "respect_robots": true, "keystore": "keys.json", "keys": {"OPENALEX_KEY": "inline-key"}}}
+{"fn": "keystore_template", "args": [], "ok": {"OPENALEX_KEY": "", "OPENALEX_EMAIL": "", "GOOGLE_API_KEY": "", "GOOGLE_CX": "", "BING_API_KEY": "", "EXA_API_KEY": "", "GITHUB_TOKEN": "", "NCBI_KEY": "", "NASA_KEY": "", "NVD_API_KEY": "", "ZENODO_TOKEN": "", "SEMANTICSCHOLAR_API_KEY": "", "HF_TOKEN": "", "CONGRESS_KEY": "", "CENSUS_KEY": "", "CHEMXIV_TOKEN": "", "ALPHA_VANTAGE_KEY": "", "COURTLISTENER_KEY": "", "GOVINFO_KEY": "", "UNPAYWALL_EMAIL": "", "EPO_KEY": "", "EPO_SECRET": "", "KIPRIS_KEY": "", "PATENTSVIEW_API_KEY": "", "LENS_API_KEY": "", "JPO_USERNAME": "", "JPO_PASSWORD": ""}}
+{"fn": "config_template", "args": [], "ok": {"$comment": "gossamer configuration (docs: README, gossamer/mcp_server.py). Environment variables override every value here.", "cache_dir": ".gossamer_cache", "cache_ttl_seconds": 3600, "cache_max_bytes": 0, "cache_memory_entries": 100, "ddgs_delay": {"$float": "1.0"}, "ddgs_jitter": {"$float": "1.0"}, "domain_delay": 0.5, "fetch_jitter": {"$float": "1.0"}, "fetch_mode": "auto", "max_markdown_chars": 8000, "max_tokens": 0, "model_name": "gpt-4o", "max_links": 20, "candidate_cap": 500, "max_concurrency": 8, "max_response_bytes": 5242880, "liveness_timeout": {"$float": "10.0"}, "link_budget_ratio": 0.25, "respect_robots": true, "conditional_revalidation": true, "search_merge": false, "keystore": "~/.gossamer/keys.json", "keys": {}, "guard": {"enabled": false, "mode": "annotate", "scopes": "page_markdown,document_text", "threshold": 0.7, "max_chunks": 40}}}
+{"fn": "getenv", "args": ["GOSSAMER_PARITY_UNSET_KEY", "fallback"], "ok": "fallback"}
+{"fn": "load_keystore", "args": [null], "ok": {}}
+{"fn": "find_keystore_file", "args": [], "ok": null}
+{"fn": "find_config_file", "args": [], "ok": null}
+{"fn": "load_config_file", "args": [], "ok": {}}
+{"fn": "getenv", "args": ["GOSSAMER_PARITY_UNSET_KEY"], "ok": null}
+{"fn": "getenv_bool", "args": ["GOSSAMER_PARITY_UNSET_FLAG", true], "ok": true}
+{"fn": "getenv", "args": ["GOSSAMER_PARITY_UNSET_FLAG", null, null], "ok": null}
+{"fn": "clear_caches", "args": [], "ok": null}

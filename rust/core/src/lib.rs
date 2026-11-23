@@ -11,6 +11,7 @@ pub mod categories;
 pub mod cite;
 pub mod cli_help;
 pub mod compat;
+pub mod config;
 pub mod dedupe;
 pub mod document;
 pub mod fetch;

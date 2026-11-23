@@ -123,7 +123,12 @@ steps that only the user can perform.
 
 ## Checkpoint rule
 
-Migration is complete. Waves 0–2, ADR-013, orchestration units, CLI contract, and lift are done. Replay is 43/43 with 0% fallback and no fallback path.
+Unit 1 of the post-lift port is done: `gossamer::config` owns env/config resolution
+and `rust/config-rs` is enabled over `gossamer/env.py` + `gossamer/settings.py`
+(24/24 cases, gate passed, 0.96x bench, suite 11397/36 skipped). Next unit is the
+`documents` payload schema per `rust/PORT.md`.
+
+Migration (lift) is complete. Waves 0–2, ADR-013, orchestration units, CLI contract, and lift are done. Replay is 43/43 with 0% fallback and no fallback path.
 
 ## Skill to load next
 
