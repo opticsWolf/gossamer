@@ -3,6 +3,7 @@
   "name": "gossamer",
   "commands": [
     "batch",
+    "benchmarks",
     "cache",
     "categories",
     "check",
@@ -20,6 +21,15 @@
     "verify-bundled-assets"
   ],
   "units": [
+    {
+      "name": "benchmarks",
+      "crate": "benchmarks-rs",
+      "path": "../benchmarks-rs",
+      "commands": [
+        "benchmarks"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_BENCHMARKS"
+    },
     {
       "name": "skills",
       "crate": "skills-rs",

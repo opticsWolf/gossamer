@@ -29,6 +29,12 @@ pub fn command() -> Command {
                 .arg(rest()),
         )
         .subcommand(
+            Command::new("benchmarks")
+                .disable_help_flag(true)
+                .arg(Arg::new("help").long("help").action(ArgAction::Count))
+                .arg(rest()),
+        )
+        .subcommand(
             Command::new("cache")
                 .disable_help_flag(true)
                 .arg(Arg::new("help").long("help").action(ArgAction::Count))

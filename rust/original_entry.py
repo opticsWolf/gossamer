@@ -14,6 +14,11 @@ sys.path.insert(0, str(ROOT))
 
 command = sys.argv[1] if len(sys.argv) > 1 else ""
 
+if command == "benchmarks":
+    import benchmarks
+
+    raise SystemExit(benchmarks.main(sys.argv[2:]))
+
 if command == "audit-cargo":
     sys.path.insert(0, str(ROOT / "scripts"))
     from audit_cargo import main

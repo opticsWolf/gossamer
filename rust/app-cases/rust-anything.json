@@ -11,6 +11,7 @@
   ],
   "timeout_secs": 60,
   "fresh": [
-    "rust/fixtures"
+    "rust/fixtures",
+    "tests/fixtures/guard_corpus"
   ]
 }

@@ -67,9 +67,10 @@ fn zenodo_names_impl(people: Option<&Value>) -> Result<String> {
                         None => via_poo()?,
                     };
                     if let Some((text, t)) = chosen
-                        && !text.is_empty() {
-                            out.push((text, t));
-                        }
+                        && !text.is_empty()
+                    {
+                        out.push((text, t));
+                    }
                 }
                 _ => {
                     // Falsy items skipped (`elif a:`); truthy rendered
@@ -1674,9 +1675,10 @@ fn doaj_row_impl(r: &Value, runtime_minor: Option<u32>) -> Result<Value> {
             Some(Value::Array(a)) => {
                 for i in a.iter() {
                     if let Value::Object(im) = i
-                        && matches!(im.get("type"), Some(Value::String(t)) if t == "doi") {
-                            dois.push(im.get("id").cloned().unwrap_or(Value::Null));
-                        }
+                        && matches!(im.get("type"), Some(Value::String(t)) if t == "doi")
+                    {
+                        dois.push(im.get("id").cloned().unwrap_or(Value::Null));
+                    }
                 }
             }
             Some(Value::Object(_)) | Some(Value::String(_)) => {}
@@ -1955,9 +1957,9 @@ pub fn arxiv_parse_fetch_impl(
         // `raw` is "": attached by the wrapper.
         return Ok(Value::Object(rec));
     }
-    Ok(arxiv_entry_impl(
-        entry.ok_or_else(|| AdapterError::new("missing arXiv entry".to_string()))?,
-    ))
+    Ok(arxiv_entry_impl(entry.ok_or_else(|| {
+        AdapterError::new("missing arXiv entry".to_string())
+    })?))
 }
 
 ///
@@ -2093,13 +2095,15 @@ pub fn pubmed_parse_fetch_impl(response_xml: &str, rid_s: &str) -> Result<Option
             // (uncollapsed), single-space join, ends stripped.
             let mut parts: Vec<&str> = Vec::new();
             if let Some(x) = last
-                && !x.is_empty() {
-                    parts.push(x);
-                }
+                && !x.is_empty()
+            {
+                parts.push(x);
+            }
             if let Some(x) = fore
-                && !x.is_empty() {
-                    parts.push(x);
-                }
+                && !x.is_empty()
+            {
+                parts.push(x);
+            }
             let name = parts.join(" ").trim().to_string();
             if !name.is_empty() {
                 authors.push(name);

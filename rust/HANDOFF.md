@@ -5,6 +5,7 @@
 - Branch: `dev_rustify` in `D:\User\Documents\Rust\gossamer`.
 - **Wave 0 is complete.** All three bridgeable entry points are ported, gated, and wired.
 - **Wave 1 is complete.** All deterministic `_core` kernels live in the pure core; Python-facing Rust modules are thin adapters.
+- **Wave 2 is complete.** The deterministic `benchmarks --corpus` report is ported and wired; timing/network modes still fall back.
 
 | Unit / crate | Gate | Diff | Notes |
 |---|---|---|---|
@@ -12,17 +13,18 @@
 | `scripts/audit_cargo.py` → `rust/audit-cargo-rs` | passed | 216/216 | 65 Rust LOC / 77 Python (0.8x) |
 | `scripts/verify_bundled_assets.py` → `rust/verify-bundled-assets-rs` | passed | 10/10 | 164 Rust LOC / 71 Python (2.3x) |
 | `gossamer/text_links.py` → `rust/text-links-rs` | passed | 211/211 | 109 Rust LOC / 46 Python (2.4x); not front-door wired |
+| `benchmarks.py` → `rust/benchmarks-rs` | passed | 4/4 | deterministic corpus report only; timing/network modes fall back |
 
 Front door replay:
 
 ```text
-32/32 cases passed
-Fallback rate: 68.8% (22/32 cases answered by the original)
+37/37 cases passed
+Fallback rate: 70.3% (26/37 cases answered by the original)
 ```
 
-`rust-anything map --write` reports 4 of 6 whole-app units ported; the remaining two are
-`gossamer/skills/` plus scripts already counted as separate crates, and `benchmarks.py` (wave 2).
-The extra `rust/` unit is the replay shim `rust/original_entry.py`, not something to port.
+`rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
+replay shim `rust/original_entry.py`, not something to port; the Python orchestration modules are
+tracked under the claimed `gossamer/` wave-1 unit and will be handled in the next checkpoint.
 
 ## Files that matter now
 
@@ -96,9 +98,12 @@ suite pass 11391 passed / 36 skipped. Framework-level `/skill:rust-guidelines` c
 each adapter checkpoint; canonical errors, explicit runtime-version parameters, documented immutable
 caches, and value-bearing panic messages are in place.
 
-Next checkpoint: wave 2 (`benchmarks.py`), then the Python orchestration modules (`cache.py`,
-`document.py`, `search.py`, `mcp_server.py`, `cli.py`) under a new ADR if CLI/env/MCP contracts
-would change.
+Wave 2 is complete: `rust/benchmarks-rs` owns the deterministic `--corpus` report and the front
+door handles `benchmarks --corpus`. `benchmarks --guard`, the default wall-clock/network suite,
+`--help`, and unknown flags fall back before Rust writes output.
+
+Next checkpoint: Python orchestration modules (`cache.py`, `document.py`, `search.py`,
+`mcp_server.py`, `cli.py`) under a new ADR if CLI/env/MCP contracts would change.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
@@ -106,7 +111,7 @@ paths) is ported.
 
 ## Checkpoint rule
 
-Stop after each wave. Waves 0 and 1 are done; wave 2 awaits user go-ahead.
+Stop after each wave. Waves 0, 1, and 2 are done; orchestration cutover awaits a new ADR and user go-ahead.
 
 ## Skill to load next
 

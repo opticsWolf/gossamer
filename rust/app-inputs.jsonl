@@ -30,3 +30,6 @@
 {"name":"skills-install-dest-project","args":["skills","install","--dest","tmp-skills","--project"]}
 {"name":"skills-install-duplicate-skill","args":["skills","install","--dest","tmp-skills-dup","--skill","gossamer","--skill","gossamer"]}
 {"name":"verify-bundled-assets-mixed-unsupported","args":["verify-bundled-assets","rust/fixtures/good.whl","rust/fixtures/unsupported.zip"]}
+{"name":"benchmarks-corpus","args":["benchmarks","--corpus"],"env":{"PYTHONIOENCODING":"utf-8"}}
+{"name":"benchmarks-help","args":["benchmarks","--help"],"env":{"PYTHONIOENCODING":"utf-8"}}
+{"name":"benchmarks-unknown-flag","args":["benchmarks","--bogus"],"env":{"PYTHONIOENCODING":"utf-8"}}

@@ -1,0 +1,16 @@
+============================================================
+  gossamer — Performance Benchmarks
+============================================================
+
+=== Prompt-injection guard -- labelled corpus ===
+    >> backend: stub detector (jailguard absent)
+  FALSE benign/03_prompt_engineering_article.md  (score=0.70)
+  benign   : 4/5 clean, 1 false positive(s)
+  injected : 5/5 detected, 0 missed
+    >> false-positive rate: 0.20
+    >> detection rate: 1.00
+    >> verdict: suppressed -- stub backend: plumbing check, not detector accuracy
+
+============================================================
+  Done.
+============================================================

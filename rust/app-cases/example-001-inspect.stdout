@@ -1,0 +1,5 @@
+{
+  "url": "https://app.example.com",
+  "error": "URL rejected: DNS resolution failed for 'app.example.com': Der angegebene Host ist unbekannt. (os error 11001)",
+  "error_type": "SsrfBlockedError"
+}

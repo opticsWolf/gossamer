@@ -1,0 +1,8 @@
+usage: original_entry.py [-h] [--corpus] [--guard]
+
+gossamer benchmarks
+
+options:
+  -h, --help  show this help message and exit
+  --corpus    only run the guard's labelled-corpus accuracy report
+  --guard     only run the guard scenarios (no network)

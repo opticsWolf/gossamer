@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["batch", "URL1", "URL2", "--use-smart", "static"]
+status.code = 0
+fs.sandbox = true

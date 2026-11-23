@@ -1,0 +1,1 @@
+[{"url": "URL1", "error": "URL rejected: 'URL1' does not look like a URL", "error_type": "ValueError"}, {"url": "URL2", "error": "URL rejected: 'URL2' does not look like a URL", "error_type": "ValueError"}]

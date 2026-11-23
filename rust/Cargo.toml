@@ -4,6 +4,7 @@ members = [
   "app",
   "core",
   "audit-cargo-rs",
+  "benchmarks-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",
@@ -31,6 +32,7 @@ tar = "0.4"
 zip = "2"
 
 audit-cargo-rs = { path = "audit-cargo-rs", default-features = false }
+benchmarks-rs = { path = "benchmarks-rs", default-features = false }
 skills-rs = { path = "skills-rs", default-features = false }
 verify-bundled-assets-rs = { path = "verify-bundled-assets-rs", default-features = false }
 

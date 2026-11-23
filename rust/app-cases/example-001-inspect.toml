@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["inspect", "https://app.example.com", "--use-smart", "browser"]
+status.code = 0
+fs.sandbox = true

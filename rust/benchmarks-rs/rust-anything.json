@@ -1,0 +1,137 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "benchmarks.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "benchmarks-rs",
+  "exports": [
+    {
+      "name": "arrow",
+      "file": "benchmarks.py",
+      "line": 50,
+      "params": [
+        {
+          "name": "label",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "value",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_rust_fetch",
+      "file": "benchmarks.py",
+      "line": 59,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_meta_oxide",
+      "file": "benchmarks.py",
+      "line": 99,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_token_budget",
+      "file": "benchmarks.py",
+      "line": 133,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_batch_fetch",
+      "file": "benchmarks.py",
+      "line": 154,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_structured_parser",
+      "file": "benchmarks.py",
+      "line": 181,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "load_guard_corpus",
+      "file": "benchmarks.py",
+      "line": 255,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_guard",
+      "file": "benchmarks.py",
+      "line": 279,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "bench_guard_corpus",
+      "file": "benchmarks.py",
+      "line": 309,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": [
+    {
+      "name": "timed",
+      "file": "benchmarks.py",
+      "line": 29,
+      "reason": "calls its parameter `fn`: a callable"
+    },
+    {
+      "name": "main",
+      "file": "benchmarks.py",
+      "line": 361,
+      "reason": "a command-line entry point: it stays in Python, and `app front-door` takes the command line over when the whole app moves"
+    }
+  ]
+}

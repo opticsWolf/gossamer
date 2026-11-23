@@ -1,0 +1,2 @@
+usage: original_entry.py [-h] [--corpus] [--guard]
+original_entry.py: error: unrecognized arguments: --bogus

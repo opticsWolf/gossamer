@@ -15,6 +15,7 @@ path = "src/main.rs"
 clap.workspace = true
 serde_json.workspace = true
 audit-cargo-rs.workspace = true
+benchmarks-rs.workspace = true
 skills-rs.workspace = true
 verify-bundled-assets-rs.workspace = true
 

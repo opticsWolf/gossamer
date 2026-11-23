@@ -16,7 +16,7 @@ crate with thin PyO3 wrappers.
 | `gossamer/skills/` | 0 | 140 | done (2026-11-22) | this session | gate passed; wired to `skills`; 662/662 diff, 21/21 replay |
 | `scripts/` | 0 | 150 | done (2026-11-22) | this session | two crates gated; wired to `audit-cargo` and `verify-bundled-assets` |
 | `gossamer/` | 1 | 17,931 | done (2026-11-22) | this session | ADR-012 pure-core cutover complete; all `_core` kernels lifted; Python wrappers stay as compatibility surface |
-| `benchmarks.py` | 2 | 321 | open | — | after wave 1 |
+| `benchmarks.py` | 2 | 321 | done (2026-11-22) | this session | deterministic guard-corpus report in Rust; wall-clock/network modes fall back |
 | `gossamer/text_links.py` | 1 | 49 | done (2026-11-22) | this session | 211/211; delegates to pure core scanner |
 
 `rust-anything map --write` generates the measured `rust/PORT_MAP.md`; this file is the plan and
@@ -86,6 +86,23 @@ the claims. Check them against each other at every checkpoint.
   Python orchestration. Wave 2 / final cutover must drive this to 0%.
 - Next: wave 2 (`benchmarks.py`) and then Python orchestration modules (`cache.py`, `document.py`,
   `search.py`, `mcp_server.py`, `cli.py`) under a new checkpoint and ADR if CLI/schema breaks.
+
+## Checkpoint 3 — wave 2 complete (2026-11-22)
+
+- `benchmarks.py` was bridged as `rust/benchmarks-rs`. The deterministic labelled-corpus guard
+  report is implemented in Rust and wired to a new front-door `benchmarks --corpus` command.
+- Wall-clock and live-network benchmark modes (`--guard`, default) intentionally fall back to the
+  original; their output is timing data, not a stable compatibility contract. `--help` and unknown
+  flags also fall back before any Rust output is written.
+- `rust/benchmarks-rs` gate passed: 4/4 recorded cases (`arrow`, `load_guard_corpus`,
+  `bench_guard_corpus`), no unsafe, no unimplemented kernels, clippy clean.
+- Front door replay: **37/37 cases passed**, fallback rate **70.3%** (26/37). App cases include
+  `benchmarks --corpus`, `benchmarks --help`, and `benchmarks --bogus`; the guard corpus fixtures
+  are snapshotted with `--fresh`.
+- Full verification: core/workspace tests, clippy, wheel rebuild, and Python suite
+  (11391 passed / 36 skipped) all passed.
+- Next: Python orchestration modules (`cache.py`, `document.py`, `search.py`, `mcp_server.py`,
+  `cli.py`) under a new ADR if CLI/env/MCP contracts change.
 
 ## Research prerequisites
 

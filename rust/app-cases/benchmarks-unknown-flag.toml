@@ -1,0 +1,5 @@
+bin.name = "gossamer"
+args = ["benchmarks", "--bogus"]
+env.add.PYTHONIOENCODING = "utf-8"
+status.code = 2
+fs.sandbox = true
