@@ -5,7 +5,7 @@
 - Branch: `dev_rustify` in `D:\User\Documents\Rust\gossamer`.
 - **Wave 0 is complete.** All three bridgeable entry points are ported, gated, and wired.
 - **Wave 1 is complete.** All deterministic `_core` kernels live in the pure core; Python-facing Rust modules are thin adapters.
-- **Wave 2 is complete.** The deterministic `benchmarks --corpus` report is ported and wired; timing/network modes still fall back.
+- **Wave 2 is complete.** All `benchmarks.py` modes are ported and wired; timing fields are normalized in replay.
 
 | Unit / crate | Gate | Diff | Notes |
 |---|---|---|---|
@@ -13,13 +13,13 @@
 | `scripts/audit_cargo.py` → `rust/audit-cargo-rs` | passed | 216/216 | 65 Rust LOC / 77 Python (0.8x) |
 | `scripts/verify_bundled_assets.py` → `rust/verify-bundled-assets-rs` | passed | 10/10 | 164 Rust LOC / 71 Python (2.3x) |
 | `gossamer/text_links.py` → `rust/text-links-rs` | passed | 211/211 | 109 Rust LOC / 46 Python (2.4x); not front-door wired |
-| `benchmarks.py` → `rust/benchmarks-rs` | passed | 4/4 | deterministic corpus report only; timing/network modes fall back |
+| `benchmarks.py` → `rust/benchmarks-rs` | passed | 4/4 | all modes in Rust; timing fields normalized in app replay |
 
 Front door replay:
 
 ```text
-37/37 cases passed
-Fallback rate: 70.3% (26/37 cases answered by the original)
+39/39 cases passed
+Fallback rate: 66.7% (26/39 cases answered by the original)
 ```
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
@@ -98,9 +98,9 @@ suite pass 11391 passed / 36 skipped. Framework-level `/skill:rust-guidelines` c
 each adapter checkpoint; canonical errors, explicit runtime-version parameters, documented immutable
 caches, and value-bearing panic messages are in place.
 
-Wave 2 is complete: `rust/benchmarks-rs` owns the deterministic `--corpus` report and the front
-door handles `benchmarks --corpus`. `benchmarks --guard`, the default wall-clock/network suite,
-`--help`, and unknown flags fall back before Rust writes output.
+Wave 2 is complete: `rust/benchmarks-rs` owns all benchmark modes and the front door handles
+`benchmarks` (default), `benchmarks --guard`, and `benchmarks --corpus`. Wall-clock values use named
+replay normalizers; `--help` and unknown flags fall back before Rust writes output.
 
 Next checkpoint: Python orchestration modules (`cache.py`, `document.py`, `search.py`,
 `mcp_server.py`, `cli.py`) under a new ADR if CLI/env/MCP contracts would change.

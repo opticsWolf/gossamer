@@ -33,3 +33,5 @@
 {"name":"benchmarks-corpus","args":["benchmarks","--corpus"],"env":{"PYTHONIOENCODING":"utf-8"}}
 {"name":"benchmarks-help","args":["benchmarks","--help"],"env":{"PYTHONIOENCODING":"utf-8"}}
 {"name":"benchmarks-unknown-flag","args":["benchmarks","--bogus"],"env":{"PYTHONIOENCODING":"utf-8"}}
+{"name":"benchmarks-default","args":["benchmarks"],"env":{"PYTHONIOENCODING":"utf-8"}}
+{"name":"benchmarks-guard","args":["benchmarks","--guard"],"env":{"PYTHONIOENCODING":"utf-8"}}

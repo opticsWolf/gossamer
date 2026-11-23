@@ -1,7 +1,7 @@
 //! Glue for `gossamer benchmarks`.
 //!
-//! Only the deterministic `--corpus` report is handled in Rust. Wall-clock and live-network modes
-//! fall back to the original benchmark harness so their output stays byte-for-byte compatible.
+//! All three benchmark modes are implemented in Rust. Timing values are normalized during app
+//! replay; deterministic counts, verdicts, rates, and skip reasons are compared exactly.
 
 use std::ffi::OsString;
 use std::process::ExitCode;
@@ -19,31 +19,169 @@ fn fallback(args: &[OsString], help_count: u8) -> ExitCode {
     crate::original::run(&full)
 }
 
-fn u64_field(report: &Value, key: &str) -> u64 {
-    report.get(key).and_then(Value::as_u64).unwrap_or(0)
+fn u64_field(value: &Value, key: &str) -> u64 {
+    value.get(key).and_then(Value::as_u64).unwrap_or(0)
 }
 
-fn f64_field(report: &Value, key: &str) -> f64 {
-    report.get(key).and_then(Value::as_f64).unwrap_or(0.0)
+fn f64_field(value: &Value, key: &str) -> f64 {
+    value.get(key).and_then(Value::as_f64).unwrap_or(0.0)
 }
 
-fn print_corpus_report(report: &Value) {
+fn str_field<'a>(value: &'a Value, key: &str) -> &'a str {
+    value.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+fn arrow(label: &str, value: &str) {
+    println!("    >> {label}: {value}");
+}
+
+fn timing_line(label: &str, timing: &Value) {
+    println!(
+        "  {label}: avg={:.1}ms  median={:.1}ms  p95={:.1}ms",
+        f64_field(timing, "avg_ms"),
+        f64_field(timing, "median_ms"),
+        f64_field(timing, "p95_ms")
+    );
+}
+
+fn banner() {
     println!("============================================================");
     println!("  gossamer — Performance Benchmarks");
     println!("============================================================");
+}
+
+fn done() {
+    println!();
+    println!("============================================================");
+    println!("  Done.");
+    println!("============================================================");
+}
+
+fn print_fetch(report: &Value) {
+    println!();
+    println!("=== Rust Core Fetch (example.com) ===");
+    timing_line("fetch_and_extract (warm)", report);
+    arrow(
+        "result",
+        &format!(
+            "{} chars, {} links",
+            u64_field(report, "chars"),
+            u64_field(report, "links")
+        ),
+    );
+}
+
+fn print_meta(report: &Value) {
+    println!();
+    println!("=== meta-oxide Extraction ===");
+    timing_line("extract_all (meta-oxide)", report);
+    arrow(
+        "result",
+        &format!(
+            "{} metadata categories extracted",
+            u64_field(report, "keys")
+        ),
+    );
+    println!("    (BeautifulSoup not installed — skipping comparison)");
+}
+
+fn print_tokens(report: &Value) {
+    println!();
+    println!("=== Token Budget (tiktoken) ===");
+    timing_line(
+        "count_tokens (300KB text)",
+        report.get("count").unwrap_or(report),
+    );
+    arrow("result", &format!("{} tokens", u64_field(report, "tokens")));
+    timing_line(
+        "truncate_to_tokens (300KB to 500 tokens)",
+        report.get("truncate").unwrap_or(report),
+    );
+    arrow(
+        "result",
+        &format!(
+            "{} chars, ~{} tokens",
+            u64_field(report, "chars"),
+            u64_field(report, "truncated_tokens")
+        ),
+    );
+}
+
+fn print_batch(report: &Value) {
+    println!();
+    println!("=== Batch Fetch (concurrent) ===");
+    println!(
+        "  Sequential (5 × example.com): {:.1}ms",
+        f64_field(report, "seq_ms")
+    );
+    println!(
+        "  Batch concurrent (5 × example.com): {:.1}ms",
+        f64_field(report, "batch_ms")
+    );
+    println!("  Speedup: {:.1}x", f64_field(report, "speedup"));
+    arrow(
+        "result",
+        &format!(
+            "{} results, {} successful",
+            u64_field(report, "results"),
+            u64_field(report, "successes")
+        ),
+    );
+}
+
+fn print_structured(report: &Value) {
+    println!();
+    println!("=== Structured Parser (pdf_oxide) ===");
+    println!("    (Skipped — {})", str_field(report, "skip"));
+}
+
+fn print_guard(report: &Value) {
+    println!();
+    println!("=== Prompt-injection guard (enabled=False vs True) ===");
+    arrow("backend", str_field(report, "backend"));
+    arrow(
+        "corpus",
+        &format!(
+            "{} documents, {} chars",
+            u64_field(report, "corpus"),
+            u64_field(report, "corpus_chars")
+        ),
+    );
+    println!("  Guard off: {:.1}ms", f64_field(report, "off_ms"));
+    println!("  Guard on:  {:.1}ms", f64_field(report, "on_ms"));
+    println!(
+        "  Overhead:  +{:.1}ms ({:.1}ms per document)",
+        f64_field(report, "overhead_ms"),
+        f64_field(report, "per_document_ms")
+    );
+    arrow("calls", &u64_field(report, "calls").to_string());
+    arrow(
+        "chunks scanned",
+        &u64_field(report, "chunks_scanned").to_string(),
+    );
+    arrow(
+        "p50 / p95 ms",
+        &format!(
+            "{:.1} / {:.1}",
+            f64_field(report, "p50_ms"),
+            f64_field(report, "p95_ms")
+        ),
+    );
+    arrow(
+        "flag rate",
+        &format!("{:.2}", f64_field(report, "flag_rate")),
+    );
+    arrow("cache hits", &u64_field(report, "cache_hits").to_string());
+}
+
+fn print_corpus(report: &Value) {
     println!();
     println!("=== Prompt-injection guard -- labelled corpus ===");
-    println!(
-        "    >> backend: {}",
-        report
-            .get("backend")
-            .and_then(Value::as_str)
-            .unwrap_or("stub detector (jailguard absent)")
-    );
+    arrow("backend", str_field(report, "backend"));
 
     if let Some(rows) = report.get("rows").and_then(Value::as_array) {
         for row in rows {
-            let name = row.get("name").and_then(Value::as_str).unwrap_or("");
+            let name = str_field(row, "name");
             let injected = row
                 .get("injected")
                 .and_then(Value::as_bool)
@@ -72,28 +210,18 @@ fn print_corpus_report(report: &Value) {
         u64_field(report, "fn")
     );
     if benign > 0 {
-        println!(
-            "    >> false-positive rate: {:.2}",
-            f64_field(report, "false_positive_rate")
+        arrow(
+            "false-positive rate",
+            &format!("{:.2}", f64_field(report, "false_positive_rate")),
         );
     }
     if inject > 0 {
-        println!(
-            "    >> detection rate: {:.2}",
-            f64_field(report, "detection_rate")
+        arrow(
+            "detection rate",
+            &format!("{:.2}", f64_field(report, "detection_rate")),
         );
     }
-    println!(
-        "    >> verdict: {}",
-        report
-            .get("verdict")
-            .and_then(Value::as_str)
-            .unwrap_or("suppressed -- stub backend: plumbing check, not detector accuracy")
-    );
-    println!();
-    println!("============================================================");
-    println!("  Done.");
-    println!("============================================================");
+    arrow("verdict", str_field(report, "verdict"));
 }
 
 pub fn run(_command: &str, matches: &ArgMatches) -> ExitCode {
@@ -107,13 +235,60 @@ pub fn run(_command: &str, matches: &ArgMatches) -> ExitCode {
     if help_count > 0 {
         return fallback(&args, help_count);
     }
-    if args.len() != 1 || args[0] != "--corpus" {
-        return fallback(&args, help_count);
-    }
-
-    let Ok(report) = benchmarks_rs::port::corpus_report() else {
-        return fallback(&args, help_count);
+    let mode = match args.len() {
+        0 => "all",
+        1 if args[0] == "--corpus" => "corpus",
+        1 if args[0] == "--guard" => "guard",
+        _ => return fallback(&args, help_count),
     };
-    print_corpus_report(&report);
+
+    // Precompute before writing anything so a failure can fall back cleanly.
+    let corpus = match benchmarks_rs::port::corpus_report() {
+        Ok(report) => report,
+        Err(_) => return fallback(&args, help_count),
+    };
+    let guard = if mode == "all" || mode == "guard" {
+        match benchmarks_rs::port::guard_benchmark_report() {
+            Ok(report) => Some(report),
+            Err(_) => return fallback(&args, help_count),
+        }
+    } else {
+        None
+    };
+    let rest = if mode == "all" {
+        let fetched = match benchmarks_rs::port::rust_fetch_report() {
+            Ok(report) => report,
+            Err(_) => return fallback(&args, help_count),
+        };
+        let meta = match benchmarks_rs::port::meta_oxide_report() {
+            Ok(report) => report,
+            Err(_) => return fallback(&args, help_count),
+        };
+        let tokens = match benchmarks_rs::port::token_budget_report() {
+            Ok(report) => report,
+            Err(_) => return fallback(&args, help_count),
+        };
+        let batch = match benchmarks_rs::port::batch_fetch_report() {
+            Ok(report) => report,
+            Err(_) => return fallback(&args, help_count),
+        };
+        Some((fetched, meta, tokens, batch))
+    } else {
+        None
+    };
+
+    banner();
+    if let Some((fetched, meta, tokens, batch)) = rest {
+        print_fetch(&fetched);
+        print_meta(&meta);
+        print_tokens(&tokens);
+        print_batch(&batch);
+        print_structured(&benchmarks_rs::port::structured_parser_report());
+    }
+    if let Some(report) = guard {
+        print_guard(&report);
+    }
+    print_corpus(&corpus);
+    done();
     ExitCode::SUCCESS
 }

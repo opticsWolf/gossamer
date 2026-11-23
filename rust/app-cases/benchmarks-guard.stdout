@@ -1,0 +1,28 @@
+============================================================
+  gossamer — Performance Benchmarks
+============================================================
+
+=== Prompt-injection guard (enabled=False vs True) ===
+    >> backend: stub detector (jailguard absent)
+    >> corpus: 10 documents, 7159 chars
+  Guard off: [..]
+  Guard on:  [..]
+  Overhead:  +[..] ([..] per document)
+    >> calls: 10
+    >> chunks scanned: 12
+    >> p50 / p95 ms: [..]
+    >> flag rate: 0.60
+    >> cache hits: 0
+
+=== Prompt-injection guard -- labelled corpus ===
+    >> backend: stub detector (jailguard absent)
+  FALSE benign/03_prompt_engineering_article.md  (score=0.70)
+  benign   : 4/5 clean, 1 false positive(s)
+  injected : 5/5 detected, 0 missed
+    >> false-positive rate: 0.20
+    >> detection rate: 1.00
+    >> verdict: suppressed -- stub backend: plumbing check, not detector accuracy
+
+============================================================
+  Done.
+============================================================

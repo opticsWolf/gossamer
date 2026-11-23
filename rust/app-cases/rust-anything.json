@@ -9,6 +9,11 @@
     "key-order",
     "timestamps"
   ],
+  "normalizers": {
+    "bench-ms": "[0-9]+\\.[0-9]+ms",
+    "bench-p50p95": "[0-9]+\\.[0-9]+ / [0-9]+\\.[0-9]+",
+    "bench-speedup": "[0-9]+\\.[0-9]+x"
+  },
   "timeout_secs": 60,
   "fresh": [
     "rust/fixtures",
