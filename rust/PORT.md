@@ -68,10 +68,12 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   is not representable in the recorded-case format. It stays in core and is
   exercised through `getenv` and the Python suite.
 
+## Unit log
+
 ## Current state
 
 - `dev_rustify` at `57d3ef0`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
-- Rust owns: `env`/`settings` config resolution (unit 1), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
+- Rust owns: `env`/`settings` config resolution (unit 1), documents payload helpers (unit 2), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, `cache` maintenance, `categories`, document URL rejection,
   search provider aliases/errors, CLI help/error text, MCP schema constant.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,

@@ -1,0 +1,10 @@
+{"fn": "_office_cell_text", "args": [{"content": [{"type": "paragraph", "content": [{"text": " a "}, {"text": "b"}]}, {"type": "image", "content": [{"text": "ignored"}]}]}]}
+{"fn": "office_ir_tables", "args": [{"sections": [{"title": "Sheet1", "elements": [{"type": "table", "rows": [{"cells": [{"content": [{"type": "paragraph", "content": [{"text": "A"}]}]}]}, {"cells": [{"content": [{"type": "paragraph", "content": [{"text": "1"}]}]}]}]}]}, {"title": "Empty", "elements": []}]}]}
+{"fn": "_office_cell_text", "args": [{"content": [{"type": "paragraph", "content": [{"text": "A"}]}]}]}
+{"fn": "_office_cell_text", "args": [{"content": [{"type": "paragraph", "content": [{"text": "1"}]}]}]}
+{"fn": "office_ir_tables", "args": [{"sections": [null, {"elements": []}]}]}
+{"fn": "build_follow_up_candidates", "args": [[{"$tuple": ["https://x.test/a", " A "]}, {"$tuple": ["https://x.test/a", "again"]}, {"$tuple": ["https://x.test/report.pdf", ""]}, {"$tuple": ["https://x.test/c", "C"]}], 3]}
+{"fn": "build_follow_up_candidates", "args": [["https://x.test/a", ""], 0]}
+{"fn": "_absolutize_markdown_links", "args": ["[A](/a) and [B](child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"]}
+{"fn": "_absolutize_markdown_links", "args": ["[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"]}
+{"fn": "_absolutize_markdown_links", "args": ["![img](/i.png) [F](#frag) [M](mailto:a@b.c) [D](//cdn.test/x.js)", "https://x.test/p"]}

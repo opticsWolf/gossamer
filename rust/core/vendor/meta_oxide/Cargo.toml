@@ -30,8 +30,3 @@ thiserror = "1.0"
 [build-dependencies]
 cbindgen = "0.26"
 
-[profile.release]
-lto = true
-codegen-units = 1
-opt-level = 3
-

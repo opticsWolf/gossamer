@@ -416,3 +416,25 @@ def _absolutize_markdown_links(markdown: str, base_url: str) -> str:
         return f"[{m.group(1)}]({absolute})"
 
     return _MD_INLINE_LINK_RE.sub(_rewrite, markdown)
+# >>> rust-anything: documents-rs is on. `rust-anything disable ../rust/documents-rs` removes this block.
+def _rust_anything_documents_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_DOCUMENTS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/documents-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("documents_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_absolutize_markdown_links"]})
+
+
+_rust_anything_documents_rs()
+del _rust_anything_documents_rs
+# <<< rust-anything: documents-rs

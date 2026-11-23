@@ -180,6 +180,15 @@ the claims. Check them against each other at every checkpoint.
   bench 0.96x, Python suite 11397 passed / 36 skipped.
 - Next units: `documents` payload schema, `service::fetch`, `service::search`/`providers`.
 
+## Checkpoint 12 — documents payload schema (2026-11-23)
+
+- Unit 2 moved the deterministic payload helpers into `gossamer::documents`
+  and enabled `rust/documents-rs` over `gossamer/structured_parser.py` and
+  `gossamer/models.py`: 10/10 recorded cases, gate passed, bench 0.39x.
+  Pydantic classes and binary extractors stay in Python.
+- Next unit: `service::fetch` (`FetchService`), which now has a stable payload
+  schema to emit.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).

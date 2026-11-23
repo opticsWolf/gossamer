@@ -123,6 +123,11 @@ steps that only the user can perform.
 
 ## Checkpoint rule
 
+Unit 2 of the post-lift port is done: `gossamer::documents` owns the payload
+helpers and `rust/documents-rs` is enabled (10/10 cases, gate passed, 0.39x
+bench, suite 11404/36 skipped). Next unit is `service::fetch` per
+`rust/PORT.md`.
+
 Unit 1 of the post-lift port is done: `gossamer::config` owns env/config resolution
 and `rust/config-rs` is enabled over `gossamer/env.py` + `gossamer/settings.py`
 (24/24 cases, gate passed, 0.96x bench, suite 11397/36 skipped). Next unit is the

@@ -1,0 +1,164 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/structured_parser.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "documents-rs",
+  "exports": [
+    {
+      "name": "office_ir_tables",
+      "file": "gossamer/structured_parser.py",
+      "line": 77,
+      "params": [
+        {
+          "name": "ir",
+          "ts_type": "Record<string, unknown>",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "Tuple[]",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "build_follow_up_candidates",
+      "file": "gossamer/structured_parser.py",
+      "line": 212,
+      "params": [
+        {
+          "name": "anchored_links",
+          "ts_type": "unknown[]",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "max_links",
+          "ts_type": "int",
+          "optional": true,
+          "rest": false,
+          "default": "0"
+        }
+      ],
+      "returns": "FollowUpCandidate[]",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_office_cell_text",
+      "file": "gossamer/structured_parser.py",
+      "line": 65,
+      "params": [
+        {
+          "name": "cell",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_absolutize_markdown_links",
+      "file": "gossamer/models.py",
+      "line": 392,
+      "params": [
+        {
+          "name": "markdown",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "base_url",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": [
+    {
+      "name": "FollowUpCandidate",
+      "file": "gossamer/structured_parser.py",
+      "line": 105,
+      "reason": "class: inherits from BaseModel, public class attribute `title`, public class attribute `type`, public class attribute `url`"
+    },
+    {
+      "name": "FileMeta",
+      "file": "gossamer/structured_parser.py",
+      "line": 248,
+      "reason": "class: inherits from BaseModel, public class attribute `author`, public class attribute `created_at`, public class attribute `description`, public class attribute `file_name`, public class attribute `file_size_bytes`, public class attribute `format`, public class attribute `modified_at`, public class attribute `page_count`, public class attribute `title`"
+    },
+    {
+      "name": "WebBasicsMeta",
+      "file": "gossamer/structured_parser.py",
+      "line": 262,
+      "reason": "class: inherits from BaseModel, public class attribute `canonical`, public class attribute `keywords`, public class attribute `language`, public class attribute `robots`"
+    },
+    {
+      "name": "OpenGraphMeta",
+      "file": "gossamer/structured_parser.py",
+      "line": 271,
+      "reason": "class: inherits from BaseModel, public class attribute `og_description`, public class attribute `og_image`, public class attribute `og_images`, public class attribute `og_site_name`, public class attribute `og_title`, public class attribute `og_type`, public class attribute `og_url`"
+    },
+    {
+      "name": "TwitterMeta",
+      "file": "gossamer/structured_parser.py",
+      "line": 283,
+      "reason": "class: inherits from BaseModel, public class attribute `twitter_card`, public class attribute `twitter_description`, public class attribute `twitter_image`, public class attribute `twitter_site`, public class attribute `twitter_title`"
+    },
+    {
+      "name": "StructuredDataMeta",
+      "file": "gossamer/structured_parser.py",
+      "line": 293,
+      "reason": "class: inherits from BaseModel, public class attribute `dublin_core`, public class attribute `extra_meta`, public class attribute `jsonld`, public class attribute `manifest`, public class attribute `microdata`, public class attribute `microformats`, public class attribute `rdfa`, public class attribute `rel_links`"
+    },
+    {
+      "name": "DocumentMetadata",
+      "file": "gossamer/structured_parser.py",
+      "line": 309,
+      "reason": "class: inherits from FileMeta, WebBasicsMeta, OpenGraphMeta, TwitterMeta, StructuredDataMeta"
+    },
+    {
+      "name": "ExtractedTable",
+      "file": "gossamer/structured_parser.py",
+      "line": 332,
+      "reason": "class: `@field_validator` method `check_grid_alignment`, inherits from BaseModel, public class attribute `headers`, public class attribute `name`, public class attribute `rows`"
+    },
+    {
+      "name": "ExtractedPage",
+      "file": "gossamer/structured_parser.py",
+      "line": 347,
+      "reason": "class: inherits from BaseModel, public class attribute `markdown`, public class attribute `page_number`, public class attribute `raw_text`, public class attribute `tables`"
+    },
+    {
+      "name": "ParsedDocumentPayload",
+      "file": "gossamer/structured_parser.py",
+      "line": 360,
+      "reason": "class: inherits from BaseModel, public class attribute `guard`, public class attribute `links`, public class attribute `metadata`, public class attribute `pages`, public class attribute `tables`"
+    },
+    {
+      "name": "StructuredOxideParser",
+      "file": "gossamer/structured_parser.py",
+      "line": 419,
+      "reason": "class: `@staticmethod` method `parse_html`"
+    }
+  ]
+}
