@@ -9,6 +9,7 @@ mod batch;
 mod benchmarks;
 mod cache;
 mod categories;
+mod cli;
 mod inspect;
 mod jsonfmt;
 mod search;
@@ -21,6 +22,9 @@ fn sent_to_original(unit: &str) -> bool {
 }
 
 pub fn dispatch(command: &str, matches: &ArgMatches) -> Option<ExitCode> {
+    if let Some(code) = cli::maybe_run(command, matches) {
+        return Some(code);
+    }
     match command {
         "benchmarks" if !sent_to_original("BENCHMARKS") => Some(benchmarks::run(command, matches)),
         "cache" if !sent_to_original("CACHE") => Some(cache::run(command, matches)),

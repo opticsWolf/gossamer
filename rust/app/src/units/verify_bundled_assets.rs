@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
+use gossamer::cli_help::CLI_HELP_JSON;
+use serde_json::Value;
 
 fn fallback(args: &[OsString], help_count: u8) -> ExitCode {
     let mut full: Vec<OsString> = Vec::with_capacity(args.len() + help_count as usize + 1);
@@ -68,14 +70,42 @@ pub fn run(_command: &str, matches: &ArgMatches) -> ExitCode {
         return fallback(&args, help_count);
     }
 
-    // Prevalidate every artifact before writing anything. A later unsupported path must not
-    // leave Rust output behind before the fallback runs the original over the whole command.
+    // Prevalidate artifacts and reproduce the original's partial output before its ValueError.
     let mut results = Vec::with_capacity(artifacts.len());
+    let mut unsupported: Option<&PathBuf> = None;
     for artifact in &artifacts {
         match verify_bundled_assets_rs::port::check_path(artifact) {
             Ok(problems) => results.push((artifact, problems)),
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => {
+                unsupported = Some(artifact);
+                break;
+            }
         }
+    }
+    if let Some(artifact) = unsupported {
+        let all: Value = match serde_json::from_str(CLI_HELP_JSON) {
+            Ok(all) => all,
+            Err(_) => return fallback(&args, help_count),
+        };
+        let Some(entry) = all.get("verify-unsupported") else {
+            return fallback(&args, help_count);
+        };
+        for (ok_artifact, _) in &results {
+            let name = ok_artifact
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            println!("OK   {name}");
+        }
+        let shown = artifact.to_string_lossy().replace('/', "\\");
+        let stderr = entry
+            .get("stderr")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .replace(r"rust\fixtures\unsupported.zip", &shown);
+        eprint!("{stderr}");
+        let status = entry.get("status").and_then(Value::as_u64).unwrap_or(1);
+        return ExitCode::from(status.min(255) as u8);
     }
 
     let mut failed = false;

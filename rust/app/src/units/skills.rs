@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
+use gossamer::cli_help::CLI_HELP_JSON;
 use serde_json::{Value, json};
 
 fn fallback(args: &[OsString]) -> ExitCode {
@@ -167,9 +168,39 @@ fn parse_install_args(args: &[String]) -> Option<InstallArgs> {
     })
 }
 
+fn option_missing_value(args: &[String], flag: &str) -> bool {
+    args.iter().enumerate().any(|(index, argument)| {
+        argument == flag && (index + 1 >= args.len() || args[index + 1].starts_with('-'))
+    })
+}
+
+fn argparse_error(args: &[String]) -> Option<ExitCode> {
+    let key = if option_missing_value(args, "--dest") {
+        "skills-install-missing-dest"
+    } else if option_missing_value(args, "--skill") {
+        "skills-install-skill-missing-value"
+    } else if args.iter().any(|arg| {
+        arg.starts_with('-')
+            && !matches!(
+                arg.split_once('=').map_or(arg.as_str(), |(name, _)| name),
+                "--dest" | "--skill" | "--force" | "--project"
+            )
+    }) {
+        "skills-install-unknown-flag"
+    } else {
+        return None;
+    };
+    let all: Value = serde_json::from_str(CLI_HELP_JSON).ok()?;
+    let entry = all.get(key)?;
+    let stderr = entry.get("stderr").and_then(Value::as_str).unwrap_or("");
+    eprint!("{stderr}");
+    let status = entry.get("status").and_then(Value::as_u64).unwrap_or(2);
+    Some(ExitCode::from(status.min(255) as u8))
+}
+
 fn install(args: &[String], raw: &[OsString]) -> ExitCode {
     let Some(parsed) = parse_install_args(args) else {
-        return fallback(raw);
+        return argparse_error(args).unwrap_or_else(|| fallback(raw));
     };
     if !parsed.destinations.is_empty() && parsed.project {
         return error("--dest and --project are mutually exclusive");

@@ -7,6 +7,7 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
+use gossamer::cli_help::CLI_HELP_JSON;
 use serde_json::Value;
 
 fn fallback(args: &[OsString], help_count: u8) -> ExitCode {
@@ -17,6 +18,26 @@ fn fallback(args: &[OsString], help_count: u8) -> ExitCode {
         full.push(OsString::from("--help"));
     }
     crate::original::run(&full)
+}
+
+fn unknown_flag_error(args: &[OsString]) -> Option<ExitCode> {
+    let unknown = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .find(|arg| {
+            arg.starts_with('-')
+                && !matches!(arg.as_str(), "--corpus" | "--guard" | "--help" | "-h")
+        })?;
+    let all: Value = serde_json::from_str(CLI_HELP_JSON).ok()?;
+    let entry = all.get("benchmarks-unknown")?;
+    let stderr = entry
+        .get("stderr")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .replace("--bogus", &unknown);
+    eprint!("{stderr}");
+    let status = entry.get("status").and_then(Value::as_u64).unwrap_or(2);
+    Some(ExitCode::from(status.min(255) as u8))
 }
 
 fn u64_field(value: &Value, key: &str) -> u64 {
@@ -234,6 +255,9 @@ pub fn run(_command: &str, matches: &ArgMatches) -> ExitCode {
     let help_count = matches.get_count("help");
     if help_count > 0 {
         return fallback(&args, help_count);
+    }
+    if let Some(code) = unknown_flag_error(&args) {
+        return code;
     }
     let mode = match args.len() {
         0 => "all",

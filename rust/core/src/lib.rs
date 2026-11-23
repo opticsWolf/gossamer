@@ -9,6 +9,7 @@ pub mod cache;
 pub mod cacheutils;
 pub mod categories;
 pub mod cite;
+pub mod cli_help;
 pub mod compat;
 pub mod dedupe;
 pub mod document;

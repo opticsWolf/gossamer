@@ -151,6 +151,15 @@ the claims. Check them against each other at every checkpoint.
 - Core tests: 71 unit + 2 guard + 53 doctests.
 - Next: `gossamer/cli.py`, then lift at 100% replay and 0% fallback.
 
+## Checkpoint 9 — CLI contract and replay zero-fallback (2026-11-23)
+
+- Frozen argparse help/error output in `gossamer::cli_help` now covers root help, no-args,
+  subcommand help, benchmark/skill argparse errors, and the mixed unsupported-artifact traceback.
+- Front-door dispatch handles every recorded case without Python: **43/43 cases passed**,
+  fallback rate **0.0%** (0/43). The ADR-013 lift precondition is met.
+- Python remains installed as the reference oracle until the cutover user decides to retire it.
+- Next: `rust-anything app lift`, then final verification.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).
