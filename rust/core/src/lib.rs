@@ -16,6 +16,7 @@ pub mod fetch;
 pub mod guard;
 pub mod jats;
 pub mod jats_mml;
+pub mod mcp;
 pub mod metaextract;
 pub mod miscutils;
 pub mod robots;

@@ -142,6 +142,15 @@ the claims. Check them against each other at every checkpoint.
 - Front door replay: **43/43 cases passed**, fallback rate **53.5%** (23/43).
 - Next: `gossamer/mcp_server.py` schema replay.
 
+## Checkpoint 8 — MCP schema replay (2026-11-23)
+
+- The 12-tool MCP `list_tools()` payload is frozen in `gossamer::mcp` and compared against
+  `rust/fixtures/mcp_schema.json` by Rust tests. Names, descriptions, enums, and required fields are
+  external contract data.
+- Python MCP tests continue to validate the live server against `TOOL_REGISTRY`; no schema changed.
+- Core tests: 71 unit + 2 guard + 53 doctests.
+- Next: `gossamer/cli.py`, then lift at 100% replay and 0% fallback.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).

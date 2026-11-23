@@ -18,6 +18,7 @@
 | `gossamer/document.py` → `gossamer::document` | passed | 2 app cases | URL rejection for `inspect`/`batch`; successful fetches fall back |
 | `research_categories` table → `gossamer::taxonomy` | passed | 1 app case | static pretty-printed taxonomy |
 | `gossamer/search.py` → `gossamer::search` | passed | 1 app case | unknown provider payload; live searches fall back |
+| `gossamer/mcp_server.py` → `gossamer::mcp` | passed | schema fixture | frozen 12-tool list compared by Rust and Python tests |
 
 Front door replay:
 
@@ -110,8 +111,8 @@ ADR-013 is accepted and `cache.py` is the first orchestration unit cut over. The
 owns two-tier cache behavior (memory LRU, disk TTL, atomic writes, scoped clear, prune, stats) and
 the front door handles all three `cache --action` modes behind `RUST_ANYTHING_UNIT_CACHE`.
 
-Document URL preparation, the static research taxonomy, and search provider error payloads are in
-the pure core and wired. Next checkpoint: `mcp_server.py`, then `cli.py`.
+Document URL preparation, taxonomy, search errors, and the frozen MCP schema are in the pure core.
+Next checkpoint: `cli.py`, then lift at 100% replay and 0% fallback.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
@@ -119,7 +120,7 @@ paths) is ported.
 
 ## Checkpoint rule
 
-Stop after each checkpoint. Waves 0–2 are done; ADR-013, cache, document URL preparation, taxonomy, and search errors are done. Continue with `mcp_server.py`.
+Stop after each checkpoint. Waves 0–2 are done; ADR-013, cache, document URL preparation, taxonomy, search errors, and MCP schema are done. Continue with `cli.py`.
 
 ## Skill to load next
 
