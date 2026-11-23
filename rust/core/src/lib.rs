@@ -22,6 +22,7 @@ pub mod robots;
 pub mod sections;
 pub mod ssrf;
 pub mod tables;
+pub mod taxonomy;
 pub mod textlinks;
 pub mod tokens;
 mod urlparts;

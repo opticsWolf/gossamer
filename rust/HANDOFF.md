@@ -16,12 +16,13 @@
 | `benchmarks.py` → `rust/benchmarks-rs` | passed | 4/4 | all modes in Rust; timing fields normalized in app replay |
 | `gossamer/cache.py` → `gossamer::cache` | passed | 3 app cases | caller-supplied time; deterministic cache fixture |
 | `gossamer/document.py` → `gossamer::document` | passed | 2 app cases | URL rejection for `inspect`/`batch`; successful fetches fall back |
+| `research_categories` table → `gossamer::taxonomy` | passed | 1 app case | static pretty-printed taxonomy |
 
 Front door replay:
 
 ```text
 42/42 cases passed
-Fallback rate: 57.1% (24/42 cases answered by the original)
+Fallback rate: 54.8% (23/42 cases answered by the original)
 ```
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
@@ -108,8 +109,8 @@ ADR-013 is accepted and `cache.py` is the first orchestration unit cut over. The
 owns two-tier cache behavior (memory LRU, disk TTL, atomic writes, scoped clear, prune, stats) and
 the front door handles all three `cache --action` modes behind `RUST_ANYTHING_UNIT_CACHE`.
 
-Document URL preparation is in the pure core and wired for `inspect`/`batch` rejection records.
-Next checkpoint: provider/research dispatch, then `search.py`, `mcp_server.py`, and `cli.py`.
+Document URL preparation and the static research taxonomy are in the pure core and wired.
+Next checkpoint: `search.py`, then `mcp_server.py` and `cli.py`.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
@@ -117,7 +118,7 @@ paths) is ported.
 
 ## Checkpoint rule
 
-Stop after each checkpoint. Waves 0–2 are done; ADR-013, cache, and document URL preparation are done. Continue with provider/research dispatch.
+Stop after each checkpoint. Waves 0–2 are done; ADR-013, cache, document URL preparation, and taxonomy are done. Continue with `search.py`.
 
 ## Skill to load next
 

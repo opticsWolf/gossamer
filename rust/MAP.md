@@ -126,6 +126,14 @@ the claims. Check them against each other at every checkpoint.
 - Front door replay: **42/42 cases passed**, fallback rate **57.1%** (24/42).
 - Next: provider/research dispatch.
 
+## Checkpoint 6 — research taxonomy (2026-11-23)
+
+- The static `CATEGORIES` table is now generated into `gossamer::taxonomy` and served by the
+  `categories` front-door command. Order, descriptions, provider order, and Python
+  `json.dumps(indent=2)` formatting are checked in as data.
+- Front door replay: **42/42 cases passed**, fallback rate **54.8%** (23/42).
+- Next: `gossamer/search.py`.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).
