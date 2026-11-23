@@ -296,58 +296,6 @@ pub fn format_follow_ups(links: &Value) -> Vec<Value> {
     follow_up_candidates(links, 0)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strategies_match_the_reference_table() {
-        assert_eq!(resolve_strategy("auto", "static").ok(), Some("static-only"));
-        assert_eq!(resolve_strategy("static", "auto").ok(), Some("static-only"));
-        assert_eq!(
-            resolve_strategy("auto", "browser").ok(),
-            Some("browser-first")
-        );
-        assert_eq!(
-            resolve_strategy("browser", "AUTO").ok(),
-            Some("browser-only")
-        );
-        assert_eq!(resolve_strategy("auto", "auto").ok(), Some("auto"));
-        assert!(resolve_strategy("auto", "bogus").is_err());
-    }
-
-    #[test]
-    fn browser_first_reuses_its_static_fallback() {
-        assert!(strategy_accepts(
-            "browser-first",
-            Some("static"),
-            Some("browser-first")
-        ));
-        assert!(!strategy_accepts("browser-first", Some("static"), None));
-        assert!(!strategy_accepts("static-only", Some("browser"), None));
-    }
-
-    #[test]
-    fn binary_garbage_is_rejected() {
-        assert!(looks_like_text("hello world"));
-        assert!(!looks_like_text(""));
-        assert!(!looks_like_text("\u{0}\u{1}\u{2}\u{3}"));
-    }
-
-    #[test]
-    fn compact_metadata_caps_jsonld_and_overrides_canonical() {
-        let raw = json!({
-            "meta": {"title": "T", "canonical": "https://old.test"},
-            "jsonld": [{"a": 1}, {"b": 2}, {"c": 3}],
-            "rel_links": {"canonical": ["https://new.test"], "alternate": ["/rss"]}
-        });
-        let out = compact_metadata(&raw);
-        assert_eq!(out["canonical"], "https://new.test");
-        assert_eq!(out["jsonld"].as_array().map_or(0, Vec::len), 2);
-        assert_eq!(out["alternates"][0], "/rss");
-    }
-}
-
 /// Pure dispatch decision for a fetch strategy.
 ///
 /// Static and browser I/O stay with the caller; this function only chooses
@@ -409,5 +357,57 @@ pub fn dispatch_decision(
         other => Err(FetchServiceError::new(format!(
             "unknown fetch strategy: {other}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strategies_match_the_reference_table() {
+        assert_eq!(resolve_strategy("auto", "static").ok(), Some("static-only"));
+        assert_eq!(resolve_strategy("static", "auto").ok(), Some("static-only"));
+        assert_eq!(
+            resolve_strategy("auto", "browser").ok(),
+            Some("browser-first")
+        );
+        assert_eq!(
+            resolve_strategy("browser", "AUTO").ok(),
+            Some("browser-only")
+        );
+        assert_eq!(resolve_strategy("auto", "auto").ok(), Some("auto"));
+        assert!(resolve_strategy("auto", "bogus").is_err());
+    }
+
+    #[test]
+    fn browser_first_reuses_its_static_fallback() {
+        assert!(strategy_accepts(
+            "browser-first",
+            Some("static"),
+            Some("browser-first")
+        ));
+        assert!(!strategy_accepts("browser-first", Some("static"), None));
+        assert!(!strategy_accepts("static-only", Some("browser"), None));
+    }
+
+    #[test]
+    fn binary_garbage_is_rejected() {
+        assert!(looks_like_text("hello world"));
+        assert!(!looks_like_text(""));
+        assert!(!looks_like_text("\u{0}\u{1}\u{2}\u{3}"));
+    }
+
+    #[test]
+    fn compact_metadata_caps_jsonld_and_overrides_canonical() {
+        let raw = json!({
+            "meta": {"title": "T", "canonical": "https://old.test"},
+            "jsonld": [{"a": 1}, {"b": 2}, {"c": 3}],
+            "rel_links": {"canonical": ["https://new.test"], "alternate": ["/rss"]}
+        });
+        let out = compact_metadata(&raw);
+        assert_eq!(out["canonical"], "https://new.test");
+        assert_eq!(out["jsonld"].as_array().map_or(0, Vec::len), 2);
+        assert_eq!(out["alternates"][0], "/rss");
     }
 }

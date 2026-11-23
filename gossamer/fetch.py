@@ -1661,7 +1661,9 @@ def _rust_anything_dispatch_decision():
         strategy = _service_strategy_for(self._tb.fetch_mode, use_smart)
         static_result = static_error = None
         browser_result = browser_error = None
-        if strategy in ("static-only", "auto", "browser-first"):
+
+        def fetch_static():
+            nonlocal static_result, static_error
             try:
                 static_result = (
                     self._static_fetch(url, keep_html=True)
@@ -1670,31 +1672,53 @@ def _rust_anything_dispatch_decision():
                 )
             except Exception as exc:
                 static_error = str(exc)
-        static_ok = (
-            static_error is None
-            and static_result is not None
-            and _service_looks_like_text(static_result[0])
-        )
-        needs_browser = strategy in ("browser-only", "browser-first") or (
-            strategy == "auto" and not static_ok
-        )
-        if needs_browser:
-            if strategy == "auto" and not _browser_oxide_available:
-                browser_error = "browser_oxide is not installed"
-            else:
-                try:
-                    md, links, meta, method = self._browser_fetch(url)
-                    browser_result = (
-                        (md, links, meta, method, None) if keep_html
-                        else (md, links, meta, method)
-                    )
-                except Exception as exc:
-                    browser_error = str(exc)
-            if strategy == "auto" and browser_result is not None:
-                browser_result = tuple(
-                    "stealth-fallback" if i == 3 else part
-                    for i, part in enumerate(browser_result)
+
+        def fetch_browser():
+            nonlocal browser_result, browser_error
+            try:
+                md, links, meta, method = self._browser_fetch(url)
+                browser_result = (
+                    (md, links, meta, method, None) if keep_html
+                    else (md, links, meta, method)
                 )
+            except Exception as exc:
+                browser_error = str(exc)
+
+        if strategy == "static-only":
+            return (
+                self._static_fetch(url, keep_html=True)
+                if keep_html
+                else self._static_fetch(url)
+            )
+        if strategy == "browser-only":
+            result = self._browser_fetch(url)
+            return result + (None,) if keep_html else result
+        elif strategy == "browser-first":
+            fetch_browser()
+            if browser_error is not None:
+                fetch_static()
+        else:  # auto
+            fetch_static()
+            static_ok = (
+                static_error is None
+                and static_result is not None
+                and _service_looks_like_text(static_result[0])
+            )
+            if not static_ok:
+                if _browser_oxide_available:
+                    try:
+                        md, links, meta = _fetch_with_browser_oxide(url)
+                        meta = dict(meta or {})
+                        meta.setdefault("provenance", _browser_provenance(url))
+                        browser_result = (
+                            (md, links, meta, "stealth-fallback", None) if keep_html
+                            else (md, links, meta, "stealth-fallback")
+                        )
+                    except Exception as exc:
+                        browser_error = str(exc)
+                else:
+                    browser_error = "browser_oxide is not installed"
+
         decision = _service_dispatch_decision(
             url, strategy, static_result, static_error,
             browser_result, browser_error, _browser_oxide_available, keep_html,
