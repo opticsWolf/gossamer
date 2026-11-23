@@ -38,3 +38,4 @@
 {"name":"cache-prune","args":["cache","--action","prune","--cache-dir","rust/fixtures/cache"]}
 {"name":"cache-clear","args":["cache","--action","clear","--cache-dir","rust/fixtures/cache"]}
 {"name":"cache-reset","args":["cache","--action","reset","--cache-dir","rust/fixtures/cache"]}
+{"name":"search-unknown-provider","args":["search","anything","--search-only","--provider","bogus"]}

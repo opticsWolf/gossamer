@@ -19,6 +19,7 @@ pub mod jats_mml;
 pub mod metaextract;
 pub mod miscutils;
 pub mod robots;
+pub mod search;
 pub mod sections;
 pub mod ssrf;
 pub mod tables;

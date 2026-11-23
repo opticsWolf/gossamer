@@ -134,6 +134,14 @@ the claims. Check them against each other at every checkpoint.
 - Front door replay: **42/42 cases passed**, fallback rate **54.8%** (23/42).
 - Next: `gossamer/search.py`.
 
+## Checkpoint 7 — search provider errors (2026-11-23)
+
+- Provider alias resolution and unknown-provider error payloads moved to `gossamer::search`.
+- `gossamer search --search-only --provider <unknown>` is handled in Rust; live searches still fall
+  back until deterministic provider fixtures exist.
+- Front door replay: **43/43 cases passed**, fallback rate **53.5%** (23/43).
+- Next: `gossamer/mcp_server.py` schema replay.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).

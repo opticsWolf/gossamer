@@ -1,0 +1,6 @@
+{
+  "error": "Unknown search provider: 'bogus'",
+  "available_providers": [
+    "duckduckgo"
+  ]
+}
