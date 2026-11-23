@@ -1,0 +1,3 @@
+{"fn": "_service_normalize_research", "args": [[{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"url": "https://example.com/a?x=1", "title": "dup"}, {"title": "no url"}]], "ok": [{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"title": "no url"}]}
+{"fn": "_service_normalize_research", "args": [[{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"url": "https://example.com/a?x=1", "title": "dup"}, {"title": "no url"}], 1], "ok": [{"url": "https://WWW.Example.com/a?x=1", "title": "A"}]}
+{"fn": "_service_research_order", "args": [["google", "duckduckgo"], "ddg"], "ok": ["duckduckgo", "google"]}

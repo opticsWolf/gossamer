@@ -3883,3 +3883,61 @@ class GooglePatentsAdapter(ResourceAdapter):
             return []
         rec["raw"] = json.dumps(meta)
         return [rec]
+
+
+# ── Rust service seams ─────────────────────────────────────────
+def _service_normalize_research(records, max_results=0):
+    from gossamer.config import canonical_url
+
+    seen = set()
+    out = []
+    for item in records or []:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        key = ""
+        if isinstance(url, str) and url:
+            try:
+                key = canonical_url(url, query="keep")
+            except ValueError:
+                key = ""
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        out.append(item)
+        if max_results > 0 and len(out) >= max_results:
+            break
+    return out
+
+
+def _service_research_order(providers, preferred=None):
+    names = [getattr(p, "name", str(p)) if not isinstance(p, str) else p for p in providers]
+    if not preferred:
+        return names
+    from gossamer.search_providers import resolve_provider_name
+    canonical = resolve_provider_name(str(preferred)) or str(preferred).lower()
+    matched = [name for name in names if name.lower() == canonical]
+    return matched + [name for name in names if name.lower() != canonical]
+# >>> rust-anything: research-service-rs is on. `rust-anything disable ../rust/research-service-rs` removes this block.
+def _rust_anything_research_service_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESEARCH_SERVICE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/research-service-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("research_service_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_normalize_research", "_service_research_order"]})
+
+
+_rust_anything_research_service_rs()
+del _rust_anything_research_service_rs
+# <<< rust-anything: research-service-rs

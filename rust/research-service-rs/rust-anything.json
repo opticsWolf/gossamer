@@ -1,0 +1,61 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/research_providers.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "research-service-rs",
+  "exports": [
+    {
+      "name": "_service_normalize_research",
+      "file": "gossamer/research_providers.py",
+      "line": 4000,
+      "params": [
+        {
+          "name": "records",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "max_results",
+          "ts_type": "int",
+          "optional": true,
+          "rest": false,
+          "default": "0"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_research_order",
+      "file": "gossamer/research_providers.py",
+      "line": 4030,
+      "params": [
+        {
+          "name": "providers",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "preferred",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}
