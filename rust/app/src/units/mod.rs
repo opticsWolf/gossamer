@@ -6,6 +6,7 @@ use clap::ArgMatches;
 
 mod audit_cargo;
 mod benchmarks;
+mod cache;
 mod skills;
 mod verify_bundled_assets;
 
@@ -17,6 +18,7 @@ fn sent_to_original(unit: &str) -> bool {
 pub fn dispatch(command: &str, matches: &ArgMatches) -> Option<ExitCode> {
     match command {
         "benchmarks" if !sent_to_original("BENCHMARKS") => Some(benchmarks::run(command, matches)),
+        "cache" if !sent_to_original("CACHE") => Some(cache::run(command, matches)),
         "skills" if !sent_to_original("SKILLS") => Some(skills::run(command, matches)),
         "audit-cargo" if !sent_to_original("AUDIT_CARGO") => {
             Some(audit_cargo::run(command, matches))

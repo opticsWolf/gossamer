@@ -200,3 +200,42 @@ Consequences:
 
 Supersedes the open choice in ADR-010's context regarding whether to add `rlib` to the legacy crate:
 we choose a new pure core plus thin binding crate, not an `rlib` added to the PyO3-infected crate.
+
+## ADR-013: Orchestration cutover with contract-preserving app lift
+
+Status: accepted (2026-11-23)
+
+Context: Waves 0–2 put all deterministic kernels in the pure core, ported the benchmark harness,
+and wired four units into `rust/app`. The front door still sends 26/39 replay cases to Python.
+The remaining code is Python orchestration: cache policy, document assembly, provider dispatch,
+search sequencing, MCP tool wiring, and CLI parsing. Those modules own user-visible contracts:
+CLI flags and exit codes, `GOSSAMER_*` environment variables, cache layout, and MCP tool schemas.
+A direct rewrite would risk silent contract drift.
+
+Decision: Cut over orchestration in this order, one unit at a time:
+
+1. `gossamer/cache.py`
+2. `gossamer/document.py`
+3. `gossamer/research_categories.py` and `gossamer/research_providers.py`
+4. `gossamer/search.py`
+5. `gossamer/mcp_server.py`
+6. `gossamer/cli.py`
+
+Each unit is recorded/replayed before it is wired, stays behind a
+`RUST_ANYTHING_UNIT_<NAME>=original` kill switch, and is considered done only when its own gate,
+touched Python tests, the full Python suite, app replay, and lint checks pass. Network, browser,
+clock, and randomness stay outside stable cases unless supplied by fixtures, a local HTTP sink, or
+named normalizers. The Python package remains the replay oracle until fallback reaches 0%.
+
+Standalone-lift rule: `rust-anything app lift` is run only after replay is 100% and fallback is 0%.
+The lift must preserve the pure-core-only business logic (ADR-012), the PyO3 compatibility wrappers
+(ADR-009), the single workspace (ADR-010), and canonical port errors (ADR-011). Any CLI, env,
+cache-layout, or MCP-schema break requires a new ADR before implementation.
+
+Consequences:
+- The remaining Python modules become compatibility orchestrators before they are retired.
+- `cache.py` and `document.py` are first because they reuse already-ported kernels and have stable
+  filesystem/HTML fixtures.
+- `mcp_server.py` and `cli.py` are last because they own the external contracts.
+- Benchmark timing normalizers must not hide result-shape differences.
+- Fallback rate is reported after every unit; no attempt to force 0% by deleting or weakening cases.

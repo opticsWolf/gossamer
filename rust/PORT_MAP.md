@@ -18,6 +18,7 @@
 | --- | --- |
 | `rust/app/src/units/audit_cargo.rs` | Rust, handing some cases to the original |
 | `rust/app/src/units/benchmarks.rs` | Rust, handing some cases to the original |
+| `rust/app/src/units/cache.rs` | Rust, handing some cases to the original |
 | `rust/app/src/units/skills.rs` | Rust, handing some cases to the original |
 | `rust/app/src/units/verify_bundled_assets.rs` | Rust, handing some cases to the original |
 

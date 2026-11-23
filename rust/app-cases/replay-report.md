@@ -2,8 +2,8 @@
 
 Build: `rust/app/target/debug/gossamer.exe`
 
-Passed: 39/39
+Passed: 42/42
 
-Fallback rate: 66.7% (26/39 cases answered by the original)
+Fallback rate: 61.9% (26/42 cases answered by the original)
 
 Every case matches.

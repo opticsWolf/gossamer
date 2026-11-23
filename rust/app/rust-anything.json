@@ -22,6 +22,15 @@
   ],
   "units": [
     {
+      "name": "cache",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "cache"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_CACHE"
+    },
+    {
       "name": "benchmarks",
       "crate": "benchmarks-rs",
       "path": "../benchmarks-rs",

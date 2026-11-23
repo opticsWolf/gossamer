@@ -35,3 +35,6 @@
 {"name":"benchmarks-unknown-flag","args":["benchmarks","--bogus"],"env":{"PYTHONIOENCODING":"utf-8"}}
 {"name":"benchmarks-default","args":["benchmarks"],"env":{"PYTHONIOENCODING":"utf-8"}}
 {"name":"benchmarks-guard","args":["benchmarks","--guard"],"env":{"PYTHONIOENCODING":"utf-8"}}
+{"name":"cache-prune","args":["cache","--action","prune","--cache-dir","rust/fixtures/cache"]}
+{"name":"cache-clear","args":["cache","--action","clear","--cache-dir","rust/fixtures/cache"]}
+{"name":"cache-reset","args":["cache","--action","reset","--cache-dir","rust/fixtures/cache"]}

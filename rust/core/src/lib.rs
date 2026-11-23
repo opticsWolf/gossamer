@@ -5,6 +5,7 @@
 
 pub mod adapters;
 pub mod budget;
+pub mod cache;
 pub mod cacheutils;
 pub mod categories;
 pub mod cite;

@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["cache", "--action", "reset", "--cache-dir", "rust/fixtures/cache"]
+status.code = 0
+fs.sandbox = true

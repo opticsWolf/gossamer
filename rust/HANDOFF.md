@@ -14,12 +14,13 @@
 | `scripts/verify_bundled_assets.py` → `rust/verify-bundled-assets-rs` | passed | 10/10 | 164 Rust LOC / 71 Python (2.3x) |
 | `gossamer/text_links.py` → `rust/text-links-rs` | passed | 211/211 | 109 Rust LOC / 46 Python (2.4x); not front-door wired |
 | `benchmarks.py` → `rust/benchmarks-rs` | passed | 4/4 | all modes in Rust; timing fields normalized in app replay |
+| `gossamer/cache.py` → `gossamer::cache` | passed | 3 app cases | caller-supplied time; deterministic cache fixture |
 
 Front door replay:
 
 ```text
-39/39 cases passed
-Fallback rate: 66.7% (26/39 cases answered by the original)
+42/42 cases passed
+Fallback rate: 61.9% (26/42 cases answered by the original)
 ```
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
@@ -29,7 +30,7 @@ tracked under the claimed `gossamer/` wave-1 unit and will be handled in the nex
 ## Files that matter now
 
 - Plan/claims: [MAP.md](MAP.md)
-- Decisions: [DECISIONS.md](DECISIONS.md) — ADRs 001–012 (ADR-012: pure core + thin PyO3 wrappers)
+- Decisions: [DECISIONS.md](DECISIONS.md) — ADRs 001–013 (ADR-012: pure core + thin PyO3 wrappers; ADR-013: orchestration cutover order and lift rule)
 - Workspace: [Cargo.toml](Cargo.toml) and [.cargo/config.toml](.cargo/config.toml)
 - Measured state: [PORT_MAP.md](PORT_MAP.md)
 - Units: [skills-rs](skills-rs), [audit-cargo-rs](audit-cargo-rs),
@@ -102,8 +103,12 @@ Wave 2 is complete: `rust/benchmarks-rs` owns all benchmark modes and the front 
 `benchmarks` (default), `benchmarks --guard`, and `benchmarks --corpus`. Wall-clock values use named
 replay normalizers; `--help` and unknown flags fall back before Rust writes output.
 
-Next checkpoint: Python orchestration modules (`cache.py`, `document.py`, `search.py`,
-`mcp_server.py`, `cli.py`) under a new ADR if CLI/env/MCP contracts would change.
+ADR-013 is accepted and `cache.py` is the first orchestration unit cut over. The pure core now
+owns two-tier cache behavior (memory LRU, disk TTL, atomic writes, scoped clear, prune, stats) and
+the front door handles all three `cache --action` modes behind `RUST_ANYTHING_UNIT_CACHE`.
+
+Next checkpoint: `gossamer/document.py`, then provider/research dispatch, `search.py`,
+`mcp_server.py`, and `cli.py`, in that order.
 
 `text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
 front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
@@ -111,7 +116,7 @@ paths) is ported.
 
 ## Checkpoint rule
 
-Stop after each wave. Waves 0, 1, and 2 are done; orchestration cutover awaits a new ADR and user go-ahead.
+Stop after each checkpoint. Waves 0–2 are done; ADR-013 and the cache checkpoint are done. Continue with `document.py`.
 
 ## Skill to load next
 

@@ -965,6 +965,7 @@ dependencies = [
  "audit-cargo-rs",
  "benchmarks-rs",
  "clap 4.6.9",
+ "gossamer-web",
  "serde_json",
  "skills-rs",
  "verify-bundled-assets-rs",

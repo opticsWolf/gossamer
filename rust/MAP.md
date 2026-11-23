@@ -6,8 +6,8 @@ Session started: 2026-11-22.
 
 ## Decisions
 
-See [DECISIONS.md](DECISIONS.md). Current ADRs: 001–012. ADR-012 chooses one pure Rust core
-crate with thin PyO3 wrappers.
+See [DECISIONS.md](DECISIONS.md). Current ADRs: 001–013. ADR-012 chooses one pure Rust core
+crate with thin PyO3 wrappers; ADR-013 fixes the orchestration cutover order and lift rule.
 
 ## Units
 
@@ -103,6 +103,18 @@ the claims. Check them against each other at every checkpoint.
   (11391 passed / 36 skipped) all passed.
 - Next: Python orchestration modules (`cache.py`, `document.py`, `search.py`, `mcp_server.py`,
   `cli.py`) under a new ADR if CLI/env/MCP contracts change.
+
+## Checkpoint 4 — orchestration starts: ADR-013 and cache (2026-11-23)
+
+- ADR-013 fixes the cutover order and the lift rule: ADR first, then cache, document, provider
+  dispatch, search, MCP, CLI; lift only at 100% replay and 0% fallback.
+- `gossamer/cache.py` behavior is now implemented in `gossamer::cache` and wired to the existing
+  `cache` front-door command behind `RUST_ANYTHING_UNIT_CACHE`. Caller-supplied time keeps TTL and
+  expiry deterministic; disk writes are atomic; `clear` removes only cache-owned files.
+- App cases added for `cache --action prune|clear|reset` with a deterministic cache fixture.
+- Front door replay: **42/42 cases passed**, fallback rate **61.9%** (26/42).
+- Core tests: 69 unit + 2 guard + 53 doctests. Full Python suite: 11391 passed / 36 skipped.
+- Next: `gossamer/document.py`.
 
 ## Research prerequisites
 

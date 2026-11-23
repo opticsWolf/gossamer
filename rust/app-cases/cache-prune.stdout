@@ -1,0 +1,9 @@
+{
+  "prune": {
+    "removed_expired": 1,
+    "removed_evicted": 0,
+    "total_entries": 2,
+    "total_bytes": 65,
+    "max_disk_bytes": 0
+  }
+}
