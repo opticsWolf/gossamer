@@ -11,6 +11,7 @@ pub mod categories;
 pub mod cite;
 pub mod compat;
 pub mod dedupe;
+pub mod document;
 pub mod fetch;
 pub mod guard;
 pub mod jats;

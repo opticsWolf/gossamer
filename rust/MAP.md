@@ -116,6 +116,16 @@ the claims. Check them against each other at every checkpoint.
 - Core tests: 69 unit + 2 guard + 53 doctests. Full Python suite: 11391 passed / 36 skipped.
 - Next: `gossamer/document.py`.
 
+## Checkpoint 5 — document URL preparation (2026-11-23)
+
+- `gossamer/document.py` URL preparation is implemented in `gossamer::document`: normalization,
+  SSRF validation, canonical error class, and the same recoverable JSON records Python returns.
+- Front door handles `inspect` and `batch` when every URL is rejected before network I/O.
+  Successful fetches and other document paths still fall back until their fixtures exist.
+- stderr warning text for blocked non-public URLs is preserved exactly.
+- Front door replay: **42/42 cases passed**, fallback rate **57.1%** (24/42).
+- Next: provider/research dispatch.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).

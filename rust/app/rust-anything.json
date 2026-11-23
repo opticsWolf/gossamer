@@ -22,6 +22,20 @@
   ],
   "units": [
     {
+      "name": "inspect",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": ["inspect"],
+      "switch": "RUST_ANYTHING_UNIT_INSPECT"
+    },
+    {
+      "name": "batch",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": ["batch"],
+      "switch": "RUST_ANYTHING_UNIT_BATCH"
+    },
+    {
       "name": "cache",
       "crate": "gossamer",
       "path": "../core",

@@ -5,8 +5,11 @@ use std::process::ExitCode;
 use clap::ArgMatches;
 
 mod audit_cargo;
+mod batch;
 mod benchmarks;
 mod cache;
+mod inspect;
+mod jsonfmt;
 mod skills;
 mod verify_bundled_assets;
 
@@ -19,6 +22,8 @@ pub fn dispatch(command: &str, matches: &ArgMatches) -> Option<ExitCode> {
     match command {
         "benchmarks" if !sent_to_original("BENCHMARKS") => Some(benchmarks::run(command, matches)),
         "cache" if !sent_to_original("CACHE") => Some(cache::run(command, matches)),
+        "inspect" if !sent_to_original("INSPECT") => Some(inspect::run(command, matches)),
+        "batch" if !sent_to_original("BATCH") => Some(batch::run(command, matches)),
         "skills" if !sent_to_original("SKILLS") => Some(skills::run(command, matches)),
         "audit-cargo" if !sent_to_original("AUDIT_CARGO") => {
             Some(audit_cargo::run(command, matches))
