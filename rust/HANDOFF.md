@@ -123,6 +123,12 @@ steps that only the user can perform.
 
 ## Checkpoint rule
 
+Unit 3 of the post-lift port is done: `gossamer::service::fetch` owns the
+deterministic FetchService kernels and `rust/fetch-service-rs` is enabled
+(25/25 cases, gate passed, 0.62x bench, suite 11412/36 skipped). Transport,
+browser escalation and batch orchestration remain Python. Next unit is
+`service::search` + `providers` per `rust/PORT.md`.
+
 Unit 2 of the post-lift port is done: `gossamer::documents` owns the payload
 helpers and `rust/documents-rs` is enabled (10/10 cases, gate passed, 0.39x
 bench, suite 11404/36 skipped). Next unit is `service::fetch` per

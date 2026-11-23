@@ -189,6 +189,15 @@ the claims. Check them against each other at every checkpoint.
 - Next unit: `service::fetch` (`FetchService`), which now has a stable payload
   schema to emit.
 
+## Checkpoint 13 — service::fetch kernels (2026-11-23)
+
+- Unit 3 moved the deterministic FetchService decisions into
+  `gossamer::service::fetch` and enabled `rust/fetch-service-rs`: 25/25
+  recorded cases, gate passed, bench 0.62x. Network dispatch, browser
+  escalation and `batch_inspect_pages_impl` remain in Python.
+- Next unit: `service::search` + `providers`, with config and payload schema
+  now stable.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).

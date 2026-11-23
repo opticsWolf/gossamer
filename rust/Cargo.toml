@@ -7,6 +7,7 @@ members = [
   "benchmarks-rs",
   "config-rs",
   "documents-rs",
+  "fetch-service-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

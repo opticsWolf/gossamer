@@ -1,0 +1,218 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/fetch.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "fetch-service-rs",
+  "exports": [
+    {
+      "name": "_service_strategy_for",
+      "file": "gossamer/fetch.py",
+      "line": 1457,
+      "params": [
+        {
+          "name": "fetch_mode",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "use_smart",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "string",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_strategy_accepts",
+      "file": "gossamer/fetch.py",
+      "line": 1462,
+      "params": [
+        {
+          "name": "strategy",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "method",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        },
+        {
+          "name": "cached_strategy",
+          "ts_type": "unknown",
+          "optional": true,
+          "rest": false,
+          "default": "None"
+        }
+      ],
+      "returns": "boolean",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_cached_matches_strategy",
+      "file": "gossamer/fetch.py",
+      "line": 1477,
+      "params": [
+        {
+          "name": "cached",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "strategy",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "boolean",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_raw_entry_matches_strategy",
+      "file": "gossamer/fetch.py",
+      "line": 1488,
+      "params": [
+        {
+          "name": "entry",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "strategy",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "boolean",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_looks_like_text",
+      "file": "gossamer/fetch.py",
+      "line": 1495,
+      "params": [
+        {
+          "name": "md",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "boolean",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_slice_markdown",
+      "file": "gossamer/fetch.py",
+      "line": 1499,
+      "params": [
+        {
+          "name": "markdown",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "offset",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "max_chunks",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "md_chars",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "md_tokens",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "model",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "tuple",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_compact_metadata",
+      "file": "gossamer/fetch.py",
+      "line": 1520,
+      "params": [
+        {
+          "name": "raw",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_format_follow_ups",
+      "file": "gossamer/fetch.py",
+      "line": 1523,
+      "params": [
+        {
+          "name": "anchored_links",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

@@ -70,10 +70,26 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Unit log
 
+### Unit 3 — service::fetch kernels (done 2026-11-23)
+
+- Core: `gossamer::service::fetch` owns strategy resolution/compatibility,
+  cached-entry strategy checks, the M14 text heuristic, budgeted markdown
+  slicing, metadata compaction and follow-up formatting.
+- Binding crate: `rust/fetch-service-rs`, enabled over the module-level seams
+  in `gossamer/fetch.py` and the `FetchService` methods; kill switch
+  `RUST_ANYTHING_UNIT_FETCH_SERVICE=original`.
+- Recorded from `tests/test_rust_parity_fetch_service.py`: **25/25 cases**,
+  gate passed, bench 0.62x (the profitable kernels are `looks_like_text`
+  2.89x and `format_follow_ups` 2.00x).
+- Explicitly still in Python: `_dispatch_fetch`, `_inspect_html_page_impl`,
+  `batch_inspect_pages_impl`, browser escalation, page-cache I/O and toolbox
+  state. This unit is the deterministic decision layer those callers use,
+  not a full transport port.
+
 ## Current state
 
 - `dev_rustify` at `57d3ef0`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
-- Rust owns: `env`/`settings` config resolution (unit 1), documents payload helpers (unit 2), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
+- Rust owns: `env`/`settings` config resolution (unit 1), documents payload helpers (unit 2), deterministic FetchService kernels (unit 3), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, `cache` maintenance, `categories`, document URL rejection,
   search provider aliases/errors, CLI help/error text, MCP schema constant.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,

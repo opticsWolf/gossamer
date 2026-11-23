@@ -27,6 +27,7 @@ pub mod port;
 pub mod robots;
 pub mod search;
 pub mod sections;
+pub mod service;
 pub mod ssrf;
 pub mod tables;
 pub mod taxonomy;

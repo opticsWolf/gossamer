@@ -1,0 +1,25 @@
+{"fn": "_service_strategy_for", "args": ["auto", "auto"], "ok": "auto"}
+{"fn": "_service_strategy_for", "args": ["auto", "static"], "ok": "static-only"}
+{"fn": "_service_strategy_for", "args": ["auto", "browser"], "ok": "browser-first"}
+{"fn": "_service_strategy_for", "args": ["static", "AUTO"], "ok": "static-only"}
+{"fn": "_service_strategy_for", "args": ["browser", "auto"], "ok": "browser-only"}
+{"fn": "_service_strategy_for", "args": ["auto", "bogus"], "error": "ValueError: Invalid use_smart 'bogus'; expected one of ('auto', 'browser', 'static')"}
+{"fn": "_service_strategy_accepts", "args": ["auto", "static", null], "ok": true}
+{"fn": "_service_strategy_accepts", "args": ["static-only", "static", null], "ok": true}
+{"fn": "_service_strategy_accepts", "args": ["static-only", "browser", null], "ok": false}
+{"fn": "_service_strategy_accepts", "args": ["browser-first", "static", "browser-first"], "ok": true}
+{"fn": "_service_strategy_accepts", "args": ["browser-first", "static", null], "ok": false}
+{"fn": "_service_cached_matches_strategy", "args": [{"$tuple": ["# md", [], {"fetch_strategy": "browser-first"}, "static"]}, "browser-first"], "ok": true}
+{"fn": "_service_cached_matches_strategy", "args": [null, "auto"], "ok": false}
+{"fn": "_service_cached_matches_strategy", "args": [{"$tuple": []}, "auto"], "ok": false}
+{"fn": "_service_raw_entry_matches_strategy", "args": [{"method": "browser", "meta": {"fetch_strategy": "browser-first"}}, "browser-only"], "ok": true}
+{"fn": "_service_strategy_accepts", "args": ["browser-only", "browser", "browser-first"], "ok": true}
+{"fn": "_service_raw_entry_matches_strategy", "args": [{}, "auto"], "ok": false}
+{"fn": "_service_looks_like_text", "args": ["# Hello\n\nworld"], "ok": true}
+{"fn": "_service_looks_like_text", "args": ["   "], "ok": false}
+{"fn": "_service_looks_like_text", "args": ["\u0000\u0001\u0002"], "ok": false}
+{"fn": "_service_slice_markdown", "args": ["para one\n\npara two\n\npara three", 0, 1, 12, 0, "gpt-4o"], "ok": {"$tuple": ["para one", 8, true]}}
+{"fn": "_service_slice_markdown", "args": ["para one\n\npara two\n\npara three", 8, 3, 12, 0, "gpt-4o"], "ok": {"$tuple": ["\n\npara two\n\npara three", 30, false]}}
+{"fn": "_service_compact_metadata", "args": [{"meta": {"title": "T", "canonical": "https://old.test"}, "opengraph": {"title": "OG"}, "twitter": {"card": "summary"}, "jsonld": [{"a": 1}, {"b": 2}, {"c": 3}], "rel_links": {"canonical": ["https://new.test"], "alternate": ["/rss"]}, "hidden_blocks_removed": 4}], "ok": {"title": "T", "canonical": "https://new.test", "og_title": "OG", "twitter_card": "summary", "jsonld": [{"a": 1}, {"b": 2}], "alternates": ["/rss"], "hidden_blocks_removed": 4}}
+{"fn": "_service_compact_metadata", "args": [{}], "ok": {}}
+{"fn": "_service_format_follow_ups", "args": [[{"$tuple": ["https://x.test/a", " A "]}, {"$tuple": ["https://x.test/a", "dup"]}, {"$tuple": ["https://x.test/r.pdf", ""]}]], "ok": [{"$object": "FollowUpCandidate", "attrs": {"title": "A", "url": "https://x.test/a", "type": "page"}}, {"$object": "FollowUpCandidate", "attrs": {"title": "(untitled)", "url": "https://x.test/r.pdf", "type": "document"}}]}

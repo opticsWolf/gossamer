@@ -26,6 +26,7 @@ from gossamer._core import (
     fetch_html_full,
     process_rendered_html as _process_rendered_html,
     init_rust_logging as _init_rust_logging,
+    budget_truncate as _budget_truncate,
 )
 from gossamer.models import (
     _browser_provenance,
@@ -1449,3 +1450,149 @@ class FetchService:
             result.next_offset = len(md)
             result.has_more = False
         return json.loads(result.model_dump_json())
+
+
+# ── Module-level seams for the Rust service port ───────────────
+# These one-line aliases expose the deterministic FetchService kernels as
+# module functions so rust-anything can record and replay them. They contain
+# no logic beyond forwarding to the pre-existing helpers.
+
+def _service_strategy_for(fetch_mode: str, use_smart: str) -> str:
+    return _resolve_fetch_strategy(fetch_mode, _coerce_fetch_mode(use_smart))
+
+
+def _service_strategy_accepts(
+    strategy: str, method, cached_strategy=None
+) -> bool:
+    if strategy == "auto":
+        return True
+    if strategy == "static-only":
+        return method == "static"
+    browser_rendered = method in ("browser", "stealth-fallback")
+    if strategy == "browser-only":
+        return browser_rendered
+    if strategy == "browser-first":
+        return browser_rendered or (
+            method == "static" and cached_strategy == "browser-first"
+        )
+    return False
+
+
+def _service_cached_matches_strategy(cached, strategy: str) -> bool:
+    if cached is None:
+        return False
+    try:
+        method = cached[3]
+        meta = cached[2] or {}
+    except (IndexError, TypeError):
+        return False
+    return _service_strategy_accepts(strategy, method, meta.get("fetch_strategy"))
+
+
+def _service_raw_entry_matches_strategy(entry: dict, strategy: str) -> bool:
+    if not entry:
+        return False
+    return _service_strategy_accepts(
+        strategy,
+        entry.get("method"),
+        (entry.get("meta") or {}).get("fetch_strategy"),
+    )
+
+
+_ORIGINAL_LOOKS_LIKE_TEXT = FetchService.__dict__["_looks_like_text"].__func__
+_ORIGINAL_COMPACT_METADATA = FetchService._compact_metadata
+
+
+def _service_looks_like_text(md: str) -> bool:
+    return _ORIGINAL_LOOKS_LIKE_TEXT(md)
+
+
+def _service_slice_markdown(
+    markdown: str,
+    offset: int,
+    max_chunks: int,
+    md_chars: int,
+    md_tokens: int,
+    model: str,
+) -> tuple[str, int, bool]:
+    md_chars = max(1, md_chars)
+    total = len(markdown)
+    pos = max(0, min(offset, total))
+    parts: list[str] = []
+    for _ in range(max(1, max_chunks)):
+        if pos >= total:
+            break
+        window = markdown[pos : pos + md_chars]
+        if len(window) < md_chars:
+            end = total
+        else:
+            cut = window.rfind("\n\n")
+            end = pos + (cut if cut > md_chars // 2 else md_chars)
+        parts.append(_budget_truncate(markdown[pos:end], md_chars, md_tokens, model))
+        pos = end
+    return "".join(parts), pos, pos < total
+
+
+def _service_compact_metadata(raw: dict) -> dict:
+    return _ORIGINAL_COMPACT_METADATA(None, raw)
+
+
+def _service_format_follow_ups(anchored_links) -> list:
+    return build_follow_up_candidates(anchored_links)
+# >>> rust-anything: fetch-service-rs is on. `rust-anything disable ../rust/fetch-service-rs` removes this block.
+def _rust_anything_fetch_service_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_FETCH_SERVICE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/fetch-service-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("fetch_service_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_strategy_for", "_service_strategy_accepts", "_service_cached_matches_strategy", "_service_raw_entry_matches_strategy", "_service_looks_like_text", "_service_slice_markdown", "_service_compact_metadata", "_service_format_follow_ups"]})
+
+
+_rust_anything_fetch_service_rs()
+del _rust_anything_fetch_service_rs
+# <<< rust-anything: fetch-service-rs
+
+# >>> rust-anything: FetchService kernels are on (methods).
+def _rust_anything_fetch_methods():
+    import os
+
+    if os.environ.get("RUST_ANYTHING_MODE") == "old" or os.environ.get(
+        "RUST_ANYTHING_UNIT_FETCH_SERVICE"
+    ) == "original":
+        return
+    FetchService._strategy_for = (
+        lambda self, use_smart: _service_strategy_for(self._tb.fetch_mode, use_smart)
+    )
+    FetchService._strategy_accepts = staticmethod(_service_strategy_accepts)
+    FetchService._cached_matches_strategy = (
+        lambda self, cached, strategy: _service_cached_matches_strategy(cached, strategy)
+    )
+    FetchService._raw_entry_matches_strategy = (
+        lambda self, entry, strategy: _service_raw_entry_matches_strategy(entry, strategy)
+    )
+    FetchService._looks_like_text = staticmethod(_service_looks_like_text)
+    FetchService._compact_metadata = lambda self, raw: _service_compact_metadata(raw)
+    FetchService._format_follow_ups = (
+        lambda self, anchored_links: _service_format_follow_ups(anchored_links)
+    )
+    def _slice(self, markdown, offset, max_chunks, md_chars, md_tokens):
+        return _service_slice_markdown(
+            markdown, offset, max_chunks, md_chars, md_tokens, self._tb.model_name
+        )
+
+    FetchService._slice_markdown = _slice
+
+
+_rust_anything_fetch_methods()
+del _rust_anything_fetch_methods
+# <<< rust-anything: FetchService kernels
