@@ -16,17 +16,24 @@
 
 | Glue | Runs |
 | --- | --- |
-| `rust/app/src/units/audit_cargo.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/batch.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/benchmarks.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/cache.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/categories.rs` | Rust, handing some cases to the original |
+| `rust/app/src/units/audit_cargo.rs` | Rust only |
+| `rust/app/src/units/batch.rs` | Rust only |
+| `rust/app/src/units/benchmarks.rs` | Rust only |
+| `rust/app/src/units/cache.rs` | Rust only |
+| `rust/app/src/units/categories.rs` | Rust only |
+| `rust/app/src/units/check.rs` | Rust only |
+| `rust/app/src/units/cite.rs` | Rust only |
 | `rust/app/src/units/cli.rs` | Rust only |
-| `rust/app/src/units/inspect.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/jsonfmt.rs` | Rust only |
-| `rust/app/src/units/search.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/skills.rs` | Rust, handing some cases to the original |
-| `rust/app/src/units/verify_bundled_assets.rs` | Rust, handing some cases to the original |
+| `rust/app/src/units/crawl.rs` | Rust only |
+| `rust/app/src/units/discover.rs` | Rust only |
+| `rust/app/src/units/download.rs` | Rust only |
+| `rust/app/src/units/extract.rs` | Rust only |
+| `rust/app/src/units/inspect.rs` | Rust only |
+| `rust/app/src/units/locate_pdf.rs` | Rust only |
+| `rust/app/src/units/research.rs` | Rust only |
+| `rust/app/src/units/search.rs` | Rust only |
+| `rust/app/src/units/skills.rs` | Rust only |
+| `rust/app/src/units/verify_bundled_assets.rs` | Rust only |
 
 ## Not ported yet
 

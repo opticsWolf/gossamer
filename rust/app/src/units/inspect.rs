@@ -6,16 +6,10 @@ use std::process::ExitCode;
 use clap::ArgMatches;
 use gossamer::document::prepare_url;
 
-use super::jsonfmt::pretty_record;
+use gossamer::jsonfmt::pretty_record;
 
-fn fallback(args: &[OsString], help_count: u8) -> ExitCode {
-    let mut full: Vec<OsString> = Vec::with_capacity(args.len() + help_count as usize + 1);
-    full.push(OsString::from("inspect"));
-    full.extend(args.iter().cloned());
-    for _ in 0..help_count {
-        full.push(OsString::from("--help"));
-    }
-    crate::original::run(&full)
+fn fallback(_args: &[OsString], _help_count: u8) -> ExitCode {
+    unsupported()
 }
 
 fn known_flag(name: &str) -> bool {
@@ -34,7 +28,16 @@ fn known_flag(name: &str) -> bool {
     )
 }
 
-pub fn run(_command: &str, matches: &ArgMatches) -> ExitCode {
+fn unsupported() -> ExitCode {
+    eprintln!("gossamer: error: unsupported command shape");
+    ExitCode::from(1)
+}
+
+pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
+    if let Some(code) = super::cli::maybe_run(command, matches) {
+        return code;
+    }
+
     let args: Vec<OsString> = matches
         .get_many::<OsString>("args")
         .into_iter()

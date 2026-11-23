@@ -18,5 +18,43 @@
   "fresh": [
     "rust/fixtures",
     "tests/fixtures/guard_corpus"
-  ]
+  ],
+  "unordered": {
+    "audit-cargo-empty-lock": [
+      "stdout",
+      "stderr"
+    ],
+    "verify-bundled-assets-bad-whl": [
+      "stdout",
+      "stderr"
+    ],
+    "verify-bundled-assets-missing-whl": [
+      "stdout",
+      "stderr"
+    ],
+    "verify-bundled-assets-good-whl": [
+      "stdout",
+      "stderr"
+    ],
+    "verify-bundled-assets-good-targz": [
+      "stdout",
+      "stderr"
+    ],
+    "cache-prune": [
+      "stdout",
+      "stderr"
+    ],
+    "verify-bundled-assets-mixed-unsupported": [
+      "stdout",
+      "stderr"
+    ],
+    "skills-show": [
+      "stdout",
+      "stderr"
+    ],
+    "skills-install-duplicate-skill": [
+      "stdout",
+      "stderr"
+    ]
+  }
 }

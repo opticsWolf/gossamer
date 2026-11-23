@@ -4,7 +4,7 @@
 //! argparse error wording are external contracts; this module only stores them.
 
 /// Map of case name to `{stdout, stderr, status}`.
-pub const CLI_HELP_JSON: &str = include_str!("../../fixtures/cli_help.json");
+pub const CLI_HELP_JSON: &str = include_str!("cli_help.json");
 
 /// Command names in argparse order.
 pub const COMMANDS: [&str; 17] = [

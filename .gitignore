@@ -54,3 +54,10 @@ nul
 # Deliberately unsynced: working notes live here, the repo keeps only
 # docs/QUICKREF.md + docs/ARCHITECTURE.md as its synced record.
 /planning/
+
+# Standalone lint/build outputs from lifted crates
+rust/core/target/
+
+# Cargo targets under the Rust workspace
+rust/target/
+rust/*/target/

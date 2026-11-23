@@ -141,10 +141,6 @@ fn timing_json(t: &Timing) -> Value {
 
 fn corpus_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .unwrap_or_else(|| Path::new("."))
-        .join("tests")
         .join("fixtures")
         .join("guard_corpus")
 }

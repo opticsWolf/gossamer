@@ -15,7 +15,7 @@ use port_error::{ErrorKind, PortError};
 use serde_json::{Value, json};
 
 const SKILL_NAMES: [&str; 1] = ["gossamer"];
-const SKILL_TEXT: &str = include_str!("../../../gossamer/skills/gossamer/SKILL.md");
+const SKILL_TEXT: &str = include_str!("SKILL.md");
 
 /// Returns the bundled skill names as a tuple marker.
 ///

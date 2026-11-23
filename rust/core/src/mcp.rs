@@ -13,7 +13,7 @@ mod tests {
 
     #[test]
     fn frozen_schema_matches_fixture() {
-        let fixture = include_str!("../../fixtures/mcp_schema.json");
+        let fixture = include_str!("mcp_schema.json");
         assert_eq!(TOOL_SCHEMA_JSON, fixture);
     }
 

@@ -160,6 +160,17 @@ the claims. Check them against each other at every checkpoint.
 - Python remains installed as the reference oracle until the cutover user decides to retire it.
 - Next: `rust-anything app lift`, then final verification.
 
+## Checkpoint 10 — lift (2026-11-23)
+
+- `rust-anything app lift .` succeeded. `rust/app` is now a pure Rust binary with no Python
+  fallback path or kill switches; generated PyO3 binding files were removed from unit crates.
+- Lift checklist: all unit/dependency checks passed; replay 43/43 against the lifted binary,
+  fallback rate 0; trycmd cases pass with nine filesystem/snapshot cases skipped because trycmd's
+  sandbox does not reproduce `rust-anything app replay` fixtures byte-for-byte.
+- `rust/cutover.sh` walks through the remaining user-owned launcher/packaging steps.
+- Final verification: workspace tests and clippy clean, root `cargo check` OK, maturin OK, Python
+  suite 11391 passed / 36 skipped, `git diff --check` clean apart from LF→CRLF warnings.
+
 ## Research prerequisites
 
 - Done: `rust/research/dynamic-code.md` — blocker for `gossamer/` (ADR-003).
@@ -180,7 +191,7 @@ the claims. Check them against each other at every checkpoint.
 
 - Minimum supported Rust version and packaging targets beyond Windows 11 / Linux x86_64.
 - Exact crate choices for each `unknown` runtime dependency (research-derived; round 2).
-- Which Python entry points the PyO3 wrappers must preserve after lift.
+- Retire the Python reference package and PyO3 compatibility wrappers after production acceptance (user-owned; see `rust/cutover.sh`).
 - Whether `benchmarks.py` becomes a Rust subcommand or stays a standalone binary.
 
 ## Checkpoints

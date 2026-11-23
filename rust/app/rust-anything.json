@@ -22,38 +22,120 @@
   ],
   "units": [
     {
-      "name": "cli-help",
+      "name": "cli",
       "crate": "gossamer",
       "path": "../core",
-      "commands": ["*help"],
+      "commands": [
+        "gossamer"
+      ],
       "switch": "RUST_ANYTHING_UNIT_CLI_HELP"
+    },
+    {
+      "name": "research",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "research"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_RESEARCH_HELP"
+    },
+    {
+      "name": "download",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "download"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_DOWNLOAD_HELP"
+    },
+    {
+      "name": "locate-pdf",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "locate-pdf"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_LOCATE_PDF_HELP"
+    },
+    {
+      "name": "extract",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "extract"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_EXTRACT_HELP"
+    },
+    {
+      "name": "check",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "check"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_CHECK_HELP"
+    },
+    {
+      "name": "discover",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "discover"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_DISCOVER_HELP"
+    },
+    {
+      "name": "crawl",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "crawl"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_CRAWL_HELP"
+    },
+    {
+      "name": "cite",
+      "crate": "gossamer",
+      "path": "../core",
+      "commands": [
+        "cite"
+      ],
+      "switch": "RUST_ANYTHING_UNIT_CITE_HELP"
     },
     {
       "name": "search",
       "crate": "gossamer",
       "path": "../core",
-      "commands": ["search"],
+      "commands": [
+        "search"
+      ],
       "switch": "RUST_ANYTHING_UNIT_SEARCH"
     },
     {
       "name": "categories",
       "crate": "gossamer",
       "path": "../core",
-      "commands": ["categories"],
+      "commands": [
+        "categories"
+      ],
       "switch": "RUST_ANYTHING_UNIT_CATEGORIES"
     },
     {
       "name": "inspect",
       "crate": "gossamer",
       "path": "../core",
-      "commands": ["inspect"],
+      "commands": [
+        "inspect"
+      ],
       "switch": "RUST_ANYTHING_UNIT_INSPECT"
     },
     {
       "name": "batch",
       "crate": "gossamer",
       "path": "../core",
-      "commands": ["batch"],
+      "commands": [
+        "batch"
+      ],
       "switch": "RUST_ANYTHING_UNIT_BATCH"
     },
     {
@@ -101,5 +183,6 @@
       ],
       "switch": "RUST_ANYTHING_UNIT_VERIFY_BUNDLED_ASSETS"
     }
-  ]
+  ],
+  "lifted": true
 }

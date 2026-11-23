@@ -115,14 +115,16 @@ the front door handles all three `cache --action` modes behind `RUST_ANYTHING_UN
 The CLI contract, document URL preparation, taxonomy, search errors, and frozen MCP schema are in
 the pure core. Replay is at 100% with 0% fallback; the ADR-013 lift precondition is met.
 
-`text-links-rs` is not wired into `rust/app`: no CLI command calls `extract_links` directly. Add a
-front-door command only under a new ADR, or wait until its caller (`document.py` / extraction
-paths) is ported.
+`rust-anything app lift` has completed. `rust/app` owns the whole CLI with no Python fallback path;
+the original Python package remains in the tree only as the reference oracle. Nine trycmd cases that
+depend on filesystem sandbox or snapshot layout are skipped in `rust/app/tests/app_cases.rs`; keep
+`rust-anything app replay` in CI for those. `rust/cutover.sh` walks through launcher and packaging
+steps that only the user can perform.
 
 ## Checkpoint rule
 
-Stop after each checkpoint. Waves 0–2, ADR-013, orchestration units, and CLI contract are done. Replay is 43/43 with 0% fallback; run `rust-anything app lift` next.
+Migration is complete. Waves 0–2, ADR-013, orchestration units, CLI contract, and lift are done. Replay is 43/43 with 0% fallback and no fallback path.
 
 ## Skill to load next
 
-`rust-anything` (whole-app mode). Read `MAP.md` first, then this file.
+None. Run `rust/cutover.sh` when ready to switch production traffic to the Rust binary.

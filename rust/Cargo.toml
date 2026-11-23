@@ -11,6 +11,7 @@ members = [
   "verify-bundled-assets-rs",
 ]
 default-members = ["app"]
+exclude = ["core/vendor/meta_oxide"]
 
 [workspace.package]
 version = "0.1.0"

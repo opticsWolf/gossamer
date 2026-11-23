@@ -10,7 +10,10 @@ use std::os::raw::c_char;
 use meta_oxide::ffi;
 use serde_json::{Map, Value};
 
+// SAFETY: these are meta_oxide C ABI pointers. Every call site passes live NUL-terminated
+// strings, accepts NULL for the optional base URL, and frees the returned string exactly once.
 type SectionFn = unsafe extern "C" fn(*const c_char, *const c_char) -> *mut c_char;
+// SAFETY: same C ABI contract as `SectionFn`, without the optional base URL argument.
 type NoBaseSectionFn = unsafe extern "C" fn(*const c_char) -> *mut c_char;
 
 /// NUL cannot cross a C string: the HTML tokenizer replaces NUL with U+FFFD anyway.

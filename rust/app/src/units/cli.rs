@@ -68,3 +68,12 @@ pub fn maybe_run(command: &str, matches: &ArgMatches) -> Option<ExitCode> {
     }
     None
 }
+
+fn unsupported() -> ExitCode {
+    eprintln!("gossamer: error: unsupported command shape");
+    ExitCode::from(1)
+}
+
+pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
+    maybe_run(command, matches).unwrap_or_else(unsupported)
+}
