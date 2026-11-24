@@ -15,6 +15,7 @@ pub mod compat;
 pub mod config;
 pub mod dedupe;
 pub mod document;
+pub mod discovery;
 pub mod documents;
 pub mod fetch;
 pub mod guard;

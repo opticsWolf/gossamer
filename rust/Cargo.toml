@@ -18,6 +18,7 @@ members = [
   "research-kernels-rs",
   "guard-service-rs",
   "tool-check-rs",
+  "discovery-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

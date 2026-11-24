@@ -1,0 +1,1 @@
+{"fn": "_service_find_feed_links", "args": ["<LINK REL=\"alternate\" TYPE=\"application/rss+xml; charset=utf-8\" HREF=\"/feed.xml\"><link rel=\"alternate\" type=\"text/html\" href=\"/x\">", "https://x.test/page"]}

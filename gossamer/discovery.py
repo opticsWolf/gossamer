@@ -143,23 +143,7 @@ class ResourceDiscovery:
         absolutized against *base_url*. Regex-based on purpose: the page
         is arbitrary HTML, not well-formed XML.
         """
-        feeds = []
-        for tag in self._FEED_LINK_RE.findall(html):
-            attrs = {
-                m.group("attr").lower(): m.group("value")
-                for m in self._LINK_ATTR_RE.finditer(tag)
-            }
-            link_type = attrs.get("type", "").lower().split(";")[0].strip()
-            if not any(
-                link_type.startswith(prefix)
-                for prefix in self._FEED_TYPE_PREFIXES
-            ):
-                continue
-            href = (attrs.get("href") or "").strip()
-            if not href:
-                continue
-            feeds.append({"url": urljoin(base_url, href), "type": link_type})
-        return feeds
+        return _service_find_feed_links(html, base_url)
 
     def _probe_sitemaps(self, site_root: Optional[str]):
         """Tier 3.12: probe ``/sitemap.xml`` and follow indexes (bounded).
@@ -249,3 +233,42 @@ class ResourceDiscovery:
                             break
                         found[page_url] = None
         return sitemaps, found, truncated
+
+
+def _service_find_feed_links(html, base_url):
+    feeds = []
+    for tag in ResourceDiscovery._FEED_LINK_RE.findall(html):
+        attrs = {
+            m.group("attr").lower(): m.group("value")
+            for m in ResourceDiscovery._LINK_ATTR_RE.finditer(tag)
+        }
+        link_type = attrs.get("type", "").lower().split(";")[0].strip()
+        if not any(link_type.startswith(p) for p in ResourceDiscovery._FEED_TYPE_PREFIXES):
+            continue
+        href = (attrs.get("href") or "").strip()
+        if not href:
+            continue
+        feeds.append({"url": urljoin(base_url, href), "type": link_type})
+    return feeds
+# >>> rust-anything: discovery-rs is on. `rust-anything disable ../rust/discovery-rs` removes this block.
+def _rust_anything_discovery_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_DISCOVERY") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/discovery-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("discovery_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_find_feed_links"]})
+
+
+_rust_anything_discovery_rs()
+del _rust_anything_discovery_rs
+# <<< rust-anything: discovery-rs
