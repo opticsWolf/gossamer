@@ -14,7 +14,8 @@ static DOI_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(DOI_PATTERN).unwrap_or_else(|e| panic!("invalid DOI regex {DOI_PATTERN:?}: {e}"))
 });
 
-fn percent_decode(value: &str) -> String {
+/// Decode `%XX` escapes without treating `+` as a space.
+pub fn percent_decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut index = 0;

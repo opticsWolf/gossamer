@@ -83,17 +83,14 @@ def _identifier_key(record: dict) -> str | None:
     return None
 
 
-def merge_scholarly_records(
-    provider_records: Iterable[tuple[str, list[dict]]],
-) -> list[dict]:
-    """Merge records on DOI/arXiv IDs only, preserving all source records.
+def merge_scholarly_records(provider_records) -> list[dict]:
+    """Merge records on DOI/arXiv IDs only, preserving all source records."""
+    return _service_merge_scholarly_records(provider_records)
 
-    Provider order is priority order for the canonical record. Records without
-    a DOI or arXiv identifier are intentionally kept separate; titles are not
-    used as a fuzzy merge key.
-    """
-    groups: dict[str, dict] = {}
-    ordered: list[dict] = []
+
+def _service_merge_scholarly_records(provider_records):
+    groups = {}
+    ordered = []
     for provider, records in provider_records:
         for record in records:
             key = _identifier_key(record)
@@ -120,12 +117,10 @@ def merge_scholarly_records(
             if provider not in merged["sources"]:
                 merged["sources"].append(provider)
             merged["source_records"].append({
-                "provider": provider,
-                "record": dict(record),
+                "provider": provider, "record": dict(record),
             })
-
     for merged in ordered:
-        by_field: dict[str, list[dict]] = {}
+        by_field = {}
         for source_record in merged["source_records"]:
             provider = source_record["provider"]
             record = source_record["record"]
@@ -140,3 +135,25 @@ def merge_scholarly_records(
             field: values for field, values in by_field.items() if len(values) > 1
         }
     return ordered
+# >>> rust-anything: research-merge-rs is on. `rust-anything disable ../rust/research-merge-rs` removes this block.
+def _rust_anything_research_merge_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESEARCH_MERGE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/research-merge-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("research_merge_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_merge_scholarly_records"]})
+
+
+_rust_anything_research_merge_rs()
+del _rust_anything_research_merge_rs
+# <<< rust-anything: research-merge-rs

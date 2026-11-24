@@ -1,0 +1,30 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/research_merge.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "research-merge-rs",
+  "exports": [
+    {
+      "name": "_service_merge_scholarly_records",
+      "file": "gossamer/research_merge.py",
+      "line": 86,
+      "params": [
+        {
+          "name": "provider_records",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

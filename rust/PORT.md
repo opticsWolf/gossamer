@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Scholarly record merge (done 2026-11-23)
+
+- `merge_scholarly_records` now delegates DOI/arXiv key extraction, grouping
+  and conflict detection to `gossamer::research_merge`. No Python object
+  reconstruction is needed; callers receive the same dict list.
+- Binding: `rust/research-merge-rs` (6/6); gate passed.
+- Full pytest: 11453 passed / 36 skipped; app replay 43/43.
+
 ### Batch entry normalization (done 2026-11-23)
 
 - `_normalize_batch_results` now delegates success/failure tagging to
@@ -267,7 +275,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,452 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,453 passing tests.
 
 ## Open questions
 

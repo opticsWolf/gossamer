@@ -23,6 +23,7 @@ members = [
   "research-plan-rs",
   "crawl-kernels-rs",
   "open-access-rs",
+  "research-merge-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

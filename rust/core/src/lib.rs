@@ -28,6 +28,7 @@ pub mod mcp_dispatch;
 pub mod metaextract;
 pub mod miscutils;
 pub mod port;
+pub mod research_merge;
 pub mod robots;
 pub mod search;
 pub mod sections;
