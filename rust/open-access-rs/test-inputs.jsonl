@@ -1,0 +1,15 @@
+{"fn": "_service_normalize_doi", "args": [" DOI:10.1234/Example "]}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/Ab%2FC"]}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/x?q=1"]}
+{"fn": "_service_normalize_doi", "args": ["not-a-doi"]}
+{"fn": "_service_normalize_doi", "args": [123]}
+{"fn": "_service_normalize_doi", "args": ["10.1234/Example.DOI"]}
+{"fn": "_service_normalize_doi", "args": ["doi:10.1234/Example.DOI"]}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/Example.DOI"]}
+{"fn": "_service_normalize_doi", "args": ["http://dx.doi.org/10.1234/Example.DOI"]}
+{"fn": "_service_normalize_doi", "args": [""]}
+{"fn": "_service_normalize_doi", "args": ["10.123/short-prefix"]}
+{"fn": "_service_normalize_doi", "args": ["https://example.com/10.1234/x"]}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/x?tracking=1"]}
+{"fn": "_service_normalize_doi", "args": ["doi:10.1234/example"]}
+{"fn": "_service_normalize_doi", "args": ["10.1234/example"]}

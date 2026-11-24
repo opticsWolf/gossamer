@@ -19,25 +19,9 @@ _DOI_HOSTS = {"doi.org", "www.doi.org", "dx.doi.org"}
 
 
 def normalize_doi(value: str) -> str:
-    """Normalize a bare DOI, ``doi:`` value, or DOI resolver URL.
+    """Normalize a bare DOI, ``doi:`` value, or DOI resolver URL."""
+    return _service_normalize_doi(value)
 
-    The returned DOI is lower-case because DOI matching is case-insensitive.
-    This validates DOI shape only; it does not assert that a DOI is registered.
-    """
-    if not isinstance(value, str):
-        raise ValueError("DOI must be a string")
-    doi = value.strip()
-    if doi.lower().startswith("doi:"):
-        doi = doi[4:].strip()
-    else:
-        parsed = urlsplit(doi)
-        if parsed.scheme.lower() in {"http", "https"} and (parsed.hostname or "").lower() in _DOI_HOSTS:
-            if parsed.query or parsed.fragment:
-                raise ValueError("DOI resolver URLs must not include a query or fragment")
-            doi = unquote(parsed.path.lstrip("/"))
-    if not _DOI_RE.fullmatch(doi):
-        raise ValueError("expected a DOI such as 10.1234/example")
-    return doi.lower()
 
 
 def _oa_candidate(location: dict, *, is_best: bool, work_is_oa: bool) -> dict | None:
@@ -378,3 +362,43 @@ class OpenAccessLocator:
             },
             "candidates": candidates,
         }
+
+def _service_normalize_doi(value):
+    if not isinstance(value, str):
+        raise ValueError("DOI must be a string")
+    doi = value.strip()
+    if doi.lower().startswith("doi:"):
+        doi = doi[4:].strip()
+    else:
+        parsed = urlsplit(doi)
+        if (parsed.scheme.lower() in {"http", "https"}
+                and (parsed.hostname or "").lower() in _DOI_HOSTS):
+            if parsed.query or parsed.fragment:
+                raise ValueError("DOI resolver URLs must not include a query or fragment")
+            doi = unquote(parsed.path.lstrip("/"))
+    if not _DOI_RE.fullmatch(doi):
+        raise ValueError("expected a DOI such as 10.1234/example")
+    return doi.lower()
+
+# >>> rust-anything: open-access-rs is on. `rust-anything disable ../rust/open-access-rs` removes this block.
+def _rust_anything_open_access_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_OPEN_ACCESS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/open-access-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("open_access_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_normalize_doi"]})
+
+
+_rust_anything_open_access_rs()
+del _rust_anything_open_access_rs
+# <<< rust-anything: open-access-rs

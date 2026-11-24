@@ -23,6 +23,7 @@ pub mod jats;
 pub mod jats_mml;
 pub mod jsonfmt;
 pub mod mcp;
+pub mod openaccess;
 pub mod mcp_dispatch;
 pub mod metaextract;
 pub mod miscutils;

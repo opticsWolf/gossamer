@@ -1,0 +1,30 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/open_access.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "open-access-rs",
+  "exports": [
+    {
+      "name": "_service_normalize_doi",
+      "file": "gossamer/open_access.py",
+      "line": 21,
+      "params": [
+        {
+          "name": "value",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

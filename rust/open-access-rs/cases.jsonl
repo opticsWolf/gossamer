@@ -1,0 +1,15 @@
+{"fn": "_service_normalize_doi", "args": [" DOI:10.1234/Example "], "ok": "10.1234/example"}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/Ab%2FC"], "ok": "10.1234/ab/c"}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/x?q=1"], "error": "ValueError: DOI resolver URLs must not include a query or fragment"}
+{"fn": "_service_normalize_doi", "args": ["not-a-doi"], "error": "ValueError: expected a DOI such as 10.1234/example"}
+{"fn": "_service_normalize_doi", "args": [123], "error": "ValueError: DOI must be a string"}
+{"fn": "_service_normalize_doi", "args": ["10.1234/Example.DOI"], "ok": "10.1234/example.doi"}
+{"fn": "_service_normalize_doi", "args": ["doi:10.1234/Example.DOI"], "ok": "10.1234/example.doi"}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/Example.DOI"], "ok": "10.1234/example.doi"}
+{"fn": "_service_normalize_doi", "args": ["http://dx.doi.org/10.1234/Example.DOI"], "ok": "10.1234/example.doi"}
+{"fn": "_service_normalize_doi", "args": [""], "error": "ValueError: expected a DOI such as 10.1234/example"}
+{"fn": "_service_normalize_doi", "args": ["10.123/short-prefix"], "error": "ValueError: expected a DOI such as 10.1234/example"}
+{"fn": "_service_normalize_doi", "args": ["https://example.com/10.1234/x"], "error": "ValueError: expected a DOI such as 10.1234/example"}
+{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/x?tracking=1"], "error": "ValueError: DOI resolver URLs must not include a query or fragment"}
+{"fn": "_service_normalize_doi", "args": ["doi:10.1234/example"], "ok": "10.1234/example"}
+{"fn": "_service_normalize_doi", "args": ["10.1234/example"], "ok": "10.1234/example"}

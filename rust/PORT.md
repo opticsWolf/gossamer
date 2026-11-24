@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### DOI normalization (done 2026-11-23)
+
+- `gossamer::openaccess::normalize_doi` owns bare/`doi:`/resolver DOI shape
+  validation and percent decoding; open-access HTTP lookup remains Python.
+- Binding: `rust/open-access-rs` (15/15); gate passed. Immutable regex cache
+  documented performance-only; panic message includes the regex source.
+- Full pytest: 11451 passed / 36 skipped; app replay 43/43.
+
 ### Crawl frontier scoring (done 2026-11-23)
 
 - `Crawler._crawl_score` now delegates legacy and semantic score formulas to
@@ -249,7 +257,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,450 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,451 passing tests.
 
 ## Open questions
 
