@@ -333,33 +333,19 @@ class BatchEntry:
 
 
 def _normalize_batch_results(results) -> List[BatchEntry]:
-    """Convert raw engine tuples into tagged ``BatchEntry`` records (M10).
+    """Convert raw engine tuples into tagged ``BatchEntry`` records (M10)."""
+    return [
+        BatchEntry(
+            url=item["url"],
+            markdown=item["markdown"],
+            links=item["links"],
+            error=item["error"],
+            html=item["html"],
+            prov=tuple(item["prov"]) if isinstance(item["prov"], list) else item["prov"],
+        )
+        for item in _service_normalize_batch_results(results)
+    ]
 
-    Success: ``(url, html, markdown, links[, provenance])`` with the content
-    slots non-None (the trailing provenance tuple is new in the B.6 fix;
-    legacy 4-tuples are still accepted with ``prov=None``). Failure:
-    ``(url, None, error_message, None[, None])`` (the message may be empty).
-    """
-    entries: List[BatchEntry] = []
-    for item in results:
-        url, html_opt, md_opt, links_opt = item[:4]
-        prov = item[4] if len(item) > 4 else None
-        if md_opt is not None and links_opt is not None:
-            entries.append(
-                BatchEntry(
-                    url=url,
-                    markdown=md_opt,
-                    links=links_opt,
-                    html=html_opt,
-                    prov=prov,
-                )
-            )
-        else:
-            entries.append(BatchEntry(url=url, error=md_opt or "Unknown error"))
-    return entries
-
-
-# ───────────────────────────────
 # Markdown link absolutization (M12, CODE_REVIEW_2026-08-27)
 # ───────────────────────────────
 
@@ -473,3 +459,21 @@ def _rust_anything_stats_rs():
 _rust_anything_stats_rs()
 del _rust_anything_stats_rs
 # <<< rust-anything: stats-rs
+
+def _service_normalize_batch_results(results):
+    entries = []
+    for item in results:
+        url, html_opt, md_opt, links_opt = item[:4]
+        prov = item[4] if len(item) > 4 else None
+        if md_opt is not None and links_opt is not None:
+            entries.append({
+                "url": url, "markdown": md_opt, "links": links_opt,
+                "error": None, "html": html_opt, "prov": prov,
+            })
+        else:
+            entries.append({
+                "url": url, "markdown": None, "links": None,
+                "error": md_opt or "Unknown error", "html": None, "prov": None,
+            })
+    return entries
+

@@ -201,6 +201,44 @@ pub fn payload_from_markdown(markdown: &str, url: &str, _metadata: &Value, max_l
     })
 }
 
+
+/// Normalize raw batch engine tuples into tagged entry payloads.
+pub fn normalize_batch_results(results: &[Value]) -> Vec<Value> {
+    fn as_array(value: &Value) -> Option<&Vec<Value>> {
+        if let Some(array) = value.as_array() {
+            return Some(array);
+        }
+        value.get("$tuple").and_then(Value::as_array)
+    }
+    results
+        .iter()
+        .filter_map(as_array)
+        .map(|item| {
+            let url = item.first().cloned().unwrap_or(Value::Null);
+            let html = item.get(1).cloned().unwrap_or(Value::Null);
+            let md = item.get(2).cloned().unwrap_or(Value::Null);
+            let links = item.get(3).cloned().unwrap_or(Value::Null);
+            let prov = item.get(4).cloned().unwrap_or(Value::Null);
+            let success = !md.is_null() && !links.is_null();
+            if success {
+                serde_json::json!({
+                    "url": url, "markdown": md, "links": links,
+                    "error": Value::Null, "html": html, "prov": prov,
+                })
+            } else {
+                let error = match md {
+                    Value::String(text) if !text.is_empty() => Value::String(text),
+                    _ => Value::String("Unknown error".to_string()),
+                };
+                serde_json::json!({
+                    "url": url, "markdown": Value::Null, "links": Value::Null,
+                    "error": error, "html": Value::Null, "prov": Value::Null,
+                })
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

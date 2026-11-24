@@ -5,7 +5,8 @@
 #![forbid(unsafe_code)]
 
 use gossamer::documents::{
-    absolutize_markdown_links as absolutize, follow_up_candidates, office_cell_text as cell_text,
+    absolutize_markdown_links as absolutize, follow_up_candidates,
+    normalize_batch_results as core_normalize_batch_results, office_cell_text as cell_text,
     office_ir_tables as tables,
 };
 use serde_json::{Map, Value, json};
@@ -66,6 +67,10 @@ pub fn build_follow_up_candidates(
 /// No error path: an unparsable base URL leaves the markdown unchanged.
 pub fn absolutize_markdown_links(markdown: String, base_url: String) -> Result<String, String> {
     Ok(absolutize(&markdown, &base_url))
+}
+
+pub fn service_normalize_batch_results(results: Vec<Value>) -> Result<Vec<Value>, String> {
+    Ok(core_normalize_batch_results(&results))
 }
 
 #[cfg(test)]

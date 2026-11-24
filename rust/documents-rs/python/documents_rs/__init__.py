@@ -96,8 +96,6 @@ def _tables(fn):
 
 def _candidates(fn):
     def call(links, max_links=0):
-        # Imported lazily: this module is loaded *by* gossamer.structured_parser
-        # when rust-anything is enabled, so a top-level import would cycle.
         from gossamer.structured_parser import FollowUpCandidate
         out = []
         for item in fn(_enc(links), max_links):
@@ -114,5 +112,6 @@ office_ir_tables = _tables(_native.office_ir_tables)
 _office_cell_text = _native._office_cell_text
 build_follow_up_candidates = _candidates(_native.build_follow_up_candidates)
 _absolutize_markdown_links = _native._absolutize_markdown_links
+_service_normalize_batch_results = _native._service_normalize_batch_results
 
-__all__ = ['office_ir_tables', '_office_cell_text', 'build_follow_up_candidates', '_absolutize_markdown_links']
+__all__ = ['office_ir_tables', '_office_cell_text', 'build_follow_up_candidates', '_absolutize_markdown_links', '_service_normalize_batch_results']

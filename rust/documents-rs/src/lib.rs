@@ -97,6 +97,24 @@ fn absolutize_markdown_links(markdown: String, base_url: String) -> PyResult<Str
     absolutize_markdown_links_inner(markdown, base_url).map_err(error)
 }
 
+fn service_normalize_batch_results_inner(results: Bound<'_, PyAny>) -> Result<Vec<Value>, String> {
+    let results: Vec<Value> = crate::pyconv::FromPy::from_py(&results)?;
+    let out = port::service_normalize_batch_results(results)?;
+    Ok(out)
+}
+
+/// `_service_normalize_batch_results`.
+#[pyfunction]
+#[pyo3(name = "_service_normalize_batch_results", signature = (results))]
+fn service_normalize_batch_results(
+    py: Python<'_>,
+    results: Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    service_normalize_batch_results_inner(results)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -104,5 +122,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(office_cell_text, m)?)?;
     m.add_function(wrap_pyfunction!(build_follow_up_candidates, m)?)?;
     m.add_function(wrap_pyfunction!(absolutize_markdown_links, m)?)?;
+    m.add_function(wrap_pyfunction!(service_normalize_batch_results, m)?)?;
     Ok(())
 }

@@ -96,6 +96,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Batch entry normalization (done 2026-11-23)
+
+- `_normalize_batch_results` now delegates success/failure tagging to
+  `gossamer::documents::normalize_batch_results`; the Python side rebuilds
+  frozen `BatchEntry` records and tuples.
+- Binding: extended `rust/documents-rs` to 13/13 cases; gate passed.
+- Restored custom `$tuple`/`FollowUpCandidate` Python wrappers after
+  `refresh` regenerated the module (M-FFI-TRANSLATES).
+- Full pytest: 11452 passed / 36 skipped; app replay 43/43.
+
 ### DOI normalization (done 2026-11-23)
 
 - `gossamer::openaccess::normalize_doi` owns bare/`doi:`/resolver DOI shape
@@ -257,7 +267,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,451 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,452 passing tests.
 
 ## Open questions
 
