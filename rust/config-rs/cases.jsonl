@@ -22,3 +22,9 @@
 {"fn": "getenv_bool", "args": ["GOSSAMER_PARITY_UNSET_FLAG", true], "ok": true}
 {"fn": "getenv", "args": ["GOSSAMER_PARITY_UNSET_FLAG", null, null], "ok": null}
 {"fn": "clear_caches", "args": [], "ok": null}
+{"fn": "_service_ensure_str_list", "args": [null, "urls"], "ok": []}
+{"fn": "_service_ensure_str_list", "args": [" a ", "urls"], "ok": [" a "]}
+{"fn": "_service_ensure_str_list", "args": ["  ", "urls"], "ok": []}
+{"fn": "_service_ensure_str_list", "args": [{"$tuple": ["a", "b"]}, "urls"], "ok": ["a", "b"]}
+{"fn": "_service_ensure_str_list", "args": [["a", 1], "urls"], "error": "TypeError: urls must be a list of strings, got an item of type int"}
+{"fn": "_service_ensure_str_list", "args": [{}, "urls"], "error": "TypeError: urls must be a list of strings (a bare string is also accepted and wrapped), got dict"}

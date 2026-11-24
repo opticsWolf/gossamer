@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Tool argument list coercion (done 2026-11-23)
+
+- `ensure_str_list` now delegates to `gossamer::config::ensure_str_list`,
+  including Python-shaped `TypeError` messages and tuple-marker handling.
+- Binding: extended `rust/config-rs` to 30/30 cases; gate passed.
+- Restored custom `FileNotFoundError`/`OSError` mappings after `refresh`
+  regenerated the PyO3 error helper (M-FFI-TRANSLATES).
+- Full pytest: 11445 passed / 36 skipped; app replay 43/43.
+
 ### Quota window rollover (done 2026-11-23)
 
 - `gossamer::providers::base::quota_period` now labels UTC day/month quota
@@ -204,7 +213,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,444 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,445 passing tests.
 
 ## Open questions
 

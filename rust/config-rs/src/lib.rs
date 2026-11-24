@@ -222,6 +222,25 @@ fn config_template(py: Python<'_>) -> PyResult<Py<PyAny>> {
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_ensure_str_list_inner(
+    value: Option<Bound<'_, PyAny>>,
+    name: String,
+) -> Result<Vec<String>, String> {
+    let value: Option<Value> = match &value {
+        None => None,
+        Some(v) => Some(crate::pyconv::FromPy::from_py(v)?),
+    };
+    let out = port::service_ensure_str_list(value, name)?;
+    Ok(out)
+}
+
+/// `_service_ensure_str_list`.
+#[pyfunction]
+#[pyo3(name = "_service_ensure_str_list", signature = (value, name))]
+fn service_ensure_str_list(value: Option<Bound<'_, PyAny>>, name: String) -> PyResult<Vec<String>> {
+    service_ensure_str_list_inner(value, name).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -236,5 +255,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lookup_key, m)?)?;
     m.add_function(wrap_pyfunction!(keystore_template, m)?)?;
     m.add_function(wrap_pyfunction!(config_template, m)?)?;
+    m.add_function(wrap_pyfunction!(service_ensure_str_list, m)?)?;
     Ok(())
 }

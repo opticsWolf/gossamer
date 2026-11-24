@@ -11,10 +11,10 @@ use std::sync::{Mutex, OnceLock};
 
 use gossamer::config::{
     ConfigError, ConfigStore, Paths, ProcessEnv, config_template as core_config_template,
-    exception_name, find_config_file as core_find_config, find_keystore_file as core_find_keystore,
-    getenv as core_getenv, getenv_bool as core_getenv_bool,
-    keystore_template as core_keystore_template, legacy_names_from_json,
-    load_config_file as core_load_config, load_json_file as core_load_json,
+    ensure_str_list as core_ensure_str_list, exception_name, find_config_file as core_find_config,
+    find_keystore_file as core_find_keystore, getenv as core_getenv,
+    getenv_bool as core_getenv_bool, keystore_template as core_keystore_template,
+    legacy_names_from_json, load_config_file as core_load_config, load_json_file as core_load_json,
     load_keystore as core_load_keystore, lookup_key as core_lookup_key, py_str_value,
 };
 use serde_json::Value;
@@ -212,4 +212,8 @@ pub fn keystore_template() -> Result<Value, String> {
 /// Returns the exception text the reference raises, prefixed with its type.
 pub fn config_template() -> Result<Value, String> {
     Ok(Value::Object(core_config_template()))
+}
+
+pub fn service_ensure_str_list(value: Option<Value>, name: String) -> Result<Vec<String>, String> {
+    core_ensure_str_list(value.as_ref(), &name)
 }

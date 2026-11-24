@@ -9,3 +9,9 @@
 {"fn": "getenv_bool", "args": ["GOSSAMER_PARITY_UNSET_FLAG", true]}
 {"fn": "getenv", "args": ["GOSSAMER_PARITY_UNSET_FLAG", null, null]}
 {"fn": "clear_caches", "args": []}
+{"fn": "_service_ensure_str_list", "args": [null, "urls"]}
+{"fn": "_service_ensure_str_list", "args": [" a ", "urls"]}
+{"fn": "_service_ensure_str_list", "args": ["  ", "urls"]}
+{"fn": "_service_ensure_str_list", "args": [{"$tuple": ["a", "b"]}, "urls"]}
+{"fn": "_service_ensure_str_list", "args": [["a", 1], "urls"]}
+{"fn": "_service_ensure_str_list", "args": [{}, "urls"]}

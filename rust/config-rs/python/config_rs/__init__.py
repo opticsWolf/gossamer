@@ -98,5 +98,6 @@ load_keystore = _native.load_keystore
 lookup_key = _native.lookup_key
 keystore_template = _native.keystore_template
 config_template = _native.config_template
+_service_ensure_str_list = _native._service_ensure_str_list
 
-__all__ = ['getenv', 'getenv_bool', 'find_config_file', 'find_keystore_file', 'clear_caches', 'load_json_file', 'load_config_file', 'load_keystore', 'lookup_key', 'keystore_template', 'config_template']
+__all__ = ['getenv', 'getenv_bool', 'find_config_file', 'find_keystore_file', 'clear_caches', 'load_json_file', 'load_config_file', 'load_keystore', 'lookup_key', 'keystore_template', 'config_template', '_service_ensure_str_list']

@@ -628,32 +628,8 @@ def canonical_url(url: str, *, query: str = "keep") -> str:
     return _rust.canonical_url(url, query)
 
 def ensure_str_list(value, name: str) -> list:
-    """Coerce a ``list[str]`` tool argument into a clean list (review A.3).
-
-    A bare string is the most likely LLM shape mistake for a ``list[str]``
-    parameter — iterating it would probe/fetch one *character* at a time.
-    So: ``None`` → ``[]``, a bare ``str`` → ``[str]`` (empty/blank → ``[]``),
-    a list/tuple → its items (each must be a string). Anything else raises
-    ``TypeError`` naming the expected type, so callers can return one clear
-    JSON error instead of confident-looking per-character garbage.
-    """
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value] if value.strip() else []
-    if isinstance(value, (list, tuple)):
-        items = list(value)
-        for item in items:
-            if not isinstance(item, str):
-                raise TypeError(
-                    f"{name} must be a list of strings, got an item of type "
-                    f"{type(item).__name__}"
-                )
-        return items
-    raise TypeError(
-        f"{name} must be a list of strings (a bare string is also accepted "
-        f"and wrapped), got {type(value).__name__}"
-    )
+    """Coerce a ``list[str]`` tool argument into a clean list."""
+    return _service_ensure_str_list(value, name)
 
 
 @dataclass
@@ -804,3 +780,22 @@ class ToolboxConfig:
             raise ValueError("max_response_bytes must be >= 1")
         if not 0.0 <= self.link_budget_ratio < 0.9:
             raise ValueError("link_budget_ratio must be in [0.0, 0.9)")
+
+def _service_ensure_str_list(value, name):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple)):
+        items = list(value)
+        for item in items:
+            if not isinstance(item, str):
+                raise TypeError(
+                    f"{name} must be a list of strings, got an item of type "
+                    f"{type(item).__name__}"
+                )
+        return items
+    raise TypeError(
+        f"{name} must be a list of strings (a bare string is also accepted "
+        f"and wrapped), got {type(value).__name__}"
+    )

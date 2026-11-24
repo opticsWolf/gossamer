@@ -754,6 +754,62 @@ fn char_position(text: &str, line: usize, byte_column: usize) -> (usize, usize) 
     (total, total + 1)
 }
 
+
+/// Python-compatible coercion for `list[str]` tool arguments.
+pub fn ensure_str_list(value: Option<&Value>, name: &str) -> Result<Vec<String>, String> {
+    fn py_type(value: &Value) -> &'static str {
+        match value {
+            Value::Null => "NoneType",
+            Value::Bool(_) => "bool",
+            Value::Number(number) => {
+                if number.is_i64() || number.is_u64() { "int" } else { "float" }
+            }
+            Value::String(_) => "str",
+            Value::Array(_) => "list",
+            Value::Object(_) => "dict",
+        }
+    }
+    match value {
+        None => Ok(Vec::new()),
+        Some(Value::String(text)) => {
+            if text.trim().is_empty() { Ok(Vec::new()) } else { Ok(vec![text.clone()]) }
+        }
+        Some(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                match item {
+                    Value::String(text) => out.push(text.clone()),
+                    other => return Err(format!(
+                        "TypeError: {} must be a list of strings, got an item of type {}", name, py_type(other)
+                    )),
+                }
+            }
+            Ok(out)
+        }
+        Some(Value::Object(object)) => {
+            if let Some(Value::Array(items)) = object.get("$tuple") {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    match item {
+                        Value::String(text) => out.push(text.clone()),
+                        other => return Err(format!(
+                            "TypeError: {} must be a list of strings, got an item of type {}", name, py_type(other)
+                        )),
+                    }
+                }
+                Ok(out)
+            } else {
+                Err(format!(
+                    "TypeError: {} must be a list of strings (a bare string is also accepted and wrapped), got dict", name
+                ))
+            }
+        }
+        Some(other) => Err(format!(
+            "TypeError: {} must be a list of strings (a bare string is also accepted and wrapped), got {}", name, py_type(other)
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
