@@ -66,3 +66,7 @@ pub fn service_retry_plan(
         jitter_value,
     ))
 }
+
+pub fn service_quota_period(window: String, now_iso: String) -> Result<String, String> {
+    Ok(k::quota_period(&window, &now_iso))
+}

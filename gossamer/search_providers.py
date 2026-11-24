@@ -283,12 +283,8 @@ class ResourceAdapter(ABC):
         """
         if self.rate_limit.quota is None:
             return
-        now = datetime.now(timezone.utc)
-        period = (
-            now.date().isoformat()
-            if self.rate_limit.quota_window == "day"
-            else now.strftime("%Y-%m")
-        )
+        now_iso = datetime.now(timezone.utc).isoformat()
+        period = _service_quota_period(self.rate_limit.quota_window, now_iso)
         if self._quota_period != period:
             self._quota_period = period
             self._quota_used = 0
@@ -1057,4 +1053,7 @@ def _service_retry_plan(kind, status, attempt, max_attempts, delay, backoff, ret
     base = max(delay, retry_after or 0.0)
     jitter = max(0.0, min(jitter_value, min(0.25, base * 0.1)))
     return {"action": "retry", "wait": min(60.0, base + jitter)}
+
+def _service_quota_period(window, now_iso):
+    return now_iso[: (10 if window == "day" else 7)]
 

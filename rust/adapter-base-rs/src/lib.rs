@@ -180,6 +180,18 @@ fn service_retry_plan(
     .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_quota_period_inner(window: String, now_iso: String) -> Result<String, String> {
+    let out = port::service_quota_period(window, now_iso)?;
+    Ok(out)
+}
+
+/// `_service_quota_period`.
+#[pyfunction]
+#[pyo3(name = "_service_quota_period", signature = (window, now_iso))]
+fn service_quota_period(window: String, now_iso: String) -> PyResult<String> {
+    service_quota_period_inner(window, now_iso).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -188,5 +200,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_quota_message, m)?)?;
     m.add_function(wrap_pyfunction!(service_politeness_wait, m)?)?;
     m.add_function(wrap_pyfunction!(service_retry_plan, m)?)?;
+    m.add_function(wrap_pyfunction!(service_quota_period, m)?)?;
     Ok(())
 }

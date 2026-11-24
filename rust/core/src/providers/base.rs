@@ -84,6 +84,12 @@ pub fn normalize_rate_limit(delay: Option<&Value>, fetch_delay: Option<f64>, jit
     })
 }
 
+/// UTC quota-window label for a caller-supplied ISO-8601 timestamp.
+pub fn quota_period(window: &str, now_iso: &str) -> String {
+    let len = if window == "day" { 10 } else { 7 };
+    now_iso.chars().take(len).collect()
+}
+
 /// Decide retry/raise behavior for one failed provider call.
 #[expect(clippy::too_many_arguments, reason = "mirrors the Python retry decorator inputs exactly")]
 pub fn retry_decision(

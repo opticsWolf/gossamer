@@ -10,3 +10,6 @@
 {"fn": "_service_retry_plan", "args": ["status", 429, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05]}
 {"fn": "_service_retry_plan", "args": ["transport", null, 2, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}]}
 {"fn": "_service_retry_plan", "args": ["status", 503, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, {"$float": "90.0"}, {"$float": "0.0"}]}
+{"fn": "_service_quota_period", "args": ["day", "2026-11-23T12:34:56+00:00"]}
+{"fn": "_service_quota_period", "args": ["month", "2026-11-23T12:34:56+00:00"]}
+{"fn": "_service_quota_period", "args": ["other", "2026-11-23"]}
