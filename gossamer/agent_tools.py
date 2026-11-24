@@ -784,51 +784,13 @@ class WebResearcherToolbox:
         downgrade (review A.10).
         """
         try:
-            if mode not in ("status", "content"):
-                return json.dumps(
-                    {
-                        "error": f"Unknown check_sources mode: {mode!r}; "
-                        'expected "status" or "content"',
-                        "results": [],
-                    },
-                    indent=2,
-                )
-            # Normalise to a clean list of URLs (accept plain strings or
-            # {url}/{href}/{link} dicts). A bare string is wrapped (A.3);
-            # anything else non-list is one JSON error, while bad *items*
-            # stay per-item skips so one poisoned entry cannot kill a batch.
-            if urls is None:
-                urls = []
-            elif isinstance(urls, str):
-                urls = [urls]
-            elif not isinstance(urls, (list, tuple)):
-                return json.dumps(
-                    {
-                        "error": "urls must be a list of URLs (or {url} dicts), "
-                        f"got {type(urls).__name__}",
-                        "results": [],
-                    },
-                    indent=2,
-                )
-            raw = []
-            for u in urls:
-                if isinstance(u, dict):
-                    url = u.get("url") or u.get("href") or u.get("link")
-                else:
-                    url = u
-                if not isinstance(url, str):
-                    continue
-                url = url.strip()
-                if url:
-                    raw.append(url)
-            # De-dup by normalised URL (Workstream 2 shared helper) so the
-            # same resource is not probed twice. dedupe works on dicts, so
-            # wrap, dedupe, then unwrap back to plain URL strings.
-            kept, _ = dedupe([{"url": u} for u in raw], by=("url",))
-            urls_to_probe = [d["url"] for d in kept]
+            plan = _service_check_sources_plan(mode, urls, type(urls).__name__)
+            if "error" in plan:
+                return json.dumps(plan, indent=2)
+            urls_to_probe = plan["urls"]
+            probe = plan["probe"]
 
             results = []
-            probe = "head" if mode == "status" else "get"
             for url in urls_to_probe:
                 results.append(
                     check_liveness(
@@ -1533,3 +1495,58 @@ def _rust_anything_caller_kernels_rs():
 _rust_anything_caller_kernels_rs()
 del _rust_anything_caller_kernels_rs
 # <<< rust-anything: caller-kernels-rs
+
+
+def _service_check_sources_plan(mode, urls, type_name=None):
+    if mode not in ("status", "content"):
+        return {
+            "error": f"Unknown check_sources mode: {mode!r}; expected \"status\" or \"content\"",
+            "results": [],
+        }
+    if urls is None:
+        items = []
+    elif isinstance(urls, str):
+        items = [urls]
+    elif not isinstance(urls, (list, tuple)):
+        return {
+            "error": "urls must be a list of URLs (or {url} dicts), "
+            f"got {type_name or type(urls).__name__}",
+            "results": [],
+        }
+    else:
+        items = urls
+    raw = []
+    for item in items:
+        url = item.get("url") or item.get("href") or item.get("link") if isinstance(item, dict) else item
+        if not isinstance(url, str):
+            continue
+        url = url.strip()
+        if url:
+            raw.append(url)
+    kept, _ = dedupe([{"url": url} for url in raw], by=("url",))
+    return {
+        "urls": [record["url"] for record in kept],
+        "probe": "head" if mode == "status" else "get",
+    }
+# >>> rust-anything: tool-check-rs is on. `rust-anything disable ../rust/tool-check-rs` removes this block.
+def _rust_anything_tool_check_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_TOOL_CHECK") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/tool-check-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("tool_check_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_check_sources_plan"]})
+
+
+_rust_anything_tool_check_rs()
+del _rust_anything_tool_check_rs
+# <<< rust-anything: tool-check-rs

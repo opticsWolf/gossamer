@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### `check_sources` input planning (done 2026-11-23)
+
+- `gossamer::mcp_dispatch::check_sources_plan` owns mode validation,
+  URL-list normalization and canonical deduplication.
+- Binding: `rust/tool-check-rs` (3/3); gate passed; full pytest
+  11440 passed / 36 skipped.
+
 ### Guard orchestration kernels (done 2026-11-23)
 
 - `gossamer::guard::prepare_scope_pairs` and `gossamer::guard::merge_reports`
@@ -160,7 +167,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,438 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,440 passing tests.
 
 ## Open questions
 

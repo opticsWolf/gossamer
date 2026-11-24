@@ -133,6 +133,55 @@ pub fn batch_plan(urls: Option<&Value>, cached_keys: &Value, visited_keys: &Valu
     serde_json::json!({"pending": pending, "cached": cached, "strategy": strategy})
 }
 
+/// Normalize and validate `check_sources` inputs.
+pub fn check_sources_plan(mode: Option<&str>, urls: Option<&Value>, type_name: &str) -> Value {
+    let Some(mode) = mode else {
+        return serde_json::json!({
+            "error": "Unknown check_sources mode: None; expected \"status\" or \"content\"",
+            "results": [],
+        });
+    };
+    if !matches!(mode, "status" | "content") {
+        return serde_json::json!({
+            "error": format!(
+                "Unknown check_sources mode: {}; expected \"status\" or \"content\"",
+                crate::compat::py_repr(mode)
+            ),
+            "results": [],
+        });
+    }
+    let Some(value) = urls else {
+        return serde_json::json!({"urls": [], "probe": if mode == "status" { "head" } else { "get" }});
+    };
+    let items: Vec<&Value> = match value {
+        Value::Array(items) => items.iter().collect(),
+        Value::String(_text) => vec![value],
+        _ => return serde_json::json!({
+            "error": format!(
+                "urls must be a list of URLs (or {{url}} dicts), got {type_name}"
+            ),
+            "results": [],
+        }),
+    };
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for item in items {
+        let candidate = if let Some(object) = item.as_object() {
+            object.get("url").or_else(|| object.get("href")).or_else(|| object.get("link"))
+        } else {
+            Some(item)
+        };
+        let Some(raw) = candidate.and_then(Value::as_str) else { continue };
+        let raw = raw.trim();
+        if raw.is_empty() { continue; }
+        let key = crate::urls::canonical_url(raw, "keep", None).unwrap_or_else(|_| raw.to_string());
+        if seen.contains(&key) { continue; }
+        seen.push(key);
+        out.push(raw.to_string());
+    }
+    serde_json::json!({"urls": out, "probe": if mode == "status" { "head" } else { "get" }})
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,3 +201,4 @@ mod tests {
         assert_eq!(out["max_results"], json!(5));
     }
 }
+

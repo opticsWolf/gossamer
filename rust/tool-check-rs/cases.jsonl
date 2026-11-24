@@ -1,0 +1,3 @@
+{"fn": "_service_check_sources_plan", "args": ["status", ["https://WWW.Example.com/a", {"href": "https://example.com/a"}, 5, {"url": "https://example.com/b"}]], "ok": {"urls": ["https://WWW.Example.com/a", "https://example.com/b"], "probe": "head"}}
+{"fn": "_service_check_sources_plan", "args": ["bad", [], "list"], "ok": {"error": "Unknown check_sources mode: 'bad'; expected \"status\" or \"content\"", "results": []}}
+{"fn": "_service_check_sources_plan", "args": ["status", 5, "int"], "ok": {"error": "urls must be a list of URLs (or {url} dicts), got int", "results": []}}

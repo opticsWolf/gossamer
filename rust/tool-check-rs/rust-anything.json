@@ -1,0 +1,43 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/agent_tools.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "tool-check-rs",
+  "exports": [
+    {
+      "name": "_service_check_sources_plan",
+      "file": "gossamer/agent_tools.py",
+      "line": 2100,
+      "params": [
+        {
+          "name": "mode",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "urls",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "type_name",
+          "ts_type": "string",
+          "optional": true,
+          "rest": false,
+          "default": ""
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}
