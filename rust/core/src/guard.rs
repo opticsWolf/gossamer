@@ -9,6 +9,7 @@ use std::backtrace::Backtrace;
 use std::error::Error;
 use std::fmt;
 
+use serde_json::Value;
 use unic_ucd_category::GeneralCategory;
 use unicode_normalization::UnicodeNormalization;
 
@@ -281,6 +282,88 @@ pub fn wrap_untrusted(markdown: &str, source_url: &str) -> String {
     )
 }
 
+/// Normalize and filter scope texts before guard scanning.
+pub fn prepare_scope_pairs(
+    mode: Option<&str>,
+    scopes: &Value,
+    scope_texts: &Value,
+    main_scope: &str,
+) -> Value {
+    let mut pairs = Vec::new();
+    let mut main_text = Value::Null;
+    if mode.is_none() {
+        return serde_json::json!({"pairs": pairs, "main_text": main_text});
+    }
+    let enabled: Vec<&str> = scopes.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    if let Some(items) = scope_texts.as_array() {
+        for item in items {
+            let normalized_item = item.get("$tuple").unwrap_or(item);
+            let scope = normalized_item.get(0).and_then(Value::as_str);
+            let text = normalized_item.get(1).and_then(Value::as_str);
+            if let (Some(scope), Some(text)) = (scope, text)
+                && enabled.contains(&scope)
+                && !text.is_empty()
+            {
+                let normalized = normalize_untrusted_text(text);
+                if normalized.is_empty() { continue; }
+                if scope == main_scope {
+                    main_text = Value::String(normalized.clone());
+                }
+                pairs.push(serde_json::json!([scope, normalized]));
+            }
+        }
+    }
+    serde_json::json!({"pairs": pairs, "main_text": main_text})
+}
+
+/// Merge JSON-shaped guard reports into the additive guard block.
+pub fn merge_reports(reports: &Value) -> Value {
+    let mut flagged: Vec<Value> = Vec::new();
+    let mut scopes: Vec<String> = Vec::new();
+    let mut max_score = 0.0_f64;
+    let mut risk = "None".to_string();
+    let mut chunks_scanned = 0_i64;
+    let mut elapsed_ms = 0.0_f64;
+    let mut action = "annotate".to_string();
+    if let Some(items) = reports.as_array() {
+        for (index, report) in items.iter().enumerate() {
+            if let Some(items) = report.get("flagged").and_then(Value::as_array) {
+                flagged.extend(items.iter().cloned());
+            }
+            for scope in report.get("scopes").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+                if !scopes.iter().any(|value| value == scope) {
+                    scopes.push(scope.to_string());
+                }
+            }
+            let score = report.get("max_score").and_then(Value::as_f64).unwrap_or(0.0);
+            if score > max_score {
+                max_score = score;
+                risk = report.get("risk").and_then(Value::as_str).unwrap_or("None").to_string();
+            }
+            chunks_scanned += report.get("chunks_scanned").and_then(Value::as_i64).unwrap_or(0);
+            elapsed_ms += report.get("elapsed_ms").and_then(Value::as_f64).unwrap_or(0.0);
+            if index == 0 {
+                action = report.get("action").and_then(Value::as_str).unwrap_or("annotate").to_string();
+            }
+        }
+    }
+    flagged.sort_by(|a, b| {
+        let ao = a.get("offset").and_then(Value::as_i64).unwrap_or(0);
+        let bo = b.get("offset").and_then(Value::as_i64).unwrap_or(0);
+        ao.cmp(&bo)
+    });
+    serde_json::json!({
+        "scanned": true,
+        "scopes": scopes,
+        "max_score": crate::jsonfmt::py_round(max_score, 4),
+        "risk": risk,
+        "flagged": flagged,
+        "chunks_scanned": chunks_scanned,
+        "elapsed_ms": crate::jsonfmt::py_round(elapsed_ms, 1),
+        "action": action,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,5 +417,22 @@ mod tests {
             out,
             "ab[redacted: possible prompt injection - score 0.90]ghij"
         );
+    }
+}
+
+
+#[cfg(test)]
+mod tuple_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn tuple_marker_is_accepted() {
+        let out = prepare_scope_pairs(
+            Some("annotate"),
+            &json!(["main"]),
+            &json!([{"$tuple": ["main", "a\u{200b}b"]}]),
+            "main",
+        );
+        assert_eq!(out["pairs"][0][1], json!("ab"));
     }
 }

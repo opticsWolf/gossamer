@@ -499,24 +499,14 @@ def evaluate(
     # instructions are stripped) and redaction offsets stay aligned with the
     # text the model will actually see. Clean text is unchanged, so pages with
     # no invisible characters are not perturbed.
-    scanned_pairs = []
-    main_text = None
-    for scope, text in scope_texts:
-        if scope not in cfg.scopes:
-            continue
-        if not text:
-            continue
-        text = normalize_untrusted_text(text)
-        if not text:
-            continue
-        if scope == main_scope:
-            main_text = text
-        scanned_pairs.append((scope, text))
+    prepared = _service_guard_pairs(mode, list(cfg.scopes), scope_texts, main_scope)
+    scanned_pairs = [tuple(pair) for pair in prepared["pairs"]]
+    main_text = prepared["main_text"]
     reports = [guard.scan(scope, text) for scope, text in scanned_pairs]
     scanned = [r for r in reports if r.scanned]
     if not scanned:
         return None, None, False
-    block = merge_reports(scanned)
+    block = _service_merge_reports([_report_dict(r) for r in scanned])
     if mode == "block" and block["flagged"]:
         block["withheld"] = True
         return block, None, True
@@ -544,3 +534,83 @@ def wrap_untrusted(markdown: str, source_url: str) -> str:
     """
     # Implemented in Rust (src/guard.rs).
     return _rust.wrap_untrusted(markdown, source_url)
+
+
+def _service_guard_pairs(mode, scopes, scope_texts, main_scope):
+    pairs, main_text = [], None
+    if mode is None:
+        return {"pairs": pairs, "main_text": main_text}
+    enabled = list(scopes or [])
+    for scope, text in scope_texts:
+        if scope not in enabled or not text:
+            continue
+        text = normalize_untrusted_text(text)
+        if not text:
+            continue
+        if scope == main_scope:
+            main_text = text
+        pairs.append([scope, text])
+    return {"pairs": pairs, "main_text": main_text}
+
+
+def _report_dict(rep):
+    return {
+        "flagged": [f.to_dict() for f in rep.flagged],
+        "scopes": list(rep.scopes),
+        "max_score": rep.max_score,
+        "risk": rep.risk,
+        "chunks_scanned": rep.chunks_scanned,
+        "elapsed_ms": rep.elapsed_ms,
+        "action": rep.action,
+    }
+
+
+def _service_merge_reports(reports):
+    flagged, scopes = [], []
+    max_score, risk = 0.0, "None"
+    chunks_scanned, elapsed_ms = 0, 0.0
+    action = "annotate"
+    for index, rep in enumerate(reports):
+        flagged.extend(rep["flagged"])
+        for scope in rep["scopes"]:
+            if scope not in scopes:
+                scopes.append(scope)
+        if rep["max_score"] > max_score:
+            max_score, risk = rep["max_score"], rep["risk"]
+        chunks_scanned += rep["chunks_scanned"]
+        elapsed_ms += rep["elapsed_ms"]
+        if index == 0:
+            action = rep["action"]
+    flagged.sort(key=lambda flag: flag["offset"])
+    return {
+        "scanned": True,
+        "scopes": scopes,
+        "max_score": round(max_score, 4),
+        "risk": risk,
+        "flagged": flagged,
+        "chunks_scanned": chunks_scanned,
+        "elapsed_ms": round(elapsed_ms, 1),
+        "action": action,
+    }
+# >>> rust-anything: guard-service-rs is on. `rust-anything disable ../rust/guard-service-rs` removes this block.
+def _rust_anything_guard_service_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_GUARD_SERVICE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/guard-service-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("guard_service_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_guard_pairs", "_service_merge_reports"]})
+
+
+_rust_anything_guard_service_rs()
+del _rust_anything_guard_service_rs
+# <<< rust-anything: guard-service-rs

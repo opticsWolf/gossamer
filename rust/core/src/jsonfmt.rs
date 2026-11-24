@@ -32,3 +32,11 @@ pub fn json_fallback(rid: &str, probe: Option<&str>, is_tuple: bool) -> Vec<Opti
     let fallback = if is_tuple { None } else { probe.map(str::to_string) };
     vec![Some(rid.to_string()), fallback]
 }
+
+/// Python-compatible rounding to a fixed number of decimals.
+pub fn py_round(value: f64, digits: u32) -> f64 {
+    match format!("{:.*}", digits as usize, value).parse::<f64>() {
+        Ok(rounded) => rounded,
+        Err(_) => value,
+    }
+}

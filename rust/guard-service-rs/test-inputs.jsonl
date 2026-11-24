@@ -1,0 +1,2 @@
+{"fn": "_service_guard_pairs", "args": ["annotate", ["main", "refs"], [{"$tuple": ["main", "a​b"]}, {"$tuple": ["other", "x"]}], "main"]}
+{"fn": "_service_merge_reports", "args": [[{"flagged": [{"offset": 5}], "scopes": ["b", "a"], "max_score": 0.4, "risk": "medium", "chunks_scanned": 2, "elapsed_ms": {"$float": "1.0"}, "action": "annotate"}, {"flagged": [{"offset": 2}], "scopes": ["a", "c"], "max_score": 0.8, "risk": "high", "chunks_scanned": 3, "elapsed_ms": {"$float": "2.0"}, "action": "annotate"}]]}

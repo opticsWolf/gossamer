@@ -16,6 +16,7 @@ members = [
   "caller-kernels-rs",
   "stats-rs",
   "research-kernels-rs",
+  "guard-service-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

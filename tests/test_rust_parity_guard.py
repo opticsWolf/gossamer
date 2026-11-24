@@ -12,6 +12,8 @@ ligatures/unassigned), chunk geometries, and span overlaps.
 """
 
 import random
+
+from gossamer import guard
 import unicodedata
 
 import pytest
@@ -317,3 +319,20 @@ def test_constants_match_python():
     assert _core.wrap_untrusted("m", "u").endswith(_UNTRUSTED_CLOSE)
     assert _V_DIRECTIVE == _UNTRUSTED_DIRECTIVE
     assert list(_V_MODES) == ["annotate", "redact", "block"]
+
+
+def test_rust_pairs_shim():
+    out = guard._service_guard_pairs(
+        "annotate", ["main", "refs"], [("main", "a\u200bb"), ("other", "x")], "main"
+    )
+    assert out["pairs"] == [["main", "ab"]]
+    assert out["main_text"] == "ab"
+
+
+def test_rust_merge_reports_shim():
+    out = guard._service_merge_reports([
+        {"flagged": [{"offset": 5}], "scopes": ["b", "a"], "max_score": 0.4, "risk": "medium", "chunks_scanned": 2, "elapsed_ms": 1.0, "action": "annotate"},
+        {"flagged": [{"offset": 2}], "scopes": ["a", "c"], "max_score": 0.8, "risk": "high", "chunks_scanned": 3, "elapsed_ms": 2.0, "action": "annotate"},
+    ])
+    assert [f["offset"] for f in out["flagged"]] == [2, 5]
+    assert out["risk"] == "high"
