@@ -338,67 +338,25 @@ class Crawler:
 
     @classmethod
     def _crawl_score(
-        cls,
-        url: str,
-        anchor: str,
-        depth: int,
-        query_terms: set,
-        page_terms: set,
-        corpus: _CrawlCorpus = None,
-        label_extra: frozenset = frozenset(),
-        base_terms: set = None,
-    ) -> float:
-        """Relevance score of a frontier candidate (see ``crawl``).
-
-        Legacy form (``corpus is None``) is exactly the v0.4.6 formula:
-        ``score = QUERY_WEIGHT * cover(label, query)
-                + CONTEXT_WEIGHT * cover(label, page_topic)``
-        with the label = anchor text + URL path tokens and uniform
-        weights.
-
-        Semantic crawl (A/B): with a live *corpus*, term weights become
-        BM25-style idfs (flat 1.0 until the corpus has read
-        ``_CRAWL_IDF_MIN_CORPUS`` pages, i.e. flat weights early on),
-        *label_extra* contributes anchor-context words, *base_terms*
-        marks the caller's original query terms so thesaurus expansions
-        weigh half, and URL path priors apply from the non-degenerate
-        regime on.  The depth decay is applied by the caller so the
-        reported per-page score is depth-independent and comparable.
-        """
-        label = cls._crawl_tokens(anchor)
-        label |= cls._crawl_tokens(urlparse(url).path)
+        cls, url, anchor, depth, query_terms, page_terms, corpus=None,
+        label_extra=frozenset(), base_terms=None,
+    ):
+        """Relevance score of a frontier candidate."""
+        label = set(cls._crawl_tokens(anchor))
+        label |= set(cls._crawl_tokens(urlparse(url).path))
         label |= set(label_extra)
         if corpus is None:
-            score = 0.0
-            if query_terms:
-                score += cls._CRAWL_QUERY_WEIGHT * len(label & query_terms) / len(query_terms)
-            if label and page_terms:
-                score += cls._CRAWL_CONTEXT_WEIGHT * len(label & page_terms) / len(label)
-            return score
-        base = base_terms if base_terms is not None else query_terms
-
-        def w_q(t: str) -> float:
-            idf = corpus.idf(t)
-            return idf if t in base else cls._CRAWL_EXPANSION_WEIGHT * idf
-
-        q_weight = sum(w_q(t) for t in query_terms)
-        score = 0.0
-        if query_terms and q_weight > 0:
-            score += (
-                cls._CRAWL_QUERY_WEIGHT
-                * sum(w_q(t) for t in label & query_terms)
-                / q_weight
+            return _service_crawl_score(
+                sorted(label), sorted(query_terms), sorted(page_terms),
+                None, None, 0, 1.0,
             )
-        l_weight = sum(corpus.idf(t) for t in label)
-        if label and page_terms and l_weight > 0:
-            score += (
-                cls._CRAWL_CONTEXT_WEIGHT
-                * sum(corpus.idf(t) for t in label & page_terms)
-                / l_weight
-            )
-        if corpus.n >= cls._CRAWL_IDF_MIN_CORPUS:
-            score *= cls._crawl_path_prior(url)
-        return score
+        terms = set(label) | set(query_terms) | set(page_terms)
+        idf = {term: corpus.idf(term) for term in sorted(terms)}
+        return _service_crawl_score(
+            sorted(label), sorted(query_terms), sorted(page_terms),
+            idf, sorted(base_terms) if base_terms is not None else None,
+            corpus.n, cls._crawl_path_prior(url),
+        )
 
     @staticmethod
     def _shrink_crawl(result: dict, budget: Optional[int]) -> str:
@@ -976,3 +934,48 @@ class Crawler:
             },
         )
 
+def _service_crawl_score(label, query_terms, page_terms, idf, base_terms, corpus_n, path_prior):
+    if idf is None:
+        score = 0.0
+        if query_terms:
+            score += 0.7 * len(set(label) & set(query_terms)) / len(query_terms)
+        if label and page_terms:
+            score += 0.3 * len(set(label) & set(page_terms)) / len(label)
+        return score
+    base = set(base_terms) if base_terms is not None else set(query_terms)
+    def w(t):
+        value = idf.get(t, 1.0)
+        return value if t in base else 0.5 * value
+    q_weight = sum(w(t) for t in query_terms)
+    score = 0.0
+    if query_terms and q_weight > 0:
+        score += 0.7 * sum(w(t) for t in set(label) & set(query_terms)) / q_weight
+    l_weight = sum(idf.get(t, 1.0) for t in label)
+    if label and page_terms and l_weight > 0:
+        score += 0.3 * sum(idf.get(t, 1.0) for t in set(label) & set(page_terms)) / l_weight
+    if corpus_n >= 3:
+        score *= path_prior
+    return score
+
+# >>> rust-anything: crawl-kernels-rs is on. `rust-anything disable ../rust/crawl-kernels-rs` removes this block.
+def _rust_anything_crawl_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CRAWL_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/crawl-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("crawl_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_crawl_score"]})
+
+
+_rust_anything_crawl_kernels_rs()
+del _rust_anything_crawl_kernels_rs
+# <<< rust-anything: crawl-kernels-rs

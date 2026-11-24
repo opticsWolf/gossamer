@@ -1,0 +1,3 @@
+{"fn": "_service_crawl_score", "args": [["rust", "lang"], ["rust"], ["lang"], null, null, 0, {"$float": "1.0"}]}
+{"fn": "_service_crawl_score", "args": [["rust", "lang"], ["rust"], ["lang"], {"rust": {"$float": "2.0"}, "lang": {"$float": "1.0"}}, null, 1, {"$float": "1.0"}]}
+{"fn": "_service_crawl_score", "args": [[], [], [], null, null, 0, {"$float": "1.0"}]}

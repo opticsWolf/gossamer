@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Crawl frontier scoring (done 2026-11-23)
+
+- `Crawler._crawl_score` now delegates legacy and semantic score formulas to
+  `gossamer::service::crawl::crawl_score`. Tokenization, IDF lookup and URL
+  path priors stay in the caller because they involve corpus state.
+- Binding: `rust/crawl-kernels-rs` (3/3); gate passed.
+- Full pytest: 11450 passed / 36 skipped; app replay 43/43.
+
 ### Provider rate-state header parsing (done 2026-11-23)
 
 - `_rate_state_from_headers` now delegates to
@@ -241,7 +249,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,449 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,450 passing tests.
 
 ## Open questions
 

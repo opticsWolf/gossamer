@@ -21,6 +21,7 @@ members = [
   "discovery-rs",
   "liveness-rs",
   "research-plan-rs",
+  "crawl-kernels-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

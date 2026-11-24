@@ -3,6 +3,7 @@
 //! Network transport and browser processes stay outside the core; these
 //! modules own the deterministic decisions that surround them.
 
+pub mod crawl;
 pub mod fetch;
 pub mod search;
 pub mod liveness;
