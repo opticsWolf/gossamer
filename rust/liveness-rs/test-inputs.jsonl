@@ -1,0 +1,5 @@
+{"fn": "_service_liveness_result", "args": ["https://x", 204, null]}
+{"fn": "_service_liveness_result", "args": ["https://x", 500, null]}
+{"fn": "_service_liveness_result", "args": ["https://x", null, "boom"]}
+{"fn": "_service_liveness_result", "args": ["https://example.com", 200, null]}
+{"fn": "_service_liveness_result", "args": ["https://example.com", null, "boom"]}

@@ -1,0 +1,42 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/liveness.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "liveness-rs",
+  "exports": [
+    {
+      "name": "_service_liveness_result",
+      "file": "gossamer/liveness.py",
+      "line": 120,
+      "params": [
+        {
+          "name": "url",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "http_status",
+          "ts_type": "number",
+          "optional": true,
+          "rest": false
+        },
+        {
+          "name": "error",
+          "ts_type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

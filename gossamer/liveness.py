@@ -136,6 +136,9 @@ def check_liveness(
             return _http_probe(u, t, method=probe_method)
 
     http_status, error = fn(url, timeout)
+    return _service_liveness_result(url, http_status, error)
+
+def _service_liveness_result(url, http_status, error):
     if error is not None:
         return {
             "url": url,
@@ -151,3 +154,26 @@ def check_liveness(
         "alive": alive,
         "http_status": http_status,
     }
+
+# >>> rust-anything: liveness-rs is on. `rust-anything disable ../rust/liveness-rs` removes this block.
+def _rust_anything_liveness_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_LIVENESS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/liveness-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("liveness_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_liveness_result"]})
+
+
+_rust_anything_liveness_rs()
+del _rust_anything_liveness_rs
+# <<< rust-anything: liveness-rs

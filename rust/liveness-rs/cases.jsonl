@@ -1,0 +1,5 @@
+{"fn": "_service_liveness_result", "args": ["https://x", 204, null], "ok": {"url": "https://x", "status": "ok", "alive": true, "http_status": 204}}
+{"fn": "_service_liveness_result", "args": ["https://x", 500, null], "ok": {"url": "https://x", "status": "unreachable", "alive": false, "http_status": 500}}
+{"fn": "_service_liveness_result", "args": ["https://x", null, "boom"], "ok": {"url": "https://x", "status": "error", "alive": false, "http_status": null, "error": "boom"}}
+{"fn": "_service_liveness_result", "args": ["https://example.com", 200, null], "ok": {"url": "https://example.com", "status": "ok", "alive": true, "http_status": 200}}
+{"fn": "_service_liveness_result", "args": ["https://example.com", null, "boom"], "ok": {"url": "https://example.com", "status": "error", "alive": false, "http_status": null, "error": "boom"}}

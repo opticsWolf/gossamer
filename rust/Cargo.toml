@@ -19,6 +19,7 @@ members = [
   "guard-service-rs",
   "tool-check-rs",
   "discovery-rs",
+  "liveness-rs",
   "research-plan-rs",
   "port-error",
   "skills-rs",
