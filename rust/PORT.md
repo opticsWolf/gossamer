@@ -96,6 +96,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Provider rate-state header parsing (done 2026-11-23)
+
+- `_rate_state_from_headers` now delegates to
+  `gossamer::providers::base::rate_state_from_headers`; the returned payload
+  is rebuilt into the existing `RateState` object so callers can still mutate
+  `rps`/`exhausted`.
+- Binding: extended `rust/research-service-rs` to 6/6 cases; gate passed.
+- Restored the `max_results=0` PyO3 default after `refresh`.
+- Full pytest: 11449 passed / 36 skipped; app replay 43/43.
+
 ### Per-domain throttle gap (done 2026-11-23)
 
 - `_rate_limit_domain` now delegates the throttle gap/sleep decision to
@@ -231,7 +241,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,448 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,449 passing tests.
 
 ## Open questions
 

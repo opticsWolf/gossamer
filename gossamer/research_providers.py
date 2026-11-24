@@ -829,46 +829,15 @@ class CrossrefAdapter(ResourceAdapter):
 # ────────────────────────────────────────────────────────────────
 
 def _rate_state_from_headers(headers, default_rps=None):
-    """Build a :class:`RateState` from ``X-RateLimit-*`` style headers.
-
-    Handles both the ``X-RateLimit-*`` (GitHub) and ``X-Rate-Limit-*``
-    (Crossref) families. Missing fields fall back to ``default_rps`` /
-    ``None`` so the budget report stays honest rather than guessing.
-    """
-
-    def _get(*names):
-        for n in names:
-            v = headers.get(n)
-            if v is not None:
-                return v
-        return None
-
-    remaining = _get("X-RateLimit-Remaining", "X-Rate-Limit-Remaining")
-    limit = _get("X-RateLimit-Limit", "X-Rate-Limit-Limit")
-    reset = _get("X-RateLimit-Reset", "X-Rate-Limit-Reset")
-    retry_after = _get("Retry-After")
-    state = RateState(retry_after=float(retry_after) if retry_after else None)
-    if limit is not None:
-        try:
-            state.rps = float(limit)
-        except ValueError:
-            state.rps = default_rps
-    elif default_rps is not None:
-        state.rps = default_rps
-    if remaining is not None:
-        try:
-            state.remaining = int(remaining)
-        except ValueError:
-            pass
-    if reset is not None:
-        try:
-            # Header may be "remaining seconds" (Crossref) or an epoch
-            # unix timestamp (GitHub); the coordinator only reads it for
-            # budget reports.
-            state.reset_seconds = int(reset)
-        except ValueError:
-            pass
-    return state
+    """Build a :class:`RateState` from ``X-RateLimit-*`` style headers."""
+    data = _service_rate_state_from_headers(dict(headers), default_rps)
+    return RateState(
+        rps=data["rps_limit"],
+        remaining=data["remaining"],
+        reset_seconds=data["reset_seconds"],
+        retry_after=data["retry_after"],
+        exhausted=data["exhausted"],
+    )
 
 # ────────────────────────────────────────────────────────────────
 # arXiv Atom (1.0) helpers
@@ -3972,3 +3941,42 @@ def _rust_anything_research_kernels_rs():
 _rust_anything_research_kernels_rs()
 del _rust_anything_research_kernels_rs
 # <<< rust-anything: research-kernels-rs
+
+def _service_rate_state_from_headers(headers, default_rps):
+    def get(*names):
+        for name in names:
+            value = headers.get(name)
+            if value is not None:
+                return value
+        return None
+
+    retry_after = get("Retry-After")
+    state = {
+        "rps_limit": None,
+        "remaining": None,
+        "reset_seconds": None,
+        "retry_after": float(retry_after) if retry_after else None,
+        "exhausted": False,
+    }
+    limit = get("X-RateLimit-Limit", "X-Rate-Limit-Limit")
+    if limit is not None:
+        try:
+            state["rps_limit"] = float(limit)
+        except ValueError:
+            state["rps_limit"] = default_rps
+    elif default_rps is not None:
+        state["rps_limit"] = default_rps
+    remaining = get("X-RateLimit-Remaining", "X-Rate-Limit-Remaining")
+    if remaining is not None:
+        try:
+            state["remaining"] = int(remaining)
+        except ValueError:
+            pass
+    reset = get("X-RateLimit-Reset", "X-Rate-Limit-Reset")
+    if reset is not None:
+        try:
+            state["reset_seconds"] = int(reset)
+        except ValueError:
+            pass
+    return state
+

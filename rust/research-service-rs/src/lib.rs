@@ -44,7 +44,7 @@ fn service_normalize_research_inner(
     Ok(out)
 }
 
-/// `serviceNormalizeResearch`.
+/// `_service_normalize_research`.
 #[pyfunction]
 #[pyo3(name = "_service_normalize_research", signature = (records, max_results=0))]
 fn service_normalize_research(
@@ -70,7 +70,7 @@ fn service_research_order_inner(
     Ok(out)
 }
 
-/// `serviceResearchOrder`.
+/// `_service_research_order`.
 #[pyfunction]
 #[pyo3(name = "_service_research_order", signature = (providers, preferred))]
 fn service_research_order(
@@ -80,10 +80,33 @@ fn service_research_order(
     service_research_order_inner(providers, preferred).map_err(error)
 }
 
+fn service_rate_state_from_headers_inner(
+    headers: Bound<'_, PyAny>,
+    default_rps: Option<f64>,
+) -> Result<Value, String> {
+    let headers: Value = crate::pyconv::FromPy::from_py(&headers)?;
+    let out = port::service_rate_state_from_headers(headers, default_rps)?;
+    Ok(out)
+}
+
+/// `_service_rate_state_from_headers`.
+#[pyfunction]
+#[pyo3(name = "_service_rate_state_from_headers", signature = (headers, default_rps))]
+fn service_rate_state_from_headers(
+    py: Python<'_>,
+    headers: Bound<'_, PyAny>,
+    default_rps: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    service_rate_state_from_headers_inner(headers, default_rps)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_normalize_research, m)?)?;
     m.add_function(wrap_pyfunction!(service_research_order, m)?)?;
+    m.add_function(wrap_pyfunction!(service_rate_state_from_headers, m)?)?;
     Ok(())
 }

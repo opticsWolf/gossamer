@@ -1,3 +1,6 @@
 {"fn": "_service_normalize_research", "args": [[{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"url": "https://example.com/a?x=1", "title": "dup"}, {"title": "no url"}]], "ok": [{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"title": "no url"}]}
 {"fn": "_service_normalize_research", "args": [[{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"url": "https://example.com/a?x=1", "title": "dup"}, {"title": "no url"}], 1], "ok": [{"url": "https://WWW.Example.com/a?x=1", "title": "A"}]}
 {"fn": "_service_research_order", "args": [["google", "duckduckgo"], "ddg"], "ok": ["duckduckgo", "google"]}
+{"fn": "_service_rate_state_from_headers", "args": [{"X-RateLimit-Remaining": "3", "X-RateLimit-Limit": "10", "Retry-After": "2"}, {"$float": "5.0"}], "ok": {"rps_limit": {"$float": "10.0"}, "remaining": 3, "reset_seconds": null, "retry_after": {"$float": "2.0"}, "exhausted": false}}
+{"fn": "_service_rate_state_from_headers", "args": [{"X-Rate-Limit-Limit": "bad", "X-Rate-Limit-Remaining": "x", "X-Rate-Limit-Reset": "20"}, {"$float": "5.0"}], "ok": {"rps_limit": {"$float": "5.0"}, "remaining": null, "reset_seconds": 20, "retry_after": null, "exhausted": false}}
+{"fn": "_service_rate_state_from_headers", "args": [{}, null], "ok": {"rps_limit": null, "remaining": null, "reset_seconds": null, "retry_after": null, "exhausted": false}}

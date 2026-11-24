@@ -84,6 +84,37 @@ pub fn normalize_rate_limit(delay: Option<&Value>, fetch_delay: Option<f64>, jit
     })
 }
 
+/// Parse `X-RateLimit-*` headers into the shared `RateState` payload.
+pub fn rate_state_from_headers(headers: &Value, default_rps: Option<f64>) -> Value {
+    fn get<'a>(headers: &'a Value, names: &[&str]) -> Option<&'a str> {
+        let object = headers.as_object()?;
+        for name in names {
+            if let Some(value) = object.get(*name).and_then(Value::as_str) {
+                return Some(value);
+            }
+        }
+        None
+    }
+    let retry_after = get(headers, &["Retry-After"])
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| *value != 0.0);
+    let limit = get(headers, &["X-RateLimit-Limit", "X-Rate-Limit-Limit"]);
+    let rps = limit
+        .and_then(|value| value.parse::<f64>().ok())
+        .or(default_rps);
+    let remaining = get(headers, &["X-RateLimit-Remaining", "X-Rate-Limit-Remaining"])
+        .and_then(|value| value.parse::<i64>().ok());
+    let reset_seconds = get(headers, &["X-RateLimit-Reset", "X-Rate-Limit-Reset"])
+        .and_then(|value| value.parse::<i64>().ok());
+    serde_json::json!({
+        "rps_limit": rps,
+        "remaining": remaining,
+        "reset_seconds": reset_seconds,
+        "retry_after": retry_after,
+        "exhausted": false,
+    })
+}
+
 /// Per-domain throttle gap and remaining sleep for one fetch.
 pub fn throttle_gap(
     elapsed: f64,

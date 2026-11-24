@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+use gossamer::providers::base as policy;
 use gossamer::service::research as k;
 use serde_json::Value;
 pub fn service_normalize_research(
@@ -15,4 +16,11 @@ pub fn service_research_order(
         &providers,
         preferred.as_ref().and_then(Value::as_str),
     ))
+}
+
+pub fn service_rate_state_from_headers(
+    headers: Value,
+    default_rps: Option<f64>,
+) -> Result<Value, String> {
+    Ok(policy::rate_state_from_headers(&headers, default_rps))
 }
