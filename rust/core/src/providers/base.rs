@@ -84,6 +84,38 @@ pub fn normalize_rate_limit(delay: Option<&Value>, fetch_delay: Option<f64>, jit
     })
 }
 
+/// Decide retry/raise behavior for one failed provider call.
+#[expect(clippy::too_many_arguments, reason = "mirrors the Python retry decorator inputs exactly")]
+pub fn retry_decision(
+    kind: &str,
+    status: Option<i64>,
+    attempt: i64,
+    max_attempts: i64,
+    delay: f64,
+    backoff: f64,
+    retry_after: Option<f64>,
+    jitter_value: f64,
+) -> Value {
+    if kind == "quota" {
+        return serde_json::json!({"action": "raise", "final": false, "cap": false});
+    }
+    let retryable = kind == "transport" || status.is_some_and(retryable_status);
+    if !retryable {
+        return serde_json::json!({"action": "raise", "final": false, "cap": false});
+    }
+    if retry_after.is_some_and(|value| value > MAX_RETRY_AFTER_SECONDS) {
+        return serde_json::json!({"action": "raise", "final": false, "cap": true});
+    }
+    if attempt >= max_attempts - 1 {
+        return serde_json::json!({"action": "raise", "final": true, "cap": false});
+    }
+    let base = delay.max(retry_after.unwrap_or(0.0));
+    let jitter = jitter_value.clamp(0.0, MAX_RETRY_AFTER_SECONDS.min(base * 0.1));
+    let wait = (base + jitter).min(MAX_RETRY_AFTER_SECONDS);
+    let _ = backoff;
+    serde_json::json!({"action": "retry", "wait": wait})
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +126,7 @@ mod tests {
         assert_eq!(retry_wait(0, 3, 1.0, 2.0, None, 0.05), Some(1.05));
         assert_eq!(retry_wait(2, 3, 1.0, 2.0, None, 0.05), None);
         assert_eq!(retry_wait(0, 3, 1.0, 2.0, Some(90.0), 0.0), None);
+        assert_eq!(retry_decision("status", Some(429), 0, 3, 1.0, 2.0, None, 0.05)["action"], "retry");
     }
     #[test]
     fn politeness_and_quota() {

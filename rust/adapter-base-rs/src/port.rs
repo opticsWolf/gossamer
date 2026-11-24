@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 use gossamer::providers::base as k;
+use serde_json::Value;
 pub fn service_retryable_status(status: i64) -> Result<bool, String> {
     Ok(k::retryable_status(status))
 }
@@ -40,6 +41,28 @@ pub fn service_politeness_wait(
         now,
         delay,
         jitter,
+        jitter_value,
+    ))
+}
+
+pub fn service_retry_plan(
+    kind: String,
+    status: Option<i64>,
+    attempt: i64,
+    max_attempts: i64,
+    delay: f64,
+    backoff: f64,
+    retry_after: Option<f64>,
+    jitter_value: f64,
+) -> Result<Value, String> {
+    Ok(k::retry_decision(
+        &kind,
+        status,
+        attempt,
+        max_attempts,
+        delay,
+        backoff,
+        retry_after,
         jitter_value,
     ))
 }

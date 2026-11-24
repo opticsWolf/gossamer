@@ -177,38 +177,46 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
-                except QuotaExhaustedError:
-                    # A hard local quota stop must never be retried.
-                    raise
                 except Exception as e:
-                    if not _is_retryable(e) or attempt == max_attempts - 1:
-                        if _is_retryable(e) and attempt == max_attempts - 1:
-                            logger.error(
-                                "Function %s failed after %d attempts: %s",
-                                func.__name__, max_attempts, e
-                            )
-                        raise
-
+                    kind = "quota" if isinstance(e, QuotaExhaustedError) else (
+                        "status" if isinstance(e, httpx.HTTPStatusError) else (
+                            "transport" if isinstance(e, httpx.TransportError) else "other"
+                        )
+                    )
+                    status = (
+                        e.response.status_code
+                        if isinstance(e, httpx.HTTPStatusError) else None
+                    )
                     retry_after = (
                         retry_after_seconds(e)
-                        if isinstance(e, httpx.HTTPStatusError)
-                        else None
+                        if isinstance(e, httpx.HTTPStatusError) else None
                     )
-                    if retry_after is not None and retry_after > _MAX_RETRY_AFTER_SECONDS:
+                    cap_jitter = max(_delay, retry_after or 0.0)
+                    jitter = random.uniform(0.0, min(0.25, cap_jitter * 0.1))
+                    decision = _service_retry_plan(
+                        kind, status, attempt, max_attempts, _delay, backoff,
+                        retry_after, jitter,
+                    )
+                    if decision["action"] == "retry":
+                        wait = decision["wait"]
+                        logger.warning(
+                            "Attempt %d/%d for %s failed: %s. Retrying in %.1fs",
+                            attempt + 1, max_attempts, func.__name__, e, wait
+                        )
+                        time.sleep(wait)
+                        _delay *= backoff
+                        continue
+                    if decision["cap"]:
                         logger.warning(
                             "Not retrying %s: Retry-After %.1fs exceeds the %.0fs cap",
                             func.__name__, retry_after, _MAX_RETRY_AFTER_SECONDS,
                         )
-                        raise
-                    wait = max(_delay, retry_after or 0.0)
-                    jitter = random.uniform(0.0, min(0.25, wait * 0.1))
-                    wait = min(_MAX_RETRY_AFTER_SECONDS, wait + jitter)
-                    logger.warning(
-                        "Attempt %d/%d for %s failed: %s. Retrying in %.1fs",
-                        attempt + 1, max_attempts, func.__name__, e, wait
-                    )
-                    time.sleep(wait)
-                    _delay *= backoff
+                    elif decision["final"]:
+                        logger.error(
+                            "Function %s failed after %d attempts: %s",
+                            func.__name__, max_attempts, e
+                        )
+                    raise
         return wrapper
     return decorator
 
@@ -947,6 +955,10 @@ def _service_retry_wait(attempt, max_attempts, delay, backoff, retry_after, jitt
 
 
 def _service_quota_message(name, used, quota, window):
+    if not isinstance(name, str):
+        raise TypeError(
+            f"'{type(name).__name__}' object is not an instance of 'str'"
+        )
     return (
         f"{name!r} quota exhausted ({used}/{quota} per {window}); "
         "retry after the window resets"
@@ -1028,3 +1040,21 @@ def _rust_anything_caller_kernels_rs():
 _rust_anything_caller_kernels_rs()
 del _rust_anything_caller_kernels_rs
 # <<< rust-anything: caller-kernels-rs
+
+def _service_retry_plan(kind, status, attempt, max_attempts, delay, backoff, retry_after, jitter_value):
+    quota = kind == "quota"
+    retryable = kind == "transport" or (
+        kind == "status" and status in (408, 425, 429) or (
+            kind == "status" and status is not None and 500 <= status < 600
+        )
+    )
+    if quota or not retryable:
+        return {"action": "raise", "final": False, "cap": False}
+    if retry_after is not None and retry_after > 60.0:
+        return {"action": "raise", "final": False, "cap": True}
+    if attempt >= max_attempts - 1:
+        return {"action": "raise", "final": True, "cap": False}
+    base = max(delay, retry_after or 0.0)
+    jitter = max(0.0, min(jitter_value, min(0.25, base * 0.1)))
+    return {"action": "retry", "wait": min(60.0, base + jitter)}
+

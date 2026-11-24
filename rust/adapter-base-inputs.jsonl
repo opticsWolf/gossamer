@@ -1,1 +1,2 @@
 {"fn":"_service_retry_wait","args":["bad",3,1.0,2.0,null,0.0]}
+{"fn":"_service_quota_message","args":[1,2,3,"day"]}

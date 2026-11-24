@@ -4,8 +4,15 @@
 #![allow(clippy::too_many_arguments)]
 
 use pyo3::prelude::*;
+use serde_json::Value;
 
+pub mod js;
 pub mod port;
+pub mod pyconv;
+pub mod pynum;
+
+#[allow(unused_imports)]
+use pynum::Num;
 
 fn error(message: String) -> PyErr {
     use pyo3::exceptions as e;
@@ -122,6 +129,57 @@ fn service_politeness_wait(
     service_politeness_wait_inner(last_search, now, delay, jitter, jitter_value).map_err(error)
 }
 
+fn service_retry_plan_inner(
+    kind: String,
+    status: Option<i64>,
+    attempt: i64,
+    max_attempts: i64,
+    delay: f64,
+    backoff: f64,
+    retry_after: Option<f64>,
+    jitter_value: f64,
+) -> Result<Value, String> {
+    let out = port::service_retry_plan(
+        kind,
+        status,
+        attempt,
+        max_attempts,
+        delay,
+        backoff,
+        retry_after,
+        jitter_value,
+    )?;
+    Ok(out)
+}
+
+/// `_service_retry_plan`.
+#[pyfunction]
+#[pyo3(name = "_service_retry_plan", signature = (kind, status, attempt, max_attempts, delay, backoff, retry_after, jitter_value))]
+fn service_retry_plan(
+    py: Python<'_>,
+    kind: String,
+    status: Option<i64>,
+    attempt: i64,
+    max_attempts: i64,
+    delay: f64,
+    backoff: f64,
+    retry_after: Option<f64>,
+    jitter_value: f64,
+) -> PyResult<Py<PyAny>> {
+    service_retry_plan_inner(
+        kind,
+        status,
+        attempt,
+        max_attempts,
+        delay,
+        backoff,
+        retry_after,
+        jitter_value,
+    )
+    .map_err(error)
+    .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -129,5 +187,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_retry_wait, m)?)?;
     m.add_function(wrap_pyfunction!(service_quota_message, m)?)?;
     m.add_function(wrap_pyfunction!(service_politeness_wait, m)?)?;
+    m.add_function(wrap_pyfunction!(service_retry_plan, m)?)?;
     Ok(())
 }

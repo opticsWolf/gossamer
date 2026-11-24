@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Retry decision policy (done 2026-11-23)
+
+- `gossamer::providers::base::retry_decision` now owns the retry/raise/cap
+  decision for the `@retry` decorator in `gossamer/search_providers.py`.
+- Binding: extended `rust/adapter-base-rs` to 14/14 cases; gate passed.
+- Full pytest: 11443 passed / 36 skipped; app replay 43/43.
+
 ### Research request planning (done 2026-11-23)
 
 - `gossamer::service::research::research_plan` owns topic validation,
@@ -190,7 +197,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,442 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,443 passing tests.
 
 ## Open questions
 

@@ -91,5 +91,6 @@ _service_retryable_status = _native._service_retryable_status
 _service_retry_wait = _native._service_retry_wait
 _service_quota_message = _native._service_quota_message
 _service_politeness_wait = _native._service_politeness_wait
+_service_retry_plan = _native._service_retry_plan
 
-__all__ = ['_service_retryable_status', '_service_retry_wait', '_service_quota_message', '_service_politeness_wait']
+__all__ = ['_service_retryable_status', '_service_retry_wait', '_service_quota_message', '_service_politeness_wait', '_service_retry_plan']
