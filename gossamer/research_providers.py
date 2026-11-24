@@ -1865,17 +1865,7 @@ def _json_fallback(record_id):
     — the same JSON-string boundary the whole port uses (cf. NaN
     payloads, lone surrogates).
     """
-    if record_id is None:
-        return None, None
-    if isinstance(record_id, str):
-        return record_id, None
-    rid = str(record_id)
-    try:
-        probe = json.dumps(record_id, allow_nan=False)
-        fallback_json = None if isinstance(record_id, tuple) else probe
-    except (TypeError, ValueError):
-        fallback_json = None
-    return rid, fallback_json
+    return _service_json_fallback(record_id)
 
 
 # Backward-compatible alias (M12 name).
@@ -3941,3 +3931,44 @@ def _rust_anything_research_service_rs():
 _rust_anything_research_service_rs()
 del _rust_anything_research_service_rs
 # <<< rust-anything: research-service-rs
+
+
+def _service_json_fallback(record_id):
+    if record_id is None:
+        return None, None
+    if isinstance(record_id, str):
+        return record_id, None
+    rid = str(record_id)
+    try:
+        probe = json.dumps(record_id, allow_nan=False)
+    except (TypeError, ValueError):
+        probe = None
+    fallback = None if isinstance(record_id, tuple) else probe
+    rendered, value = _service_json_fallback_decision(rid, probe, isinstance(record_id, tuple))
+    return rendered, value
+
+
+def _service_json_fallback_decision(rid, probe, is_tuple):
+    return [rid, None if is_tuple else probe]
+# >>> rust-anything: research-kernels-rs is on. `rust-anything disable ../rust/research-kernels-rs` removes this block.
+def _rust_anything_research_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESEARCH_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/research-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("research_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_json_fallback_decision"]})
+
+
+_rust_anything_research_kernels_rs()
+del _rust_anything_research_kernels_rs
+# <<< rust-anything: research-kernels-rs

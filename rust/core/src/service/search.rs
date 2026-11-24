@@ -107,6 +107,25 @@ pub fn search_cache_key(query: Option<&str>, max_results: i64, provider: Option<
     crate::miscutils::sha256_hex(&material)
 }
 
+/// Provider indices in preferred-first order.
+pub fn provider_indices(provider_name: Option<&str>, names: &Value) -> Vec<usize> {
+    let ordered = resolve_order(provider_name, names);
+    let mut used = vec![false; names.as_array().map_or(0, Vec::len)];
+    let mut out = Vec::new();
+    for wanted in ordered {
+        if let Some(items) = names.as_array() {
+            for (index, value) in items.iter().enumerate() {
+                if !used[index] && value.as_str() == Some(wanted.as_str()) {
+                    used[index] = true;
+                    out.push(index);
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,3 +148,4 @@ mod tests {
         assert!(fallback_note(Some("bing"), &names).is_some());
     }
 }
+

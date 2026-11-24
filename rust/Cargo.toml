@@ -15,6 +15,7 @@ members = [
   "tool-bodies-rs",
   "caller-kernels-rs",
   "stats-rs",
+  "research-kernels-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

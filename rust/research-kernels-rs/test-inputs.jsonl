@@ -1,0 +1,5 @@
+{"fn": "_service_json_fallback_decision", "args": ["5", "5", false]}
+{"fn": "_service_json_fallback_decision", "args": ["(1, 2)", "[1, 2]", true]}
+{"fn": "_service_json_fallback_decision", "args": ["{'a': 1}", "{\"a\": 1}", false]}
+{"fn": "_service_provider_indices", "args": ["ddg", ["google", "duckduckgo", "bing"]]}
+{"fn": "_service_provider_indices", "args": [null, ["google", "duckduckgo", "bing"]]}

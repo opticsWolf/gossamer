@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Research/search caller kernels (done 2026-11-23)
+
+- `gossamer::jsonfmt::json_fallback` and `gossamer::service::search::provider_indices`
+  now back `_json_fallback`, `_dedup_results` and `_resolve_providers`.
+- Binding: `rust/research-kernels-rs` (5/5); gate passed; bench 1.38x.
+- Full Python suite: 11436 passed / 36 skipped.
+
 ### FetchStats payload (done 2026-11-23)
 
 - `gossamer::stats::fetch_stats_dict` owns the exact `FetchStats.to_dict()`
@@ -146,7 +153,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,434 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,436 passing tests.
 
 ## Open questions
 

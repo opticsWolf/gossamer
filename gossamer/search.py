@@ -287,17 +287,7 @@ class SearchService:
 
         Results without a usable URL are all kept (they cannot be deduped).
         """
-        seen: set = set()
-        out: list = []
-        for r in results:
-            if isinstance(r, dict):
-                key = self._result_url_key(r)
-                if key:
-                    if key in seen:
-                        continue
-                    seen.add(key)
-            out.append(r)
-        return out
+        return _service_dedup_results(results)
 
     def _search_cache_key(
         self, query: str, max_results: int, provider: Optional[str]
@@ -377,18 +367,10 @@ class SearchService:
         if not provider_name:
             return list(self._tb.providers)
 
-        canonical = resolve_provider_name(provider_name)
-        if canonical:
-            # Match on the provider's explicit canonical name (M2: the old
-            # __class__.__name__ derivation made aliases like "ddg" and
-            # BrowserOxideSearchProvider unselectable).
-            matched = [
-                p for p in self._tb.providers
-                if getattr(p, "name", None) == canonical
-            ]
-            if matched:
-                others = [p for p in self._tb.providers if p not in matched]
-                return matched + others
+        names = [getattr(p, "name", None) for p in self._tb.providers]
+        indices = _service_provider_indices(provider_name, names)
+        if indices:
+            return [self._tb.providers[i] for i in indices]
 
         # A recognized name whose provider is not registered is ordinary
         # failover: log it so an operator can see the substitution, and
@@ -527,3 +509,37 @@ def _rust_anything_caller_kernels_rs():
 _rust_anything_caller_kernels_rs()
 del _rust_anything_caller_kernels_rs
 # <<< rust-anything: caller-kernels-rs
+
+
+def _service_provider_indices(provider_name, names):
+    ordered = _service_resolve_order(provider_name, names)
+    used, out = set(), []
+    for wanted in ordered:
+        for index, name in enumerate(names):
+            if index not in used and name == wanted:
+                used.add(index)
+                out.append(index)
+                break
+    return out
+# >>> rust-anything: research-kernels-rs is on. `rust-anything disable ../rust/research-kernels-rs` removes this block.
+def _rust_anything_research_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESEARCH_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/research-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("research_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_provider_indices"]})
+
+
+_rust_anything_research_kernels_rs()
+del _rust_anything_research_kernels_rs
+# <<< rust-anything: research-kernels-rs
