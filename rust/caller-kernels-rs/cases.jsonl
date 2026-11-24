@@ -1,4 +1,5 @@
 {"fn": "_service_search_cache_key", "args": ["x", 5, 123, false], "error": "AttributeError: 'int' object has no attribute 'lower'"}
+{"fn": "_service_web_search_route", "args": [123], "error": "TypeError: 'int' object is not an instance of 'bool'"}
 {"fn": "_service_inspect_request", "args": ["https://x.test", "auto", null, -1, 0, false, "dir"], "ok": {"url": "https://x.test", "use_smart": "auto", "query": null, "offset": 0, "max_chunks": 1, "route": "store", "store_dir": "dir"}}
 {"fn": "_service_extract_validation", "args": ["bad", false, false, false], "ok": {"error": "tables_as must be 'markdown', 'csv' or 'json'"}}
 {"fn": "_service_extract_validation", "args": ["json", true, false, false], "ok": {"error": "include_images=True requires store=True; images need a directory to live in"}}
@@ -12,3 +13,6 @@
 {"fn": "_service_web_search_route", "args": [false], "ok": "research"}
 {"fn": "_service_search_cache_key", "args": ["  Rust  LANG ", 5, "ddg", false], "ok": "1a8570847821d03d61f4a47abba6f36d8486fc8e7e0efe5b40169f5eaba1e9e8"}
 {"fn": "_service_search_cache_key", "args": ["rust lang", 5, "duckduckgo", false], "ok": "1a8570847821d03d61f4a47abba6f36d8486fc8e7e0efe5b40169f5eaba1e9e8"}
+{"fn": "_service_throttle_gap", "args": [0.2, 0.5, 0.1, null], "ok": {"gap": 0.6, "sleep": 0.39999999999999997}}
+{"fn": "_service_throttle_gap", "args": [{"$float": "1.0"}, {"$float": "0.0"}, 0.3, null], "ok": {"gap": {"$float": "0.0"}, "sleep": {"$float": "0.0"}}}
+{"fn": "_service_throttle_gap", "args": [0.1, 0.2, 0.05, {"$float": "2.0"}], "ok": {"gap": {"$float": "2.0"}, "sleep": 1.9}}

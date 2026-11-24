@@ -477,6 +477,10 @@ del _rust_anything_search_service_rs
 
 
 def _service_web_search_route(search_only):
+    if not isinstance(search_only, bool):
+        raise TypeError(
+            f"'{type(search_only).__name__}' object is not an instance of 'bool'"
+        )
     return "search_web" if search_only else "research"
 
 

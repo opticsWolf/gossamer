@@ -94,5 +94,6 @@ _service_normalize_rate_limit = _native._service_normalize_rate_limit
 _service_web_search_route = _native._service_web_search_route
 _service_search_cache_key = _native._service_search_cache_key
 _service_doc_extract_validation = _native._service_doc_extract_validation
+_service_throttle_gap = _native._service_throttle_gap
 
-__all__ = ['_service_inspect_request', '_service_extract_validation', '_service_batch_plan', '_service_normalize_rate_limit', '_service_web_search_route', '_service_search_cache_key', '_service_doc_extract_validation']
+__all__ = ['_service_inspect_request', '_service_extract_validation', '_service_batch_plan', '_service_normalize_rate_limit', '_service_web_search_route', '_service_search_cache_key', '_service_doc_extract_validation', '_service_throttle_gap']

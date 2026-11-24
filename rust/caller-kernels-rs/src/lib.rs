@@ -212,6 +212,31 @@ fn service_doc_extract_validation(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_throttle_gap_inner(
+    elapsed: f64,
+    fetch_interval: f64,
+    jitter_value: f64,
+    crawl_delay: Option<f64>,
+) -> Result<Value, String> {
+    let out = port::service_throttle_gap(elapsed, fetch_interval, jitter_value, crawl_delay)?;
+    Ok(out)
+}
+
+/// `_service_throttle_gap`.
+#[pyfunction]
+#[pyo3(name = "_service_throttle_gap", signature = (elapsed, fetch_interval, jitter_value, crawl_delay))]
+fn service_throttle_gap(
+    py: Python<'_>,
+    elapsed: f64,
+    fetch_interval: f64,
+    jitter_value: f64,
+    crawl_delay: Option<f64>,
+) -> PyResult<Py<PyAny>> {
+    service_throttle_gap_inner(elapsed, fetch_interval, jitter_value, crawl_delay)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -222,5 +247,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_web_search_route, m)?)?;
     m.add_function(wrap_pyfunction!(service_search_cache_key, m)?)?;
     m.add_function(wrap_pyfunction!(service_doc_extract_validation, m)?)?;
+    m.add_function(wrap_pyfunction!(service_throttle_gap, m)?)?;
     Ok(())
 }

@@ -11,3 +11,6 @@
 {"fn": "_service_web_search_route", "args": [false]}
 {"fn": "_service_search_cache_key", "args": ["  Rust  LANG ", 5, "ddg", false]}
 {"fn": "_service_search_cache_key", "args": ["rust lang", 5, "duckduckgo", false]}
+{"fn": "_service_throttle_gap", "args": [0.2, 0.5, 0.1, null]}
+{"fn": "_service_throttle_gap", "args": [{"$float": "1.0"}, {"$float": "0.0"}, 0.3, null]}
+{"fn": "_service_throttle_gap", "args": [0.1, 0.2, 0.05, {"$float": "2.0"}]}

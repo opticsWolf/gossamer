@@ -84,6 +84,23 @@ pub fn normalize_rate_limit(delay: Option<&Value>, fetch_delay: Option<f64>, jit
     })
 }
 
+/// Per-domain throttle gap and remaining sleep for one fetch.
+pub fn throttle_gap(
+    elapsed: f64,
+    fetch_interval: f64,
+    jitter_value: f64,
+    crawl_delay: Option<f64>,
+) -> Value {
+    let mut gap = fetch_interval;
+    if gap > 0.0 {
+        gap += jitter_value.max(0.0);
+    }
+    if crawl_delay.is_some_and(|delay| delay > gap) {
+        gap = crawl_delay.unwrap_or(gap);
+    }
+    serde_json::json!({"gap": gap, "sleep": (gap - elapsed).max(0.0)})
+}
+
 /// UTC quota-window label for a caller-supplied ISO-8601 timestamp.
 pub fn quota_period(window: &str, now_iso: &str) -> String {
     let len = if window == "day" { 10 } else { 7 };

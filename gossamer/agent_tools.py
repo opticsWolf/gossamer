@@ -424,13 +424,16 @@ class WebResearcherToolbox:
             # inserted an entry on every read of an unseen domain.
             last_seen = self._domain_last_seen.get(domain, 0.0)
             elapsed = time.time() - last_seen
-            gap = self._fetch_interval
-            if gap > 0:
-                gap += random.uniform(0.0, self._fetch_jitter)
-            if crawl_delay is not None and crawl_delay > gap:
-                gap = crawl_delay
-            if elapsed < gap:
-                time.sleep(gap - elapsed)
+            jitter_value = (
+                random.uniform(0.0, self._fetch_jitter)
+                if self._fetch_interval > 0
+                else 0.0
+            )
+            decision = _service_throttle_gap(
+                elapsed, self._fetch_interval, jitter_value, crawl_delay
+            )
+            if decision["sleep"] > 0:
+                time.sleep(decision["sleep"])
             self._domain_last_seen[domain] = time.time()
             self._domain_last_seen.move_to_end(domain)
             # M7: keep the map bounded (evict least-recently-seen).
@@ -1582,3 +1585,12 @@ def _rust_anything_research_plan_rs():
 _rust_anything_research_plan_rs()
 del _rust_anything_research_plan_rs
 # <<< rust-anything: research-plan-rs
+
+def _service_throttle_gap(elapsed, fetch_interval, jitter_value, crawl_delay):
+    gap = fetch_interval
+    if gap > 0:
+        gap += jitter_value
+    if crawl_delay is not None and crawl_delay > gap:
+        gap = crawl_delay
+    return {"gap": gap, "sleep": max(0.0, gap - elapsed)}
+

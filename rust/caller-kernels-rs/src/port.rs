@@ -86,3 +86,17 @@ pub fn service_doc_extract_validation(
         store,
     ))
 }
+
+pub fn service_throttle_gap(
+    elapsed: f64,
+    fetch_interval: f64,
+    jitter_value: f64,
+    crawl_delay: Option<f64>,
+) -> Result<Value, String> {
+    Ok(base::throttle_gap(
+        elapsed,
+        fetch_interval,
+        jitter_value,
+        crawl_delay,
+    ))
+}
