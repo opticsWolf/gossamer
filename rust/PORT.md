@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### MCP tool-body kernels (done 2026-11-23)
+
+- `gossamer::mcp_dispatch` now owns inspection routing, the unsupported
+  `tables_as` error payload, and tool-argument default merging from the
+  frozen 12-tool schema.
+- Binding crate: `rust/tool-bodies-rs` (6/6); gate passed; bench 0.13x
+  (correctness port only).
+- Still in Python: real tool bodies, HTTP/browser calls and MCP transport.
+
 ### Units 4b, 5, 6-8 and provider-policy slice (done 2026-11-23)
 
 - `gossamer::service::search`, `gossamer::service::research`,
@@ -116,7 +125,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,424 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,427 passing tests.
 
 ## Open questions
 

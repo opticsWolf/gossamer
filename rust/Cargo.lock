@@ -3170,6 +3170,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009dbb7700f11c55ef83aebbe4c0e9cf1f1ac0844bd8d6f00dc38f302026e13a"
 
 [[package]]
+name = "tool-bodies-rs"
+version = "0.1.0"
+dependencies = [
+ "gossamer-web",
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tower"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

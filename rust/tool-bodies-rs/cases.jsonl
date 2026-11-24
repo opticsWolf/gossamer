@@ -1,0 +1,6 @@
+{"fn": "_service_inspect_route", "args": [true, "dir"], "ok": "structured"}
+{"fn": "_service_inspect_route", "args": [false, "dir"], "ok": "store"}
+{"fn": "_service_inspect_route", "args": [false, null], "ok": "markdown"}
+{"fn": "_service_tables_as_error", "args": [], "ok": {"error": "tables_as must be 'markdown', 'csv' or 'json'"}}
+{"fn": "_service_tool_arguments", "args": ["web_search", {"query": "rust"}], "ok": {"search_only": false, "max_results": 5, "depth": 5, "max_tokens": 0, "provider": "duckduckgo", "use_smart": "auto", "query": "rust"}}
+{"fn": "_service_tool_arguments", "args": ["bogus", {}], "ok": null}

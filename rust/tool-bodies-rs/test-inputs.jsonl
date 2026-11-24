@@ -1,0 +1,6 @@
+{"fn": "_service_inspect_route", "args": [true, "dir"]}
+{"fn": "_service_inspect_route", "args": [false, "dir"]}
+{"fn": "_service_inspect_route", "args": [false, null]}
+{"fn": "_service_tables_as_error", "args": []}
+{"fn": "_service_tool_arguments", "args": ["web_search", {"query": "rust"}]}
+{"fn": "_service_tool_arguments", "args": ["bogus", {}]}

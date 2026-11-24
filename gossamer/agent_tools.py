@@ -1415,3 +1415,46 @@ def _rust_anything_orchestration_rs():
 _rust_anything_orchestration_rs()
 del _rust_anything_orchestration_rs
 # <<< rust-anything: orchestration-rs
+
+
+# ── Rust MCP tool-body kernels ─────────────────────────────────
+def _service_inspect_route(structured, store_dir):
+    if structured:
+        return "structured"
+    if store_dir:
+        return "store"
+    return "markdown"
+
+
+def _service_tables_as_error():
+    return {"error": "tables_as must be 'markdown', 'csv' or 'json'"}
+
+
+def _service_tool_arguments(name, arguments):
+    for spec in TOOL_REGISTRY:
+        if spec.name != name:
+            continue
+        return spec.kwargs(arguments)
+    return None
+# >>> rust-anything: tool-bodies-rs is on. `rust-anything disable ../rust/tool-bodies-rs` removes this block.
+def _rust_anything_tool_bodies_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_TOOL_BODIES") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/tool-bodies-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("tool_bodies_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_inspect_route", "_service_tables_as_error", "_service_tool_arguments"]})
+
+
+_rust_anything_tool_bodies_rs()
+del _rust_anything_tool_bodies_rs
+# <<< rust-anything: tool-bodies-rs

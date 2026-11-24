@@ -1,0 +1,71 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/agent_tools.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "tool-bodies-rs",
+  "exports": [
+    {
+      "name": "_service_inspect_route",
+      "file": "gossamer/agent_tools.py",
+      "line": 1800,
+      "params": [
+        {
+          "name": "structured",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "store_dir",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_tables_as_error",
+      "file": "gossamer/agent_tools.py",
+      "line": 1820,
+      "params": [],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_tool_arguments",
+      "file": "gossamer/agent_tools.py",
+      "line": 1840,
+      "params": [
+        {
+          "name": "name",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "arguments",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}
