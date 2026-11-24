@@ -96,16 +96,27 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Units 4b, 5, 6-8 and provider-policy slice (done 2026-11-23)
+
+- `gossamer::service::search`, `gossamer::service::research`,
+  `gossamer::mcp_dispatch`, `gossamer::cli_router` and `gossamer::providers::base`
+  now own deterministic orchestration kernels.
+- Thin bindings: `rust/search-service-rs` (5/5), `rust/research-service-rs`
+  (3/3), `rust/orchestration-rs` (4/4), `rust/adapter-base-rs` (7/7).
+- Full Python suite after the provider-policy slice: 11424 passed / 36 skipped.
+- Still in Python: HTTP/browser/provider transport, binary document extraction,
+  MCP transport, full CLI execution, and the browser lane.
+
 ## Current state
 
-- `dev_rustify` at `57d3ef0`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
+- `dev_rustify` after `7b97a2e` plus the provider-policy slice: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
 - Rust owns: `env`/`settings` config resolution (unit 1), documents payload helpers (unit 2), deterministic FetchService kernels (unit 3), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, `cache` maintenance, `categories`, document URL rejection,
   search provider aliases/errors, CLI help/error text, MCP schema constant.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,391 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,424 passing tests.
 
 ## Open questions
 

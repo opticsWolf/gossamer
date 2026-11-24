@@ -930,3 +930,54 @@ def resolve_provider_name(name: str) -> Optional[str]:
     ``None`` when unknown (M2).
     """
     return PROVIDER_NAME_MAP.get(name.lower().strip())
+
+
+# ── Rust provider-policy kernels ───────────────────────────────
+def _service_retryable_status(status):
+    return status in (408, 425, 429) or 500 <= status < 600
+
+
+def _service_retry_wait(attempt, max_attempts, delay, backoff, retry_after, jitter_value):
+    if attempt >= max_attempts - 1:
+        return None
+    if retry_after is not None and retry_after > 60.0:
+        return None
+    base = max(delay, retry_after or 0.0)
+    jitter = max(0.0, min(0.25, base * 0.1, jitter_value))
+    return min(60.0, base + jitter)
+
+
+def _service_quota_message(name, used, quota, window):
+    return (
+        f"{name!r} quota exhausted ({used}/{quota} per {window}); "
+        "retry after the window resets"
+    )
+
+
+def _service_politeness_wait(last_search, now, delay, jitter, jitter_value):
+    if delay <= 0:
+        return 0.0
+    gap = delay + max(0.0, min(jitter, jitter_value))
+    return max(0.0, gap - (now - last_search))
+# >>> rust-anything: adapter-base-rs is on. `rust-anything disable ../rust/adapter-base-rs` removes this block.
+def _rust_anything_adapter_base_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_ADAPTER_BASE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/adapter-base-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("adapter_base_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_quota_message", "_service_politeness_wait"]})
+
+
+_rust_anything_adapter_base_rs()
+del _rust_anything_adapter_base_rs
+# <<< rust-anything: adapter-base-rs

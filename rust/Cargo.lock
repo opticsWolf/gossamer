@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "adapter-base-rs"
+version = "0.1.0"
+dependencies = [
+ "gossamer-web",
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -11,6 +11,7 @@ members = [
   "search-service-rs",
   "research-service-rs",
   "orchestration-rs",
+  "adapter-base-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",
