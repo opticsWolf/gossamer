@@ -1,3 +1,4 @@
+{"fn": "_service_retry_wait", "args": ["bad", 3, 1.0, 2.0, null, 0.0], "error": "TypeError: '>=' not supported between instances of 'str' and 'int'"}
 {"fn": "_service_retryable_status", "args": [429], "ok": true}
 {"fn": "_service_retryable_status", "args": [404], "ok": false}
 {"fn": "_service_retry_wait", "args": [0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05], "ok": 1.05}

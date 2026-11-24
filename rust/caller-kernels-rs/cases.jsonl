@@ -1,0 +1,14 @@
+{"fn": "_service_search_cache_key", "args": ["x", 5, 123, false], "error": "AttributeError: 'int' object has no attribute 'lower'"}
+{"fn": "_service_inspect_request", "args": ["https://x.test", "auto", null, -1, 0, false, "dir"], "ok": {"url": "https://x.test", "use_smart": "auto", "query": null, "offset": 0, "max_chunks": 1, "route": "store", "store_dir": "dir"}}
+{"fn": "_service_extract_validation", "args": ["bad", false, false, false], "ok": {"error": "tables_as must be 'markdown', 'csv' or 'json'"}}
+{"fn": "_service_extract_validation", "args": ["json", true, false, false], "ok": {"error": "include_images=True requires store=True; images need a directory to live in"}}
+{"fn": "_service_extract_validation", "args": ["json", true, true, true], "ok": {"error": "include_images cannot be combined with structured=True; use store=True instead"}}
+{"fn": "_service_extract_validation", "args": ["json", false, false, false], "ok": null}
+{"fn": "_service_batch_plan", "args": [["https://WWW.Example.com/a", "https://example.com/a", "https://example.com/b"], ["https://example.com/b"], [], "auto"], "ok": {"pending": ["https://example.com/a"], "cached": ["https://example.com/b"], "strategy": "auto"}}
+{"fn": "_service_batch_plan", "args": [null, [], [], "auto"], "ok": {"error": "Batch inspection failed: urls is required"}}
+{"fn": "_service_normalize_rate_limit", "args": [{"$float": "2.0"}, {"$float": "1.0"}, 0.5], "ok": {"search_interval": {"$float": "2.0"}, "fetch_interval": {"$float": "1.0"}, "jitter": 0.5, "quota": null, "quota_window": "day"}}
+{"fn": "_service_normalize_rate_limit", "args": [null, null, null], "ok": {"search_interval": {"$float": "1.0"}, "fetch_interval": 0.5, "jitter": {"$float": "0.0"}, "quota": null, "quota_window": "day"}}
+{"fn": "_service_web_search_route", "args": [true], "ok": "search_web"}
+{"fn": "_service_web_search_route", "args": [false], "ok": "research"}
+{"fn": "_service_search_cache_key", "args": ["  Rust  LANG ", 5, "ddg", false], "ok": "1a8570847821d03d61f4a47abba6f36d8486fc8e7e0efe5b40169f5eaba1e9e8"}
+{"fn": "_service_search_cache_key", "args": ["rust lang", 5, "duckduckgo", false], "ok": "1a8570847821d03d61f4a47abba6f36d8486fc8e7e0efe5b40169f5eaba1e9e8"}

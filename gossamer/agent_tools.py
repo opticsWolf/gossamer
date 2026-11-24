@@ -949,7 +949,10 @@ class WebResearcherToolbox:
             relative paths, so the store is self-contained. Mutually with
             ``structured`` (structured output ignores ``store_dir``).
         """
-        if structured:
+        route = _service_inspect_request(
+            url, use_smart, query, offset, max_chunks, structured, store_dir
+        )["route"]
+        if route == "structured":
             return self._doc._inspect_html_structured_impl(url, use_smart)
         return self._fetch._inspect_html_page_impl(
             url, use_smart, query, offset, max_chunks,
@@ -1006,6 +1009,9 @@ class WebResearcherToolbox:
         (default) follows ``fetch_mode`` and falls back to the stealth
         browser for non-text pages.
         """
+        plan = _service_batch_plan(urls, [], [], use_smart)
+        if "error" in plan:
+            return json.dumps(plan, indent=2)
         return self._fetch.batch_inspect_pages_impl(urls, use_smart=use_smart)
 
     async def batch_inspect_pages_async(
@@ -1083,11 +1089,11 @@ class WebResearcherToolbox:
         ``tables_as="markdown"`` for pipe tables or ``"csv"`` for
         comma-separated blocks (one ``## <sheet>`` per sheet).
         """
-        if tables_as not in ("markdown", "csv", "json"):
-            return json.dumps(
-                {"error": "tables_as must be 'markdown', 'csv' or 'json'"},
-                indent=2,
-            )
+        validation_error = _service_extract_validation(
+            tables_as, include_images, structured, store
+        )
+        if validation_error is not None:
+            return json.dumps(validation_error, indent=2)
         return self._doc.extract_document(
             source, pages, structured, store=store, store_dir=store_dir,
             include_images=include_images, tables_as=tables_as,
@@ -1458,3 +1464,72 @@ def _rust_anything_tool_bodies_rs():
 _rust_anything_tool_bodies_rs()
 del _rust_anything_tool_bodies_rs
 # <<< rust-anything: tool-bodies-rs
+
+
+def _service_inspect_request(url, use_smart, query, offset, max_chunks, structured, store_dir):
+    return {
+        "url": url,
+        "use_smart": use_smart,
+        "query": query,
+        "offset": max(0, offset),
+        "max_chunks": max(1, max_chunks),
+        "route": "structured" if structured else ("store" if store_dir else "markdown"),
+        "store_dir": store_dir,
+    }
+
+
+def _service_extract_validation(tables_as, include_images, structured, store):
+    if tables_as not in ("markdown", "csv", "json"):
+        return {"error": "tables_as must be 'markdown', 'csv' or 'json'"}
+    if include_images and not store:
+        return {"error": "include_images=True requires store=True; images need a directory to live in"}
+    if include_images and structured:
+        return {"error": "include_images cannot be combined with structured=True; use store=True instead"}
+    return None
+
+
+def _service_batch_plan(urls, cached_keys, visited_keys, strategy):
+    from gossamer.config import canonical_url
+
+    if urls is None:
+        return {"error": "Batch inspection failed: urls is required"}
+    pending, cached, seen = [], [], set()
+    cached_set = set(cached_keys or [])
+    visited_set = set(visited_keys or [])
+    for raw in urls:
+        try:
+            key = canonical_url(raw, query="drop-tracking")
+        except ValueError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        if key in cached_set:
+            cached.append(key)
+            continue
+        if strategy != "auto" and key in visited_set:
+            continue
+        pending.append(key)
+    return {"pending": pending, "cached": cached, "strategy": strategy}
+# >>> rust-anything: caller-kernels-rs is on. `rust-anything disable ../rust/caller-kernels-rs` removes this block.
+def _rust_anything_caller_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CALLER_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/caller-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("caller_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_inspect_request", "_service_extract_validation", "_service_batch_plan"]})
+
+
+_rust_anything_caller_kernels_rs()
+del _rust_anything_caller_kernels_rs
+# <<< rust-anything: caller-kernels-rs

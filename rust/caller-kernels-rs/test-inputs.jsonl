@@ -1,0 +1,13 @@
+{"fn": "_service_inspect_request", "args": ["https://x.test", "auto", null, -1, 0, false, "dir"]}
+{"fn": "_service_extract_validation", "args": ["bad", false, false, false]}
+{"fn": "_service_extract_validation", "args": ["json", true, false, false]}
+{"fn": "_service_extract_validation", "args": ["json", true, true, true]}
+{"fn": "_service_extract_validation", "args": ["json", false, false, false]}
+{"fn": "_service_batch_plan", "args": [["https://WWW.Example.com/a", "https://example.com/a", "https://example.com/b"], ["https://example.com/b"], [], "auto"]}
+{"fn": "_service_batch_plan", "args": [null, [], [], "auto"]}
+{"fn": "_service_normalize_rate_limit", "args": [{"$float": "2.0"}, {"$float": "1.0"}, 0.5]}
+{"fn": "_service_normalize_rate_limit", "args": [null, null, null]}
+{"fn": "_service_web_search_route", "args": [true]}
+{"fn": "_service_web_search_route", "args": [false]}
+{"fn": "_service_search_cache_key", "args": ["  Rust  LANG ", 5, "ddg", false]}
+{"fn": "_service_search_cache_key", "args": ["rust lang", 5, "duckduckgo", false]}

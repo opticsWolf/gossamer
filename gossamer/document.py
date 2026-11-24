@@ -166,31 +166,11 @@ class DocumentExtractor:
             + ``<stem>.md``; ``include_images=True`` is a documented
             no-op for JATS (remote hrefs, not saved).
         """
-        if tables_as not in ("markdown", "csv", "json"):
-            return json.dumps(
-                {"error": "tables_as must be 'markdown', 'csv' or 'json'"},
-                indent=2,
-            )
-        if include_images and not store:
-            return json.dumps(
-                {
-                    "error": (
-                        "include_images=True requires store=True; images "
-                        "need a directory to live in"
-                    )
-                },
-                indent=2,
-            )
-        if include_images and structured:
-            return json.dumps(
-                {
-                    "error": (
-                        "include_images cannot be combined with "
-                        "structured=True; use store=True instead"
-                    )
-                },
-                indent=2,
-            )
+        validation_error = _service_doc_extract_validation(
+            tables_as, include_images, structured, store
+        )
+        if validation_error is not None:
+            return json.dumps(validation_error, indent=2)
         if structured:
             return self._extract_document_structured_impl(source)
         # JATS-first: pages= with a JATS-resolvable source errors (§3.5).
@@ -1728,3 +1708,35 @@ def _rust_anything_orchestration_rs():
 _rust_anything_orchestration_rs()
 del _rust_anything_orchestration_rs
 # <<< rust-anything: orchestration-rs
+
+
+def _service_doc_extract_validation(tables_as, include_images, structured, store):
+    if tables_as not in ("markdown", "csv", "json"):
+        return {"error": "tables_as must be 'markdown', 'csv' or 'json'"}
+    if include_images and not store:
+        return {"error": "include_images=True requires store=True; images need a directory to live in"}
+    if include_images and structured:
+        return {"error": "include_images cannot be combined with structured=True; use store=True instead"}
+    return None
+# >>> rust-anything: caller-kernels-rs is on. `rust-anything disable ../rust/caller-kernels-rs` removes this block.
+def _rust_anything_caller_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CALLER_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/caller-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("caller_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_doc_extract_validation"]})
+
+
+_rust_anything_caller_kernels_rs()
+del _rust_anything_caller_kernels_rs
+# <<< rust-anything: caller-kernels-rs

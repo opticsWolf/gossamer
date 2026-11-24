@@ -253,26 +253,19 @@ class ResourceAdapter(ABC):
         fetch_delay: Optional[float] = None,
         jitter: Optional[float] = None,
     ) -> None:
-        """Normalize constructor arguments into a RateLimit instance.
-
-        Accepts the legacy ``delay: float`` (search interval only) or a full
-        ``RateLimit``, plus optional ``fetch_delay`` and ``jitter`` overrides.
-        """
-        if isinstance(delay, RateLimit):
-            # M13: keep a private copy — the fetch_delay override below
-            # (and any future mutation) must not leak into a RateLimit
-            # shared with other providers.
-            self.rate_limit = replace(delay)
-        elif delay is not None:
-            self.rate_limit = RateLimit(
-                search_interval=float(delay),
-                jitter=float(jitter) if jitter is not None else 0.0,
-            )
-        else:
-            self.rate_limit = RateLimit()
-        if fetch_delay is not None:
-            self.rate_limit.fetch_interval = float(fetch_delay)
-        # Back-compat attribute consumed by _enforce_delay()
+        """Normalize constructor arguments into a RateLimit instance."""
+        normalized = _service_normalize_rate_limit(
+            vars(delay) if isinstance(delay, RateLimit) else delay,
+            fetch_delay,
+            jitter,
+        )
+        self.rate_limit = RateLimit(
+            search_interval=normalized["search_interval"],
+            fetch_interval=normalized["fetch_interval"],
+            jitter=normalized["jitter"],
+            quota=normalized["quota"],
+            quota_window=normalized["quota_window"],
+        )
         self._delay = self.rate_limit.search_interval
 
     def _reset_quota_if_rolled(self) -> None:
@@ -309,17 +302,23 @@ class ResourceAdapter(ABC):
         quota = self.rate_limit.quota
         if quota is not None and self._quota_used >= quota:
             raise QuotaExhaustedError(
-                f"{self.name!r} quota exhausted "
-                f"({self._quota_used}/{quota} per {self.rate_limit.quota_window}); "
-                f"retry after the window resets"
+                _service_quota_message(
+                    self.name, self._quota_used, quota, self.rate_limit.quota_window
+                )
             )
 
-        gap = self._delay
-        if gap > 0:
-            gap += random.uniform(0.0, self.rate_limit.jitter)
-        elapsed = time.time() - self._last_search
-        if elapsed < gap:
-            time.sleep(gap - elapsed)
+        now = time.time()
+        jitter_value = (
+            random.uniform(0.0, self.rate_limit.jitter)
+            if self._delay > 0
+            else 0.0
+        )
+        wait = _service_politeness_wait(
+            self._last_search, now, self._delay,
+            self.rate_limit.jitter, jitter_value,
+        )
+        if wait > 0:
+            time.sleep(wait)
         self._last_search = time.time()
 
         if quota is not None:
@@ -981,3 +980,51 @@ def _rust_anything_adapter_base_rs():
 _rust_anything_adapter_base_rs()
 del _rust_anything_adapter_base_rs
 # <<< rust-anything: adapter-base-rs
+
+
+def _service_normalize_rate_limit(delay, fetch_delay, jitter):
+    if isinstance(delay, RateLimit):
+        return {
+            "search_interval": delay.search_interval,
+            "fetch_interval": delay.fetch_interval,
+            "jitter": delay.jitter,
+            "quota": delay.quota,
+            "quota_window": delay.quota_window,
+        }
+    if delay is not None:
+        return {
+            "search_interval": float(delay),
+            "fetch_interval": float(fetch_delay) if fetch_delay is not None else 0.5,
+            "jitter": float(jitter) if jitter is not None else 0.0,
+            "quota": None,
+            "quota_window": "day",
+        }
+    return {
+        "search_interval": 1.0,
+        "fetch_interval": float(fetch_delay) if fetch_delay is not None else 0.5,
+        "jitter": float(jitter) if jitter is not None else 0.0,
+        "quota": None,
+        "quota_window": "day",
+    }
+# >>> rust-anything: caller-kernels-rs is on. `rust-anything disable ../rust/caller-kernels-rs` removes this block.
+def _rust_anything_caller_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CALLER_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/caller-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("caller_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_normalize_rate_limit"]})
+
+
+_rust_anything_caller_kernels_rs()
+del _rust_anything_caller_kernels_rs
+# <<< rust-anything: caller-kernels-rs

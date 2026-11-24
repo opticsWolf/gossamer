@@ -1,5 +1,7 @@
 //! Deterministic retry, quota and politeness decisions.
 
+use serde_json::Value;
+
 const MAX_RETRY_AFTER_SECONDS: f64 = 60.0;
 
 /// True for transient HTTP statuses handled by the retry decorator.
@@ -32,8 +34,54 @@ pub fn quota_message(name: &str, used: i64, quota: i64, window: &str) -> String 
 /// Minimum remaining politeness delay for one call.
 pub fn politeness_wait(last_search: f64, now: f64, delay: f64, jitter: f64, jitter_value: f64) -> f64 {
     if delay <= 0.0 { return 0.0; }
-    let gap = delay + jitter_value.clamp(0.0, jitter.max(0.0));
+    let _ = jitter;
+    let gap = delay + jitter_value.max(0.0);
     (gap - (now - last_search)).max(0.0)
+}
+
+pub fn normalize_rate_limit(delay: Option<&Value>, fetch_delay: Option<f64>, jitter: Option<f64>) -> Value {
+    let mut search_interval = 1.0_f64;
+    let mut limit_jitter = 0.0_f64;
+    let mut quota = Value::Null;
+    let mut quota_window = "day".to_string();
+    if let Some(value) = delay {
+        if let Some(number) = value.as_f64() {
+            search_interval = number;
+        } else if let Some(object) = value.as_object() {
+            if let Some(number) = object.get("search_interval").and_then(Value::as_f64) {
+                search_interval = number;
+            }
+            if let Some(number) = object.get("jitter").and_then(Value::as_f64) {
+                limit_jitter = number;
+            }
+            if let Some(value) = object.get("quota") {
+                quota = value.clone();
+            }
+            if let Some(window) = object.get("quota_window").and_then(Value::as_str) {
+                quota_window = window.to_string();
+            }
+        }
+    }
+    if let Some(number) = jitter {
+        limit_jitter = number;
+    }
+    let mut fetch_interval = 0.5_f64;
+    if delay.is_some_and(|value| value.is_object())
+        && let Some(object) = delay.and_then(Value::as_object)
+        && let Some(number) = object.get("fetch_interval").and_then(Value::as_f64)
+    {
+        fetch_interval = number;
+    }
+    if let Some(number) = fetch_delay {
+        fetch_interval = number;
+    }
+    serde_json::json!({
+        "search_interval": search_interval,
+        "fetch_interval": fetch_interval,
+        "jitter": limit_jitter,
+        "quota": quota,
+        "quota_window": quota_window,
+    })
 }
 
 #[cfg(test)]

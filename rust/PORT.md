@@ -96,6 +96,19 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### High-fan-in caller kernels (done 2026-11-23)
+
+- Ported deterministic slices of the six ranked callers:
+  `inspect_html_page` request routing, `extract_document` validation,
+  `_enforce_delay`/`_init_rate_limit` policy kernels, `batch_inspect_pages`
+  planning, and `web_search` routing/cache keys.
+- Core: `gossamer::mcp_dispatch`, `gossamer::providers::base`,
+  `gossamer::service::search`.
+- Binding: `rust/caller-kernels-rs` (14/14); gate passed; bench 0.51x
+  (correctness port; only `search_cache_key` is faster at 1.78x).
+- Real methods now call the Rust seams; network/browser execution and side
+  effects remain in Python.
+
 ### MCP tool-body kernels (done 2026-11-23)
 
 - `gossamer::mcp_dispatch` now owns inspection routing, the unsupported
@@ -125,7 +138,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,427 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,432 passing tests.
 
 ## Open questions
 

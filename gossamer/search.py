@@ -111,7 +111,8 @@ class SearchService:
             Per-call render strategy for fetched pages (ignored when
             ``search_only=True``).
         """
-        if search_only:
+        route = _service_web_search_route(search_only)
+        if route == "search_web":
             return self.search_web(
                 query, max_results=max_results, provider=provider
             )
@@ -310,8 +311,9 @@ class SearchService:
         normalized_query = " ".join((query or "").lower().split())
         provider_part = resolve_provider_name(provider) if provider else "default"
         provider_part = provider_part or "default"
-        material = f"{normalized_query}|{max_results}|{provider_part}|merge={self._tb._search_merge}"
-        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+        return _service_search_cache_key(
+            query, max_results, provider, self._tb._search_merge
+        )
 
     def _search_cache_get(self, key: str) -> Optional[list]:
         """Return cached search results for *key*, or None on miss/expired.
@@ -490,3 +492,38 @@ def _rust_anything_search_service_rs():
 _rust_anything_search_service_rs()
 del _rust_anything_search_service_rs
 # <<< rust-anything: search-service-rs
+
+
+def _service_web_search_route(search_only):
+    return "search_web" if search_only else "research"
+
+
+def _service_search_cache_key(query, max_results, provider, merge):
+    import hashlib
+    normalized = " ".join((query or "").lower().split())
+    canonical = resolve_provider_name(provider) if provider else "default"
+    canonical = canonical or "default"
+    material = f"{normalized}|{max_results}|{canonical}|merge={merge}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+# >>> rust-anything: caller-kernels-rs is on. `rust-anything disable ../rust/caller-kernels-rs` removes this block.
+def _rust_anything_caller_kernels_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CALLER_KERNELS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/caller-kernels-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("caller_kernels_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_web_search_route", "_service_search_cache_key"]})
+
+
+_rust_anything_caller_kernels_rs()
+del _rust_anything_caller_kernels_rs
+# <<< rust-anything: caller-kernels-rs

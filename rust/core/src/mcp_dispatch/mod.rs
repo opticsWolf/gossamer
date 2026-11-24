@@ -61,6 +61,78 @@ pub fn tool_arguments(name: &str, arguments: &Value) -> Option<Value> {
     Some(Value::Object(out))
 }
 
+pub fn inspect_request(
+    url: &str,
+    use_smart: &str,
+    query: Option<&str>,
+    offset: i64,
+    max_chunks: i64,
+    structured: bool,
+    store_dir: Option<&str>,
+) -> Value {
+    serde_json::json!({
+        "url": url,
+        "use_smart": use_smart,
+        "query": query,
+        "offset": offset.max(0),
+        "max_chunks": max_chunks.max(1),
+        "route": inspect_route(structured, store_dir),
+        "store_dir": store_dir,
+    })
+}
+
+/// Deterministic validation errors for `extract_document`.
+pub fn extract_validation(
+    tables_as: &str,
+    include_images: bool,
+    structured: bool,
+    store: bool,
+) -> Option<Value> {
+    if !matches!(tables_as, "markdown" | "csv" | "json") {
+        return Some(tables_as_error());
+    }
+    if include_images && !store {
+        return Some(serde_json::json!({
+            "error": "include_images=True requires store=True; images need a directory to live in"
+        }));
+    }
+    if include_images && structured {
+        return Some(serde_json::json!({
+            "error": "include_images cannot be combined with structured=True; use store=True instead"
+        }));
+    }
+    None
+}
+
+/// Deterministic batch plan: canonical pending keys, cached keys and rejected inputs.
+pub fn batch_plan(urls: Option<&Value>, cached_keys: &Value, visited_keys: &Value, strategy: &str) -> Value {
+    let items: Vec<Value> = match urls {
+        Some(Value::Array(values)) => values.clone(),
+        Some(Value::String(value)) => vec![Value::String(value.clone())],
+        _ => return serde_json::json!({"error": "Batch inspection failed: urls is required"}),
+    };
+    let mut pending: Vec<String> = Vec::new();
+    let mut cached: Vec<String> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    let cached_set: Vec<&str> = cached_keys.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let visited_set: Vec<&str> = visited_keys.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    for item in items {
+        let Some(raw) = item.as_str() else { continue };
+        let Ok(key) = crate::urls::canonical_url(raw, "drop-tracking", None) else { continue };
+        if seen.iter().any(|value| value == &key) { continue; }
+        seen.push(key.clone());
+        if cached_set.contains(&key.as_str()) {
+            cached.push(key);
+            continue;
+        }
+        if strategy != "auto" && visited_set.contains(&key.as_str()) {
+            continue;
+        }
+        pending.push(key);
+    }
+    serde_json::json!({"pending": pending, "cached": cached, "strategy": strategy})
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
