@@ -2371,6 +2371,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "research-plan-rs"
+version = "0.1.0"
+dependencies = [
+ "gossamer-web",
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "research-service-rs"
 version = "0.1.0"
 dependencies = [

@@ -1164,21 +1164,14 @@ class WebResearcherToolbox:
             ``sources`` (list of ``{url, title, snippet, status,
             result?|error?}``), and ``count`` (successful fetches).
         """
-        topic = (topic or "").strip()
-        if not topic:
-            return json.dumps(
-                {"error": "research: topic is required"}, indent=2
-            )
-        try:
-            depth = int(depth)
-        except (TypeError, ValueError):
-            depth = 5
-        depth = max(1, min(depth, self._RESEARCH_MAX_PAGES))
-        try:
-            plan_results = int(max_results) if max_results else min(depth * 2, 20)
-        except (TypeError, ValueError):
-            plan_results = min(depth * 2, 20)
-        plan_results = max(1, min(plan_results, 20))
+        plan = _service_research_plan(
+            topic, depth, max_results, self._RESEARCH_MAX_PAGES
+        )
+        if "error" in plan:
+            return json.dumps(plan, indent=2)
+        topic, depth, plan_results = (
+            plan["topic"], plan["depth"], plan["plan_results"]
+        )
 
         # 1) Plan: search the topic (search_web degrades to an error
         # dict instead of raising when every provider fails).
@@ -1550,3 +1543,42 @@ def _rust_anything_tool_check_rs():
 _rust_anything_tool_check_rs()
 del _rust_anything_tool_check_rs
 # <<< rust-anything: tool-check-rs
+
+
+def _service_research_plan(topic, depth, max_results, max_pages):
+    topic = (topic or "").strip()
+    if not topic:
+        return {"error": "research: topic is required"}
+    try:
+        depth = int(depth)
+    except (TypeError, ValueError):
+        depth = 5
+    depth = max(1, min(depth, max_pages))
+    try:
+        plan_results = int(max_results) if max_results else min(depth * 2, 20)
+    except (TypeError, ValueError):
+        plan_results = min(depth * 2, 20)
+    plan_results = max(1, min(plan_results, 20))
+    return {"topic": topic, "depth": depth, "plan_results": plan_results}
+# >>> rust-anything: research-plan-rs is on. `rust-anything disable ../rust/research-plan-rs` removes this block.
+def _rust_anything_research_plan_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESEARCH_PLAN") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/research-plan-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("research_plan_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_research_plan"]})
+
+
+_rust_anything_research_plan_rs()
+del _rust_anything_research_plan_rs
+# <<< rust-anything: research-plan-rs

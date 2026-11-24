@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Research request planning (done 2026-11-23)
+
+- `gossamer::service::research::research_plan` owns topic validation,
+  depth clamping and plan-result budget clamping for `research()`.
+- Binding: `rust/research-plan-rs` (3/3); gate passed; full pytest
+  11442 passed / 36 skipped.
+
 ### Full two-tier cache (done 2026-11-23)
 
 - `gossamer::cache::Cache` now backs `gossamer.cache.Cache` through a thin
@@ -183,7 +190,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,441 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,442 passing tests.
 
 ## Open questions
 

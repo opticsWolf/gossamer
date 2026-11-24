@@ -32,3 +32,16 @@ pub fn provider_order(providers: &Value, preferred: Option<&str>) -> Vec<String>
     out.extend(names.into_iter().filter(|n| n.to_lowercase() != canonical));
     out
 }
+
+/// Normalize a research request before search fan-out.
+pub fn research_plan(topic: &str, depth: i64, max_results: Option<i64>, max_pages: i64) -> Value {
+    let topic = topic.trim();
+    if topic.is_empty() {
+        return serde_json::json!({"error": "research: topic is required"});
+    }
+    let depth = depth.clamp(1, max_pages);
+    let plan_results = max_results
+        .map(|value| value.clamp(1, 20))
+        .unwrap_or_else(|| (depth * 2).clamp(1, 20));
+    serde_json::json!({"topic": topic, "depth": depth, "plan_results": plan_results})
+}
