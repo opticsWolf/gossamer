@@ -1,0 +1,2 @@
+{"fn": "_service_fetch_stats_dict", "args": [3, 1, 30, [0.00125, 0.00225, 0.00325], {"b.test": 1, "a.test": 2}, {"ValueError": 1}]}
+{"fn": "_service_fetch_stats_dict", "args": [0, 0, 0, [], {}, {}]}

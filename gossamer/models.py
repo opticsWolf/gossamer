@@ -81,22 +81,14 @@ class FetchStats:
 
     def to_dict(self) -> dict:
         with self._lock:
-            lats = sorted(self._latencies)
-            return {
-                "fetches": self._fetches,
-                "errors": self._errors,
-                "bytes_downloaded": self._bytes,
-                "latency_ms": {
-                    "p50": round(self._percentile(lats, 0.50) * 1000, 1),
-                    "p95": round(self._percentile(lats, 0.95) * 1000, 1),
-                    "p99": round(self._percentile(lats, 0.99) * 1000, 1),
-                    "max": round(lats[-1] * 1000, 1) if lats else 0.0,
-                },
-                "requests_by_domain": dict(
-                    sorted(self._by_domain.items(), key=lambda kv: (-kv[1], kv[0]))
-                ),
-                "errors_by_class": dict(self._by_error),
-            }
+            return _service_fetch_stats_dict(
+                self._fetches,
+                self._errors,
+                self._bytes,
+                list(self._latencies),
+                self._by_domain,
+                self._by_error,
+            )
 
 
 def _domain_of(url: str) -> str:
@@ -438,3 +430,46 @@ def _rust_anything_documents_rs():
 _rust_anything_documents_rs()
 del _rust_anything_documents_rs
 # <<< rust-anything: documents-rs
+
+
+def _service_fetch_stats_dict(
+    fetches, errors, bytes_downloaded, latencies, by_domain, by_error
+):
+    lats = sorted(latencies)
+    return {
+        "fetches": fetches,
+        "errors": errors,
+        "bytes_downloaded": bytes_downloaded,
+        "latency_ms": {
+            "p50": round(FetchStats._percentile(lats, 0.50) * 1000, 1),
+            "p95": round(FetchStats._percentile(lats, 0.95) * 1000, 1),
+            "p99": round(FetchStats._percentile(lats, 0.99) * 1000, 1),
+            "max": round(lats[-1] * 1000, 1) if lats else 0.0,
+        },
+        "requests_by_domain": dict(
+            sorted(by_domain.items(), key=lambda kv: (-kv[1], kv[0]))
+        ),
+        "errors_by_class": dict(by_error),
+    }
+# >>> rust-anything: stats-rs is on. `rust-anything disable ../rust/stats-rs` removes this block.
+def _rust_anything_stats_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_STATS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/stats-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("stats_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_fetch_stats_dict"]})
+
+
+_rust_anything_stats_rs()
+del _rust_anything_stats_rs
+# <<< rust-anything: stats-rs

@@ -30,6 +30,7 @@ pub mod robots;
 pub mod search;
 pub mod sections;
 pub mod service;
+pub mod stats;
 pub mod providers;
 pub mod ssrf;
 pub mod tables;
