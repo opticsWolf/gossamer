@@ -24,6 +24,7 @@ members = [
   "crawl-kernels-rs",
   "open-access-rs",
   "research-merge-rs",
+  "meta-merge-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

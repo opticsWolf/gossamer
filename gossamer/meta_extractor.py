@@ -131,88 +131,9 @@ def extract_jsonld(html: str, base_url: Optional[str] = None) -> List[Dict[str, 
 # 2. Merge metadata into DocumentMetadata
 # ────────────────────────────────────────────────────────────────
 
-def merge_into_document_metadata(
-    html_meta: Dict[str, Any],
-    base_metadata: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Merge HTML metadata extracted by meta-oxide into a base DocumentMetadata dict.
-
-    Enriches the base metadata with:
-      - title / description from HTML meta (if not already set)
-      - og_title, og_image, og_type from Open Graph
-      - twitter_card, twitter_title from Twitter Cards
-      - canonical URL
-      - jsonld (raw list of structured data objects)
-      - rel_links, dublin_core, microformats (raw)
-
-    Parameters
-    ----------
-    html_meta : dict
-        Raw output from meta_oxide.extract_all().
-    base_metadata : dict
-        Pre-populated metadata dict (e.g. from file-level info).
-
-    Returns
-    -------
-    dict
-        Enriched metadata dict ready for DocumentMetadata construction.
-    """
-    merged = dict(base_metadata)
-
-    # Field copies as (html_meta section, source key, merged key) triples.
-    # A value is copied only when truthy; base values are never overwritten.
-    field_copies = [
-        # ── Standard HTML meta ────────────────────────────────────
-        ("meta", "description", "description"),
-        ("meta", "canonical", "canonical"),
-        ("meta", "keywords", "keywords"),
-        ("meta", "language", "language"),
-        ("meta", "robots", "robots"),
-        # ── Open Graph ────────────────────────────────────────────
-        ("opengraph", "title", "og_title"),
-        ("opengraph", "type", "og_type"),
-        ("opengraph", "image", "og_image"),
-        ("opengraph", "description", "og_description"),
-        ("opengraph", "site_name", "og_site_name"),
-        ("opengraph", "url", "og_url"),
-        # ── Twitter Cards ─────────────────────────────────────────
-        ("twitter", "card", "twitter_card"),
-        ("twitter", "title", "twitter_title"),
-        ("twitter", "description", "twitter_description"),
-        ("twitter", "image", "twitter_image"),
-        ("twitter", "site", "twitter_site"),
-    ]
-    for section, source_key, target_key in field_copies:
-        value = html_meta.get(section, {}).get(source_key)
-        if value:
-            merged[target_key] = value
-
-    # Title is special: an already-set base title wins over HTML meta.
-    std_meta = html_meta.get("meta", {})
-    if not merged.get("title") and std_meta.get("title"):
-        merged["title"] = std_meta["title"]
-
-    # og_images additionally must be a list (defensive against odd output).
-    og_images = html_meta.get("opengraph", {}).get("images")
-    if og_images and isinstance(og_images, list):
-        merged["og_images"] = og_images
-
-    # Whole-section passthroughs: raw sections copied verbatim when present.
-    for section in (
-        "jsonld",
-        "rel_links",
-        "dublin_core",
-        "microformats",
-        "microdata",
-        "rdfa",
-        "manifest",
-    ):
-        value = html_meta.get(section)
-        if value:
-            merged[section] = value
-
-    return merged
+def merge_into_document_metadata(html_meta, base_metadata):
+    """Merge HTML metadata extracted by meta-oxide into a base metadata dict."""
+    return _service_merge_into_document_metadata(html_meta, base_metadata)
 
 
 def _empty_result() -> Dict[str, Any]:
@@ -230,3 +151,65 @@ def _empty_result() -> Dict[str, Any]:
         "oembed": {},
         "manifest": {},
     }
+
+def _service_merge_into_document_metadata(html_meta, base_metadata):
+    merged = dict(base_metadata)
+    field_copies = [
+        ("meta", "description", "description"),
+        ("meta", "canonical", "canonical"),
+        ("meta", "keywords", "keywords"),
+        ("meta", "language", "language"),
+        ("meta", "robots", "robots"),
+        ("opengraph", "title", "og_title"),
+        ("opengraph", "type", "og_type"),
+        ("opengraph", "image", "og_image"),
+        ("opengraph", "description", "og_description"),
+        ("opengraph", "site_name", "og_site_name"),
+        ("opengraph", "url", "og_url"),
+        ("twitter", "card", "twitter_card"),
+        ("twitter", "title", "twitter_title"),
+        ("twitter", "description", "twitter_description"),
+        ("twitter", "image", "twitter_image"),
+        ("twitter", "site", "twitter_site"),
+    ]
+    for section, source_key, target_key in field_copies:
+        value = html_meta.get(section, {}).get(source_key)
+        if value:
+            merged[target_key] = value
+    std_meta = html_meta.get("meta", {})
+    if not merged.get("title") and std_meta.get("title"):
+        merged["title"] = std_meta["title"]
+    og_images = html_meta.get("opengraph", {}).get("images")
+    if og_images and isinstance(og_images, list):
+        merged["og_images"] = og_images
+    for section in (
+        "jsonld", "rel_links", "dublin_core", "microformats",
+        "microdata", "rdfa", "manifest",
+    ):
+        value = html_meta.get(section)
+        if value:
+            merged[section] = value
+    return merged
+
+# >>> rust-anything: meta-merge-rs is on. `rust-anything disable ../rust/meta-merge-rs` removes this block.
+def _rust_anything_meta_merge_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_META_MERGE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/meta-merge-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("meta_merge_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_merge_into_document_metadata"]})
+
+
+_rust_anything_meta_merge_rs()
+del _rust_anything_meta_merge_rs
+# <<< rust-anything: meta-merge-rs

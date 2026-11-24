@@ -1,0 +1,36 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/meta_extractor.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "meta-merge-rs",
+  "exports": [
+    {
+      "name": "_service_merge_into_document_metadata",
+      "file": "gossamer/meta_extractor.py",
+      "line": 134,
+      "params": [
+        {
+          "name": "html_meta",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "base_metadata",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}
