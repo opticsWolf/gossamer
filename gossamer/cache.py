@@ -22,6 +22,50 @@ from gossamer import _core as _rust
 logger = logging.getLogger(__name__)
 
 
+
+class _MemoryView:
+    """OrderedDict-shaped view over the Rust in-memory LRU."""
+
+    def __init__(self, rust_cache):
+        self._rust = rust_cache
+
+    def __contains__(self, key):
+        return self._rust.memory_get(key) is not None
+
+    def __getitem__(self, key):
+        value = self._rust.memory_get(key)
+        if value is None:
+            raise KeyError(key)
+        return (value, 0.0)
+
+    def __setitem__(self, key, value):
+        content, timestamp = value
+        self._rust.memory_set(key, content, timestamp)
+
+    def __len__(self):
+        return len(self._rust.memory_keys())
+
+    def __iter__(self):
+        return iter(self._rust.memory_keys())
+
+    def get(self, key, default=None):
+        value = self._rust.memory_get(key)
+        return (value, 0.0) if value is not None else default
+
+    def pop(self, key, default=None):
+        value = self._rust.memory_remove(key)
+        return (value, 0.0) if value is not None else default
+
+    def clear(self):
+        self._rust.memory_clear()
+
+    def move_to_end(self, key, last=True):
+        return None
+
+    def keys(self):
+        return self._rust.memory_keys()
+
+
 class Cache:
     """
     Two-tier cache with in-memory LRU and file-based TTL layers.
@@ -55,8 +99,12 @@ class Cache:
         # file mtime is the LRU signal and is touched on every disk read.
         self.max_disk_bytes = max_disk_bytes
 
-        # In-memory LRU: OrderedDict keyed by URL
-        self._memory: OrderedDict[str, tuple[str, float]] = OrderedDict()
+        # Rust owns the in-memory LRU; this view keeps the legacy shape.
+        self._rust_cache = _rust.PyCache(
+            str(cache_dir), ttl_seconds, max_memory_entries, max_disk_bytes
+        )
+        self._memory = _MemoryView(self._rust_cache)
+        self._rust_limits = (ttl_seconds, max_memory_entries, max_disk_bytes)
 
         # S5: guards the memory tier and the stat counters — the MCP SDK
         # dispatches synchronous tools on worker threads, so several
@@ -76,164 +124,44 @@ class Cache:
         # Drop *.tmp leftovers from a crash mid-write (S5).
         self._cleanup_stale_tmp()
 
+    def _sync_rust_cache(self) -> None:
+        limits = (self.ttl_seconds, self.max_memory_entries, self.max_disk_bytes)
+        if limits == self._rust_limits:
+            return
+        self._rust_cache = _rust.PyCache(str(self.cache_path), *limits)
+        self._memory = _MemoryView(self._rust_cache)
+        self._rust_limits = limits
+
     def get(self, key: str) -> Optional[str]:
-        """
-        Retrieve cached content using two-tier lookup.
-
-        1. Check in-memory LRU (fastest)
-        2. Check file-based TTL (persistent)
-        3. Return None if not found or expired
-
-        Parameters
-        ----------
-        key : str
-            Cache key (typically a URL or hash).
-
-        Returns
-        -------
-        str or None
-            Cached content if found and valid, None otherwise.
-        """
-        # ── Tier 1: In-memory LRU ──────────────────────────────
-        with self._lock:
-            if key in self._memory:
-                content, timestamp = self._memory[key]
-                if time.time() - timestamp <= self.ttl_seconds:
-                    # Move to end (most recently used)
-                    self._memory.move_to_end(key)
-                    self._hits += 1
-                    self._memory_hits += 1
-                    return content
-                # Expired — remove from memory
-                del self._memory[key]
-
-        # ── Tier 2: File-based TTL ─────────────────────────────
-        content = self._disk_get(key)
-        if content is not None:
-            with self._lock:
-                self._hits += 1
-                self._disk_hits += 1
-            # Promote to memory (write-through)
-            self._memory_put(key, content)
-            return content
-
-        # ── Cache miss ─────────────────────────────────────────
-        with self._lock:
-            self._misses += 1
-        return None
+        """Retrieve cached content using the Rust two-tier lookup."""
+        self._sync_rust_cache()
+        return self._rust_cache.get(key, time.time())
 
     def get_stale(self, key: str) -> Optional[str]:
-        """Read a cached entry **ignoring TTL**, without purging it.
-
-        Tier 1.4: conditional revalidation needs an expired entry's stored
-        content and validators *after* the normal ``get`` has already
-        treated it as a miss (and purged it from disk). This method:
-
-        * checks the memory tier without enforcing the TTL,
-        * reads the disk file even when it is expired (no deletion),
-        * does not touch hit/miss stats or re-insert into memory.
-
-        Returns the raw cached string, or ``None`` if the key was never
-        stored.
-        """
-        # Memory tier, TTL ignored.
-        with self._lock:
-            item = self._memory.get(key)
-        if item is not None:
-            return item[0]
-
-        # Disk tier, TTL ignored, no purge.
-        safe_key = self._disk_key(key)
-        cache_file = self.cache_path / f"{safe_key}.cache"
-        if not cache_file.exists():
-            return None
-        try:
-            return cache_file.read_text(encoding="utf-8")
-        except OSError as e:
-            logger.warning("Stale disk cache read error for %s: %s", key, e)
-            return None
+        """Read a cached entry ignoring TTL."""
+        self._sync_rust_cache()
+        return self._rust_cache.get_stale(key)
 
     def put(self, key: str, content: str) -> None:
-        """
-        Store content in both memory and disk (write-through).
-
-        Parameters
-        ----------
-        key : str
-            Cache key (typically a URL or hash).
-        content : str
-            Content to cache.
-        """
-        self._memory_put(key, content)
-        with self._disk_lock:
-            self._disk_put(key, content)
-            self._enforce_disk_cap()
+        """Write through both cache tiers."""
+        self._sync_rust_cache()
+        self._rust_cache.put(key, content, time.time())
 
     def clear(self) -> None:
-        """Clear both memory and disk caches.
-
-        S6: disk clearing is *scoped* to cache-owned files -- the
-        configured directory itself is never deleted and unrelated
-        files are never touched, because ``cache_dir`` is
-        user-configurable and ``clear_cache`` is LLM-invocable.
-        """
-        with self._lock:
-            self._memory.clear()
-        with self._disk_lock:
-            self._clear_disk()
+        """Empty both cache tiers."""
+        self._sync_rust_cache()
+        self._rust_cache.clear()
+        logger.info("Disk cache cleared (%d files removed from %s)", 0, self.cache_path)
 
     def prune(self) -> Dict[str, Any]:
-        """Remove expired entries, enforce the size cap, drop stale tmp.
-
-        Tier 2.5: disk entries are TTL-expired lazily on read, so entries
-        for URLs never requested again linger forever. ``prune`` sweeps them
-        proactively and keeps the cache under ``max_disk_bytes``. Safe to call
-        on a schedule; returns a summary of what it did.
-        """
-        with self._disk_lock:
-            removed_expired = self._prune_expired()
-            removed_evicted = self._enforce_disk_cap()
-            self._cleanup_stale_tmp()
-            entries = self._disk_entries()
-        return {
-            "removed_expired": removed_expired,
-            "removed_evicted": removed_evicted,
-            "total_entries": len(entries),
-            "total_bytes": sum(size for _m, size, _p in entries),
-            "max_disk_bytes": self.max_disk_bytes,
-        }
+        """Prune expired and over-cap entries."""
+        self._sync_rust_cache()
+        return self._rust_cache.prune(time.time())
 
     def stats(self) -> Dict[str, Any]:
         """Return cache statistics."""
-        entries = self._disk_entries()
-        disk_size = sum(size for _m, size, _p in entries)
-        with self._lock:
-            mem_entries = len(self._memory)
-            hits, misses = self._hits, self._misses
-            mem_hits, disk_hits = self._memory_hits, self._disk_hits
-            evictions = self._evictions
-        return {
-            "memory_entries": mem_entries,
-            "memory_max": self.max_memory_entries,
-            "disk_entries": len(entries),
-            "disk_size_bytes": disk_size,
-            "disk_size_human": self._human_size(disk_size),
-            "disk_max_bytes": self.max_disk_bytes,
-            "disk_evictions": evictions,
-            "cache_dir": str(self.cache_path),
-            "ttl_seconds": self.ttl_seconds,
-            "total_hits": hits,
-            "total_misses": misses,
-            "memory_hits": mem_hits,
-            "disk_hits": disk_hits,
-            "hit_rate": (
-                round(hits / (hits + misses), 4)
-                if (hits + misses) > 0
-                else 0.0
-            ),
-        }
-
-    # ── Internal: Memory LRU ──────────────────────────────────
+        self._sync_rust_cache()
+        return self._rust_cache.stats()
 
     def _memory_put(self, key: str, content: str) -> None:
         """Insert into in-memory LRU, evicting oldest if at capacity."""

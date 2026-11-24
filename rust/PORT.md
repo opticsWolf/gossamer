@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Full two-tier cache (done 2026-11-23)
+
+- `gossamer::cache::Cache` now backs `gossamer.cache.Cache` through a thin
+  `PyCache` adapter. Python keeps a compatibility view for legacy `_memory`
+  inspections; all hit/miss/LRU/disk/TTL/eviction behavior lives in Rust.
+- Full pytest: 11441 passed / 36 skipped; app replay 43/43.
+- Root `cargo clippy --all-targets` still has pre-existing stale adapter test
+  imports; `cargo check`, workspace tests and workspace clippy are clean.
+
 ### Resource discovery (done 2026-11-23)
 
 - `gossamer::discovery::find_feed_links` owns feed-alternate extraction and

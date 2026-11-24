@@ -9,6 +9,7 @@ mod ssrf;
 mod tokens;
 mod pycompat;
 mod xmlatom;
+mod cache;
 mod cacheutils;
 mod miscutils;
 mod metaextract;
@@ -53,6 +54,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tokens::count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(tokens::truncate_to_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(tokens::fit_context_window, m)?)?;
+    m.add_class::<cache::PyCache>()?;
     m.add_class::<cite::BibliographicRecord>()?;
     m.add_function(wrap_pyfunction!(cite::citation_record_from_json, m)?)?;
     m.add_function(wrap_pyfunction!(cite::cite_bibtex, m)?)?;

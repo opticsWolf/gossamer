@@ -433,6 +433,45 @@ impl Cache {
         }
         Ok(removed)
     }
+    /// Keys currently held in the in-memory LRU, least-recently-used first.
+    pub fn memory_keys(&self) -> Vec<String> {
+        self.state.lock().map(|state| state.memory.iter().map(|entry| entry.key.clone()).collect()).unwrap_or_default()
+    }
+
+    /// Read one in-memory entry without touching statistics or recency.
+    pub fn peek_memory(&self, key: &str) -> Option<String> {
+        self.state.lock().ok()?.memory.iter().find(|entry| entry.key == key).map(|entry| entry.content.clone())
+    }
+
+    /// Remove one in-memory entry, if present.
+    pub fn take_memory(&self, key: &str) -> Option<String> {
+        let mut state = self.state.lock().ok()?;
+        let index = state.memory.iter().position(|entry| entry.key == key)?;
+        Some(state.memory.remove(index)?.content)
+    }
+
+    /// Replace or insert an in-memory entry with an explicit timestamp.
+    pub fn set_memory_entry(&self, key: &str, content: &str, timestamp: f64) {
+        if let Ok(mut state) = self.state.lock() {
+            if let Some(entry) = state.memory.iter_mut().find(|entry| entry.key == key) {
+                entry.content = content.to_string();
+                entry.timestamp = timestamp;
+            } else {
+                state.memory.push_back(MemoryEntry {
+                    key: key.to_string(),
+                    content: content.to_string(),
+                    timestamp,
+                });
+            }
+        }
+    }
+
+    /// Empty the in-memory tier.
+    pub fn clear_memory(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.memory.clear();
+        }
+    }
 }
 
 struct DiskEntry {
