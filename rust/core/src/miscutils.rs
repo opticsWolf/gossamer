@@ -268,6 +268,13 @@ pub fn parse_page_range(spec: &str) -> Result<(i128, Option<i128>), PageRangeErr
     }
 }
 
+/// Returns the lowercase SHA-256 hex digest of arbitrary bytes.
+pub fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(bytes);
+    hex_encode(&h.finalize())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
