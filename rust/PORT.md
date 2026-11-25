@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `extract` unsupported URL formats (done 2026-11-25)
+
+- Remote extraction now rejects URL suffixes the Python extractor does not
+  support with the exact `Unsupported document format: .<ext>` envelope before
+  fetching. Text-like URL suffixes keep the Rust download path.
+- Verified exactly against the Python oracle for `https://example.com`;
+  app replay 57/57, full pytest 11468 passed / 36 skipped.
+
 ### CLI `extract` URL error envelope (done 2026-11-25)
 
 - `gossamer extract` now reports HTTP error pages for remote sources with the

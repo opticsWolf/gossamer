@@ -133,6 +133,22 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         return unsupported();
     }
     let is_url = source.starts_with("http://") || source.starts_with("https://");
+    let url_suffix = Path::new(&source)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if is_url
+        && !url_suffix.is_empty()
+        && !matches!(
+            url_suffix.as_str(),
+            "txt" | "md" | "csv" | "json" | "xml" | "rss" | "atom"
+        )
+    {
+        let payload = json!({"error": format!("Document extraction failed: Unsupported document format: .{url_suffix}")});
+        println!("{}", py_dumps(&payload));
+        return ExitCode::SUCCESS;
+    }
     let (display, bytes, content, http_status, final_url, content_type) = if is_url {
         let (bytes, status, final_url, content_type) =
             match download_bytes(&source, 20.0, 50_000_000) {
@@ -166,13 +182,18 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
             println!("{}", py_dumps(&payload));
             return ExitCode::SUCCESS;
         }
-        let Ok(text) = String::from_utf8(bytes.clone()) else {
-            return unsupported();
+        let content = if url_suffix == "json" {
+            serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|value| serde_json::to_string_pretty(&value).ok())
+                .unwrap_or_else(|| String::from_utf8_lossy(&bytes).into_owned())
+        } else {
+            String::from_utf8_lossy(&bytes).into_owned()
         };
         (
             source.clone(),
             bytes,
-            text.to_string(),
+            content,
             json!(status),
             json!(final_url),
             json!(content_type),
