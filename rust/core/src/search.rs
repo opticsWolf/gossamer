@@ -38,10 +38,10 @@ pub fn duckduckgo_search_url(query: &str) -> String {
 fn unwrap_ddg_href(href: &str) -> String {
     if let Some(rest) = href.strip_prefix("//duckduckgo.com/l/?") {
         for pair in rest.split('&') {
-            if pair.starts_with("uddg=") {
-                if let Some((_, decoded)) = form_urlencoded::parse(pair.as_bytes()).next() {
-                    return decoded.to_string();
-                }
+            if pair.starts_with("uddg=")
+                && let Some((_, decoded)) = form_urlencoded::parse(pair.as_bytes()).next()
+            {
+                return decoded.to_string();
             }
         }
     }
