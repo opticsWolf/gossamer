@@ -4,3 +4,6 @@
 {"fn": "_service_rate_state_from_headers", "args": [{"X-RateLimit-Remaining": "3", "X-RateLimit-Limit": "10", "Retry-After": "2"}, {"$float": "5.0"}], "ok": {"rps_limit": {"$float": "10.0"}, "remaining": 3, "reset_seconds": null, "retry_after": {"$float": "2.0"}, "exhausted": false}}
 {"fn": "_service_rate_state_from_headers", "args": [{"X-Rate-Limit-Limit": "bad", "X-Rate-Limit-Remaining": "x", "X-Rate-Limit-Reset": "20"}, {"$float": "5.0"}], "ok": {"rps_limit": {"$float": "5.0"}, "remaining": null, "reset_seconds": 20, "retry_after": null, "exhausted": false}}
 {"fn": "_service_rate_state_from_headers", "args": [{}, null], "ok": {"rps_limit": null, "remaining": null, "reset_seconds": null, "retry_after": null, "exhausted": false}}
+{"fn": "_service_local_name", "args": ["{urn:x}Obs"], "ok": "Obs"}
+{"fn": "_service_local_name", "args": ["Obs"], "ok": "Obs"}
+{"fn": "_service_local_name", "args": ["a}b"], "ok": "b"}

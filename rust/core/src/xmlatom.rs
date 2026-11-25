@@ -245,6 +245,12 @@ pub fn parse_document(xml: &str) -> Result<Node, XmlError> {
     root.ok_or_else(|| XmlError::new("ValueError: no element found"))
 }
 
+
+/// Strip an XML namespace: `{ns}Obs` becomes `Obs`.
+pub fn xml_local_name(tag: &str) -> &str {
+    tag.rsplit_once('}').map(|(_, tail)| tail).unwrap_or(tag)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

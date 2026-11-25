@@ -102,11 +102,24 @@ fn service_rate_state_from_headers(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_local_name_inner(tag: String) -> Result<String, String> {
+    let out = port::service_local_name(tag)?;
+    Ok(out)
+}
+
+/// `_service_local_name`.
+#[pyfunction]
+#[pyo3(name = "_service_local_name", signature = (tag))]
+fn service_local_name(tag: String) -> PyResult<String> {
+    service_local_name_inner(tag).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_normalize_research, m)?)?;
     m.add_function(wrap_pyfunction!(service_research_order, m)?)?;
     m.add_function(wrap_pyfunction!(service_rate_state_from_headers, m)?)?;
+    m.add_function(wrap_pyfunction!(service_local_name, m)?)?;
     Ok(())
 }

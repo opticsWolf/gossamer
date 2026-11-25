@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 use gossamer::providers::base as policy;
 use gossamer::service::research as k;
+use gossamer::xmlatom::xml_local_name;
 use serde_json::Value;
 pub fn service_normalize_research(
     records: Value,
@@ -23,4 +24,8 @@ pub fn service_rate_state_from_headers(
     default_rps: Option<f64>,
 ) -> Result<Value, String> {
     Ok(policy::rate_state_from_headers(&headers, default_rps))
+}
+
+pub fn service_local_name(tag: String) -> Result<String, String> {
+    Ok(xml_local_name(&tag).to_string())
 }

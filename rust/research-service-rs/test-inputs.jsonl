@@ -4,3 +4,6 @@
 {"fn": "_service_rate_state_from_headers", "args": [{"X-RateLimit-Remaining": "3", "X-RateLimit-Limit": "10", "Retry-After": "2"}, {"$float": "5.0"}]}
 {"fn": "_service_rate_state_from_headers", "args": [{"X-Rate-Limit-Limit": "bad", "X-Rate-Limit-Remaining": "x", "X-Rate-Limit-Reset": "20"}, {"$float": "5.0"}]}
 {"fn": "_service_rate_state_from_headers", "args": [{}, null]}
+{"fn": "_service_local_name", "args": ["{urn:x}Obs"]}
+{"fn": "_service_local_name", "args": ["Obs"]}
+{"fn": "_service_local_name", "args": ["a}b"]}

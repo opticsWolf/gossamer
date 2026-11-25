@@ -2556,7 +2556,7 @@ class AlphaVantageAdapter(ResourceAdapter):
 
 def _local_name(tag: str) -> str:
     """Strip an XML namespace: ``{ns}Obs`` -> ``Obs``."""
-    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+    return _service_local_name(tag)
 
 
 class OldpAdapter(ResourceAdapter):
@@ -3979,4 +3979,7 @@ def _service_rate_state_from_headers(headers, default_rps):
         except ValueError:
             pass
     return state
+
+def _service_local_name(tag):
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 

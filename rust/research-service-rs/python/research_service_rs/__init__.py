@@ -90,5 +90,6 @@ def _method(name, positions, names, json_result):
 _service_normalize_research = _native._service_normalize_research
 _service_research_order = _native._service_research_order
 _service_rate_state_from_headers = _native._service_rate_state_from_headers
+_service_local_name = _native._service_local_name
 
-__all__ = ['_service_normalize_research', '_service_research_order', '_service_rate_state_from_headers']
+__all__ = ['_service_normalize_research', '_service_research_order', '_service_rate_state_from_headers', '_service_local_name']
