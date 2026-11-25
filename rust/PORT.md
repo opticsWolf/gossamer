@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `research` validation body (done 2026-11-23)
+
+- `gossamer research` now emits the taxonomy for an empty query and exact
+  unknown-category envelopes in Rust. Live provider research remains outside
+  this slice. Added two deterministic replay cases.
+- App replay 54/54; full pytest 11467 passed / 36 skipped.
+
 ### CLI `extract` validation body (done 2026-11-23)
 
 - `gossamer extract` now rejects incompatible image/store/structured flag

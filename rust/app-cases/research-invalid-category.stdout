@@ -1,0 +1,15 @@
+{
+  "query": "x",
+  "category": "bogus",
+  "provider": null,
+  "available_categories": [
+    "scholarly",
+    "legal",
+    "patent",
+    "financial",
+    "geo",
+    "general"
+  ],
+  "error": "unknown category 'bogus'; choose from: scholarly, legal, patent, financial, geo, general",
+  "results": []
+}

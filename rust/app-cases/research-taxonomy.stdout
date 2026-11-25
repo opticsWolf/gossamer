@@ -1,0 +1,78 @@
+[
+  {
+    "category": "scholarly",
+    "description": "Academic works, papers, citations, DOIs, journals.",
+    "providers": [
+      "openalex",
+      "crossref",
+      "arxiv",
+      "zenodo",
+      "semanticscholar",
+      "huggingface",
+      "huggingface-papers"
+    ],
+    "default_provider": "openalex",
+    "provider_kind": "adapter"
+  },
+  {
+    "category": "legal",
+    "description": "Case law, statutes, regulations, bills, government codes; ECHR/HUDOC, CJEU/CELEX and German case law (BVerfG, BGH, Rechtsprechung).",
+    "providers": [
+      "courtlistener",
+      "ecfr",
+      "federalregister",
+      "oldp",
+      "hudoc",
+      "govinfo"
+    ],
+    "default_provider": "courtlistener",
+    "provider_kind": "adapter"
+  },
+  {
+    "category": "patent",
+    "description": "Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA; Lens aggregates WO/EP/DE/CN/US; Google Patents lookup is keyless). EPO/KIPRIS/PatentsView/Lens need keys; google-patents resolves publication numbers without one (free-text: site:patents.google.com web search).",
+    "providers": [
+      "epo",
+      "kipris",
+      "patentsview",
+      "lens",
+      "google-patents"
+    ],
+    "default_provider": "epo",
+    "provider_kind": "adapter"
+  },
+  {
+    "category": "financial",
+    "description": "Stock quotes, market data, exchange rates, indices; ECB/Eurozone rates and EU macro statistics (Bundesbank, Eurostat, HICP, Euribor).",
+    "providers": [
+      "yahoo",
+      "frankfurter",
+      "eurostat",
+      "bundesbank",
+      "bis",
+      "coingecko",
+      "alphavantage"
+    ],
+    "default_provider": "yahoo",
+    "provider_kind": "adapter"
+  },
+  {
+    "category": "geo",
+    "description": "Weather, climate, coordinates and place lookups.",
+    "providers": [
+      "open-meteo",
+      "overpass"
+    ],
+    "default_provider": "open-meteo",
+    "provider_kind": "adapter"
+  },
+  {
+    "category": "general",
+    "description": "General web search (fallback when no domain matches).",
+    "providers": [
+      "duckduckgo"
+    ],
+    "default_provider": "duckduckgo",
+    "provider_kind": "engine"
+  }
+]
