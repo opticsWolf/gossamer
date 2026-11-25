@@ -72,6 +72,28 @@ pub fn crawl_score(
     score
 }
 
+
+
+/// Serialize a crawl result with the page list capped to fit a budget.
+pub fn shrink_crawl(result: &Value, budget: Option<i64>) -> Result<String, String> {
+    let mut out = result.clone();
+    if let Some(budget) = budget {
+        let keep = (budget / 500).max(1) as usize;
+        let omitted = out
+            .get("pages")
+            .and_then(Value::as_array)
+            .map(|pages| pages.len().saturating_sub(keep))
+            .unwrap_or(0);
+        if omitted > 0 && let Some(pages) = out.get_mut("pages").and_then(Value::as_array_mut) {
+            pages.truncate(keep);
+        }
+        if omitted > 0 && let Some(object) = out.as_object_mut() {
+            object.insert("pages_omitted".to_string(), Value::from(omitted));
+        }
+    }
+    serde_json::to_string_pretty(&out).map_err(|e| format!("ValueError: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

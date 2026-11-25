@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-use gossamer::service::crawl::crawl_score;
+use gossamer::service::crawl::{crawl_score, shrink_crawl};
 use serde_json::Value;
 
 pub fn service_crawl_score(
@@ -27,4 +27,8 @@ pub fn service_crawl_score(
         corpus_n,
         path_prior,
     ))
+}
+
+pub fn service_shrink_crawl(result: Value, budget: Option<i64>) -> Result<String, String> {
+    shrink_crawl(&result, budget)
 }

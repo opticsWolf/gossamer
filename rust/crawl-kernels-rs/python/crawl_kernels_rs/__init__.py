@@ -88,5 +88,6 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_crawl_score = _native._service_crawl_score
+_service_shrink_crawl = _native._service_shrink_crawl
 
-__all__ = ['_service_crawl_score']
+__all__ = ['_service_crawl_score', '_service_shrink_crawl']

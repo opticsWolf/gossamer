@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Crawl payload shrinking (done 2026-11-23)
+
+- `_shrink_crawl` now delegates page-list capping and pretty serialization to
+  `gossamer::service::crawl::shrink_crawl`.
+- Binding: extended `rust/crawl-kernels-rs` to 2/2 cases; gate passed.
+- Full pytest: 11457 passed / 36 skipped; app replay 43/43.
+
 ### XML local-name kernel (done 2026-11-23)
 
 - `gossamer::xmlatom::xml_local_name` now backs `_local_name` namespace
@@ -300,7 +307,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,456 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,457 passing tests.
 
 ## Open questions
 

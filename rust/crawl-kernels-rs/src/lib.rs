@@ -88,9 +88,26 @@ fn service_crawl_score(
     .map_err(error)
 }
 
+fn service_shrink_crawl_inner(
+    result: Bound<'_, PyAny>,
+    budget: Option<i64>,
+) -> Result<String, String> {
+    let result: Value = crate::pyconv::FromPy::from_py(&result)?;
+    let out = port::service_shrink_crawl(result, budget)?;
+    Ok(out)
+}
+
+/// `_service_shrink_crawl`.
+#[pyfunction]
+#[pyo3(name = "_service_shrink_crawl", signature = (result, budget))]
+fn service_shrink_crawl(result: Bound<'_, PyAny>, budget: Option<i64>) -> PyResult<String> {
+    service_shrink_crawl_inner(result, budget).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_crawl_score, m)?)?;
+    m.add_function(wrap_pyfunction!(service_shrink_crawl, m)?)?;
     Ok(())
 }

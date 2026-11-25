@@ -359,24 +359,10 @@ class Crawler:
         )
 
     @staticmethod
-    def _shrink_crawl(result: dict, budget: Optional[int]) -> str:
-        """Serialize a crawl result with the page list capped to fit.
-
-        Per-page content is already skims (``_CRAWL_PAGE_CHARS``); the
-        only remaining lever under a tight budget is dropping pages from
-        the tail — which matches their (descending) priority anyway.
-        """
-        out = copy.deepcopy(result)
-        if budget is None:
-            return json.dumps(out, indent=2)
-        # A page record is at most _CRAWL_PAGE_CHARS plus ~200 chars of
-        # envelope, so 500 chars per kept page is a safe unit.
-        keep = max(1, budget // 500)
-        pages = out.get("pages") or []
-        if len(pages) > keep:
-            out["pages_omitted"] = len(pages) - keep
-            out["pages"] = pages[:keep]
-        return json.dumps(out, indent=2)
+    @staticmethod
+    def _shrink_crawl(result, budget):
+        """Serialize a crawl result with the page list capped to fit."""
+        return _service_shrink_crawl(result, budget)
 
     def crawl(
         self,
@@ -979,3 +965,15 @@ def _rust_anything_crawl_kernels_rs():
 _rust_anything_crawl_kernels_rs()
 del _rust_anything_crawl_kernels_rs
 # <<< rust-anything: crawl-kernels-rs
+
+def _service_shrink_crawl(result, budget):
+    out = copy.deepcopy(result)
+    if budget is None:
+        return json.dumps(out, indent=2)
+    keep = max(1, budget // 500)
+    pages = out.get("pages") or []
+    if len(pages) > keep:
+        out["pages_omitted"] = len(pages) - keep
+        out["pages"] = pages[:keep]
+    return json.dumps(out, indent=2)
+
