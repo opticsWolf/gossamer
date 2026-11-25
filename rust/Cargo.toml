@@ -25,6 +25,7 @@ members = [
   "open-access-rs",
   "research-merge-rs",
   "meta-merge-rs",
+  "citation-dispatch-rs",
   "port-error",
   "skills-rs",
   "text-links-rs",

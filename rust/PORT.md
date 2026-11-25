@@ -96,6 +96,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Citation dispatch kernels (done 2026-11-23)
+
+- Citation style resolution and bare DOI/URL input shaping now delegate to
+  `gossamer::cite::{citation_style, citation_input}`; formatters and
+  enrichment stay on their existing Rust/Python paths.
+- Binding: `rust/citation-dispatch-rs` (15/15); gate passed. The generator
+  serialized a fully-qualified `Result` as JSON, so the thin wrapper was
+  corrected to propagate the error directly (M-FFI-TRANSLATES).
+- Full pytest: 11455 passed / 36 skipped; app replay 43/43.
+
 ### Metadata merge kernel (done 2026-11-23)
 
 - `merge_into_document_metadata` now delegates field copies, title precedence,
@@ -283,7 +293,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
   `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
   bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,454 passing tests.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,455 passing tests.
 
 ## Open questions
 

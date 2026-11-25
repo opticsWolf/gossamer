@@ -324,21 +324,14 @@ def format_citations(
 
     Returns the formatted string (empty when there is nothing to cite).
     """
-    style = (style or "bibtex").lower()
-    if style not in _FORMATTERS:
-        raise ValueError(
-            f"unknown citation style {style!r}; expected one of {FORMAT_STYLES}"
-        )
+    style = _service_citation_style(style)
     records: List[BibliographicRecord] = []
     for item in results or []:
         if isinstance(item, dict):
             rec = record_from_result(item)
         elif isinstance(item, str):
-            s = item.strip()
-            if "/" in s and "http" not in s:
-                rec = BibliographicRecord(doi=s, url=f"https://doi.org/{s}")
-            else:
-                rec = BibliographicRecord(url=s)
+            fields = _service_citation_input(item)
+            rec = BibliographicRecord(**fields)
         else:
             continue
         if enrich:
@@ -347,3 +340,41 @@ def format_citations(
     if dedupe:
         records = dedupe_records(records)
     return _FORMATTERS[style](records)
+
+def _service_citation_style(style):
+    resolved = (style or "bibtex").lower()
+    if resolved not in _FORMATTERS:
+        raise ValueError(
+            f"unknown citation style {resolved!r}; expected one of {FORMAT_STYLES}"
+        )
+    return resolved
+
+
+def _service_citation_input(value):
+    item = value.strip()
+    if "/" in item and "http" not in item:
+        return {"doi": item, "url": f"https://doi.org/{item}"}
+    return {"doi": None, "url": item}
+
+# >>> rust-anything: citation-dispatch-rs is on. `rust-anything disable ../rust/citation-dispatch-rs` removes this block.
+def _rust_anything_citation_dispatch_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_CITATION_DISPATCH") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/citation-dispatch-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("citation_dispatch_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_citation_style", "_service_citation_input"]})
+
+
+_rust_anything_citation_dispatch_rs()
+del _rust_anything_citation_dispatch_rs
+# <<< rust-anything: citation-dispatch-rs

@@ -987,6 +987,32 @@ pub fn abstract_from_raw(raw: Option<&str>) -> Result<Option<String>> {
     abstract_from_value(value.as_ref())
 }
 
+
+/// Resolve a citation style name or return the Python-shaped error message.
+pub fn citation_style(style: Option<&str>) -> std::result::Result<&'static str, String> {
+    let style = style.unwrap_or("bibtex").to_ascii_lowercase();
+    match style.as_str() {
+        "bibtex" => Ok("bibtex"),
+        "csl-json" => Ok("csl-json"),
+        "apa" => Ok("apa"),
+        "mla" => Ok("mla"),
+        _ => Err(format!(
+            "ValueError: unknown citation style {}; expected one of ('bibtex', 'csl-json', 'apa', 'mla')",
+            crate::compat::py_repr(&style)
+        )),
+    }
+}
+
+/// Build the record fields for a bare DOI/URL citation input.
+pub fn citation_input(value: &str) -> serde_json::Value {
+    let text = value.trim();
+    if text.contains('/') && !text.contains("http") {
+        serde_json::json!({"doi": text, "url": format!("https://doi.org/{text}")})
+    } else {
+        serde_json::json!({"doi": serde_json::Value::Null, "url": text})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

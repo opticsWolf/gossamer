@@ -1,0 +1,15 @@
+{"fn": "_service_citation_style", "args": [null], "ok": "bibtex"}
+{"fn": "_service_citation_style", "args": ["MLA"], "ok": "mla"}
+{"fn": "_service_citation_style", "args": ["bad"], "error": "ValueError: unknown citation style 'bad'; expected one of ('bibtex', 'csl-json', 'apa', 'mla')"}
+{"fn": "_service_citation_input", "args": [" 10.1234/AbC "], "ok": {"doi": "10.1234/AbC", "url": "https://doi.org/10.1234/AbC"}}
+{"fn": "_service_citation_input", "args": [" https://x "], "ok": {"doi": null, "url": "https://x"}}
+{"fn": "_service_citation_style", "args": ["csl-json"], "ok": "csl-json"}
+{"fn": "_service_citation_input", "args": ["10.1234/example"], "ok": {"doi": "10.1234/example", "url": "https://doi.org/10.1234/example"}}
+{"fn": "_service_citation_style", "args": ["bibtex"], "ok": "bibtex"}
+{"fn": "_service_citation_style", "args": ["apa"], "ok": "apa"}
+{"fn": "_service_citation_style", "args": ["mla"], "ok": "mla"}
+{"fn": "_service_citation_input", "args": ["10.1038/s41586-020-0694-2"], "ok": {"doi": "10.1038/s41586-020-0694-2", "url": "https://doi.org/10.1038/s41586-020-0694-2"}}
+{"fn": "_service_citation_input", "args": ["https://example.com/paper"], "ok": {"doi": null, "url": "https://example.com/paper"}}
+{"fn": "_service_citation_input", "args": ["10.1/x"], "ok": {"doi": "10.1/x", "url": "https://doi.org/10.1/x"}}
+{"fn": "_service_citation_style", "args": ["ris"], "error": "ValueError: unknown citation style 'ris'; expected one of ('bibtex', 'csl-json', 'apa', 'mla')"}
+{"fn": "_service_citation_input", "args": ["10.1234/example-doi"], "ok": {"doi": "10.1234/example-doi", "url": "https://doi.org/10.1234/example-doi"}}
