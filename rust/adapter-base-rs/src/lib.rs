@@ -192,6 +192,69 @@ fn service_quota_period(window: String, now_iso: String) -> PyResult<String> {
     service_quota_period_inner(window, now_iso).map_err(error)
 }
 
+fn _service_provider_call_gate_inner(
+    name: String,
+    quota: Option<i64>,
+    used: i64,
+    window: String,
+    quota_period: Option<String>,
+    now_iso: String,
+    now: f64,
+    last_search: f64,
+    delay: f64,
+    jitter: f64,
+    jitter_value: f64,
+) -> Result<Value, String> {
+    let out = port::service_provider_call_gate(
+        name,
+        quota,
+        used,
+        window,
+        quota_period,
+        now_iso,
+        now,
+        last_search,
+        delay,
+        jitter,
+        jitter_value,
+    )?;
+    Ok(out)
+}
+
+/// `_service_provider_call_gate`.
+#[pyfunction]
+#[pyo3(name = "_service_provider_call_gate", signature = (name, quota, used, window, quota_period, now_iso, now, last_search, delay, jitter, jitter_value))]
+fn _service_provider_call_gate(
+    py: Python<'_>,
+    name: String,
+    quota: Option<i64>,
+    used: i64,
+    window: String,
+    quota_period: Option<String>,
+    now_iso: String,
+    now: f64,
+    last_search: f64,
+    delay: f64,
+    jitter: f64,
+    jitter_value: f64,
+) -> PyResult<Py<PyAny>> {
+    _service_provider_call_gate_inner(
+        name,
+        quota,
+        used,
+        window,
+        quota_period,
+        now_iso,
+        now,
+        last_search,
+        delay,
+        jitter,
+        jitter_value,
+    )
+    .map_err(error)
+    .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -201,5 +264,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_politeness_wait, m)?)?;
     m.add_function(wrap_pyfunction!(service_retry_plan, m)?)?;
     m.add_function(wrap_pyfunction!(service_quota_period, m)?)?;
+    m.add_function(wrap_pyfunction!(_service_provider_call_gate, m)?)?;
     Ok(())
 }

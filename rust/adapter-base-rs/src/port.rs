@@ -70,3 +70,31 @@ pub fn service_retry_plan(
 pub fn service_quota_period(window: String, now_iso: String) -> Result<String, String> {
     Ok(k::quota_period(&window, &now_iso))
 }
+
+pub fn service_provider_call_gate(
+    name: String,
+    quota: Option<i64>,
+    used: i64,
+    window: String,
+    quota_period: Option<String>,
+    now_iso: String,
+    now: f64,
+    last_search: f64,
+    delay: f64,
+    jitter: f64,
+    jitter_value: f64,
+) -> Result<Value, String> {
+    Ok(k::provider_call_gate(
+        &name,
+        quota,
+        used,
+        &window,
+        quota_period.as_deref(),
+        &now_iso,
+        now,
+        last_search,
+        delay,
+        jitter,
+        jitter_value,
+    ))
+}

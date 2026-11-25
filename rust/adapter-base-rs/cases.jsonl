@@ -1,17 +1,13 @@
-{"fn": "_service_retry_wait", "args": ["bad", 3, 1.0, 2.0, null, 0.0], "error": "TypeError: '>=' not supported between instances of 'str' and 'int'"}
-{"fn": "_service_quota_message", "args": [1, 2, 3, "day"], "error": "TypeError: 'int' object is not an instance of 'str'"}
-{"fn": "_service_retryable_status", "args": [429], "ok": true}
-{"fn": "_service_retryable_status", "args": [404], "ok": false}
-{"fn": "_service_retry_wait", "args": [0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05], "ok": 1.05}
-{"fn": "_service_retry_wait", "args": [2, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05], "ok": null}
-{"fn": "_service_retry_wait", "args": [0, 3, {"$float": "1.0"}, {"$float": "2.0"}, {"$float": "90.0"}, {"$float": "0.0"}], "ok": null}
-{"fn": "_service_quota_message", "args": ["google", 100, 100, "day"], "ok": "'google' quota exhausted (100/100 per day); retry after the window resets"}
-{"fn": "_service_politeness_wait", "args": [{"$float": "10.0"}, 10.5, {"$float": "1.0"}, 0.2, 0.1], "ok": 0.6000000000000001}
-{"fn": "_service_retry_plan", "args": ["quota", null, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}], "ok": {"action": "raise", "final": false, "cap": false}}
-{"fn": "_service_retry_plan", "args": ["status", 404, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}], "ok": {"action": "raise", "final": false, "cap": false}}
-{"fn": "_service_retry_plan", "args": ["status", 429, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05], "ok": {"action": "retry", "wait": 1.05}}
-{"fn": "_service_retry_plan", "args": ["transport", null, 2, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}], "ok": {"action": "raise", "final": true, "cap": false}}
-{"fn": "_service_retry_plan", "args": ["status", 503, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, {"$float": "90.0"}, {"$float": "0.0"}], "ok": {"action": "raise", "final": false, "cap": true}}
-{"fn": "_service_quota_period", "args": ["day", "2026-11-23T12:34:56+00:00"], "ok": "2026-11-23"}
-{"fn": "_service_quota_period", "args": ["month", "2026-11-23T12:34:56+00:00"], "ok": "2026-11"}
-{"fn": "_service_quota_period", "args": ["other", "2026-11-23"], "ok": "2026-11"}
+{"fn": "_service_provider_call_gate", "args": ["duckduckgo", null, 0, "day", null, "2026-01-01T00:00:00+00:00", 10.0, 9.0, 1.0, 0.5, 0.25], "ok": {"reset_quota": false, "period": "2026-01-01", "used": 0, "error": null, "wait": 0.25, "quota_used_after": 0}}
+{"fn": "_service_provider_call_gate", "args": ["google", 3, 9, "day", "2025-12-31", "2026-01-01T00:00:00+00:00", 10.0, 9.0, 1.0, 0.0, 0.0], "ok": {"reset_quota": true, "period": "2026-01-01", "used": 0, "error": null, "wait": {"$float": "0.0"}, "quota_used_after": 1}}
+{"fn": "_service_provider_call_gate", "args": ["google", 2, 2, "day", "2026-01-01", "2026-01-01T12:00:00+00:00", 10.0, 9.0, 1.0, 0.0, 0.0], "ok": {"reset_quota": false, "period": "2026-01-01", "used": 2, "error": "'google' quota exhausted (2/2 per day); retry after the window resets", "wait": {"$float": "0.0"}, "quota_used_after": 2}}
+{"fn": "_service_provider_call_gate", "args": ["openalex", 10, 4, "month", "2025-12", "2026-01-15T12:00:00+00:00", 100.0, 99.5, 0.0, 0.5, 0.5], "ok": {"reset_quota": true, "period": "2026-01", "used": 0, "error": null, "wait": {"$float": "0.0"}, "quota_used_after": 1}}
+{"fn": "_service_provider_call_gate", "args": ["crossref", null, 0, "day", null, "2026-01-01T00:00:00+00:00", 10.0, 9.9, 0.0, 0.5, 0.5], "ok": {"reset_quota": false, "period": "2026-01-01", "used": 0, "error": null, "wait": {"$float": "0.0"}, "quota_used_after": 0}}
+{"fn": "_service_provider_call_gate", "args": ["duckduckgo", null, 0, "day", null, "2026-01-01T00:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, 0.5, 0.25], "ok": {"reset_quota": false, "period": "2026-01-01", "used": 0, "error": null, "wait": 0.25, "quota_used_after": 0}}
+{"fn": "_service_quota_period", "args": ["day", "2026-01-01T00:00:00+00:00"], "ok": "2026-01-01"}
+{"fn": "_service_politeness_wait", "args": [{"$float": "9.0"}, {"$float": "10.0"}, {"$float": "1.0"}, 0.5, 0.25], "ok": 0.25}
+{"fn": "_service_provider_call_gate", "args": ["google", 3, 9, "day", "2025-12-31", "2026-01-01T00:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}], "ok": {"reset_quota": true, "period": "2026-01-01", "used": 0, "error": null, "wait": {"$float": "0.0"}, "quota_used_after": 1}}
+{"fn": "_service_politeness_wait", "args": [{"$float": "9.0"}, {"$float": "10.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}], "ok": {"$float": "0.0"}}
+{"fn": "_service_provider_call_gate", "args": ["google", 2, 2, "day", "2026-01-01", "2026-01-01T12:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}], "ok": {"reset_quota": false, "period": "2026-01-01", "used": 2, "error": "'google' quota exhausted (2/2 per day); retry after the window resets", "wait": {"$float": "0.0"}, "quota_used_after": 2}}
+{"fn": "_service_quota_period", "args": ["day", "2026-01-01T12:00:00+00:00"], "ok": "2026-01-01"}
+{"fn": "_service_quota_message", "args": ["google", 2, 2, "day"], "ok": "'google' quota exhausted (2/2 per day); retry after the window resets"}

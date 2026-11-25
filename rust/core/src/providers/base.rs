@@ -202,6 +202,54 @@ pub fn retry_decision(
     serde_json::json!({"action": "retry", "wait": wait})
 }
 
+/// Deterministic state transition for one provider call gate.
+///
+/// Binding-side caller owns the clock, sleep and mutable provider state;
+/// this function returns the exact quota rollover, quota verdict, politeness
+/// wait and post-call quota counter.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors the Python provider gate inputs exactly"
+)]
+pub fn provider_call_gate(
+    name: &str,
+    quota: Option<i64>,
+    used: i64,
+    window: &str,
+    quota_period: Option<&str>,
+    now_iso: &str,
+    now: f64,
+    last_search: f64,
+    delay: f64,
+    jitter: f64,
+    jitter_value: f64,
+) -> Value {
+    let period = crate::providers::base::quota_period(window, now_iso);
+    let reset_quota = quota.is_some() && quota_period != Some(period.as_str());
+    let effective_used = if reset_quota { 0 } else { used.max(0) };
+    let error = quota.and_then(|limit| {
+        (effective_used >= limit).then(|| quota_message(name, effective_used, limit, window))
+    });
+    let wait = if error.is_some() {
+        0.0
+    } else {
+        politeness_wait(last_search, now, delay, jitter, jitter_value)
+    };
+    let quota_used_after = if error.is_some() {
+        effective_used
+    } else {
+        effective_used + i64::from(quota.is_some())
+    };
+    serde_json::json!({
+        "reset_quota": reset_quota,
+        "period": period,
+        "used": effective_used,
+        "error": error,
+        "wait": wait,
+        "quota_used_after": quota_used_after,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

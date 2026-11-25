@@ -96,6 +96,18 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Provider call gate transition (done 2026-11-25)
+
+- `ResourceAdapter._enforce_delay` now delegates quota rollover, quota verdict,
+  politeness wait and post-call counter mutation to `gossamer::providers::base::provider_call_gate`.
+  Clock, sleep and provider state mutation stay on the Python binding side.
+- Binding: extended `rust/adapter-base-rs` to 13/13 cases; gate passed. Bench 0.63x
+  (parity/transition kernel, not a speed port); 1 of 4 functions at least 1.1x.
+- Guidelines: return `Result` instead of panicking (`M-PANIC-IS-STOP`); no unsafe
+  (`M-UNSAFE`); `#[expect(clippy::too_many_arguments, reason = ...)]` mirrors the
+  Python inputs exactly rather than broadening the API (`M-PANIC-ON-BUG` avoided).
+- Full pytest 11468 passed / 36 skipped; app replay 57/57.
+
 ### CLI `download` live body (done 2026-11-23)
 
 - `gossamer download` now streams bounded bytes, validates HTTP/PDF/size

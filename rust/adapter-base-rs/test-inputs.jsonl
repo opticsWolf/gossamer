@@ -1,15 +1,8 @@
-{"fn": "_service_retryable_status", "args": [429]}
-{"fn": "_service_retryable_status", "args": [404]}
-{"fn": "_service_retry_wait", "args": [0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05]}
-{"fn": "_service_retry_wait", "args": [2, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05]}
-{"fn": "_service_retry_wait", "args": [0, 3, {"$float": "1.0"}, {"$float": "2.0"}, {"$float": "90.0"}, {"$float": "0.0"}]}
-{"fn": "_service_quota_message", "args": ["google", 100, 100, "day"]}
-{"fn": "_service_politeness_wait", "args": [{"$float": "10.0"}, 10.5, {"$float": "1.0"}, 0.2, 0.1]}
-{"fn": "_service_retry_plan", "args": ["quota", null, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}]}
-{"fn": "_service_retry_plan", "args": ["status", 404, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}]}
-{"fn": "_service_retry_plan", "args": ["status", 429, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, 0.05]}
-{"fn": "_service_retry_plan", "args": ["transport", null, 2, 3, {"$float": "1.0"}, {"$float": "2.0"}, null, {"$float": "0.0"}]}
-{"fn": "_service_retry_plan", "args": ["status", 503, 0, 3, {"$float": "1.0"}, {"$float": "2.0"}, {"$float": "90.0"}, {"$float": "0.0"}]}
-{"fn": "_service_quota_period", "args": ["day", "2026-11-23T12:34:56+00:00"]}
-{"fn": "_service_quota_period", "args": ["month", "2026-11-23T12:34:56+00:00"]}
-{"fn": "_service_quota_period", "args": ["other", "2026-11-23"]}
+{"fn": "_service_provider_call_gate", "args": ["duckduckgo", null, 0, "day", null, "2026-01-01T00:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, 0.5, 0.25]}
+{"fn": "_service_quota_period", "args": ["day", "2026-01-01T00:00:00+00:00"]}
+{"fn": "_service_politeness_wait", "args": [{"$float": "9.0"}, {"$float": "10.0"}, {"$float": "1.0"}, 0.5, 0.25]}
+{"fn": "_service_provider_call_gate", "args": ["google", 3, 9, "day", "2025-12-31", "2026-01-01T00:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}]}
+{"fn": "_service_politeness_wait", "args": [{"$float": "9.0"}, {"$float": "10.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}]}
+{"fn": "_service_provider_call_gate", "args": ["google", 2, 2, "day", "2026-01-01", "2026-01-01T12:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}]}
+{"fn": "_service_quota_period", "args": ["day", "2026-01-01T12:00:00+00:00"]}
+{"fn": "_service_quota_message", "args": ["google", 2, 2, "day"]}

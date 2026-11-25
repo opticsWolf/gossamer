@@ -302,31 +302,34 @@ class ResourceAdapter(ABC):
         The quota counter is bumped only after the gate passes, so it
         counts calls actually admitted to the provider.
         """
-        self._reset_quota_if_rolled()
-        quota = self.rate_limit.quota
-        if quota is not None and self._quota_used >= quota:
-            raise QuotaExhaustedError(
-                _service_quota_message(
-                    self.name, self._quota_used, quota, self.rate_limit.quota_window
-                )
-            )
-
         now = time.time()
         jitter_value = (
             random.uniform(0.0, self.rate_limit.jitter)
             if self._delay > 0
             else 0.0
         )
-        wait = _service_politeness_wait(
-            self._last_search, now, self._delay,
-            self.rate_limit.jitter, jitter_value,
+        plan = _service_provider_call_gate(
+            self.name,
+            self.rate_limit.quota,
+            self._quota_used,
+            self.rate_limit.quota_window,
+            self._quota_period,
+            datetime.now(timezone.utc).isoformat(),
+            now,
+            self._last_search,
+            self._delay,
+            self.rate_limit.jitter,
+            jitter_value,
         )
-        if wait > 0:
-            time.sleep(wait)
+        if plan["reset_quota"]:
+            self._quota_period = plan["period"]
+            self._quota_used = 0
+        if plan["error"] is not None:
+            raise QuotaExhaustedError(plan["error"])
+        if plan["wait"] > 0:
+            time.sleep(plan["wait"])
         self._last_search = time.time()
-
-        if quota is not None:
-            self._quota_used += 1
+        self._quota_used = plan["quota_used_after"]
 
     # ── auth + response contract (overridable) ──
     def inject_auth(
@@ -966,6 +969,29 @@ def _service_politeness_wait(last_search, now, delay, jitter, jitter_value):
         return 0.0
     gap = delay + max(0.0, min(jitter, jitter_value))
     return max(0.0, gap - (now - last_search))
+
+
+def _service_provider_call_gate(name, quota, used, window, quota_period, now_iso, now, last_search, delay, jitter, jitter_value):
+    period = _service_quota_period(window, now_iso)
+    reset = quota is not None and quota_period != period
+    effective = 0 if reset else max(0, used)
+    error = None
+    if quota is not None and effective >= quota:
+        error = _service_quota_message(name, effective, quota, window)
+    wait = (
+        0.0
+        if error is not None
+        else _service_politeness_wait(last_search, now, delay, jitter, jitter_value)
+    )
+    after = effective if error is not None else effective + (1 if quota is not None else 0)
+    return {
+        "reset_quota": reset,
+        "period": period,
+        "used": effective,
+        "error": error,
+        "wait": wait,
+        "quota_used_after": after,
+    }
 # >>> rust-anything: adapter-base-rs is on. `rust-anything disable ../rust/adapter-base-rs` removes this block.
 def _rust_anything_adapter_base_rs():
     import importlib, os, sys
@@ -982,7 +1008,7 @@ def _rust_anything_adapter_base_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_quota_message", "_service_politeness_wait"]})
+    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_quota_message", "_service_politeness_wait", "_service_provider_call_gate"]})
 
 
 _rust_anything_adapter_base_rs()
