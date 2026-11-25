@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `download` validation body (done 2026-11-23)
+
+- `gossamer download` now validates output paths, URL normalization, and SSRF
+  policy in Rust with exact error envelopes and stderr logging. Actual
+  streaming downloads remain outside this slice. Added two replay cases.
+- App replay 50/50; full pytest 11467 passed / 36 skipped.
+
 ### CLI `locate-pdf` command body (done 2026-11-23)
 
 - `gossamer locate-pdf` now normalizes DOIs, queries OpenAlex, maps OA

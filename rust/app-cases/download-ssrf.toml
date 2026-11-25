@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["download", "http://127.0.0.1/a", "-o", "out.bin"]
+status.code = 0
+fs.sandbox = true

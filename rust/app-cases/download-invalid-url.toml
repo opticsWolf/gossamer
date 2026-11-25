@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["download", "ftp://example.com/a", "-o", "out.bin"]
+status.code = 0
+fs.sandbox = true
