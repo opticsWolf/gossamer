@@ -539,7 +539,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Current state
 
-- `dev_rustify` after `cc3bb78`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
+- `dev_rustify` after `f675136`: pure Rust front door lifted, replay 57/57, fallback 0, no fallback path.
 - Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
   deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
@@ -547,10 +547,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   crawl/scoring/excerpt kernels, provider policy/rate-state kernels, research planning and
   merge kernels, download candidate/error/finish validation, OA candidate mapping, citation
   dispatch/enrichment/DOI scanning, and resource-store image/figure planning.
-- Rust does not yet own: live HTTP/provider/browser transport, binary PDF/Office extraction,
-  filesystem side effects, MCP transport, live tool bodies, live CLI command bodies, the full
-  crawl loop, and the final PyO3-wrapper retirement/cutover.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,466 passing tests.
+- Rust now owns substantial live CLI bodies: `check`, `discover`, `cite`, `locate-pdf`,
+  download validation, extract validation, research validation, crawl validation, DuckDuckGo
+  search, and static `inspect`/`batch`.
+- Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
+  full download filesystem side effects, MCP transport, remaining live tool bodies, the full
+  crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
+- Verification: 57 replay cases; Python suite is the behavioral oracle at 11,467 passing tests.
 
 ## Open questions
 
