@@ -794,6 +794,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "downloader-rs"
+version = "0.1.0"
+dependencies = [
+ "gossamer-web",
+ "pyo3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dtoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -24,6 +24,7 @@ members = [
   "crawl-kernels-rs",
   "open-access-rs",
   "resource-store-rs",
+  "downloader-rs",
   "research-merge-rs",
   "meta-merge-rs",
   "citation-dispatch-rs",

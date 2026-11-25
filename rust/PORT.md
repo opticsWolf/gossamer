@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Download candidate planning (done 2026-11-23)
+
+- `_download_candidates` now delegates input validation, candidate ordering,
+  terminal-result detection and final error payload assembly to
+  `gossamer::downloader`; actual downloads stay Python-side.
+- Binding: `rust/downloader-rs` (7/7); gate passed. Restored the PyO3 default
+  for `full_results` after recording.
+- Full pytest: 11464 passed / 36 skipped; app replay 43/43.
+
 ### Embedded figure planning (done 2026-11-23)
 
 - `ResourceStore.extract_embedded` now delegates filename selection, figure

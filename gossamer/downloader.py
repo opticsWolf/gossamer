@@ -48,57 +48,36 @@ class DownloadService:
         output_path: str,
         **kwargs,
     ) -> str:
-        if not isinstance(source, str) or not source.strip():
-            return self._error(str(source), "invalid_argument", "source must be a URL string")
-        if not isinstance(fallback_urls, (list, tuple)) or any(
-            not isinstance(url, str) or not url.strip() for url in fallback_urls
-        ):
-            return self._error(
-                str(source), "invalid_argument",
-                "fallback_urls must be a list of non-empty URL strings",
-            )
-        candidates = list(dict.fromkeys([source, *fallback_urls]))
+        plan = _service_candidate_list(source, fallback_urls)
+        if "error" in plan:
+            error = plan["error"]
+            return self._error(str(source), error["code"], error["message"])
+        candidates = plan["candidates"]
         attempts = []
+        full_results = []
         for candidate in candidates:
             result = json.loads(self.download_file(
                 candidate, output_path, fallback_urls=None, **kwargs,
             ))
-            attempt = {
+            full_results.append(result)
+            attempts.append({
                 "url": candidate,
                 "status": result.get("status"),
                 "error": result.get("error"),
-            }
-            attempts.append(attempt)
-            if result.get("status") == "downloaded":
-                result["requested_source"] = source
-                result["attempts"] = attempts
-                result["mirror_fallback_used"] = candidate != source
-                return json.dumps(result, indent=2)
+            })
             error = result.get("error")
-            if isinstance(error, dict) and error.get("code") in {
-                "invalid_argument", "file_exists",
-            }:
-                result["attempts"] = attempts
-                return json.dumps(result, indent=2)
-
-        human_needed = any(
-            isinstance(attempt.get("error"), dict)
-            and attempt["error"].get("code") in {"bot_wall", "access_denied"}
-            for attempt in attempts
-        )
-        code = "human_action_needed" if human_needed else "all_sources_failed"
-        message = (
-            "All candidates were blocked by access controls or anti-bot challenges; "
-            "human action is needed. No bypass was attempted."
-            if human_needed
-            else "All caller-supplied download candidates failed."
-        )
-        return self._error(
-            source,
-            code,
-            message,
-            attempted_urls=[attempt["url"] for attempt in attempts],
-            attempts=attempts,
+            terminal = result.get("status") == "downloaded" or (
+                isinstance(error, dict)
+                and error.get("code") in {"invalid_argument", "file_exists"}
+            )
+            if terminal:
+                return json.dumps(
+                    _service_finalize_candidates(source, candidates, attempts, full_results),
+                    indent=2,
+                )
+        return json.dumps(
+            _service_finalize_candidates(source, candidates, attempts, full_results),
+            indent=2,
         )
 
     @staticmethod
@@ -682,3 +661,74 @@ class DownloadService:
                     Path(temp_path).unlink(missing_ok=True)
                 except OSError:
                     pass
+
+def _service_candidate_list(source, fallback_urls):
+    if not isinstance(source, str) or not source.strip():
+        return {"error": {"code": "invalid_argument", "message": "source must be a URL string"}}
+    if not isinstance(fallback_urls, (list, tuple)) or any(
+        not isinstance(url, str) or not url.strip() for url in fallback_urls
+    ):
+        return {"error": {"code": "invalid_argument", "message": "fallback_urls must be a list of non-empty URL strings"}}
+    candidates = []
+    for url in [source, *fallback_urls]:
+        if url not in candidates:
+            candidates.append(url)
+    return {"candidates": candidates}
+
+
+def _service_finalize_candidates(source, candidates, attempts, full_results=None):
+    for index, attempt in enumerate(attempts):
+        if attempt.get("status") == "downloaded":
+            result = dict(full_results[index] if full_results else attempt)
+            result["requested_source"] = source
+            result["attempts"] = attempts
+            result["mirror_fallback_used"] = candidates[index] != source
+            return result
+        error = attempt.get("error")
+        if isinstance(error, dict) and error.get("code") in {"invalid_argument", "file_exists"}:
+            result = dict(full_results[index] if full_results else attempt)
+            result["attempts"] = attempts
+            return result
+    human_needed = any(
+        isinstance(attempt.get("error"), dict)
+        and attempt["error"].get("code") in {"bot_wall", "access_denied"}
+        for attempt in attempts
+    )
+    code = "human_action_needed" if human_needed else "all_sources_failed"
+    message = (
+        "All candidates were blocked by access controls or anti-bot challenges; human action is needed. No bypass was attempted."
+        if human_needed else "All caller-supplied download candidates failed."
+    )
+    return {
+        "source": source,
+        "status": "error",
+        "error": {
+            "code": code,
+            "message": message,
+            "attempted_urls": list(candidates),
+            "attempts": attempts,
+        },
+    }
+
+# >>> rust-anything: downloader-rs is on. `rust-anything disable ../rust/downloader-rs` removes this block.
+def _rust_anything_downloader_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_DOWNLOADER") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/downloader-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("downloader_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_candidate_list", "_service_finalize_candidates"]})
+
+
+_rust_anything_downloader_rs()
+del _rust_anything_downloader_rs
+# <<< rust-anything: downloader-rs
