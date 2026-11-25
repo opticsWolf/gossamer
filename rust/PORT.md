@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `research` general body (done 2026-11-25)
+
+- `gossamer research` now classifies the query via `gossamer::categories::classify_query`,
+  resolves explicit/inferred category and provider, calls the Rust DuckDuckGo result
+  parser for engine categories, and emits the exact public envelope. Adapter-backed
+  categories still fall back in the front door.
+- Verified against the Python oracle on a general query; app replay 57/57,
+  full pytest 11468 passed / 36 skipped.
+
 ### CLI `extract` local text body (done 2026-11-25)
 
 - `gossamer extract` now emits the full extraction envelope for local
