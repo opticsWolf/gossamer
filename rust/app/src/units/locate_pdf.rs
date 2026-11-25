@@ -129,8 +129,8 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             pretty(&json!({
                 "doi": doi,
                 "provider": "openalex",
-                "status": "error",
-                "error": {"code": "provider_error", "message": "no OpenAlex records returned"},
+                "sources": ["openalex"],
+                "status": "not_found",
                 "candidates": [],
             }))
         );
