@@ -91,5 +91,6 @@ _service_crawl_score = _native._service_crawl_score
 _service_shrink_crawl = _native._service_shrink_crawl
 _service_crawl_tokens = _native._service_crawl_tokens
 _service_crawl_topic_words = _native._service_crawl_topic_words
+_service_crawl_is_document = _native._service_crawl_is_document
 
-__all__ = ['_service_crawl_score', '_service_shrink_crawl', '_service_crawl_tokens', '_service_crawl_topic_words']
+__all__ = ['_service_crawl_score', '_service_shrink_crawl', '_service_crawl_tokens', '_service_crawl_topic_words', '_service_crawl_is_document']

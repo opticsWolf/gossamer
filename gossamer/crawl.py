@@ -198,8 +198,7 @@ class Crawler:
     @classmethod
     def _crawl_is_document(cls, url: str) -> bool:
         """True when the URL path carries a document extension (D routing)."""
-        path = (urlparse(url).path or "").lower()
-        return any(path.endswith(ext) for ext in DOCUMENT_EXTENSIONS)
+        return _service_crawl_is_document(url)
 
     @classmethod
     def _crawl_anchor_context(cls, md: str, anchor: str) -> frozenset:
@@ -983,4 +982,8 @@ def _service_crawl_topic_words(text, limit):
         counts[t] = counts.get(t, 0) + 1
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     return [t for t, _ in ranked[:limit]]
+
+def _service_crawl_is_document(url):
+    path = (urlparse(url).path or "").lower()
+    return any(path.endswith(ext) for ext in DOCUMENT_EXTENSIONS)
 

@@ -1,4 +1,7 @@
 {"fn": "_service_crawl_score", "args": [], "error": "TypeError: _service_crawl_score() missing 7 required positional arguments: 'label', 'query_terms', 'page_terms', 'idf', 'base_terms', 'corpus_n', and 'path_prior'"}
+{"fn": "_service_crawl_is_document", "args": ["https://x/a.PDF"], "ok": true}
+{"fn": "_service_crawl_is_document", "args": ["https://x/feed.rss?x=1"], "ok": true}
+{"fn": "_service_crawl_is_document", "args": ["https://x/page"], "ok": false}
 {"fn": "_service_crawl_tokens", "args": ["The QUICK brown fox"], "ok": ["brown", "fox", "quick"]}
 {"fn": "_service_crawl_topic_words", "args": ["rust rust python the rust", 2], "ok": ["rust", "python"]}
 {"fn": "_service_shrink_crawl", "args": [{"pages": [{"url": "https://x/0", "markdown": "a"}, {"url": "https://x/1", "markdown": "a"}, {"url": "https://x/2", "markdown": "a"}, {"url": "https://x/3", "markdown": "a"}, {"url": "https://x/4", "markdown": "a"}], "root": "https://x"}, null], "ok": "{\n  \"pages\": [\n    {\n      \"url\": \"https://x/0\",\n      \"markdown\": \"a\"\n    },\n    {\n      \"url\": \"https://x/1\",\n      \"markdown\": \"a\"\n    },\n    {\n      \"url\": \"https://x/2\",\n      \"markdown\": \"a\"\n    },\n    {\n      \"url\": \"https://x/3\",\n      \"markdown\": \"a\"\n    },\n    {\n      \"url\": \"https://x/4\",\n      \"markdown\": \"a\"\n    }\n  ],\n  \"root\": \"https://x\"\n}"}

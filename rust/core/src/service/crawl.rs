@@ -131,6 +131,18 @@ pub fn crawl_topic_words(text: Option<&str>, limit: usize) -> Vec<String> {
     ranked.into_iter().take(limit).map(|(token, _)| token).collect()
 }
 
+
+
+/// True when the URL path ends in a document extension.
+pub fn crawl_is_document(url: &str) -> bool {
+    let path = crate::robots::url_path(url, None).to_ascii_lowercase();
+    let path = path.split(['?', '#']).next().unwrap_or(&path);
+    [
+        ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt", ".xlsb",
+        ".csv", ".txt", ".md", ".json", ".xml", ".rss", ".atom",
+    ].iter().any(|ext| path.ends_with(ext))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

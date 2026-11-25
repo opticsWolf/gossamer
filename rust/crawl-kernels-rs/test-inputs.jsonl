@@ -1,3 +1,6 @@
+{"fn": "_service_crawl_is_document", "args": ["https://x/a.PDF"]}
+{"fn": "_service_crawl_is_document", "args": ["https://x/feed.rss?x=1"]}
+{"fn": "_service_crawl_is_document", "args": ["https://x/page"]}
 {"fn": "_service_crawl_tokens", "args": ["The QUICK brown fox"]}
 {"fn": "_service_crawl_topic_words", "args": ["rust rust python the rust", 2]}
 {"fn": "_service_shrink_crawl", "args": [{"pages": [{"url": "https://x/0", "markdown": "a"}, {"url": "https://x/1", "markdown": "a"}, {"url": "https://x/2", "markdown": "a"}, {"url": "https://x/3", "markdown": "a"}, {"url": "https://x/4", "markdown": "a"}], "root": "https://x"}, null]}

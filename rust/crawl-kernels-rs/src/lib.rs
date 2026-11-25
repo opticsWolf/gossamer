@@ -131,6 +131,18 @@ fn service_crawl_topic_words(text: Option<String>, limit: i64) -> PyResult<Vec<S
     service_crawl_topic_words_inner(text, limit).map_err(error)
 }
 
+fn service_crawl_is_document_inner(url: String) -> Result<bool, String> {
+    let out = port::service_crawl_is_document(url)?;
+    Ok(out)
+}
+
+/// `_service_crawl_is_document`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_is_document", signature = (url))]
+fn service_crawl_is_document(url: String) -> PyResult<bool> {
+    service_crawl_is_document_inner(url).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -138,5 +150,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_shrink_crawl, m)?)?;
     m.add_function(wrap_pyfunction!(service_crawl_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(service_crawl_topic_words, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_is_document, m)?)?;
     Ok(())
 }
