@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `locate-pdf` command body (done 2026-11-23)
+
+- `gossamer locate-pdf` now normalizes DOIs, queries OpenAlex, maps OA
+  locations, and emits the public envelope in Rust. Unpaywall fallback and
+  provider-specific error translation remain outside this slice. Added a
+  deterministic invalid-DOI replay case.
+- App replay 48/48; full pytest 11467 passed / 36 skipped.
+
 ### CLI `cite` command body (done 2026-11-23)
 
 - `gossamer cite` now formats DOI/URL/JSON inputs with Rust citation kernels,

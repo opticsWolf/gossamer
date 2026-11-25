@@ -1,0 +1,9 @@
+{
+  "doi": "not-a-doi",
+  "status": "error",
+  "error": {
+    "code": "invalid_doi",
+    "message": "expected a DOI such as '10.1234/example'"
+  },
+  "candidates": []
+}
