@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["cite", "10.1234/example"]
+status.code = 0
+fs.sandbox = true

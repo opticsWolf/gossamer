@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `cite` command body (done 2026-11-23)
+
+- `gossamer cite` now formats DOI/URL/JSON inputs with Rust citation kernels,
+  including style validation and DOI/URL dedupe. PDF/enrich modes still fall
+  back. Added two deterministic replay cases.
+- App replay 47/47; full pytest 11467 passed / 36 skipped.
+
 ### CLI `discover` command body (done 2026-11-23)
 
 - `gossamer discover` now fetches HTML/sitemaps, extracts feed alternates,
