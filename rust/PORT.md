@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Download HTTP error classification (done 2026-11-23)
+
+- `_http_error` now delegates status/code mapping and bounded bot-marker
+  detection to `gossamer::downloader::http_error`; response streaming stays
+  Python-side.
+- Binding: extended `rust/downloader-rs` to 10/10 cases; gate passed.
+- Full pytest: 11464 passed / 36 skipped; app replay 43/43.
+
 ### Download candidate planning (done 2026-11-23)
 
 - `_download_candidates` now delegates input validation, candidate ordering,

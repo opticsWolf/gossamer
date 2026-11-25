@@ -88,23 +88,8 @@ class DownloadService:
 
     @staticmethod
     def _http_error(response: httpx.Response, url: str) -> _DownloadFailure:
-        status = response.status_code
-        retry_after = response.headers.get("Retry-After")
-        if status == 404:
-            code, message = "not_found", "The requested file was not found."
-        elif status in (401, 403):
-            code, message = "access_denied", "The server denied access to this file."
-        elif status in (408, 429):
-            code, message = "rate_limited", "The server asked the client to slow down."
-        elif status >= 500:
-            code, message = "server_error", f"The server returned HTTP {status}."
-        else:
-            code, message = "http_error", f"The server returned HTTP {status}."
-
-        # Inspect only a small bounded error prefix to distinguish a bot wall
-        # from a generic 403 without downloading an error page into memory.
         sample = bytearray()
-        if status in (401, 403, 406) and "html" in response.headers.get("content-type", "").lower():
+        if response.status_code in (401, 403, 406) and "html" in response.headers.get("content-type", "").lower():
             try:
                 for chunk in response.iter_bytes():
                     sample.extend(chunk[: 1024 - len(sample)])
@@ -112,14 +97,17 @@ class DownloadService:
                         break
             except httpx.HTTPError:
                 pass
-        lowered = bytes(sample).lower()
-        if any(marker in lowered for marker in _BOT_MARKERS):
-            code, message = (
-                "bot_wall",
-                "The server returned an anti-bot or browser challenge; no bypass was attempted.",
-            )
+        payload = _service_http_error(
+            response.status_code,
+            response.headers.get("content-type", ""),
+            bytes(sample),
+            url,
+            response.headers.get("Retry-After"),
+        )
         return _DownloadFailure(
-            code, message, http_status=status, url=url, retry_after=retry_after,
+            payload["code"], payload["message"],
+            http_status=payload["http_status"], url=payload["url"],
+            retry_after=payload["retry_after"],
         )
 
     @staticmethod
@@ -732,3 +720,25 @@ def _rust_anything_downloader_rs():
 _rust_anything_downloader_rs()
 del _rust_anything_downloader_rs
 # <<< rust-anything: downloader-rs
+
+def _service_http_error(status, content_type, sample, url, retry_after):
+    lowered = bytes(sample or b"").lower()
+    if status == 404:
+        code, message = "not_found", "The requested file was not found."
+    elif status in (401, 403):
+        code, message = "access_denied", "The server denied access to this file."
+    elif status in (408, 429):
+        code, message = "rate_limited", "The server asked the client to slow down."
+    elif status >= 500:
+        code, message = "server_error", f"The server returned HTTP {status}."
+    else:
+        code, message = "http_error", f"The server returned HTTP {status}."
+    if status in (401, 403, 406) and "html" in (content_type or "").lower():
+        if any(marker in lowered for marker in _BOT_MARKERS):
+            code = "bot_wall"
+            message = "The server returned an anti-bot or browser challenge; no bypass was attempted."
+    return {
+        "code": code, "message": message, "http_status": status,
+        "url": url, "retry_after": retry_after,
+    }
+

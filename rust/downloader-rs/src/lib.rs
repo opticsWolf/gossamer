@@ -94,10 +94,39 @@ fn service_finalize_candidates(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_http_error_inner(
+    status: i64,
+    content_type: Option<String>,
+    sample: Bound<'_, PyAny>,
+    url: String,
+    retry_after: Option<String>,
+) -> Result<Value, String> {
+    let sample: Value = crate::pyconv::FromPy::from_py(&sample)?;
+    let out = port::service_http_error(status, content_type, sample, url, retry_after)?;
+    Ok(out)
+}
+
+/// `_service_http_error`.
+#[pyfunction]
+#[pyo3(name = "_service_http_error", signature = (status, content_type, sample, url, retry_after))]
+fn service_http_error(
+    py: Python<'_>,
+    status: i64,
+    content_type: Option<String>,
+    sample: Bound<'_, PyAny>,
+    url: String,
+    retry_after: Option<String>,
+) -> PyResult<Py<PyAny>> {
+    service_http_error_inner(status, content_type, sample, url, retry_after)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_candidate_list, m)?)?;
     m.add_function(wrap_pyfunction!(service_finalize_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(service_http_error, m)?)?;
     Ok(())
 }

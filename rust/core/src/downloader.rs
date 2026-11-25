@@ -66,6 +66,46 @@ pub fn finalize_candidates(source: &str, candidates: &[String], attempts: &[Valu
     serde_json::json!({"source": source, "status": "error", "error": error})
 }
 
+
+/// Classify an HTTP response into the public download error payload.
+pub fn http_error(
+    status: i64,
+    content_type: &str,
+    sample: Option<&[u8]>,
+    url: &str,
+    retry_after: Option<&str>,
+) -> Value {
+    let (code, message) = match status {
+        404 => ("not_found", "The requested file was not found."),
+        401 | 403 => ("access_denied", "The server denied access to this file."),
+        408 | 429 => ("rate_limited", "The server asked the client to slow down."),
+        value if value >= 500 => ("server_error", "The server returned HTTP {status}."),
+        _ => ("http_error", "The server returned HTTP {status}."),
+    };
+    let mut code = code.to_string();
+    let mut message = message.replace("{status}", &status.to_string());
+    let markers: [&[u8]; 6] = [
+        b"cloudflare", b"captcha", b"attention required",
+        b"access denied", b"akamai", b"robot check",
+    ];
+    if matches!(status, 401 | 403 | 406)
+        && content_type.to_ascii_lowercase().contains("html")
+        && sample.is_some_and(|bytes| markers.iter().any(|marker| {
+            bytes.windows(marker.len()).any(|window| window.eq_ignore_ascii_case(marker))
+        }))
+    {
+        code = "bot_wall".to_string();
+        message = "The server returned an anti-bot or browser challenge; no bypass was attempted.".to_string();
+    }
+    serde_json::json!({
+        "code": code,
+        "message": message,
+        "http_status": status,
+        "url": url,
+        "retry_after": retry_after,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

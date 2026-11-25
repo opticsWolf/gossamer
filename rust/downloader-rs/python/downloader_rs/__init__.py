@@ -89,5 +89,6 @@ def _method(name, positions, names, json_result):
 
 _service_candidate_list = _native._service_candidate_list
 _service_finalize_candidates = _native._service_finalize_candidates
+_service_http_error = _native._service_http_error
 
-__all__ = ['_service_candidate_list', '_service_finalize_candidates']
+__all__ = ['_service_candidate_list', '_service_finalize_candidates', '_service_http_error']
