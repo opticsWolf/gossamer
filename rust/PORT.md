@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `search` live DuckDuckGo body (done 2026-11-23)
+
+- `gossamer search --search-only --provider duckduckgo` now fetches and parses
+  DuckDuckGo HTML in Rust, with redirect unwrapping, title/snippet extraction,
+  and URL dedupe. Empty-query and unknown-provider envelopes remain exact;
+  live result sets are network-dependent and are not replay-pinned.
+- App replay 57/57; full pytest 11467 passed / 36 skipped.
+
 ### CLI `search` empty-query body (done 2026-11-23)
 
 - `gossamer search --search-only` now emits the canonical all-providers-failed

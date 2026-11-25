@@ -4,7 +4,8 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
-use gossamer::search::unknown_provider_error;
+use gossamer::discovery::fetch_text;
+use gossamer::search::{duckduckgo_results, duckduckgo_search_url, unknown_provider_error};
 
 fn fallback(_args: &[OsString], _help_count: u8) -> ExitCode {
     unsupported()
@@ -33,6 +34,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
 
     let mut provider: Option<String> = None;
     let mut search_only = false;
+    let mut max_results = 5usize;
     let mut saw_query = false;
     let mut query = String::new();
     let mut index = 0usize;
@@ -56,6 +58,11 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             | "--config" | "--keystore" | "--log-level" | "--fetch-mode" => {
                 if index + 1 >= args.len() {
                     return fallback(&args, help_count);
+                }
+                if value == "--max-results"
+                    && let Ok(parsed) = args[index + 1].to_string_lossy().parse::<usize>()
+                {
+                    max_results = parsed;
                 }
                 index += 2;
                 continue;
@@ -108,5 +115,29 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    fallback(&args, help_count)
+    let url = duckduckgo_search_url(&query);
+    let results = match fetch_text(&url, 20.0) {
+        Ok((html, _)) => duckduckgo_results(&html, max_results),
+        Err(error) => {
+            eprintln!("DuckDuckGo search failed: {error}");
+            eprintln!(
+                "Provider DuckDuckGoProvider failed for '{}': {error} — trying next",
+                query
+            );
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "error": format!("All search providers failed for: {query}"),
+                }))
+                .unwrap_or_else(|_| "{}".to_owned())
+            );
+            return ExitCode::SUCCESS;
+        }
+    };
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::Value::Array(results))
+            .unwrap_or_else(|_| "[]".to_owned())
+    );
+    ExitCode::SUCCESS
 }
