@@ -106,6 +106,51 @@ pub fn http_error(
     })
 }
 
+
+/// Validate a completed download payload, returning an error payload if invalid.
+#[expect(clippy::too_many_arguments, reason = "mirrors the Python validation inputs exactly")]
+pub fn validate_finished_file(
+    data: Option<&[u8]>,
+    sample: Option<&[u8]>,
+    content_type: Option<&str>,
+    size: i64,
+    minimum: i64,
+    expect_pdf: bool,
+    http_status: i64,
+    url: &str,
+) -> Option<Value> {
+    if size < minimum {
+        return Some(serde_json::json!({
+            "code": "too_small",
+            "message": format!("The file contained {size} bytes; minimum is {minimum}."),
+            "bytes": size, "http_status": http_status, "url": url,
+        }));
+    }
+    let is_pdf = data.is_some_and(|bytes| bytes.starts_with(b"%PDF-"));
+    if !expect_pdf || is_pdf { return None; }
+    let sample = sample.unwrap_or(&[]);
+    let lowered: Vec<u8> = sample.iter().map(u8::to_ascii_lowercase).collect();
+    let trimmed = lowered.iter().copied().skip_while(u8::is_ascii_whitespace).collect::<Vec<_>>();
+    let is_html = content_type.unwrap_or("").to_ascii_lowercase().contains("html")
+        || trimmed.starts_with(b"<html");
+    let markers: [&[u8]; 6] = [
+        b"cloudflare", b"captcha", b"attention required",
+        b"access denied", b"akamai", b"robot check",
+    ];
+    let bot = markers.iter().any(|marker| lowered.windows(marker.len()).any(|w| w == *marker));
+    let (code, message) = if is_html && bot {
+        ("bot_wall", "The server returned an anti-bot/browser challenge instead of a PDF; no bypass was attempted.")
+    } else if is_html {
+        ("unexpected_content", "The server returned HTML instead of a PDF.")
+    } else {
+        ("invalid_file", "The response does not have a PDF signature (%PDF-).")
+    };
+    Some(serde_json::json!({
+        "code": code, "message": message, "bytes": size,
+        "content_type": content_type, "http_status": http_status, "url": url,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -122,11 +122,65 @@ fn service_http_error(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_validate_finished_file_inner(
+    data: Bound<'_, PyAny>,
+    sample: Bound<'_, PyAny>,
+    content_type: Option<String>,
+    size: i64,
+    minimum: i64,
+    expect_pdf: bool,
+    http_status: i64,
+    url: String,
+) -> Result<Option<Value>, String> {
+    let data: Value = crate::pyconv::FromPy::from_py(&data)?;
+    let sample: Value = crate::pyconv::FromPy::from_py(&sample)?;
+    let out = port::service_validate_finished_file(
+        data,
+        sample,
+        content_type,
+        size,
+        minimum,
+        expect_pdf,
+        http_status,
+        url,
+    )?;
+    Ok(out)
+}
+
+/// `_service_validate_finished_file`.
+#[pyfunction]
+#[pyo3(name = "_service_validate_finished_file", signature = (data, sample, content_type, size, minimum, expect_pdf, http_status, url))]
+fn service_validate_finished_file(
+    py: Python<'_>,
+    data: Bound<'_, PyAny>,
+    sample: Bound<'_, PyAny>,
+    content_type: Option<String>,
+    size: i64,
+    minimum: i64,
+    expect_pdf: bool,
+    http_status: i64,
+    url: String,
+) -> PyResult<Py<PyAny>> {
+    service_validate_finished_file_inner(
+        data,
+        sample,
+        content_type,
+        size,
+        minimum,
+        expect_pdf,
+        http_status,
+        url,
+    )
+    .map_err(error)
+    .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_candidate_list, m)?)?;
     m.add_function(wrap_pyfunction!(service_finalize_candidates, m)?)?;
     m.add_function(wrap_pyfunction!(service_http_error, m)?)?;
+    m.add_function(wrap_pyfunction!(service_validate_finished_file, m)?)?;
     Ok(())
 }

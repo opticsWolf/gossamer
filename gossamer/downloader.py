@@ -136,28 +136,15 @@ class DownloadService:
         except OSError:
             pass
 
-    def _validate_finished_file(self, *, data: bytes, sample: bytes, content_type, size: int, minimum: int, expect_pdf: bool, http_status: int, url: str) -> None:
-        if size < minimum:
-            raise _DownloadFailure(
-                "too_small",
-                f"The file contained {size} bytes; minimum is {minimum}.",
-                bytes=size,
-                http_status=http_status,
-                url=url,
-            )
-        if expect_pdf and not data[: len(_PDF_MAGIC)] == _PDF_MAGIC:
-            sample_lower = bytes(sample).lower()
-            is_html = "html" in (content_type or "").lower() or sample_lower.lstrip().startswith(b"<html")
-            if is_html and any(marker in sample_lower for marker in _BOT_MARKERS):
-                code, message = "bot_wall", ("The server returned an anti-bot/browser challenge instead of a PDF; no bypass was attempted.")
-            elif is_html:
-                code, message = "unexpected_content", "The server returned HTML instead of a PDF."
-            else:
-                code, message = "invalid_file", "The response does not have a PDF signature (%PDF-)."
-            raise _DownloadFailure(
-                code, message, bytes=size, content_type=content_type,
-                http_status=http_status, url=url,
-            )
+    def _validate_finished_file(self, *, data, sample, content_type, size, minimum, expect_pdf, http_status, url) -> None:
+        error = _service_validate_finished_file(
+            data, sample, content_type, size, minimum, expect_pdf, http_status, url,
+        )
+        if error is not None:
+            details = dict(error)
+            code = details.pop("code")
+            message = details.pop("message")
+            raise _DownloadFailure(code, message, **details)
 
     def _finish_resume_append(self, *, url, current_url, response, target: Path, state_path: Path, resume_offset: int, cap: int, minimum: int, expect_pdf: bool) -> str:
         self._store_resume_validators(state_path, response)
@@ -740,5 +727,29 @@ def _service_http_error(status, content_type, sample, url, retry_after):
     return {
         "code": code, "message": message, "http_status": status,
         "url": url, "retry_after": retry_after,
+    }
+
+def _service_validate_finished_file(data, sample, content_type, size, minimum, expect_pdf, http_status, url):
+    if not isinstance(size, int):
+        raise TypeError("'str' object cannot be interpreted as an integer")
+    if size < minimum:
+        return {
+            "code": "too_small",
+            "message": f"The file contained {size} bytes; minimum is {minimum}.",
+            "bytes": size, "http_status": http_status, "url": url,
+        }
+    if not expect_pdf or bytes(data or b"")[:5] == b"%PDF-":
+        return None
+    lowered = bytes(sample or b"").lower()
+    is_html = "html" in (content_type or "").lower() or lowered.lstrip().startswith(b"<html")
+    if is_html and any(marker in lowered for marker in _BOT_MARKERS):
+        code, message = "bot_wall", "The server returned an anti-bot/browser challenge instead of a PDF; no bypass was attempted."
+    elif is_html:
+        code, message = "unexpected_content", "The server returned HTML instead of a PDF."
+    else:
+        code, message = "invalid_file", "The response does not have a PDF signature (%PDF-)."
+    return {
+        "code": code, "message": message, "bytes": size,
+        "content_type": content_type, "http_status": http_status, "url": url,
     }
 
