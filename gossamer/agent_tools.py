@@ -331,19 +331,8 @@ class WebResearcherToolbox:
 
     @staticmethod
     def _url_error(raw: str, exc: Exception) -> dict:
-        """Standard error record for a URL rejected before any network I/O.
-
-        URL rejection is a *recoverable* outcome for an LLM caller — the model
-        picked a bad link and should pick another — so it travels through the
-        same ``{"error": ...}`` contract as a fetch failure instead of escaping
-        as an exception. The reason is kept verbatim so the model can
-        self-correct rather than retry the same URL.
-        """
-        return {
-            "url": raw,
-            "error": f"URL rejected: {exc}",
-            "error_type": type(exc).__name__,
-        }
+        """Standard error record for a URL rejected before any network I/O."""
+        return _service_url_error(raw, str(exc), type(exc).__name__)
 
     def _prepare_url(self, raw: str) -> tuple[Optional[str], Optional[dict]]:
         """Normalize and validate *raw*, turning rejection into a record.
@@ -376,10 +365,7 @@ class WebResearcherToolbox:
     @staticmethod
     def _crawl_host_key(url: str) -> str:
         """Host with a leading ``www.`` stripped, for same-host checks."""
-        host = (urlparse(url).hostname or "").lower()
-        if host.startswith("www."):
-            host = host[4:]
-        return host
+        return _service_crawl_host_key(url)
 
     def _rate_limit_domain(
         self, url: str, politeness_root: Optional[str] = None
@@ -1593,4 +1579,18 @@ def _service_throttle_gap(elapsed, fetch_interval, jitter_value, crawl_delay):
     if crawl_delay is not None and crawl_delay > gap:
         gap = crawl_delay
     return {"gap": gap, "sleep": max(0.0, gap - elapsed)}
+
+def _service_url_error(raw, reason, error_type):
+    return {
+        "url": raw,
+        "error": f"URL rejected: {reason}",
+        "error_type": error_type,
+    }
+
+
+def _service_crawl_host_key(url):
+    host = (urlparse(url).hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
 

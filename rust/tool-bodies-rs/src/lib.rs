@@ -86,11 +86,48 @@ fn service_tool_arguments(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_url_error_inner(
+    raw: String,
+    reason: String,
+    error_type: String,
+) -> Result<Value, String> {
+    let out = port::service_url_error(raw, reason, error_type)?;
+    Ok(out)
+}
+
+/// `_service_url_error`.
+#[pyfunction]
+#[pyo3(name = "_service_url_error", signature = (raw, reason, error_type))]
+fn service_url_error(
+    py: Python<'_>,
+    raw: String,
+    reason: String,
+    error_type: String,
+) -> PyResult<Py<PyAny>> {
+    service_url_error_inner(raw, reason, error_type)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
+fn service_crawl_host_key_inner(url: String) -> Result<String, String> {
+    let out = port::service_crawl_host_key(url)?;
+    Ok(out)
+}
+
+/// `_service_crawl_host_key`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_host_key", signature = (url))]
+fn service_crawl_host_key(url: String) -> PyResult<String> {
+    service_crawl_host_key_inner(url).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_inspect_route, m)?)?;
     m.add_function(wrap_pyfunction!(service_tables_as_error, m)?)?;
     m.add_function(wrap_pyfunction!(service_tool_arguments, m)?)?;
+    m.add_function(wrap_pyfunction!(service_url_error, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_host_key, m)?)?;
     Ok(())
 }

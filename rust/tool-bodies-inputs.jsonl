@@ -1,0 +1,3 @@
+{"fn":"_service_url_error","args":["ftp://x","Unsupported URL scheme: ftp","ValueError"]}
+{"fn":"_service_crawl_host_key","args":["https://WWW.Example.com:8443/a"]}
+{"fn":"_service_crawl_host_key","args":["not a url"]}

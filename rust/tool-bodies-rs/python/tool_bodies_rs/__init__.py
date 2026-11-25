@@ -90,5 +90,7 @@ def _method(name, positions, names, json_result):
 _service_inspect_route = _native._service_inspect_route
 _service_tables_as_error = _native._service_tables_as_error
 _service_tool_arguments = _native._service_tool_arguments
+_service_url_error = _native._service_url_error
+_service_crawl_host_key = _native._service_crawl_host_key
 
-__all__ = ['_service_inspect_route', '_service_tables_as_error', '_service_tool_arguments']
+__all__ = ['_service_inspect_route', '_service_tables_as_error', '_service_tool_arguments', '_service_url_error', '_service_crawl_host_key']

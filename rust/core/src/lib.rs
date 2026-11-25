@@ -4,6 +4,7 @@
 //! Python bindings live in a thin adapter crate and only marshal arguments and results.
 
 pub mod adapters;
+pub mod agent;
 pub mod budget;
 pub mod cache;
 pub mod cacheutils;

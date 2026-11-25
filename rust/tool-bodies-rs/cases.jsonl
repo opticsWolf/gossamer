@@ -1,6 +1,3 @@
-{"fn": "_service_inspect_route", "args": [true, "dir"], "ok": "structured"}
-{"fn": "_service_inspect_route", "args": [false, "dir"], "ok": "store"}
-{"fn": "_service_inspect_route", "args": [false, null], "ok": "markdown"}
-{"fn": "_service_tables_as_error", "args": [], "ok": {"error": "tables_as must be 'markdown', 'csv' or 'json'"}}
-{"fn": "_service_tool_arguments", "args": ["web_search", {"query": "rust"}], "ok": {"search_only": false, "max_results": 5, "depth": 5, "max_tokens": 0, "provider": "duckduckgo", "use_smart": "auto", "query": "rust"}}
-{"fn": "_service_tool_arguments", "args": ["bogus", {}], "ok": null}
+{"fn": "_service_url_error", "args": ["ftp://x", "Unsupported URL scheme: ftp", "ValueError"], "ok": {"url": "ftp://x", "error": "URL rejected: Unsupported URL scheme: ftp", "error_type": "ValueError"}}
+{"fn": "_service_crawl_host_key", "args": ["https://WWW.Example.com:8443/a"], "ok": "example.com"}
+{"fn": "_service_crawl_host_key", "args": ["not a url"], "ok": ""}

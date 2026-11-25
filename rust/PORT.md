@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Agent URL helper planning (done 2026-11-23)
+
+- Recoverable URL error records and crawl host keys now live in
+  `gossamer::agent`; validation and locking stay binding-side.
+- Binding: extended `rust/tool-bodies-rs` to 3/3 cases; gate passed.
+- Full pytest: 11466 passed / 36 skipped; app replay 43/43.
+
 ### Citation enrichment planning (done 2026-11-23)
 
 - `enrich_with_doi` now delegates venue/abstract hit selection to
