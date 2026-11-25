@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `batch` live body (done 2026-11-23)
+
+- `gossamer batch` now fetches valid URLs through Rust and emits the same
+  inspection-result shape per entry, while keeping exact rejection records
+  for invalid/SSRF URLs. Browser strategies are not rendered here.
+- App replay 57/57; full pytest 11467 passed / 36 skipped.
+
 ### CLI `inspect` live body (done 2026-11-23)
 
 - `gossamer inspect` now fetches HTML, extracts markdown/links/metadata,
