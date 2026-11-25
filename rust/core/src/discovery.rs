@@ -65,19 +65,6 @@ pub fn find_feed_links(html: &str, base_url: &str) -> Vec<Value> {
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extracts_feed_alternates() {
-        let html = r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml"><link rel="alternate" type="text/html" href="/x">"#;
-        let out = find_feed_links(html, "https://x.test/page");
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0]["url"], json!("https://x.test/feed.xml"));
-    }
-}
-
 /// Fetch a text payload for resource discovery, returning the final URL.
 pub fn fetch_text(url: &str, timeout_seconds: f64) -> Result<(String, String), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -102,4 +89,17 @@ pub fn fetch_text(url: &str, timeout_seconds: f64) -> Result<(String, String), S
             .map_err(|error| format!("HTTPError: {error}"))?;
         Ok((body, final_url))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_feed_alternates() {
+        let html = r#"<link rel="alternate" type="application/rss+xml" href="/feed.xml"><link rel="alternate" type="text/html" href="/x">"#;
+        let out = find_feed_links(html, "https://x.test/page");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["url"], json!("https://x.test/feed.xml"));
+    }
 }
