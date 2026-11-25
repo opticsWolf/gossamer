@@ -27,7 +27,6 @@ pub fn detect_ext_from_magic(data: &[u8]) -> Option<&'static str> {
     None
 }
 
-
 /// Markdown inline image matcher, mirroring the Python regex exactly.
 static MD_IMG_ANY_RE: LazyLock<Regex> = LazyLock::new(|| {
     let pattern = r#"!\[([^\]]*)\]\(\s*([^)\s"']+)(?:\s+"([^"]*)")?\s*\)"#;
@@ -64,12 +63,18 @@ pub fn rewrite_image_refs(refs: &Value, markdown: &str, stem: &str, resolutions:
     let mut skipped: Vec<Value> = Vec::new();
     let mut count = 0usize;
     let mut files: Vec<String> = Vec::new();
-    let Some(refs) = refs.as_array() else { return serde_json::json!({"markdown": "", "referenced": 0, "files": [], "skipped": []}); };
+    let Some(refs) = refs.as_array() else {
+        return serde_json::json!({"markdown": "", "referenced": 0, "files": [], "skipped": []});
+    };
     for reference in refs {
         let whole = reference.get("whole").and_then(Value::as_str).unwrap_or("");
         let resolved = reference.get("resolved").cloned().unwrap_or(Value::Null);
-        if resolved.is_null() { continue; }
-        let Some(url) = resolved.as_str() else { continue; };
+        if resolved.is_null() {
+            continue;
+        }
+        let Some(url) = resolved.as_str() else {
+            continue;
+        };
         let local = resolutions.get(url).cloned().unwrap_or(Value::Null);
         let Some(name) = local.as_str() else {
             skipped.push(serde_json::json!({"url": url, "reason": "skipped"}));
@@ -86,7 +91,9 @@ pub fn rewrite_image_refs(refs: &Value, markdown: &str, stem: &str, resolutions:
         }
         count += 1;
         let file = format!("{stem}.files/{name}");
-        if !files.contains(&file) { files.push(file); }
+        if !files.contains(&file) {
+            files.push(file);
+        }
     }
     files.sort();
     serde_json::json!({
@@ -97,45 +104,80 @@ pub fn rewrite_image_refs(refs: &Value, markdown: &str, stem: &str, resolutions:
     })
 }
 
-
 /// Plan the embedded-figure manifest without touching the filesystem.
 pub fn embedded_figures(markdown: &str, stem: &str, images: &[Value]) -> Value {
     let mut injected: Vec<(usize, String)> = Vec::new();
     let mut written: Vec<String> = Vec::new();
     for (index, image) in images.iter().enumerate() {
-        let Some(object) = image.as_object() else { continue; };
-        let Some(data) = object.get("data") else { continue; };
-        let bytes = data.as_array().or_else(|| data.get("$bytes").and_then(Value::as_array));
-        let Some(bytes) = bytes else { continue; };
-        if bytes.is_empty() { continue; }
-        let raw: Vec<u8> = bytes.iter().filter_map(Value::as_u64).map(|b| b.min(255) as u8).collect();
+        let Some(object) = image.as_object() else {
+            continue;
+        };
+        let Some(data) = object.get("data") else {
+            continue;
+        };
+        let bytes = data
+            .as_array()
+            .or_else(|| data.get("$bytes").and_then(Value::as_array));
+        let Some(bytes) = bytes else {
+            continue;
+        };
+        if bytes.is_empty() {
+            continue;
+        }
+        let raw: Vec<u8> = bytes
+            .iter()
+            .filter_map(Value::as_u64)
+            .map(|b| b.min(255) as u8)
+            .collect();
         let detected = detect_ext_from_magic(&raw).unwrap_or("img").to_string();
-        let declared = object.get("ext").and_then(Value::as_str).unwrap_or(&detected);
+        let declared = object
+            .get("ext")
+            .and_then(Value::as_str)
+            .unwrap_or(&detected);
         let ext = match declared.strip_prefix('.').unwrap_or(declared) {
-            "jpeg" => "jpg", "jpg" => "jpg", "png" => "png", "gif" => "gif",
-            "webp" => "webp", "bmp" => "bmp", "svg" => "svg", "tiff" | "tif" => "tiff",
+            "jpeg" => "jpg",
+            "jpg" => "jpg",
+            "png" => "png",
+            "gif" => "gif",
+            "webp" => "webp",
+            "bmp" => "bmp",
+            "svg" => "svg",
+            "tiff" | "tif" => "tiff",
             other => other,
         };
-        let name = object.get("filename").and_then(Value::as_str)
+        let name = object
+            .get("filename")
+            .and_then(Value::as_str)
             .map(str::to_string)
             .unwrap_or_else(|| resource_safe_name(&format!("figure-{}", index + 1), ext));
-        if !written.contains(&name) { written.push(name.clone()); }
+        if !written.contains(&name) {
+            written.push(name.clone());
+        }
         injected.push((index + 1, name));
     }
     let mut md = markdown.to_string();
     if !injected.is_empty() {
-        md = format!("{}
+        md = format!(
+            "{}
 
 ## Figures
 
-", md.trim_end());
+",
+            md.trim_end()
+        );
         for (index, name) in &injected {
-            md.push_str(&format!("![figure {}](./{}.files/{})
+            md.push_str(&format!(
+                "![figure {}](./{}.files/{})
 
-", index, stem, name));
+",
+                index, stem, name
+            ));
         }
     }
-    let files: Vec<String> = written.iter().map(|name| format!("{stem}.files/{name}")).collect();
+    let files: Vec<String> = written
+        .iter()
+        .map(|name| format!("{stem}.files/{name}"))
+        .collect();
     serde_json::json!({
         "markdown": md,
         "embedded": injected.len(),

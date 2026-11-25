@@ -101,7 +101,12 @@ pub fn prepare_url(raw: &str, runtime_minor: Option<u32>) -> Result<String, UrlP
 
 /// Collapse a name to one safe basename, matching `Path(...).stem` on Windows inputs.
 pub fn sanitize_filename(name: &str, fallback: &str) -> String {
-    let last = name.replace('\\', "/").rsplit('/').next().unwrap_or("").to_string();
+    let last = name
+        .replace('\\', "/")
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .to_string();
     let stem = match last.rfind('.') {
         Some(index) if index > 0 && index + 1 < last.len() => &last[..index],
         _ => &last[..],
@@ -110,25 +115,45 @@ pub fn sanitize_filename(name: &str, fallback: &str) -> String {
         .replace("..", "_")
         .trim()
         .chars()
-        .map(|ch| if ch.is_alphanumeric() || matches!(ch, '-' | '_' | ' ') { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_alphanumeric() || matches!(ch, '-' | '_' | ' ') {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
     let cleaned = replaced.trim_matches(|ch| matches!(ch, '.' | '_' | '-'));
-    if cleaned.is_empty() { fallback.to_string() } else { cleaned.to_string() }
+    if cleaned.is_empty() {
+        fallback.to_string()
+    } else {
+        cleaned.to_string()
+    }
 }
-
 
 /// Whether the JATS route may handle a source under the requested table format.
 pub fn jats_tables_allows(source: &str, tables_as: &str) -> bool {
-    if tables_as == "markdown" { return true; }
+    if tables_as == "markdown" {
+        return true;
+    }
     let whole = source.rsplit('/').next().unwrap_or(source);
-    let direct = whole.rfind('.').map(|index| whole[index..].to_ascii_lowercase()).unwrap_or_default();
+    let direct = whole
+        .rfind('.')
+        .map(|index| whole[index..].to_ascii_lowercase())
+        .unwrap_or_default();
     if !direct.is_empty() {
         return !matches!(direct.as_str(), ".xlsx" | ".xls" | ".xlsb" | ".csv");
     }
     let without_fragment = source.split('#').next().unwrap_or(source);
-    let without_query = without_fragment.split('?').next().unwrap_or(without_fragment);
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
     let last = without_query.rsplit('/').next().unwrap_or(without_query);
-    let suffix = last.rfind('.').map(|index| last[index..].to_ascii_lowercase()).unwrap_or_default();
+    let suffix = last
+        .rfind('.')
+        .map(|index| last[index..].to_ascii_lowercase())
+        .unwrap_or_default();
     !matches!(suffix.as_str(), ".xlsx" | ".xls" | ".xlsb" | ".csv")
 }
 
@@ -136,4 +161,3 @@ pub fn jats_tables_allows(source: &str, tables_as: &str) -> bool {
 pub fn jats_cache_key(base: &str) -> String {
     format!("{base}#jats")
 }
-

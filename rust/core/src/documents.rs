@@ -190,7 +190,12 @@ pub fn absolutize_markdown_links(markdown: &str, base_url: &str) -> String {
         .into_owned()
 }
 
-pub fn payload_from_markdown(markdown: &str, url: &str, _metadata: &Value, max_links: i64) -> Value {
+pub fn payload_from_markdown(
+    markdown: &str,
+    url: &str,
+    _metadata: &Value,
+    max_links: i64,
+) -> Value {
     let links = follow_up_candidates(&Value::Array(Vec::new()), max_links);
     json!({
         "metadata": {"file_name": url, "format": "html", "canonical": url},
@@ -200,7 +205,6 @@ pub fn payload_from_markdown(markdown: &str, url: &str, _metadata: &Value, max_l
         "guard": Value::Null,
     })
 }
-
 
 /// Normalize raw batch engine tuples into tagged entry payloads.
 pub fn normalize_batch_results(results: &[Value]) -> Vec<Value> {

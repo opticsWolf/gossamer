@@ -1,0 +1,20 @@
+{
+  "tool": "check_sources",
+  "count": 1,
+  "mode": "status",
+  "summary": {
+    "ok": 0,
+    "unreachable": 0,
+    "blocked": 1,
+    "error": 0
+  },
+  "results": [
+    {
+      "url": "http://127.0.0.1/",
+      "status": "blocked",
+      "alive": false,
+      "http_status": null,
+      "error": "SsrfBlockedError: Host '127.0.0.1' (127.0.0.1) is not a public address"
+    }
+  ]
+}

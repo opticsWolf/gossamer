@@ -29,7 +29,11 @@ pub fn pretty_record(record: &Value) -> String {
 
 /// Decide the two-value record-id fallback payload.
 pub fn json_fallback(rid: &str, probe: Option<&str>, is_tuple: bool) -> Vec<Option<String>> {
-    let fallback = if is_tuple { None } else { probe.map(str::to_string) };
+    let fallback = if is_tuple {
+        None
+    } else {
+        probe.map(str::to_string)
+    };
     vec![Some(rid.to_string()), fallback]
 }
 

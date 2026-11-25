@@ -45,7 +45,9 @@ pub fn fetch_stats_dict(
         "p99": round1(percentile(&lats, 0.99) * 1000.0),
         "max": if lats.is_empty() { 0.0 } else { round1(lats[lats.len() - 1] * 1000.0) },
     });
-    let mut domains: Vec<(String, i64)> = by_domain.as_object().into_iter()
+    let mut domains: Vec<(String, i64)> = by_domain
+        .as_object()
+        .into_iter()
         .flat_map(|object| object.iter())
         .filter_map(|(key, value)| value.as_i64().map(|count| (key.clone(), count)))
         .collect();
@@ -77,7 +79,9 @@ mod tests {
     #[test]
     fn stats_shape_and_rounding() {
         let out = fetch_stats_dict(
-            2, 1, 100,
+            2,
+            1,
+            100,
             &[0.00125, 0.00225],
             &json!({"b.test": 1, "a.test": 2}),
             &json!({"ValueError": 1}),

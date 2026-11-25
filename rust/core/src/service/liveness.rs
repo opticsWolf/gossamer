@@ -25,15 +25,18 @@ pub fn liveness_result(url: &str, http_status: Option<i64>, error: Option<&str>)
     })
 }
 
-
-
 /// Perform a lightweight HEAD/GET reachability probe.
 pub fn probe_liveness(url: &str, timeout: f64, method: &str) -> Value {
     fn error_name(error: &reqwest::Error) -> &'static str {
-        if error.is_timeout() { "TimeoutException" }
-        else if error.is_connect() { "ConnectError" }
-        else if error.is_request() { "RequestError" }
-        else { "HTTPError" }
+        if error.is_timeout() {
+            "TimeoutException"
+        } else if error.is_connect() {
+            "ConnectError"
+        } else if error.is_request() {
+            "RequestError"
+        } else {
+            "HTTPError"
+        }
     }
     let outcome = (|| -> Result<u16, String> {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -46,10 +49,15 @@ pub fn probe_liveness(url: &str, timeout: f64, method: &str) -> Value {
             .build()
             .map_err(|error| format!("RuntimeError: {error}"))?;
         runtime.block_on(async {
-            let request = if method == "get" { client.get(url) } else { client.head(url) };
-            let response = request.send().await.map_err(|error| {
-                format!("{}: {}", error_name(&error), error)
-            })?;
+            let request = if method == "get" {
+                client.get(url)
+            } else {
+                client.head(url)
+            };
+            let response = request
+                .send()
+                .await
+                .map_err(|error| format!("{}: {}", error_name(&error), error))?;
             Ok(response.status().as_u16())
         })
     })();
@@ -64,8 +72,17 @@ mod tests {
     use super::*;
     #[test]
     fn verdicts() {
-        assert_eq!(liveness_result("https://x", Some(204), None)["status"], "ok");
-        assert_eq!(liveness_result("https://x", Some(500), None)["status"], "unreachable");
-        assert_eq!(liveness_result("https://x", None, Some("boom"))["status"], "error");
+        assert_eq!(
+            liveness_result("https://x", Some(204), None)["status"],
+            "ok"
+        );
+        assert_eq!(
+            liveness_result("https://x", Some(500), None)["status"],
+            "unreachable"
+        );
+        assert_eq!(
+            liveness_result("https://x", None, Some("boom"))["status"],
+            "error"
+        );
     }
 }

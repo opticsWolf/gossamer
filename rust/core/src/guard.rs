@@ -294,7 +294,12 @@ pub fn prepare_scope_pairs(
     if mode.is_none() {
         return serde_json::json!({"pairs": pairs, "main_text": main_text});
     }
-    let enabled: Vec<&str> = scopes.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let enabled: Vec<&str> = scopes
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
     if let Some(items) = scope_texts.as_array() {
         for item in items {
             let normalized_item = item.get("$tuple").unwrap_or(item);
@@ -305,7 +310,9 @@ pub fn prepare_scope_pairs(
                 && !text.is_empty()
             {
                 let normalized = normalize_untrusted_text(text);
-                if normalized.is_empty() { continue; }
+                if normalized.is_empty() {
+                    continue;
+                }
                 if scope == main_scope {
                     main_text = Value::String(normalized.clone());
                 }
@@ -330,20 +337,43 @@ pub fn merge_reports(reports: &Value) -> Value {
             if let Some(items) = report.get("flagged").and_then(Value::as_array) {
                 flagged.extend(items.iter().cloned());
             }
-            for scope in report.get("scopes").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+            for scope in report
+                .get("scopes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+            {
                 if !scopes.iter().any(|value| value == scope) {
                     scopes.push(scope.to_string());
                 }
             }
-            let score = report.get("max_score").and_then(Value::as_f64).unwrap_or(0.0);
+            let score = report
+                .get("max_score")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
             if score > max_score {
                 max_score = score;
-                risk = report.get("risk").and_then(Value::as_str).unwrap_or("None").to_string();
+                risk = report
+                    .get("risk")
+                    .and_then(Value::as_str)
+                    .unwrap_or("None")
+                    .to_string();
             }
-            chunks_scanned += report.get("chunks_scanned").and_then(Value::as_i64).unwrap_or(0);
-            elapsed_ms += report.get("elapsed_ms").and_then(Value::as_f64).unwrap_or(0.0);
+            chunks_scanned += report
+                .get("chunks_scanned")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            elapsed_ms += report
+                .get("elapsed_ms")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
             if index == 0 {
-                action = report.get("action").and_then(Value::as_str).unwrap_or("annotate").to_string();
+                action = report
+                    .get("action")
+                    .and_then(Value::as_str)
+                    .unwrap_or("annotate")
+                    .to_string();
             }
         }
     }
@@ -419,7 +449,6 @@ mod tests {
         );
     }
 }
-
 
 #[cfg(test)]
 mod tuple_tests {

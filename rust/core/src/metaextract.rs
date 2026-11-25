@@ -380,7 +380,6 @@ pub fn meta_extract_jsonld(html: &str, base_url: Option<&str>) -> String {
         .to_string()
 }
 
-
 /// Merge meta-oxide HTML metadata into a base document metadata payload.
 pub fn merge_into_document_metadata(html_meta: &Value, base_metadata: &Value) -> Value {
     let mut merged = base_metadata.as_object().cloned().unwrap_or_default();
@@ -405,23 +404,58 @@ pub fn merge_into_document_metadata(html_meta: &Value, base_metadata: &Value) ->
     let section = |name: &str| html_meta.get(name).and_then(Value::as_object);
     for (from, key, target) in FIELD_COPIES {
         let value = section(from).and_then(|map| map.get(key));
-        if value.is_some_and(|v| !v.is_null() && v.as_str() != Some("") && !matches!(v, Value::Bool(false)) && !matches!(v, Value::Number(n) if n.as_f64() == Some(0.0))) {
+        if value.is_some_and(|v| {
+            !v.is_null()
+                && v.as_str() != Some("")
+                && !matches!(v, Value::Bool(false))
+                && !matches!(v, Value::Number(n) if n.as_f64() == Some(0.0))
+        }) {
             merged.insert(target.to_string(), value.cloned().unwrap_or(Value::Null));
         }
     }
     let std_meta = section("meta");
     let base_title = merged.get("title").cloned().unwrap_or(Value::Null);
     let title_unset = base_title.is_null() || base_title.as_str() == Some("");
-    if title_unset && std_meta.and_then(|m| m.get("title")).is_some_and(|v| !v.is_null() && v.as_str() != Some("")) {
-        merged.insert("title".to_string(), std_meta.and_then(|m| m.get("title")).cloned().unwrap_or(Value::Null));
+    if title_unset
+        && std_meta
+            .and_then(|m| m.get("title"))
+            .is_some_and(|v| !v.is_null() && v.as_str() != Some(""))
+    {
+        merged.insert(
+            "title".to_string(),
+            std_meta
+                .and_then(|m| m.get("title"))
+                .cloned()
+                .unwrap_or(Value::Null),
+        );
     }
     let images = section("opengraph").and_then(|m| m.get("images"));
-    if images.is_some_and(Value::is_array) && images.is_some_and(|v| v.as_array().is_some_and(|a| !a.is_empty())) {
-        merged.insert("og_images".to_string(), images.cloned().unwrap_or(Value::Null));
+    if images.is_some_and(Value::is_array)
+        && images.is_some_and(|v| v.as_array().is_some_and(|a| !a.is_empty()))
+    {
+        merged.insert(
+            "og_images".to_string(),
+            images.cloned().unwrap_or(Value::Null),
+        );
     }
-    for name in ["jsonld", "rel_links", "dublin_core", "microformats", "microdata", "rdfa", "manifest"] {
+    for name in [
+        "jsonld",
+        "rel_links",
+        "dublin_core",
+        "microformats",
+        "microdata",
+        "rdfa",
+        "manifest",
+    ] {
         let value = html_meta.get(name);
-        if value.is_some_and(|v| !v.is_null() && v.as_str() != Some("") && !matches!(v, Value::Bool(false)) && !matches!(v, Value::Number(n) if n.as_f64() == Some(0.0)) && !matches!(v, Value::Array(a) if a.is_empty()) && !matches!(v, Value::Object(m) if m.is_empty())) {
+        if value.is_some_and(|v| {
+            !v.is_null()
+                && v.as_str() != Some("")
+                && !matches!(v, Value::Bool(false))
+                && !matches!(v, Value::Number(n) if n.as_f64() == Some(0.0))
+                && !matches!(v, Value::Array(a) if a.is_empty())
+                && !matches!(v, Value::Object(m) if m.is_empty())
+        }) {
             merged.insert(name.to_string(), value.cloned().unwrap_or(Value::Null));
         }
     }

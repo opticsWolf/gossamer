@@ -25,18 +25,23 @@ pub fn inspect_route(structured: bool, store_dir: Option<&str>) -> &'static str 
 /// Exact error payload for an unsupported `tables_as` value.
 pub fn tables_as_error() -> Value {
     let mut out = Map::new();
-    out.insert("error".into(), Value::String("tables_as must be 'markdown', 'csv' or 'json'".into()));
+    out.insert(
+        "error".into(),
+        Value::String("tables_as must be 'markdown', 'csv' or 'json'".into()),
+    );
     Value::Object(out)
 }
 
 /// Registry defaults plus caller arguments for one registered tool.
 pub fn tool_arguments(name: &str, arguments: &Value) -> Option<Value> {
     let tools: Value = serde_json::from_str(crate::mcp::TOOL_SCHEMA_JSON).ok()?;
-    let tool = tools.as_array()?.iter().find(|tool| {
-        tool.get("name").and_then(Value::as_str) == Some(name)
-    })?;
+    let tool = tools
+        .as_array()?
+        .iter()
+        .find(|tool| tool.get("name").and_then(Value::as_str) == Some(name))?;
     let schema = tool.get("inputSchema")?;
-    let required: Vec<&str> = schema.get("required")
+    let required: Vec<&str> = schema
+        .get("required")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
@@ -105,7 +110,12 @@ pub fn extract_validation(
 }
 
 /// Deterministic batch plan: canonical pending keys, cached keys and rejected inputs.
-pub fn batch_plan(urls: Option<&Value>, cached_keys: &Value, visited_keys: &Value, strategy: &str) -> Value {
+pub fn batch_plan(
+    urls: Option<&Value>,
+    cached_keys: &Value,
+    visited_keys: &Value,
+    strategy: &str,
+) -> Value {
     let items: Vec<Value> = match urls {
         Some(Value::Array(values)) => values.clone(),
         Some(Value::String(value)) => vec![Value::String(value.clone())],
@@ -114,12 +124,26 @@ pub fn batch_plan(urls: Option<&Value>, cached_keys: &Value, visited_keys: &Valu
     let mut pending: Vec<String> = Vec::new();
     let mut cached: Vec<String> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
-    let cached_set: Vec<&str> = cached_keys.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
-    let visited_set: Vec<&str> = visited_keys.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let cached_set: Vec<&str> = cached_keys
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    let visited_set: Vec<&str> = visited_keys
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
     for item in items {
         let Some(raw) = item.as_str() else { continue };
-        let Ok(key) = crate::urls::canonical_url(raw, "drop-tracking", None) else { continue };
-        if seen.iter().any(|value| value == &key) { continue; }
+        let Ok(key) = crate::urls::canonical_url(raw, "drop-tracking", None) else {
+            continue;
+        };
+        if seen.iter().any(|value| value == &key) {
+            continue;
+        }
         seen.push(key.clone());
         if cached_set.contains(&key.as_str()) {
             cached.push(key);
@@ -156,26 +180,37 @@ pub fn check_sources_plan(mode: Option<&str>, urls: Option<&Value>, type_name: &
     let items: Vec<&Value> = match value {
         Value::Array(items) => items.iter().collect(),
         Value::String(_text) => vec![value],
-        _ => return serde_json::json!({
-            "error": format!(
-                "urls must be a list of URLs (or {{url}} dicts), got {type_name}"
-            ),
-            "results": [],
-        }),
+        _ => {
+            return serde_json::json!({
+                "error": format!(
+                    "urls must be a list of URLs (or {{url}} dicts), got {type_name}"
+                ),
+                "results": [],
+            });
+        }
     };
     let mut out: Vec<String> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
     for item in items {
         let candidate = if let Some(object) = item.as_object() {
-            object.get("url").or_else(|| object.get("href")).or_else(|| object.get("link"))
+            object
+                .get("url")
+                .or_else(|| object.get("href"))
+                .or_else(|| object.get("link"))
         } else {
             Some(item)
         };
-        let Some(raw) = candidate.and_then(Value::as_str) else { continue };
+        let Some(raw) = candidate.and_then(Value::as_str) else {
+            continue;
+        };
         let raw = raw.trim();
-        if raw.is_empty() { continue; }
+        if raw.is_empty() {
+            continue;
+        }
         let key = crate::urls::canonical_url(raw, "keep", None).unwrap_or_else(|_| raw.to_string());
-        if seen.contains(&key) { continue; }
+        if seen.contains(&key) {
+            continue;
+        }
         seen.push(key);
         out.push(raw.to_string());
     }
@@ -201,4 +236,3 @@ mod tests {
         assert_eq!(out["max_results"], json!(5));
     }
 }
-

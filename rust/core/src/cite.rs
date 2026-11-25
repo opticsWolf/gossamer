@@ -987,7 +987,6 @@ pub fn abstract_from_raw(raw: Option<&str>) -> Result<Option<String>> {
     abstract_from_value(value.as_ref())
 }
 
-
 /// Resolve a citation style name or return the Python-shaped error message.
 pub fn citation_style(style: Option<&str>) -> std::result::Result<&'static str, String> {
     let style = style.unwrap_or("bibtex").to_ascii_lowercase();
@@ -1013,45 +1012,78 @@ pub fn citation_input(value: &str) -> serde_json::Value {
     }
 }
 
-
 /// Return the first DOI-looking token in *text*, without trailing punctuation.
 pub fn find_doi_in_text(text: Option<&str>) -> Option<String> {
     static DOI: OnceLock<Regex> = OnceLock::new();
     let regex = DOI.get_or_init(|| {
-        Regex::new(r#"(?i)10\.\d{4,9}/[^\s"'<>\]}\)]+"#)
-            .expect("DOI pattern must compile")
+        Regex::new(r#"(?i)10\.\d{4,9}/[^\s"'<>\]}\)]+"#).expect("DOI pattern must compile")
     });
     let found = regex.find(text?)?;
-    Some(found.as_str().trim_end_matches(['.', ',', ';', ':']).to_string())
+    Some(
+        found
+            .as_str()
+            .trim_end_matches(['.', ',', ';', ':'])
+            .to_string(),
+    )
 }
-
 
 /// Plan citation enrichment from adapter hits without mutating the record.
 pub fn enrichment_plan(record: &Value, hits: Option<&[Value]>) -> (Option<String>, Option<String>) {
-    let mut venue = record.get("venue").and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_string);
-    let mut abstract_text = record.get("abstract").and_then(Value::as_str).filter(|text| !text.is_empty()).map(str::to_string);
+    let mut venue = record
+        .get("venue")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string);
+    let mut abstract_text = record
+        .get("abstract")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+        .map(str::to_string);
     for hit in hits.unwrap_or(&[]) {
-        let Some(object) = hit.as_object() else { continue; };
+        let Some(object) = hit.as_object() else {
+            continue;
+        };
         if venue.is_none() {
-            if let Some(found) = object.get("venue").and_then(Value::as_str).filter(|text| !text.is_empty()) {
+            if let Some(found) = object
+                .get("venue")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty())
+            {
                 venue = Some(found.to_string());
-            } else if let Some(raw) = object.get("raw").and_then(Value::as_str).filter(|raw| !raw.is_empty()) {
+            } else if let Some(raw) = object
+                .get("raw")
+                .and_then(Value::as_str)
+                .filter(|raw| !raw.is_empty())
+            {
                 venue = venue_from_raw(Some(raw)).ok().flatten();
             }
         }
         if abstract_text.is_none() {
             let mut found = match object.get("abstract") {
                 Some(Value::String(text)) => Some(text.clone()),
-                Some(Value::Object(map)) => map.get("#text").or_else(|| map.get("a")).and_then(Value::as_str).map(str::to_string),
+                Some(Value::Object(map)) => map
+                    .get("#text")
+                    .or_else(|| map.get("a"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
                 _ => None,
             };
-            let raw = object.get("raw").and_then(Value::as_str).filter(|raw| !raw.is_empty());
-            if found.as_deref().is_none_or(str::is_empty) && let Some(raw) = raw {
+            let raw = object
+                .get("raw")
+                .and_then(Value::as_str)
+                .filter(|raw| !raw.is_empty());
+            if found.as_deref().is_none_or(str::is_empty)
+                && let Some(raw) = raw
+            {
                 found = abstract_from_raw(Some(raw)).ok().flatten();
             }
-            if found.as_deref().is_some_and(|text| !text.is_empty()) { abstract_text = found; }
+            if found.as_deref().is_some_and(|text| !text.is_empty()) {
+                abstract_text = found;
+            }
         }
-        if venue.is_some() && abstract_text.is_some() { break; }
+        if venue.is_some() && abstract_text.is_some() {
+            break;
+        }
     }
     (venue, abstract_text)
 }

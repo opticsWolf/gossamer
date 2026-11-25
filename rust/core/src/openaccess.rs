@@ -55,9 +55,7 @@ pub fn normalize_doi(value: &str) -> Result<String, String> {
         });
         if is_http {
             let rest = &trimmed[scheme_end.unwrap_or(0) + 3..];
-            let authority_end = rest
-                .find(['/', '?', '#'])
-                .unwrap_or(rest.len());
+            let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
             let host = rest[..authority_end]
                 .rsplit('@')
                 .next()
@@ -69,7 +67,10 @@ pub fn normalize_doi(value: &str) -> Result<String, String> {
             if matches!(host.as_str(), "doi.org" | "www.doi.org" | "dx.doi.org") {
                 let tail = &rest[authority_end..];
                 if tail.contains('?') || tail.contains('#') {
-                    return Err("ValueError: DOI resolver URLs must not include a query or fragment".to_string());
+                    return Err(
+                        "ValueError: DOI resolver URLs must not include a query or fragment"
+                            .to_string(),
+                    );
                 }
                 percent_decode(tail.trim_start_matches('/'))
             } else {
@@ -89,18 +90,26 @@ pub fn normalize_doi(value: &str) -> Result<String, String> {
     Ok(doi)
 }
 
-
 /// Map one OpenAlex location to the shared OA-candidate shape.
 pub fn oa_candidate(location: &Value, is_best: bool, work_is_oa: bool) -> Option<Value> {
     let object = location.as_object()?;
     let location_is_oa = object.get("is_oa");
-    if location_is_oa == Some(&Value::Bool(false))
-        || (location_is_oa.is_none() && !work_is_oa)
-    { return None; }
+    if location_is_oa == Some(&Value::Bool(false)) || (location_is_oa.is_none() && !work_is_oa) {
+        return None;
+    }
     let pdf = object.get("pdf_url").cloned().unwrap_or(Value::Null);
-    let landing = object.get("landing_page_url").cloned().unwrap_or(Value::Null);
-    let url = if !pdf.is_null() { pdf.clone() } else { landing.clone() };
-    if !url.as_str().is_some_and(|text| !text.trim().is_empty()) { return None; }
+    let landing = object
+        .get("landing_page_url")
+        .cloned()
+        .unwrap_or(Value::Null);
+    let url = if !pdf.is_null() {
+        pdf.clone()
+    } else {
+        landing.clone()
+    };
+    if !url.as_str().is_some_and(|text| !text.trim().is_empty()) {
+        return None;
+    }
     let source = object.get("source");
     let (name, id) = match source {
         Some(Value::Object(map)) => (
@@ -127,13 +136,25 @@ pub fn oa_candidate(location: &Value, is_best: bool, work_is_oa: bool) -> Option
 /// Map one Unpaywall v2 location to the shared OA-candidate shape.
 pub fn unpaywall_candidate(location: &Value, is_best: bool) -> Option<Value> {
     let object = location.as_object()?;
-    let pdf = object.get("url_for_pdf").or_else(|| object.get("pdf_url")).cloned().unwrap_or(Value::Null);
-    let landing = object.get("url_for_landing_page")
+    let pdf = object
+        .get("url_for_pdf")
+        .or_else(|| object.get("pdf_url"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let landing = object
+        .get("url_for_landing_page")
         .or_else(|| object.get("landing_page_url"))
         .or_else(|| object.get("url"))
-        .cloned().unwrap_or(Value::Null);
-    let url = if !pdf.is_null() { pdf.clone() } else { landing.clone() };
-    if !url.as_str().is_some_and(|text| !text.trim().is_empty()) { return None; }
+        .cloned()
+        .unwrap_or(Value::Null);
+    let url = if !pdf.is_null() {
+        pdf.clone()
+    } else {
+        landing.clone()
+    };
+    if !url.as_str().is_some_and(|text| !text.trim().is_empty()) {
+        return None;
+    }
     let source = object.get("source");
     let mut name = match source {
         Some(Value::Object(map)) => map.get("display_name").cloned().unwrap_or(Value::Null),
@@ -141,7 +162,11 @@ pub fn unpaywall_candidate(location: &Value, is_best: bool) -> Option<Value> {
         _ => Value::Null,
     };
     if name.is_null() {
-        name = object.get("endpoint_label").or_else(|| object.get("host_type")).cloned().unwrap_or(Value::Null);
+        name = object
+            .get("endpoint_label")
+            .or_else(|| object.get("host_type"))
+            .cloned()
+            .unwrap_or(Value::Null);
     }
     Some(serde_json::json!({
         "url": url,
@@ -160,7 +185,10 @@ pub fn unpaywall_candidate(location: &Value, is_best: bool) -> Option<Value> {
 /// Extract deduplicated OA candidates and work metadata from Unpaywall.
 pub fn unpaywall_candidates(payload: &Value) -> (Vec<Value>, Value) {
     let mut ordered: Vec<(Value, bool)> = Vec::new();
-    if let Some(best) = payload.get("best_oa_location").filter(|value| value.is_object()) {
+    if let Some(best) = payload
+        .get("best_oa_location")
+        .filter(|value| value.is_object())
+    {
         ordered.push((best.clone(), true));
     }
     if let Some(locations) = payload.get("oa_locations").and_then(Value::as_array) {
@@ -169,13 +197,24 @@ pub fn unpaywall_candidates(payload: &Value) -> (Vec<Value>, Value) {
     let mut candidates = Vec::new();
     let mut seen: Vec<String> = Vec::new();
     for (location, is_best) in ordered {
-        let Some(candidate) = unpaywall_candidate(&location, is_best) else { continue; };
-        let url = candidate.get("url").and_then(Value::as_str).unwrap_or("").to_string();
-        if seen.contains(&url) { continue; }
+        let Some(candidate) = unpaywall_candidate(&location, is_best) else {
+            continue;
+        };
+        let url = candidate
+            .get("url")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if seen.contains(&url) {
+            continue;
+        }
         seen.push(url);
         candidates.push(candidate);
     }
-    let is_oa = payload.get("is_oa").and_then(Value::as_bool).unwrap_or(!candidates.is_empty());
+    let is_oa = payload
+        .get("is_oa")
+        .and_then(Value::as_bool)
+        .unwrap_or(!candidates.is_empty());
     let work = serde_json::json!({
         "id": Value::Null,
         "title": payload.get("title").cloned().unwrap_or(Value::Null),
@@ -192,8 +231,16 @@ mod tests {
     use super::*;
     #[test]
     fn doi_forms() {
-        assert_eq!(normalize_doi(" DOI:10.1234/Example ").ok().as_deref(), Some("10.1234/example"));
-        assert_eq!(normalize_doi("https://doi.org/10.1234/Ab%2FC").ok().as_deref(), Some("10.1234/ab/c"));
+        assert_eq!(
+            normalize_doi(" DOI:10.1234/Example ").ok().as_deref(),
+            Some("10.1234/example")
+        );
+        assert_eq!(
+            normalize_doi("https://doi.org/10.1234/Ab%2FC")
+                .ok()
+                .as_deref(),
+            Some("10.1234/ab/c")
+        );
         assert!(normalize_doi("https://doi.org/10.1234/x?q=1").is_err());
     }
 }

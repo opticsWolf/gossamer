@@ -31,7 +31,8 @@ pub fn crawl_score(
     if idf.is_none() {
         let mut score = 0.0;
         if !query_terms.is_empty() {
-            score += QUERY_WEIGHT * contains_any(label, query_terms) as f64 / query_terms.len() as f64;
+            score +=
+                QUERY_WEIGHT * contains_any(label, query_terms) as f64 / query_terms.len() as f64;
         }
         if !label.is_empty() && !page_terms.is_empty() {
             score += CONTEXT_WEIGHT * contains_any(label, page_terms) as f64 / label.len() as f64;
@@ -72,8 +73,6 @@ pub fn crawl_score(
     score
 }
 
-
-
 /// Serialize a crawl result with the page list capped to fit a budget.
 pub fn shrink_crawl(result: &Value, budget: Option<i64>) -> Result<String, String> {
     let mut out = result.clone();
@@ -84,17 +83,19 @@ pub fn shrink_crawl(result: &Value, budget: Option<i64>) -> Result<String, Strin
             .and_then(Value::as_array)
             .map(|pages| pages.len().saturating_sub(keep))
             .unwrap_or(0);
-        if omitted > 0 && let Some(pages) = out.get_mut("pages").and_then(Value::as_array_mut) {
+        if omitted > 0
+            && let Some(pages) = out.get_mut("pages").and_then(Value::as_array_mut)
+        {
             pages.truncate(keep);
         }
-        if omitted > 0 && let Some(object) = out.as_object_mut() {
+        if omitted > 0
+            && let Some(object) = out.as_object_mut()
+        {
             object.insert("pages_omitted".to_string(), Value::from(omitted));
         }
     }
     serde_json::to_string_pretty(&out).map_err(|e| format!("ValueError: {e}"))
 }
-
-
 
 const STOPWORDS: &str = "a about above after again against all am an and any are as at be because been before below being between both but by can did do does doing down during each few for from further had has have having he her here hers him his how i if in into is it its just me more most my no nor not of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who why will with you your yours";
 const TOKEN_PATTERN: &str = r"[a-z0-9]+";
@@ -105,7 +106,8 @@ static TOKEN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(||
 
 fn tokens(text: &str) -> Vec<String> {
     let lower = text.to_ascii_lowercase();
-    TOKEN_RE.find_iter(&lower)
+    TOKEN_RE
+        .find_iter(&lower)
         .map(|m| m.as_str().to_string())
         .filter(|token| !STOPWORDS.split_whitespace().any(|word| word == token))
         .collect()
@@ -128,42 +130,63 @@ pub fn crawl_topic_words(text: Option<&str>, limit: usize) -> Vec<String> {
     }
     let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    ranked.into_iter().take(limit).map(|(token, _)| token).collect()
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(token, _)| token)
+        .collect()
 }
-
-
 
 /// True when the URL path ends in a document extension.
 pub fn crawl_is_document(url: &str) -> bool {
     let path = crate::robots::url_path(url, None).to_ascii_lowercase();
     let path = path.split(['?', '#']).next().unwrap_or(&path);
     [
-        ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt", ".xlsb",
-        ".csv", ".txt", ".md", ".json", ".xml", ".rss", ".atom",
-    ].iter().any(|ext| path.ends_with(ext))
+        ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt", ".xlsb", ".csv", ".txt", ".md",
+        ".json", ".xml", ".rss", ".atom",
+    ]
+    .iter()
+    .any(|ext| path.ends_with(ext))
 }
 
 fn ranked_tokens(text: &str, limit: usize) -> Vec<String> {
     use std::collections::HashMap;
     let mut counts: HashMap<String, usize> = HashMap::new();
-    for token in tokens(text) { *counts.entry(token).or_insert(0) += 1; }
+    for token in tokens(text) {
+        *counts.entry(token).or_insert(0) += 1;
+    }
     let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    ranked.into_iter().take(limit).map(|(token, _)| token).collect()
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(token, _)| token)
+        .collect()
 }
 
-
-
 /// Topic words near an anchor in rendered markdown.
-pub fn crawl_anchor_context(md: Option<&str>, anchor: Option<&str>, chars: usize, cap: usize) -> Vec<String> {
+pub fn crawl_anchor_context(
+    md: Option<&str>,
+    anchor: Option<&str>,
+    chars: usize,
+    cap: usize,
+) -> Vec<String> {
     let text = (md.unwrap_or("")).to_ascii_lowercase();
     let needle = (anchor.unwrap_or("")).trim().to_ascii_lowercase();
-    if needle.is_empty() { return Vec::new(); }
-    let Some(start) = text.find(&needle) else { return Vec::new(); };
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    let Some(start) = text.find(&needle) else {
+        return Vec::new();
+    };
     let from = start.saturating_sub(chars);
     let to = (start + needle.len() + chars).min(text.len());
     // Character slicing keeps parity with Python for non-ASCII markdown.
-    let window: String = text.chars().skip(from).take(to.saturating_sub(from)).collect();
+    let window: String = text
+        .chars()
+        .skip(from)
+        .take(to.saturating_sub(from))
+        .collect();
     ranked_tokens(&window, cap)
 }
 
@@ -171,21 +194,39 @@ pub fn crawl_anchor_context(md: Option<&str>, anchor: Option<&str>, chars: usize
 pub fn crawl_path_prior(url: &str) -> f64 {
     let path = crate::robots::url_path(url, None).to_ascii_lowercase();
     let path = path.split(['?', '#']).next().unwrap_or(&path);
-    if ["/docs/", "/guide/", "/guides/", "/blog/", "/api/", "/changelog/", "/reference/"]
-        .iter().any(|prefix| path.starts_with(prefix)) { return 1.15; }
+    if [
+        "/docs/",
+        "/guide/",
+        "/guides/",
+        "/blog/",
+        "/api/",
+        "/changelog/",
+        "/reference/",
+    ]
+    .iter()
+    .any(|prefix| path.starts_with(prefix))
+    {
+        return 1.15;
+    }
     if ["/pricing", "/careers", "/contact", "/about"]
-        .iter().any(|prefix| path.starts_with(prefix)) { return 0.85; }
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+    {
+        return 0.85;
+    }
     1.0
 }
 
 /// Count occurrences of terms in a token stream.
 pub fn crawl_term_hits(text: Option<&str>, terms: &[String]) -> usize {
-    if terms.is_empty() { return 0; }
-    tokens(text.unwrap_or("")).into_iter()
-        .filter(|token| terms.contains(token)).count()
+    if terms.is_empty() {
+        return 0;
+    }
+    tokens(text.unwrap_or(""))
+        .into_iter()
+        .filter(|token| terms.contains(token))
+        .count()
 }
-
-
 
 /// Densest keyword window of a text, with Python-style ellipses.
 pub fn crawl_excerpt(
@@ -195,7 +236,9 @@ pub fn crawl_excerpt(
     step: usize,
 ) -> Option<String> {
     let chars: Vec<char> = text.unwrap_or("").chars().collect();
-    if terms.is_empty() || chars.is_empty() || step == 0 { return None; }
+    if terms.is_empty() || chars.is_empty() || step == 0 {
+        return None;
+    }
     let mut best: Option<(usize, usize)> = None;
     let mut start = 0usize;
     while start < chars.len() {
@@ -208,7 +251,9 @@ pub fn crawl_excerpt(
         start += step;
     }
     let (density, start) = best?;
-    if density == 0 { return None; }
+    if density == 0 {
+        return None;
+    }
     let end = (start + window).min(chars.len());
     let excerpt: String = chars[start..end].iter().collect();
     let prefix = if start > 0 { "…" } else { "" };
@@ -221,19 +266,39 @@ pub fn crawl_expand_query(base_terms: &[String], clusters: &Value) -> (Vec<Strin
     let mut seen: Vec<String> = base_terms.to_vec();
     seen.sort();
     seen.dedup();
-    if seen.is_empty() { return (Vec::new(), 0); }
+    if seen.is_empty() {
+        return (Vec::new(), 0);
+    }
     let cap = seen.len();
     let mut added = 0usize;
-    for term in base_terms.iter().cloned().collect::<std::collections::BTreeSet<_>>() {
-        let Some(groups) = clusters.as_array() else { break; };
+    for term in base_terms
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        let Some(groups) = clusters.as_array() else {
+            break;
+        };
         for group in groups {
-            let Some(members) = group.as_array() else { continue; };
-            if !members.iter().any(|member| member.as_str() == Some(term.as_str())) { continue; }
+            let Some(members) = group.as_array() else {
+                continue;
+            };
+            if !members
+                .iter()
+                .any(|member| member.as_str() == Some(term.as_str()))
+            {
+                continue;
+            }
             for member in members.iter().filter_map(Value::as_str) {
-                if seen.iter().any(|existing| existing == member) { continue; }
+                if seen.iter().any(|existing| existing == member) {
+                    continue;
+                }
                 seen.push(member.to_string());
                 added += 1;
-                if added >= cap { seen.sort(); return (seen, added); }
+                if added >= cap {
+                    seen.sort();
+                    return (seen, added);
+                }
             }
         }
     }

@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `check` command body (done 2026-11-23)
+
+- `gossamer check` now probes URLs in the front door via Rust SSRF validation,
+  `probe_liveness`, and the shared liveness envelope; no Python fallback.
+- Added deterministic replay case `check-blocked`.
+- App replay 44/44; full pytest 11467 passed / 36 skipped.
+
 ### Research provider registry lookup (done 2026-11-23)
 
 - The closed 27-provider factory table and unknown-provider error text now

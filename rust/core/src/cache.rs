@@ -435,12 +435,21 @@ impl Cache {
     }
     /// Keys currently held in the in-memory LRU, least-recently-used first.
     pub fn memory_keys(&self) -> Vec<String> {
-        self.state.lock().map(|state| state.memory.iter().map(|entry| entry.key.clone()).collect()).unwrap_or_default()
+        self.state
+            .lock()
+            .map(|state| state.memory.iter().map(|entry| entry.key.clone()).collect())
+            .unwrap_or_default()
     }
 
     /// Read one in-memory entry without touching statistics or recency.
     pub fn peek_memory(&self, key: &str) -> Option<String> {
-        self.state.lock().ok()?.memory.iter().find(|entry| entry.key == key).map(|entry| entry.content.clone())
+        self.state
+            .lock()
+            .ok()?
+            .memory
+            .iter()
+            .find(|entry| entry.key == key)
+            .map(|entry| entry.content.clone())
     }
 
     /// Remove one in-memory entry, if present.

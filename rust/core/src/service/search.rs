@@ -93,17 +93,34 @@ pub fn parse_rate_headers(status: i64, headers: &Value) -> Value {
 }
 
 pub fn web_search_route(search_only: bool) -> &'static str {
-    if search_only { "search_web" } else { "research" }
+    if search_only {
+        "search_web"
+    } else {
+        "research"
+    }
 }
 
 /// Result-level search cache key, matching the Python normalization.
-pub fn search_cache_key(query: Option<&str>, max_results: i64, provider: Option<&str>, merge: bool) -> String {
-    let normalized = query.unwrap_or("").to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ");
+pub fn search_cache_key(
+    query: Option<&str>,
+    max_results: i64,
+    provider: Option<&str>,
+    merge: bool,
+) -> String {
+    let normalized = query
+        .unwrap_or("")
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     let canonical = provider
         .and_then(crate::search::resolve_provider_name)
         .unwrap_or("default");
     let merge_text = if merge { "True" } else { "False" };
-    let material = format!("{}|{}|{}|merge={}", normalized, max_results, canonical, merge_text);
+    let material = format!(
+        "{}|{}|{}|merge={}",
+        normalized, max_results, canonical, merge_text
+    );
     crate::miscutils::sha256_hex(&material)
 }
 
@@ -148,4 +165,3 @@ mod tests {
         assert!(fallback_note(Some("bing"), &names).is_some());
     }
 }
-

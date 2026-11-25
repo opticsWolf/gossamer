@@ -12,8 +12,9 @@ static FEED_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 const LINK_ATTR_PATTERN: &str = r##"(?i)(?P<attr>type|href)\s*=\s*["'](?P<value>[^"']*)["']"##;
 static LINK_ATTR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(LINK_ATTR_PATTERN)
-        .unwrap_or_else(|error| panic!("invalid link attribute regex {LINK_ATTR_PATTERN:?}: {error}"))
+    Regex::new(LINK_ATTR_PATTERN).unwrap_or_else(|error| {
+        panic!("invalid link attribute regex {LINK_ATTR_PATTERN:?}: {error}")
+    })
 });
 const FEED_TYPE_PREFIXES: [&str; 3] = [
     "application/rss+xml",
@@ -42,10 +43,17 @@ pub fn find_feed_links(html: &str, base_url: &str) -> Vec<Value> {
             .unwrap_or("")
             .trim()
             .to_lowercase();
-        if !FEED_TYPE_PREFIXES.iter().any(|prefix| link_type.starts_with(prefix)) {
+        if !FEED_TYPE_PREFIXES
+            .iter()
+            .any(|prefix| link_type.starts_with(prefix))
+        {
             continue;
         }
-        let href = attrs.get("href").and_then(Value::as_str).unwrap_or("").trim();
+        let href = attrs
+            .get("href")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
         if href.is_empty() {
             continue;
         }
