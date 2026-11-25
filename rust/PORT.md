@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `extract` local text body (done 2026-11-25)
+
+- `gossamer extract` now emits the full extraction envelope for local
+  text-like files (`.txt`, `.md`, `.csv`, `.json`) in Rust. Binary, structured,
+  stored, ranged and JATS paths remain outside this slice.
+- Verified against the Python oracle on text and JSON fixtures; app replay
+  57/57, full pytest 11468 passed / 36 skipped.
+
 ### Provider call gate transition (done 2026-11-25)
 
 - `ResourceAdapter._enforce_delay` now delegates quota rollover, quota verdict,

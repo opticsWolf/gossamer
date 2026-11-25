@@ -1,14 +1,64 @@
 //! `gossamer extract`: argument validation for the extraction contract.
 
 use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
+use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
+use gossamer::miscutils::sha256_bytes;
+use gossamer::tokens::count_tokens;
+use serde_json::{Value, json};
 
 fn unsupported() -> ExitCode {
     eprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
+}
+
+fn timestamp() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs() as i64;
+    let days = secs.div_euclid(86_400);
+    let seconds = secs.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    format!(
+        "{year:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}+00:00",
+        month,
+        day,
+        seconds / 3600,
+        (seconds % 3600) / 60,
+        seconds % 60,
+        now.subsec_micros()
+    )
+}
+
+fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(ext.as_str(), "txt" | "md" | "csv") {
+        return std::str::from_utf8(bytes).ok().map(str::to_string);
+    }
+    if ext == "json" {
+        let value: Value = serde_json::from_slice(bytes).ok()?;
+        return serde_json::to_string_pretty(&value).ok();
+    }
+    None
 }
 
 pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
@@ -72,5 +122,54 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         println!("{text}");
         return ExitCode::SUCCESS;
     }
-    unsupported()
+
+    let Some(source) = source else {
+        return unsupported();
+    };
+    // Pages, store and structured extraction keep their existing contract;
+    // this slice owns the text-like flat local-file path.
+    if structured || store || !tables_as.eq_ignore_ascii_case("json") {
+        return unsupported();
+    }
+    let raw_path = PathBuf::from(&source);
+    let path = if raw_path.is_absolute() {
+        raw_path
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(raw_path)
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return unsupported();
+    };
+    let Some(content) = local_text(&path, &bytes) else {
+        return unsupported();
+    };
+    let display = path.to_string_lossy().replace('\\', "/");
+    let payload = json!({
+        "source": display,
+        "content": content,
+        "content_tokens": count_tokens(&content, "gpt-4o").unwrap_or(0),
+        "cache_hit": false,
+        "page_range": Value::Null,
+        "page_start": 0,
+        "page_end": 0,
+        "total_pages": 0,
+        "fetched_at": timestamp(),
+        "http_status": Value::Null,
+        "final_url": Value::Null,
+        "content_type": Value::Null,
+        "content_hash": sha256_bytes(&bytes),
+        "links": [],
+        "guard": Value::Null,
+        "stored": Value::Null,
+        "resolved_doi": Value::Null,
+        "jats_source": Value::Null,
+        "jats_title": Value::Null,
+        "n_formulas": Value::Null,
+        "n_figures": Value::Null,
+        "n_tables": Value::Null,
+    });
+    println!("{}", py_dumps(&payload));
+    ExitCode::SUCCESS
 }
