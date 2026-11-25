@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Resource image rewriting (done 2026-11-23)
+
+- `ResourceStore.extract` now delegates image-reference extraction and
+  rewrite planning to `gossamer::resourcestore::{image_refs, rewrite_image_refs}`;
+  downloading, SSRF validation and file writes remain Python-side.
+- Binding: extended `rust/resource-store-rs` to 15/15 cases; gate passed.
+- Full pytest: 11463 passed / 36 skipped; app replay 43/43.
+
 ### Resource magic detection (done 2026-11-23)
 
 - `_detect_ext_from_magic` now delegates byte-prefix classification to

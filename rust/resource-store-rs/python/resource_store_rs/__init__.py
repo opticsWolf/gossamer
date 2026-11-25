@@ -88,5 +88,7 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_detect_ext_from_magic = _native._service_detect_ext_from_magic
+_service_extract_image_refs = _native._service_extract_image_refs
+_service_rewrite_image_refs = _native._service_rewrite_image_refs
 
-__all__ = ['_service_detect_ext_from_magic']
+__all__ = ['_service_detect_ext_from_magic', '_service_extract_image_refs', '_service_rewrite_image_refs']

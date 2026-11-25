@@ -48,9 +48,59 @@ fn service_detect_ext_from_magic(data: Bound<'_, PyAny>) -> PyResult<Option<Stri
     service_detect_ext_from_magic_inner(data).map_err(error)
 }
 
+fn service_extract_image_refs_inner(
+    markdown: String,
+    base_url: String,
+) -> Result<Vec<Value>, String> {
+    let out = port::service_extract_image_refs(markdown, base_url)?;
+    Ok(out)
+}
+
+/// `_service_extract_image_refs`.
+#[pyfunction]
+#[pyo3(name = "_service_extract_image_refs", signature = (markdown, base_url))]
+fn service_extract_image_refs(
+    py: Python<'_>,
+    markdown: String,
+    base_url: String,
+) -> PyResult<Py<PyAny>> {
+    service_extract_image_refs_inner(markdown, base_url)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
+fn service_rewrite_image_refs_inner(
+    refs: Bound<'_, PyAny>,
+    markdown: String,
+    stem: String,
+    resolutions: Bound<'_, PyAny>,
+) -> Result<Value, String> {
+    let refs: Vec<Value> = crate::pyconv::FromPy::from_py(&refs)?;
+    let resolutions: Value = crate::pyconv::FromPy::from_py(&resolutions)?;
+    let out = port::service_rewrite_image_refs(refs, markdown, stem, resolutions)?;
+    Ok(out)
+}
+
+/// `_service_rewrite_image_refs`.
+#[pyfunction]
+#[pyo3(name = "_service_rewrite_image_refs", signature = (refs, markdown, stem, resolutions))]
+fn service_rewrite_image_refs(
+    py: Python<'_>,
+    refs: Bound<'_, PyAny>,
+    markdown: String,
+    stem: String,
+    resolutions: Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    service_rewrite_image_refs_inner(refs, markdown, stem, resolutions)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_detect_ext_from_magic, m)?)?;
+    m.add_function(wrap_pyfunction!(service_extract_image_refs, m)?)?;
+    m.add_function(wrap_pyfunction!(service_rewrite_image_refs, m)?)?;
     Ok(())
 }

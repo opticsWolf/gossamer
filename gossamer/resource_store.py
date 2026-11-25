@@ -157,50 +157,26 @@ class ResourceStore:
         empty resource folder behind.
         """
         files_dir = Path(out_dir) / f"{stem}.files"
-
         seen_url: dict[str, str] = {}
         seen_hash: dict[str, str] = {}
-        rewritten = markdown
-        skipped: list[dict] = []
-        count = 0
-
-        def _rewrite(m: re.Match) -> str:
-            nonlocal count
-            alt = m.group(1)
-            target = m.group(2)
-            title = m.group(3)
-
-            # Skip already-rewritten local refs and non-resource targets.
-            if target.startswith("./") or target.startswith("#"):
-                return m.group(0)
-            if target.startswith(("mailto:", "tel:", "data:", "javascript:")):
-                return m.group(0)
-
-            # Host-root-relative (``/assets/x``) resolves against base_url's
-            # host; absolute http(s) pass through unchanged.
-            resolved = (
-                target
-                if target.startswith(("http://", "https://", "ftp://"))
-                else urljoin(base_url, target)
-            )
-            local = self._store_url(resolved, files_dir, seen_url, seen_hash)
-            if local is None:
-                skipped.append({"url": resolved, "reason": "skipped"})
-                return m.group(0)
-            count += 1
-            rel = f"./{stem}.files/{local}"
-            if title:
-                return f'![{alt}]({rel} "{title}")'
-            return f"![{alt}]({rel})"
-
-        rewritten = _MD_IMG_ANY_RE.sub(_rewrite, markdown)
+        refs = _service_extract_image_refs(markdown, base_url)
+        resolutions = {}
+        for reference in refs:
+            if not reference["resolvable"]:
+                continue
+            url = reference["resolved"]
+            if url not in resolutions:
+                resolutions[url] = self._store_url(
+                    url, files_dir, seen_url, seen_hash,
+                )
+        plan = _service_rewrite_image_refs(refs, markdown, stem, resolutions)
         return {
-            "markdown": rewritten,
+            "markdown": plan["markdown"],
             "dir": str(files_dir),
             "stem": stem,
-            "referenced": count,
-            "files": sorted({f"{stem}.files/{p}" for p in seen_url.values()}),
-            "skipped": skipped,
+            "referenced": plan["referenced"],
+            "files": plan["files"],
+            "skipped": plan["skipped"],
         }
 
     def extract_embedded(
@@ -353,3 +329,58 @@ def _rust_anything_resource_store_rs():
 _rust_anything_resource_store_rs()
 del _rust_anything_resource_store_rs
 # <<< rust-anything: resource-store-rs
+
+def _service_extract_image_refs(markdown, base_url):
+    refs = []
+    for match in _MD_IMG_ANY_RE.finditer(markdown):
+        target = match.group(2)
+        resolvable = not (
+            target.startswith("./") or target.startswith("#")
+        ) and not target.startswith(("mailto:", "tel:", "data:", "javascript:"))
+        if not resolvable:
+            resolved = None
+        elif target.startswith(("http://", "https://", "ftp://")):
+            resolved = target
+        else:
+            resolved = urljoin(base_url, target)
+        refs.append({
+            "whole": match.group(0),
+            "alt": match.group(1),
+            "target": target,
+            "title": match.group(3),
+            "resolved": resolved,
+            "resolvable": resolvable,
+        })
+    return refs
+
+
+def _service_rewrite_image_refs(refs, markdown, stem, resolutions):
+    rewritten = markdown
+    skipped = []
+    count = 0
+    files = []
+    for reference in refs:
+        if not reference["resolvable"]:
+            continue
+        url = reference["resolved"]
+        local = resolutions.get(url)
+        if local is None:
+            skipped.append({"url": url, "reason": "skipped"})
+            continue
+        rel = f"./{stem}.files/{local}"
+        if reference["title"]:
+            replacement = f'![{reference["alt"]}]({rel} "{reference["title"]}")'
+        else:
+            replacement = f'![{reference["alt"]}]({rel})'
+        rewritten = rewritten.replace(reference["whole"], replacement, 1)
+        count += 1
+        name = f"{stem}.files/{local}"
+        if name not in files:
+            files.append(name)
+    return {
+        "markdown": rewritten,
+        "referenced": count,
+        "files": sorted(files),
+        "skipped": skipped,
+    }
+
