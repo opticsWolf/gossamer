@@ -94,6 +94,43 @@ pub fn shrink_crawl(result: &Value, budget: Option<i64>) -> Result<String, Strin
     serde_json::to_string_pretty(&out).map_err(|e| format!("ValueError: {e}"))
 }
 
+
+
+const STOPWORDS: &str = "a about above after again against all am an and any are as at be because been before below being between both but by can did do does doing down during each few for from further had has have having he her here hers him his how i if in into is it its just me more most my no nor not of off on once only or other our out over own same she should so some such than that the their them then there these they this those through to too under until up very was we were what when where which while who why will with you your yours";
+const TOKEN_PATTERN: &str = r"[a-z0-9]+";
+static TOKEN_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(TOKEN_PATTERN)
+        .unwrap_or_else(|e| panic!("invalid crawl token regex {TOKEN_PATTERN:?}: {e}"))
+});
+
+fn tokens(text: &str) -> Vec<String> {
+    let lower = text.to_ascii_lowercase();
+    TOKEN_RE.find_iter(&lower)
+        .map(|m| m.as_str().to_string())
+        .filter(|token| !STOPWORDS.split_whitespace().any(|word| word == token))
+        .collect()
+}
+
+/// Lowercase alphanumeric content words with stopwords removed.
+pub fn crawl_tokens(text: Option<&str>) -> Vec<String> {
+    let mut values = tokens(text.unwrap_or(""));
+    values.sort();
+    values.dedup();
+    values
+}
+
+/// Highest-frequency content words, capped and ordered by count then name.
+pub fn crawl_topic_words(text: Option<&str>, limit: usize) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for token in tokens(text.unwrap_or("")) {
+        *counts.entry(token).or_insert(0) += 1;
+    }
+    let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    ranked.into_iter().take(limit).map(|(token, _)| token).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -183,10 +183,7 @@ class Crawler:
     @classmethod
     def _crawl_tokens(cls, text: str) -> set:
         """Content words of *text* (lowercase alnum, stopwords removed)."""
-        return {
-            t for t in re.findall(r"[a-z0-9]+", (text or "").lower())
-            if t not in cls._CRAWL_STOPWORDS
-        }
+        return set(_service_crawl_tokens(text))
 
     @classmethod
     def _crawl_topic_words(cls, text: str) -> set:
@@ -196,13 +193,7 @@ class Crawler:
         first lines) — that is the neighbourhood signal its outgoing
         links are scored against.
         """
-        counts: dict = {}
-        for t in re.findall(r"[a-z0-9]+", (text or "").lower()):
-            if t in cls._CRAWL_STOPWORDS:
-                continue
-            counts[t] = counts.get(t, 0) + 1
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        return {t for t, _ in ranked[: cls._CRAWL_TOPIC_WORDS]}
+        return set(_service_crawl_topic_words(text, cls._CRAWL_TOPIC_WORDS))
 
     @classmethod
     def _crawl_is_document(cls, url: str) -> bool:
@@ -976,4 +967,20 @@ def _service_shrink_crawl(result, budget):
         out["pages_omitted"] = len(pages) - keep
         out["pages"] = pages[:keep]
     return json.dumps(out, indent=2)
+
+def _service_crawl_tokens(text):
+    return sorted({
+        t for t in re.findall(r"[a-z0-9]+", (text or "").lower())
+        if t not in Crawler._CRAWL_STOPWORDS
+    })
+
+
+def _service_crawl_topic_words(text, limit):
+    counts = {}
+    for t in re.findall(r"[a-z0-9]+", (text or "").lower()):
+        if t in Crawler._CRAWL_STOPWORDS:
+            continue
+        counts[t] = counts.get(t, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [t for t, _ in ranked[:limit]]
 

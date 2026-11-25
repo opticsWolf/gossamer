@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-use gossamer::service::crawl::{crawl_score, shrink_crawl};
+use gossamer::service::crawl::{crawl_score, crawl_tokens, crawl_topic_words, shrink_crawl};
 use serde_json::Value;
 
 pub fn service_crawl_score(
@@ -31,4 +31,12 @@ pub fn service_crawl_score(
 
 pub fn service_shrink_crawl(result: Value, budget: Option<i64>) -> Result<String, String> {
     shrink_crawl(&result, budget)
+}
+
+pub fn service_crawl_tokens(text: Option<String>) -> Result<Vec<String>, String> {
+    Ok(crawl_tokens(text.as_deref()))
+}
+
+pub fn service_crawl_topic_words(text: Option<String>, limit: i64) -> Result<Vec<String>, String> {
+    Ok(crawl_topic_words(text.as_deref(), limit.max(0) as usize))
 }

@@ -1,2 +1,4 @@
+{"fn": "_service_crawl_tokens", "args": ["The QUICK brown fox"]}
+{"fn": "_service_crawl_topic_words", "args": ["rust rust python the rust", 2]}
 {"fn": "_service_shrink_crawl", "args": [{"pages": [{"url": "https://x/0", "markdown": "a"}, {"url": "https://x/1", "markdown": "a"}, {"url": "https://x/2", "markdown": "a"}, {"url": "https://x/3", "markdown": "a"}, {"url": "https://x/4", "markdown": "a"}], "root": "https://x"}, null]}
 {"fn": "_service_shrink_crawl", "args": [{"pages": [{"url": "https://x/0", "markdown": "a"}, {"url": "https://x/1", "markdown": "a"}, {"url": "https://x/2", "markdown": "a"}, {"url": "https://x/3", "markdown": "a"}, {"url": "https://x/4", "markdown": "a"}], "root": "https://x"}, 1000]}

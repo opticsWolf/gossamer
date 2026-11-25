@@ -104,10 +104,39 @@ fn service_shrink_crawl(result: Bound<'_, PyAny>, budget: Option<i64>) -> PyResu
     service_shrink_crawl_inner(result, budget).map_err(error)
 }
 
+fn service_crawl_tokens_inner(text: Option<String>) -> Result<Vec<String>, String> {
+    let out = port::service_crawl_tokens(text)?;
+    Ok(out)
+}
+
+/// `_service_crawl_tokens`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_tokens", signature = (text))]
+fn service_crawl_tokens(text: Option<String>) -> PyResult<Vec<String>> {
+    service_crawl_tokens_inner(text).map_err(error)
+}
+
+fn service_crawl_topic_words_inner(
+    text: Option<String>,
+    limit: i64,
+) -> Result<Vec<String>, String> {
+    let out = port::service_crawl_topic_words(text, limit)?;
+    Ok(out)
+}
+
+/// `_service_crawl_topic_words`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_topic_words", signature = (text, limit))]
+fn service_crawl_topic_words(text: Option<String>, limit: i64) -> PyResult<Vec<String>> {
+    service_crawl_topic_words_inner(text, limit).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_crawl_score, m)?)?;
     m.add_function(wrap_pyfunction!(service_shrink_crawl, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_topic_words, m)?)?;
     Ok(())
 }
