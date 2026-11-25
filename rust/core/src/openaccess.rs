@@ -3,6 +3,7 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
+use serde_json::Value;
 
 use crate::compat::py_repr;
 
@@ -86,6 +87,104 @@ pub fn normalize_doi(value: &str) -> Result<String, String> {
     }
     doi.make_ascii_lowercase();
     Ok(doi)
+}
+
+
+/// Map one OpenAlex location to the shared OA-candidate shape.
+pub fn oa_candidate(location: &Value, is_best: bool, work_is_oa: bool) -> Option<Value> {
+    let object = location.as_object()?;
+    let location_is_oa = object.get("is_oa");
+    if location_is_oa == Some(&Value::Bool(false))
+        || (location_is_oa.is_none() && !work_is_oa)
+    { return None; }
+    let pdf = object.get("pdf_url").cloned().unwrap_or(Value::Null);
+    let landing = object.get("landing_page_url").cloned().unwrap_or(Value::Null);
+    let url = if !pdf.is_null() { pdf.clone() } else { landing.clone() };
+    if !url.as_str().is_some_and(|text| !text.trim().is_empty()) { return None; }
+    let source = object.get("source");
+    let (name, id) = match source {
+        Some(Value::Object(map)) => (
+            map.get("display_name").cloned().unwrap_or(Value::Null),
+            map.get("id").cloned().unwrap_or(Value::Null),
+        ),
+        Some(Value::String(text)) => (Value::String(text.clone()), Value::Null),
+        _ => (Value::Null, Value::Null),
+    };
+    Some(serde_json::json!({
+        "url": url,
+        "kind": if pdf.is_null() { "landing_page" } else { "pdf" },
+        "pdf_url": pdf,
+        "landing_page_url": landing,
+        "source": name,
+        "source_id": id,
+        "is_oa": location_is_oa.cloned().unwrap_or(Value::Bool(work_is_oa)),
+        "license": object.get("license").cloned().unwrap_or(Value::Null),
+        "version": object.get("version").cloned().unwrap_or(Value::Null),
+        "is_best": is_best,
+    }))
+}
+
+/// Map one Unpaywall v2 location to the shared OA-candidate shape.
+pub fn unpaywall_candidate(location: &Value, is_best: bool) -> Option<Value> {
+    let object = location.as_object()?;
+    let pdf = object.get("url_for_pdf").or_else(|| object.get("pdf_url")).cloned().unwrap_or(Value::Null);
+    let landing = object.get("url_for_landing_page")
+        .or_else(|| object.get("landing_page_url"))
+        .or_else(|| object.get("url"))
+        .cloned().unwrap_or(Value::Null);
+    let url = if !pdf.is_null() { pdf.clone() } else { landing.clone() };
+    if !url.as_str().is_some_and(|text| !text.trim().is_empty()) { return None; }
+    let source = object.get("source");
+    let mut name = match source {
+        Some(Value::Object(map)) => map.get("display_name").cloned().unwrap_or(Value::Null),
+        Some(Value::String(text)) => Value::String(text.clone()),
+        _ => Value::Null,
+    };
+    if name.is_null() {
+        name = object.get("endpoint_label").or_else(|| object.get("host_type")).cloned().unwrap_or(Value::Null);
+    }
+    Some(serde_json::json!({
+        "url": url,
+        "kind": if pdf.is_null() { "landing_page" } else { "pdf" },
+        "pdf_url": pdf,
+        "landing_page_url": landing,
+        "source": name,
+        "source_id": Value::Null,
+        "is_oa": true,
+        "license": object.get("license").cloned().unwrap_or(Value::Null),
+        "version": object.get("version").cloned().unwrap_or(Value::Null),
+        "is_best": is_best,
+    }))
+}
+
+/// Extract deduplicated OA candidates and work metadata from Unpaywall.
+pub fn unpaywall_candidates(payload: &Value) -> (Vec<Value>, Value) {
+    let mut ordered: Vec<(Value, bool)> = Vec::new();
+    if let Some(best) = payload.get("best_oa_location").filter(|value| value.is_object()) {
+        ordered.push((best.clone(), true));
+    }
+    if let Some(locations) = payload.get("oa_locations").and_then(Value::as_array) {
+        ordered.extend(locations.iter().map(|item| (item.clone(), false)));
+    }
+    let mut candidates = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for (location, is_best) in ordered {
+        let Some(candidate) = unpaywall_candidate(&location, is_best) else { continue; };
+        let url = candidate.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+        if seen.contains(&url) { continue; }
+        seen.push(url);
+        candidates.push(candidate);
+    }
+    let is_oa = payload.get("is_oa").and_then(Value::as_bool).unwrap_or(!candidates.is_empty());
+    let work = serde_json::json!({
+        "id": Value::Null,
+        "title": payload.get("title").cloned().unwrap_or(Value::Null),
+        "url": payload.get("doi_url").cloned().unwrap_or(Value::Null),
+        "published": payload.get("published_date").cloned().unwrap_or(Value::Null),
+        "is_oa": is_oa,
+        "oa_status": payload.get("oa_status").cloned().unwrap_or(Value::Null),
+    });
+    (candidates, work)
 }
 
 #[cfg(test)]

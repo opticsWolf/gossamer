@@ -88,5 +88,8 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_normalize_doi = _native._service_normalize_doi
+_service_oa_candidate = _native._service_oa_candidate
+_service_unpaywall_candidate = _native._service_unpaywall_candidate
+_service_unpaywall_candidates = _native._service_unpaywall_candidates
 
-__all__ = ['_service_normalize_doi']
+__all__ = ['_service_normalize_doi', '_service_oa_candidate', '_service_unpaywall_candidate', '_service_unpaywall_candidates']

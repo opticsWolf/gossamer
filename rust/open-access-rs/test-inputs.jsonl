@@ -1,15 +1,24 @@
-{"fn": "_service_normalize_doi", "args": [" DOI:10.1234/Example "]}
-{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/Ab%2FC"]}
-{"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/x?q=1"]}
-{"fn": "_service_normalize_doi", "args": ["not-a-doi"]}
-{"fn": "_service_normalize_doi", "args": [123]}
+{"fn": "_service_oa_candidate", "args": [{"pdf_url": "https://x/a.pdf", "source": {"display_name": "X", "id": "https://x"}, "is_oa": true}, true, false]}
+{"fn": "_service_unpaywall_candidate", "args": [{"url_for_pdf": "https://x/b.pdf", "host_type": "publisher"}, false]}
+{"fn": "_service_unpaywall_candidates", "args": [{"best_oa_location": {"url_for_pdf": "https://x/b.pdf"}, "oa_locations": [{"url_for_pdf": "https://x/b.pdf"}], "is_oa": true}]}
+{"fn": "_service_unpaywall_candidate", "args": [{"url_for_pdf": "https://x/b.pdf"}, true]}
+{"fn": "_service_unpaywall_candidate", "args": [{"url_for_pdf": "https://x/b.pdf"}, false]}
 {"fn": "_service_normalize_doi", "args": ["10.1234/Example.DOI"]}
 {"fn": "_service_normalize_doi", "args": ["doi:10.1234/Example.DOI"]}
 {"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/Example.DOI"]}
 {"fn": "_service_normalize_doi", "args": ["http://dx.doi.org/10.1234/Example.DOI"]}
 {"fn": "_service_normalize_doi", "args": [""]}
+{"fn": "_service_normalize_doi", "args": ["not-a-doi"]}
 {"fn": "_service_normalize_doi", "args": ["10.123/short-prefix"]}
 {"fn": "_service_normalize_doi", "args": ["https://example.com/10.1234/x"]}
 {"fn": "_service_normalize_doi", "args": ["https://doi.org/10.1234/x?tracking=1"]}
 {"fn": "_service_normalize_doi", "args": ["doi:10.1234/example"]}
+{"fn": "_service_oa_candidate", "args": [{"pdf_url": "https://publisher.example/paper.pdf", "landing_page_url": "https://publisher.example/paper", "is_oa": true, "license": "cc-by", "version": "publishedVersion", "source": {"display_name": "Journal of Coatings", "id": "S1"}}, true, true]}
+{"fn": "_service_oa_candidate", "args": [{"pdf_url": "https://publisher.example/paper.pdf", "landing_page_url": "https://publisher.example/paper", "is_oa": true, "license": "cc-by", "version": "publishedVersion", "source": {"display_name": "Journal of Coatings", "id": "S1"}}, false, true]}
+{"fn": "_service_oa_candidate", "args": [{"pdf_url": "https://repository.example/paper.pdf", "landing_page_url": "https://repository.example/record", "is_oa": true, "license": "cc-by-nc", "version": "acceptedVersion", "source": {"display_name": "University Repository", "id": "S2"}}, false, true]}
 {"fn": "_service_normalize_doi", "args": ["10.1234/example"]}
+{"fn": "_service_oa_candidate", "args": [{"pdf_url": null, "landing_page_url": "https://repository.example/record", "is_oa": true, "source": {"display_name": "Repository"}}, true, true]}
+{"fn": "_service_unpaywall_candidates", "args": [{"doi": "10.1234/example", "title": "Fallback paper", "is_oa": true, "oa_status": "gold", "best_oa_location": {"url_for_pdf": "https://repo.example/fallback.pdf", "url_for_landing_page": "https://repo.example/record", "license": "cc-by", "version": "publishedVersion", "host_type": "repository"}, "oa_locations": []}]}
+{"fn": "_service_unpaywall_candidate", "args": [{"url_for_pdf": "https://repo.example/fallback.pdf", "url_for_landing_page": "https://repo.example/record", "license": "cc-by", "version": "publishedVersion", "host_type": "repository"}, true]}
+{"fn": "_service_unpaywall_candidates", "args": [{"doi": "10.1234/example", "title": "Rescued paper", "is_oa": true, "best_oa_location": {"url": "https://repo.example/record", "host_type": "repository"}, "oa_locations": []}]}
+{"fn": "_service_unpaywall_candidate", "args": [{"url": "https://repo.example/record", "host_type": "repository"}, true]}

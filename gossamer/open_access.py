@@ -25,77 +25,11 @@ def normalize_doi(value: str) -> str:
 
 
 def _oa_candidate(location: dict, *, is_best: bool, work_is_oa: bool) -> dict | None:
-    if not isinstance(location, dict):
-        return None
-    location_is_oa = location.get("is_oa")
-    if location_is_oa is False or (location_is_oa is None and not work_is_oa):
-        return None
-
-    pdf_url = location.get("pdf_url")
-    landing_page_url = location.get("landing_page_url")
-    url = pdf_url or landing_page_url
-    if not isinstance(url, str) or not url.strip():
-        return None
-    source = location.get("source")
-    if isinstance(source, dict):
-        source_name = source.get("display_name")
-        source_id = source.get("id")
-    else:
-        source_name = source if isinstance(source, str) else None
-        source_id = None
-    return {
-        "url": url,
-        "kind": "pdf" if pdf_url else "landing_page",
-        "pdf_url": pdf_url,
-        "landing_page_url": landing_page_url,
-        "source": source_name,
-        "source_id": source_id,
-        "is_oa": location_is_oa if location_is_oa is not None else work_is_oa,
-        "license": location.get("license"),
-        "version": location.get("version"),
-        "is_best": is_best,
-    }
+    return _service_oa_candidate(location, is_best, work_is_oa)
 
 
 def _unpaywall_candidate(location: dict, *, is_best: bool) -> dict | None:
-    """Map one Unpaywall v2 location to the shared OA-candidate shape.
-
-    Live-verified contract (2026-09-26): ``GET /v2/{doi}?email=`` enforces a
-    real contact address (example.com yields HTTP 422). Field mapping is
-    defensive across documented v2 names (``url_for_pdf``/``url_for_landing_page``)
-    and OpenAlex-style fallbacks (``pdf_url``/``landing_page_url``); unknown
-    shapes are skipped rather than guessed.
-    """
-    if not isinstance(location, dict):
-        return None
-    pdf_url = location.get("url_for_pdf") or location.get("pdf_url")
-    landing = (
-        location.get("url_for_landing_page")
-        or location.get("landing_page_url")
-        or location.get("url")
-    )
-    url = pdf_url or landing
-    if not isinstance(url, str) or not url.strip():
-        return None
-    source = location.get("source")
-    if isinstance(source, dict):
-        source_name = source.get("display_name")
-    else:
-        source_name = source if isinstance(source, str) else None
-    if not source_name:
-        source_name = location.get("endpoint_label") or location.get("host_type")
-    return {
-        "url": url,
-        "kind": "pdf" if pdf_url else "landing_page",
-        "pdf_url": pdf_url,
-        "landing_page_url": landing,
-        "source": source_name,
-        "source_id": None,
-        "is_oa": True,
-        "license": location.get("license"),
-        "version": location.get("version"),
-        "is_best": is_best,
-    }
+    return _service_unpaywall_candidate(location, is_best)
 
 
 def fetch_unpaywall(doi: str, email: str, timeout: float = 20.0) -> dict:
@@ -120,30 +54,7 @@ def fetch_unpaywall(doi: str, email: str, timeout: float = 20.0) -> dict:
 
 
 def unpaywall_candidates(payload: dict) -> tuple[list[dict], dict]:
-    """Extract deduplicated OA candidates and work metadata from Unpaywall."""
-    best = payload.get("best_oa_location")
-    locations = payload.get("oa_locations") or []
-    ordered = []
-    if isinstance(best, dict):
-        ordered.append((best, True))
-    if isinstance(locations, list):
-        ordered.extend((item, False) for item in locations)
-    candidates: list[dict] = []
-    seen: set[str] = set()
-    for location, is_best in ordered:
-        candidate = _unpaywall_candidate(location, is_best=is_best)
-        if candidate is None or candidate["url"] in seen:
-            continue
-        seen.add(candidate["url"])
-        candidates.append(candidate)
-    work = {
-        "id": None,
-        "title": payload.get("title"),
-        "url": payload.get("doi_url"),
-        "published": payload.get("published_date"),
-        "is_oa": bool(payload.get("is_oa", bool(candidates))),
-        "oa_status": payload.get("oa_status"),
-    }
+    candidates, work = _service_unpaywall_candidates(payload)
     return candidates, work
 
 
@@ -402,3 +313,94 @@ def _rust_anything_open_access_rs():
 _rust_anything_open_access_rs()
 del _rust_anything_open_access_rs
 # <<< rust-anything: open-access-rs
+
+def _service_oa_candidate(location, is_best, work_is_oa):
+    if not isinstance(location, dict):
+        return None
+    location_is_oa = location.get("is_oa")
+    if location_is_oa is False or (location_is_oa is None and not work_is_oa):
+        return None
+    pdf_url = location.get("pdf_url")
+    landing_page_url = location.get("landing_page_url")
+    url = pdf_url or landing_page_url
+    if not isinstance(url, str) or not url.strip():
+        return None
+    source = location.get("source")
+    if isinstance(source, dict):
+        source_name = source.get("display_name")
+        source_id = source.get("id")
+    else:
+        source_name = source if isinstance(source, str) else None
+        source_id = None
+    return {
+        "url": url,
+        "kind": "pdf" if pdf_url else "landing_page",
+        "pdf_url": pdf_url,
+        "landing_page_url": landing_page_url,
+        "source": source_name,
+        "source_id": source_id,
+        "is_oa": location_is_oa if location_is_oa is not None else work_is_oa,
+        "license": location.get("license"),
+        "version": location.get("version"),
+        "is_best": is_best,
+    }
+
+
+def _service_unpaywall_candidate(location, is_best):
+    if not isinstance(location, dict):
+        return None
+    pdf_url = location.get("url_for_pdf") or location.get("pdf_url")
+    landing = (
+        location.get("url_for_landing_page")
+        or location.get("landing_page_url")
+        or location.get("url")
+    )
+    url = pdf_url or landing
+    if not isinstance(url, str) or not url.strip():
+        return None
+    source = location.get("source")
+    source_name = source.get("display_name") if isinstance(source, dict) else (
+        source if isinstance(source, str) else None
+    )
+    if not source_name:
+        source_name = location.get("endpoint_label") or location.get("host_type")
+    return {
+        "url": url,
+        "kind": "pdf" if pdf_url else "landing_page",
+        "pdf_url": pdf_url,
+        "landing_page_url": landing,
+        "source": source_name,
+        "source_id": None,
+        "is_oa": True,
+        "license": location.get("license"),
+        "version": location.get("version"),
+        "is_best": is_best,
+    }
+
+
+def _service_unpaywall_candidates(payload):
+    best = payload.get("best_oa_location")
+    locations = payload.get("oa_locations") or []
+    ordered = []
+    if isinstance(best, dict):
+        ordered.append((best, True))
+    if isinstance(locations, list):
+        ordered.extend((item, False) for item in locations)
+    candidates = []
+    seen = set()
+    for location, is_best in ordered:
+        candidate = _service_unpaywall_candidate(location, is_best=is_best)
+        if candidate is None or candidate["url"] in seen:
+            continue
+        seen.add(candidate["url"])
+        candidates.append(candidate)
+    work = {
+        "id": None,
+        "title": payload.get("title"),
+        "url": payload.get("doi_url"),
+        "published": payload.get("published_date"),
+        "is_oa": bool(payload.get("is_oa", bool(candidates))),
+        "oa_status": payload.get("oa_status"),
+    }
+    return candidates, work
+

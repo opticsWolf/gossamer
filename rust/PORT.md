@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Open-access candidate mapping (done 2026-11-23)
+
+- OpenAlex and Unpaywall location mapping plus Unpaywall dedup/work metadata
+  now live in `gossamer::openaccess`; provider HTTP calls stay Python-side.
+- Binding: extended `rust/open-access-rs` to 24/24 cases; gate passed.
+- Full pytest: 11465 passed / 36 skipped; app replay 43/43.
+
 ### Download finish validation (done 2026-11-23)
 
 - `_validate_finished_file` now delegates size/PDF/HTML/bot-wall validation to
