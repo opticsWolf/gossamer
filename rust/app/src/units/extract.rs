@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
+use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
 use gossamer::miscutils::sha256_bytes;
@@ -131,21 +132,75 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     if structured || store || !tables_as.eq_ignore_ascii_case("json") {
         return unsupported();
     }
-    let raw_path = PathBuf::from(&source);
-    let path = if raw_path.is_absolute() {
-        raw_path
+    let is_url = source.starts_with("http://") || source.starts_with("https://");
+    let (display, bytes, content, http_status, final_url, content_type) = if is_url {
+        let (bytes, status, final_url, content_type) =
+            match download_bytes(&source, 20.0, 50_000_000) {
+                Ok(value) => value,
+                Err(error) => {
+                    let payload = json!({"error": format!("Document extraction failed: {error}")});
+                    println!("{}", py_dumps(&payload));
+                    return ExitCode::SUCCESS;
+                }
+            };
+        if status >= 400 {
+            let reason = match status {
+                400 => "Bad Request",
+                401 => "Unauthorized",
+                403 => "Forbidden",
+                404 => "Not Found",
+                405 => "Method Not Allowed",
+                408 => "Request Timeout",
+                429 => "Too Many Requests",
+                500 => "Internal Server Error",
+                502 => "Bad Gateway",
+                503 => "Service Unavailable",
+                504 => "Gateway Timeout",
+                _ => "HTTP Error",
+            };
+            let message = format!(
+                "Client error '{status} {reason}' for url '{source}'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
+            );
+            let payload = json!({"error": format!("Document extraction failed: {message}")});
+            println!("{}", py_dumps(&payload));
+            return ExitCode::SUCCESS;
+        }
+        let Ok(text) = String::from_utf8(bytes.clone()) else {
+            return unsupported();
+        };
+        (
+            source.clone(),
+            bytes,
+            text.to_string(),
+            json!(status),
+            json!(final_url),
+            json!(content_type),
+        )
     } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(raw_path)
+        let raw_path = PathBuf::from(&source);
+        let path = if raw_path.is_absolute() {
+            raw_path
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(raw_path)
+        };
+        let Ok(bytes) = std::fs::read(&path) else {
+            return unsupported();
+        };
+        let Some(content) = local_text(&path, &bytes) else {
+            return unsupported();
+        };
+        (
+            path.to_string_lossy().replace('\\', "/"),
+            bytes,
+            content,
+            Value::Null,
+            Value::Null,
+            Value::Null,
+        )
     };
-    let Ok(bytes) = std::fs::read(&path) else {
-        return unsupported();
-    };
-    let Some(content) = local_text(&path, &bytes) else {
-        return unsupported();
-    };
-    let display = path.to_string_lossy().replace('\\', "/");
     let payload = json!({
         "source": display,
         "content": content,
@@ -156,9 +211,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "page_end": 0,
         "total_pages": 0,
         "fetched_at": timestamp(),
-        "http_status": Value::Null,
-        "final_url": Value::Null,
-        "content_type": Value::Null,
+        "http_status": http_status,
+        "final_url": final_url,
+        "content_type": content_type,
         "content_hash": sha256_bytes(&bytes),
         "links": [],
         "guard": Value::Null,

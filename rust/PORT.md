@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `extract` URL error envelope (done 2026-11-25)
+
+- `gossamer extract` now reports HTTP error pages for remote sources with the
+  exact Python `Document extraction failed: Client error ...` envelope. Text-like
+  successful remote bodies are decoded; HTML parsing, binary extraction and
+  robots/cache side effects remain outside this slice.
+- Verified exactly against the Python oracle for `https://example.com/robots.txt`;
+  app replay 57/57, full pytest 11468 passed / 36 skipped.
+
 ### CLI `crawl` link-graph body (done 2026-11-25)
 
 - `gossamer crawl` now fetches the root, builds a scored frontier from Rust
