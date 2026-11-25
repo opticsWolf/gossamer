@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["crawl", "http://127.0.0.1/"]
+status.code = 0
+fs.sandbox = true

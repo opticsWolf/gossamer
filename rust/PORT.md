@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `crawl` validation body (done 2026-11-23)
+
+- `gossamer crawl` now validates its root URL with exact crawl-prefixed error
+  envelopes and SSRF stderr logging. The crawl loop remains outside this
+  slice. Added two deterministic replay cases.
+- App replay 56/56; full pytest 11467 passed / 36 skipped.
+
 ### CLI `research` validation body (done 2026-11-23)
 
 - `gossamer research` now emits the taxonomy for an empty query and exact

@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["crawl", "ftp://example.com"]
+status.code = 0
+fs.sandbox = true
