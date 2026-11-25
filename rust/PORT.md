@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `download` live body (done 2026-11-23)
+
+- `gossamer download` now streams bounded bytes, validates HTTP/PDF/size
+  conditions, writes the destination, and emits the download envelope in
+  Rust. Mirrors/resume remain outside this slice. Replay stays 57/57; live
+  redirect/UA-dependent payloads are not replay-pinned.
+- Full pytest 11467 passed / 36 skipped.
+
 ### CLI `batch` live body (done 2026-11-23)
 
 - `gossamer batch` now fetches valid URLs through Rust and emits the same

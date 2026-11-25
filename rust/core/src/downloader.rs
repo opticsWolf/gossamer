@@ -238,3 +238,43 @@ mod tests {
         assert_eq!(list, vec!["a", "b"]);
     }
 }
+
+/// Download a bounded byte payload with final provenance.
+pub fn download_bytes(
+    url: &str,
+    timeout_seconds: f64,
+    max_bytes: usize,
+) -> Result<(Vec<u8>, u16, String, Option<String>), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))?;
+    runtime.block_on(async {
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| format!("HTTPError: {error}"))?;
+        let status = response.status().as_u16();
+        let final_url = response.url().to_string();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| format!("HTTPError: {error}"))?
+            .to_vec();
+        if bytes.len() > max_bytes {
+            return Err(format!("The download exceeded the {max_bytes}-byte limit."));
+        }
+        Ok((bytes, status, final_url, content_type))
+    })
+}
