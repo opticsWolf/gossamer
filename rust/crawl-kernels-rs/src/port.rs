@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 use gossamer::service::crawl::{
-    crawl_is_document, crawl_score, crawl_tokens, crawl_topic_words, shrink_crawl,
+    crawl_anchor_context, crawl_is_document, crawl_path_prior, crawl_score, crawl_term_hits,
+    crawl_tokens, crawl_topic_words, shrink_crawl,
 };
 use serde_json::Value;
 
@@ -45,4 +46,24 @@ pub fn service_crawl_topic_words(text: Option<String>, limit: i64) -> Result<Vec
 
 pub fn service_crawl_is_document(url: String) -> Result<bool, String> {
     Ok(crawl_is_document(&url))
+}
+
+pub fn service_crawl_anchor_context(
+    md: Option<String>,
+    anchor: Option<String>,
+    chars: i64,
+    cap: i64,
+) -> Result<Vec<String>, String> {
+    Ok(crawl_anchor_context(
+        md.as_deref(),
+        anchor.as_deref(),
+        chars.max(0) as usize,
+        cap.max(0) as usize,
+    ))
+}
+pub fn service_crawl_path_prior(url: String) -> Result<f64, String> {
+    Ok(crawl_path_prior(&url))
+}
+pub fn service_crawl_term_hits(text: Option<String>, terms: Vec<String>) -> Result<usize, String> {
+    Ok(crawl_term_hits(text.as_deref(), &terms))
 }

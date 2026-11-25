@@ -1,4 +1,8 @@
 {"fn": "_service_crawl_score", "args": [], "error": "TypeError: _service_crawl_score() missing 7 required positional arguments: 'label', 'query_terms', 'page_terms', 'idf', 'base_terms', 'corpus_n', and 'path_prior'"}
+{"fn": "_service_crawl_anchor_context", "args": ["about rust rust and python", "rust", 50, 8], "ok": ["rust", "python"]}
+{"fn": "_service_crawl_path_prior", "args": ["https://x/docs/a"], "ok": 1.15}
+{"fn": "_service_crawl_path_prior", "args": ["https://x/pricing"], "ok": 0.85}
+{"fn": "_service_crawl_term_hits", "args": ["rust rust python", ["rust"]], "ok": 2}
 {"fn": "_service_crawl_is_document", "args": ["https://x/a.PDF"], "ok": true}
 {"fn": "_service_crawl_is_document", "args": ["https://x/feed.rss?x=1"], "ok": true}
 {"fn": "_service_crawl_is_document", "args": ["https://x/page"], "ok": false}

@@ -212,24 +212,9 @@ class Crawler:
         Empty when the anchor does not appear verbatim in the rendered
         markdown (link labels often do not; fail-open).
         """
-        text = (md or "").lower()
-        needle = (anchor or "").lower().strip()
-        if not needle:
-            return frozenset()
-        pos = text.find(needle)
-        if pos < 0:
-            return frozenset()
-        window = text[
-            max(0, pos - cls._CRAWL_CONTEXT_CHARS):
-            pos + len(needle) + cls._CRAWL_CONTEXT_CHARS
-        ]
-        counts: dict = {}
-        for t in re.findall(r"[a-z0-9]+", window):
-            if t not in cls._CRAWL_STOPWORDS:
-                counts[t] = counts.get(t, 0) + 1
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        return frozenset(t for t, _ in ranked[: cls._CRAWL_CONTEXT_TOKEN_CAP])
-
+        return frozenset(_service_crawl_anchor_context(
+            md, anchor, cls._CRAWL_CONTEXT_CHARS, cls._CRAWL_CONTEXT_TOKEN_CAP,
+        ))
     @classmethod
     def _crawl_path_prior(cls, url: str) -> float:
         """Mild topic prior from the URL path (semantic A).
@@ -238,12 +223,7 @@ class Crawler:
         the first group with any matching prefix wins.  Table-driven so
         the mapping is unit-testable.
         """
-        path = (urlparse(url).path or "").lower()
-        for prefixes, weight in cls._CRAWL_PATH_PRIOR_GROUPS:
-            if any(path.startswith(p) for p in prefixes):
-                return weight
-        return 1.0
-
+        return _service_crawl_path_prior(url)
     @classmethod
     def _crawl_term_hits(cls, text: str, terms: set) -> int:
         """Query-term occurrences in *text*'s token stream (semantic C).
@@ -251,12 +231,7 @@ class Crawler:
         Counts occurrences, not unique terms: a page that repeats the
         topic 40 times signals substance.
         """
-        if not terms or not text:
-            return 0
-        return sum(
-            1 for t in re.findall(r"[a-z0-9]+", text.lower()) if t in terms
-        )
-
+        return _service_crawl_term_hits(text, sorted(terms))
     @classmethod
     def _crawl_excerpt(
         cls,
@@ -986,4 +961,34 @@ def _service_crawl_topic_words(text, limit):
 def _service_crawl_is_document(url):
     path = (urlparse(url).path or "").lower()
     return any(path.endswith(ext) for ext in DOCUMENT_EXTENSIONS)
+
+def _service_crawl_anchor_context(md, anchor, chars, cap):
+    text = (md or "").lower()
+    needle = (anchor or "").lower().strip()
+    if not needle:
+        return []
+    pos = text.find(needle)
+    if pos < 0:
+        return []
+    window = text[max(0, pos - chars): pos + len(needle) + chars]
+    counts = {}
+    for t in re.findall(r"[a-z0-9]+", window):
+        if t not in Crawler._CRAWL_STOPWORDS:
+            counts[t] = counts.get(t, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [t for t, _ in ranked[:cap]]
+
+
+def _service_crawl_path_prior(url):
+    path = (urlparse(url).path or "").lower()
+    for prefixes, weight in Crawler._CRAWL_PATH_PRIOR_GROUPS:
+        if any(path.startswith(p) for p in prefixes):
+            return weight
+    return 1.0
+
+
+def _service_crawl_term_hits(text, terms):
+    if not terms or not text:
+        return 0
+    return sum(1 for t in re.findall(r"[a-z0-9]+", text.lower()) if t in terms)
 

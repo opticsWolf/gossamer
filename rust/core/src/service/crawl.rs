@@ -143,6 +143,48 @@ pub fn crawl_is_document(url: &str) -> bool {
     ].iter().any(|ext| path.ends_with(ext))
 }
 
+fn ranked_tokens(text: &str, limit: usize) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for token in tokens(text) { *counts.entry(token).or_insert(0) += 1; }
+    let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    ranked.into_iter().take(limit).map(|(token, _)| token).collect()
+}
+
+
+
+/// Topic words near an anchor in rendered markdown.
+pub fn crawl_anchor_context(md: Option<&str>, anchor: Option<&str>, chars: usize, cap: usize) -> Vec<String> {
+    let text = (md.unwrap_or("")).to_ascii_lowercase();
+    let needle = (anchor.unwrap_or("")).trim().to_ascii_lowercase();
+    if needle.is_empty() { return Vec::new(); }
+    let Some(start) = text.find(&needle) else { return Vec::new(); };
+    let from = start.saturating_sub(chars);
+    let to = (start + needle.len() + chars).min(text.len());
+    // Character slicing keeps parity with Python for non-ASCII markdown.
+    let window: String = text.chars().skip(from).take(to.saturating_sub(from)).collect();
+    ranked_tokens(&window, cap)
+}
+
+/// Mild topic prior from a URL path.
+pub fn crawl_path_prior(url: &str) -> f64 {
+    let path = crate::robots::url_path(url, None).to_ascii_lowercase();
+    let path = path.split(['?', '#']).next().unwrap_or(&path);
+    if ["/docs/", "/guide/", "/guides/", "/blog/", "/api/", "/changelog/", "/reference/"]
+        .iter().any(|prefix| path.starts_with(prefix)) { return 1.15; }
+    if ["/pricing", "/careers", "/contact", "/about"]
+        .iter().any(|prefix| path.starts_with(prefix)) { return 0.85; }
+    1.0
+}
+
+/// Count occurrences of terms in a token stream.
+pub fn crawl_term_hits(text: Option<&str>, terms: &[String]) -> usize {
+    if terms.is_empty() { return 0; }
+    tokens(text.unwrap_or("")).into_iter()
+        .filter(|token| terms.contains(token)).count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

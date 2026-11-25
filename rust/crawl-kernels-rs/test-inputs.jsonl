@@ -1,3 +1,7 @@
+{"fn": "_service_crawl_anchor_context", "args": ["about rust rust and python", "rust", 50, 8]}
+{"fn": "_service_crawl_path_prior", "args": ["https://x/docs/a"]}
+{"fn": "_service_crawl_path_prior", "args": ["https://x/pricing"]}
+{"fn": "_service_crawl_term_hits", "args": ["rust rust python", ["rust"]]}
 {"fn": "_service_crawl_is_document", "args": ["https://x/a.PDF"]}
 {"fn": "_service_crawl_is_document", "args": ["https://x/feed.rss?x=1"]}
 {"fn": "_service_crawl_is_document", "args": ["https://x/page"]}

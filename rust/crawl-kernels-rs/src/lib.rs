@@ -143,6 +143,61 @@ fn service_crawl_is_document(url: String) -> PyResult<bool> {
     service_crawl_is_document_inner(url).map_err(error)
 }
 
+fn service_crawl_anchor_context_inner(
+    md: Option<String>,
+    anchor: Option<String>,
+    chars: i64,
+    cap: i64,
+) -> Result<Vec<String>, String> {
+    let out = port::service_crawl_anchor_context(md, anchor, chars, cap)?;
+    Ok(out)
+}
+
+/// `_service_crawl_anchor_context`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_anchor_context", signature = (md, anchor, chars, cap))]
+fn service_crawl_anchor_context(
+    md: Option<String>,
+    anchor: Option<String>,
+    chars: i64,
+    cap: i64,
+) -> PyResult<Vec<String>> {
+    service_crawl_anchor_context_inner(md, anchor, chars, cap).map_err(error)
+}
+
+fn service_crawl_path_prior_inner(url: String) -> Result<f64, String> {
+    let out = port::service_crawl_path_prior(url)?;
+    Ok(out)
+}
+
+/// `_service_crawl_path_prior`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_path_prior", signature = (url))]
+fn service_crawl_path_prior(url: String) -> PyResult<f64> {
+    service_crawl_path_prior_inner(url).map_err(error)
+}
+
+fn service_crawl_term_hits_inner(
+    text: Option<String>,
+    terms: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let out = port::service_crawl_term_hits(text, terms)?;
+    serde_json::to_value(out).map_err(|e| e.to_string())
+}
+
+/// `_service_crawl_term_hits`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_term_hits", signature = (text, terms))]
+fn service_crawl_term_hits(
+    py: Python<'_>,
+    text: Option<String>,
+    terms: Vec<String>,
+) -> PyResult<Py<PyAny>> {
+    service_crawl_term_hits_inner(text, terms)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -151,5 +206,8 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_crawl_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(service_crawl_topic_words, m)?)?;
     m.add_function(wrap_pyfunction!(service_crawl_is_document, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_anchor_context, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_path_prior, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_term_hits, m)?)?;
     Ok(())
 }
