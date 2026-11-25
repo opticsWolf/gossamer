@@ -88,5 +88,6 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_find_feed_links = _native._service_find_feed_links
+_service_parse_sitemap = _native._service_parse_sitemap
 
-__all__ = ['_service_find_feed_links']
+__all__ = ['_service_find_feed_links', '_service_parse_sitemap']

@@ -196,27 +196,18 @@ class ResourceDiscovery:
                 continue
             if not xml_text:
                 continue
-            try:
-                # lstrip: whitespace before the <?xml?> declaration is
-                # legal XML but expat rejects it; some hosts emit it.
-                root = ET.fromstring(xml_text.lstrip())
-            except ET.ParseError as e:
-                logger.info("Sitemap parse failed for %s: %s", sm_url, e)
+            parsed_sitemap = _service_parse_sitemap(
+                xml_text, sm_url, self._DISCOVER_MAX_URLS_PER_SITEMAP,
+            )
+            if parsed_sitemap is None:
                 continue
-
-            kind_tag = root.tag.rsplit("}", 1)[-1]  # namespace-safe
-            locs = [
-                (el.text or "").strip()
-                for el in root.iter()
-                if el.tag.rsplit("}", 1)[-1] == "loc" and (el.text or "").strip()
-            ]
-            if kind_tag not in ("urlset", "sitemapindex") or not locs:
-                continue
+            kind = parsed_sitemap["kind"]
+            locs = parsed_sitemap["locs"]
+            if parsed_sitemap["truncated"]:
+                truncated = True
             if len(locs) > self._DISCOVER_MAX_URLS_PER_SITEMAP:
                 locs = locs[: self._DISCOVER_MAX_URLS_PER_SITEMAP]
                 truncated = True
-            kind = "index" if kind_tag == "sitemapindex" else "urlset"
-            locs = [urljoin(sm_url, loc) for loc in locs]
             sitemaps.append({"url": sm_url, "kind": kind, "count": len(locs)})
 
             hop = hops.get(sm_url, 0)
@@ -272,3 +263,27 @@ def _rust_anything_discovery_rs():
 _rust_anything_discovery_rs()
 del _rust_anything_discovery_rs
 # <<< rust-anything: discovery-rs
+
+def _service_parse_sitemap(xml_text, base_url, max_urls):
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(xml_text.lstrip())
+    except ET.ParseError:
+        return None
+    kind_tag = root.tag.rsplit("}", 1)[-1]
+    locs = [
+        (el.text or "").strip()
+        for el in root.iter()
+        if el.tag.rsplit("}", 1)[-1] == "loc" and (el.text or "").strip()
+    ]
+    if kind_tag not in ("urlset", "sitemapindex") or not locs:
+        return None
+    was_truncated = len(locs) > max_urls
+    locs = locs[:max_urls]
+    locs = [urljoin(base_url, loc) for loc in locs]
+    return {
+        "kind": "index" if kind_tag == "sitemapindex" else "urlset",
+        "locs": locs,
+        "truncated": was_truncated,
+    }
+

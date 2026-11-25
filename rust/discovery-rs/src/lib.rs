@@ -49,9 +49,33 @@ fn service_find_feed_links(py: Python<'_>, html: String, base_url: String) -> Py
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_parse_sitemap_inner(
+    xml_text: String,
+    base_url: String,
+    max_urls: i64,
+) -> Result<Option<Value>, String> {
+    let out = port::service_parse_sitemap(xml_text, base_url, max_urls)?;
+    Ok(out)
+}
+
+/// `_service_parse_sitemap`.
+#[pyfunction]
+#[pyo3(name = "_service_parse_sitemap", signature = (xml_text, base_url, max_urls))]
+fn service_parse_sitemap(
+    py: Python<'_>,
+    xml_text: String,
+    base_url: String,
+    max_urls: i64,
+) -> PyResult<Py<PyAny>> {
+    service_parse_sitemap_inner(xml_text, base_url, max_urls)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_find_feed_links, m)?)?;
+    m.add_function(wrap_pyfunction!(service_parse_sitemap, m)?)?;
     Ok(())
 }

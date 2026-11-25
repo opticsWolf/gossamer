@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Sitemap parsing kernel (done 2026-11-23)
+
+- `_probe_sitemaps` now delegates XML parsing, namespace-safe `loc`
+  extraction, URL absolutization and per-sitemap caps to
+  `gossamer::sitemap::parse_sitemap`; fetching/validation/throttling stay
+  in the toolbox.
+- Binding: extended `rust/discovery-rs` to 21/21 cases; gate passed.
+- Full pytest: 11462 passed / 36 skipped; app replay 43/43.
+
 ### Liveness HTTP probe (done 2026-11-23)
 
 - Default `check_liveness` probing now runs through

@@ -29,6 +29,36 @@
       "is_generator": false,
       "type_params": [],
       "uses_instanceof": false
+    },
+    {
+      "name": "_service_parse_sitemap",
+      "file": "gossamer/discovery.py",
+      "line": 240,
+      "params": [
+        {
+          "name": "xml_text",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "base_url",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "max_urls",
+          "ts_type": "number",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
     }
   ],
   "classes": [],

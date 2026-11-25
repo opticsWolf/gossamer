@@ -35,6 +35,7 @@ pub mod sections;
 pub mod service;
 pub mod stats;
 pub mod providers;
+pub mod sitemap;
 pub mod ssrf;
 pub mod tables;
 pub mod taxonomy;
