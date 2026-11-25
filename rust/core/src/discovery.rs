@@ -77,3 +77,29 @@ mod tests {
         assert_eq!(out[0]["url"], json!("https://x.test/feed.xml"));
     }
 }
+
+/// Fetch a text payload for resource discovery, returning the final URL.
+pub fn fetch_text(url: &str, timeout_seconds: f64) -> Result<(String, String), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))?;
+    runtime.block_on(async {
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| format!("HTTPError: {error}"))?;
+        let final_url = response.url().to_string();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| format!("HTTPError: {error}"))?;
+        Ok((body, final_url))
+    })
+}

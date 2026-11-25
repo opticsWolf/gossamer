@@ -2,7 +2,7 @@
 
 Build: `rust/app/target/debug/gossamer.exe`
 
-Passed: 44/44
+Passed: 45/45
 
 Fallback rate: not reported by this build
 

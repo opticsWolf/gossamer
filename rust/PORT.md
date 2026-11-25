@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `discover` command body (done 2026-11-23)
+
+- `gossamer discover` now fetches HTML/sitemaps, extracts feed alternates,
+  follows bounded sitemap indexes, and emits the public envelope entirely in
+  Rust. Added a deterministic blocked-URL replay case.
+- App replay 45/45; full pytest 11467 passed / 36 skipped.
+
 ### CLI `check` command body (done 2026-11-23)
 
 - `gossamer check` now probes URLs in the front door via Rust SSRF validation,
