@@ -58,9 +58,33 @@ fn service_liveness_result(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_probe_liveness_inner(
+    url: String,
+    timeout: f64,
+    method: String,
+) -> Result<Value, String> {
+    let out = port::service_probe_liveness(url, timeout, method)?;
+    Ok(out)
+}
+
+/// `_service_probe_liveness`.
+#[pyfunction]
+#[pyo3(name = "_service_probe_liveness", signature = (url, timeout, method))]
+fn service_probe_liveness(
+    py: Python<'_>,
+    url: String,
+    timeout: f64,
+    method: String,
+) -> PyResult<Py<PyAny>> {
+    service_probe_liveness_inner(url, timeout, method)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_liveness_result, m)?)?;
+    m.add_function(wrap_pyfunction!(service_probe_liveness, m)?)?;
     Ok(())
 }

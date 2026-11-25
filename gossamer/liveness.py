@@ -133,7 +133,8 @@ def check_liveness(
         probe_method = method if method == "get" else "head"
 
         def fn(u: str, t: float):
-            return _http_probe(u, t, method=probe_method)
+            outcome = _service_probe_liveness(u, t, probe_method)
+            return outcome["http_status"], outcome["error"]
 
     http_status, error = fn(url, timeout)
     return _service_liveness_result(url, http_status, error)
@@ -155,6 +156,10 @@ def _service_liveness_result(url, http_status, error):
         "http_status": http_status,
     }
 
+
+def _service_probe_liveness(url, timeout, method):
+    return _http_probe(url, timeout, method=method)
+
 # >>> rust-anything: liveness-rs is on. `rust-anything disable ../rust/liveness-rs` removes this block.
 def _rust_anything_liveness_rs():
     import importlib, os, sys
@@ -171,7 +176,7 @@ def _rust_anything_liveness_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_liveness_result"]})
+    globals().update({name: getattr(native, name) for name in ["_service_liveness_result", "_service_probe_liveness"]})
 
 
 _rust_anything_liveness_rs()

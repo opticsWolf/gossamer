@@ -96,6 +96,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Liveness HTTP probe (done 2026-11-23)
+
+- Default `check_liveness` probing now runs through
+  `gossamer::service::liveness::probe_liveness` (reqwest HEAD/GET with
+  redirects and timeout). Injectable `request_fn`, SSRF validation and
+  throttling remain Python-side; verdict mapping stays in Rust.
+- Binding: extended `rust/liveness-rs` to 5/5 cases; gate passed. Verified
+  live `https://example.com` returns HTTP 200 through the Rust probe.
+- Full pytest: 11461 passed / 36 skipped; app replay 43/43.
+
 ### Crawl excerpt and query expansion (done 2026-11-23)
 
 - `_crawl_excerpt` and `_crawl_expand_query` now delegate to

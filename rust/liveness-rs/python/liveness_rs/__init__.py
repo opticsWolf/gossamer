@@ -88,5 +88,6 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_liveness_result = _native._service_liveness_result
+_service_probe_liveness = _native._service_probe_liveness
 
-__all__ = ['_service_liveness_result']
+__all__ = ['_service_liveness_result', '_service_probe_liveness']
