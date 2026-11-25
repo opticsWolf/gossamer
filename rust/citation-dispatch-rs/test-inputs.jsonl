@@ -1,15 +1,15 @@
-{"fn": "_service_citation_style", "args": [null]}
-{"fn": "_service_citation_style", "args": ["MLA"]}
-{"fn": "_service_citation_style", "args": ["bad"]}
-{"fn": "_service_citation_input", "args": [" 10.1234/AbC "]}
-{"fn": "_service_citation_input", "args": [" https://x "]}
-{"fn": "_service_citation_style", "args": ["csl-json"]}
-{"fn": "_service_citation_input", "args": ["10.1234/example"]}
 {"fn": "_service_citation_style", "args": ["bibtex"]}
+{"fn": "_service_citation_style", "args": ["csl-json"]}
 {"fn": "_service_citation_style", "args": ["apa"]}
 {"fn": "_service_citation_style", "args": ["mla"]}
 {"fn": "_service_citation_input", "args": ["10.1038/s41586-020-0694-2"]}
 {"fn": "_service_citation_input", "args": ["https://example.com/paper"]}
 {"fn": "_service_citation_input", "args": ["10.1/x"]}
 {"fn": "_service_citation_style", "args": ["ris"]}
+{"fn": "_service_find_doi_in_text", "args": ["see DOI: 10.1234/example-doi."]}
+{"fn": "_service_find_doi_in_text", "args": ["https://doi.org/10.1234/ABC"]}
+{"fn": "_service_find_doi_in_text", "args": ["no identifier"]}
+{"fn": "_service_find_doi_in_text", "args": ["DOI: 10.1234/example-doi\n"]}
 {"fn": "_service_citation_input", "args": ["10.1234/example-doi"]}
+{"fn": "_service_find_doi_in_text", "args": ["DOI: no identifier here\n"]}
+{"fn": "_service_find_doi_in_text", "args": ["%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n4 0 obj\n<< /Length 68 >>\nstream\nBT /F1 12 Tf 72 720 Td (DOI: no identifier here) Tj ET\nendstream\nendobj\n5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"]}

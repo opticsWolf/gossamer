@@ -1013,6 +1013,18 @@ pub fn citation_input(value: &str) -> serde_json::Value {
     }
 }
 
+
+/// Return the first DOI-looking token in *text*, without trailing punctuation.
+pub fn find_doi_in_text(text: Option<&str>) -> Option<String> {
+    static DOI: OnceLock<Regex> = OnceLock::new();
+    let regex = DOI.get_or_init(|| {
+        Regex::new(r#"(?i)10\.\d{4,9}/[^\s"'<>\]}\)]+"#)
+            .expect("DOI pattern must compile")
+    });
+    let found = regex.find(text?)?;
+    Some(found.as_str().trim_end_matches(['.', ',', ';', ':']).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

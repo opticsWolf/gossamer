@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### In-text DOI detection (done 2026-11-23)
+
+- `find_doi_in_text` now delegates DOI scanning and trailing-punctuation
+  trimming to `gossamer::cite`.
+- Binding: extended `rust/citation-dispatch-rs` to 15/15 cases; gate passed.
+- Full pytest: 11465 passed / 36 skipped; app replay 43/43.
+
 ### Open-access candidate mapping (done 2026-11-23)
 
 - OpenAlex and Unpaywall location mapping plus Unpaywall dedup/work metadata

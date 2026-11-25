@@ -35,8 +35,9 @@ fn error(message: String) -> PyErr {
     }
 }
 
-fn service_citation_style_inner(style: Option<String>) -> Result<String, String> {
-    port::service_citation_style(style)
+fn service_citation_style_inner(style: Option<String>) -> Result<Value, String> {
+    let out = port::service_citation_style(style)?;
+    Ok(Value::String(out))
 }
 
 /// `_service_citation_style`.
@@ -62,10 +63,24 @@ fn service_citation_input(py: Python<'_>, value: String) -> PyResult<Py<PyAny>> 
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_find_doi_in_text_inner(text: Bound<'_, PyAny>) -> Result<Option<String>, String> {
+    let text: Value = crate::pyconv::FromPy::from_py(&text)?;
+    let out = port::service_find_doi_in_text(text)?;
+    Ok(out)
+}
+
+/// `_service_find_doi_in_text`.
+#[pyfunction]
+#[pyo3(name = "_service_find_doi_in_text", signature = (text))]
+fn service_find_doi_in_text(text: Bound<'_, PyAny>) -> PyResult<Option<String>> {
+    service_find_doi_in_text_inner(text).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_citation_style, m)?)?;
     m.add_function(wrap_pyfunction!(service_citation_input, m)?)?;
+    m.add_function(wrap_pyfunction!(service_find_doi_in_text, m)?)?;
     Ok(())
 }

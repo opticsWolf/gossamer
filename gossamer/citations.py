@@ -291,12 +291,7 @@ _DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>\]}\)]+", re.IGNORECASE)
 
 def find_doi_in_text(text: str) -> Optional[str]:
     """Return the first DOI in *text*, stripped of trailing punctuation."""
-    if not isinstance(text, str) or not text:
-        return None
-    match = _DOI_RE.search(text)
-    if not match:
-        return None
-    return match.group(0).rstrip(".,;:")
+    return _service_find_doi_in_text(text)
 
 
 def format_citations(
@@ -378,3 +373,12 @@ def _rust_anything_citation_dispatch_rs():
 _rust_anything_citation_dispatch_rs()
 del _rust_anything_citation_dispatch_rs
 # <<< rust-anything: citation-dispatch-rs
+
+def _service_find_doi_in_text(text):
+    if not isinstance(text, str) or not text:
+        return None
+    match = _DOI_RE.search(text)
+    if not match:
+        return None
+    return match.group(0).rstrip(".,;:")
+

@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-use gossamer::cite::{citation_input, citation_style};
+use gossamer::cite::{citation_input, citation_style, find_doi_in_text};
 use serde_json::Value;
 
 pub fn service_citation_style(style: Option<String>) -> std::result::Result<String, String> {
@@ -8,4 +8,8 @@ pub fn service_citation_style(style: Option<String>) -> std::result::Result<Stri
 
 pub fn service_citation_input(value: String) -> Result<Value, String> {
     Ok(citation_input(&value))
+}
+
+pub fn service_find_doi_in_text(text: Value) -> Result<Option<String>, String> {
+    Ok(find_doi_in_text(text.as_str()))
 }

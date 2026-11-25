@@ -89,5 +89,6 @@ def _method(name, positions, names, json_result):
 
 _service_citation_style = _native._service_citation_style
 _service_citation_input = _native._service_citation_input
+_service_find_doi_in_text = _native._service_find_doi_in_text
 
-__all__ = ['_service_citation_style', '_service_citation_input']
+__all__ = ['_service_citation_style', '_service_citation_input', '_service_find_doi_in_text']
