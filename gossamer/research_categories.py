@@ -312,9 +312,9 @@ def _make_adapter(provider: str) -> object:
     with _ADAPTER_CACHE_LOCK:
         cached = _ADAPTER_CACHE.get(provider)
         if cached is None:
-            dotted = _ADAPTER_FACTORIES.get(provider)
+            dotted = _service_provider_factory_path(provider)
             if dotted is None:
-                raise ValueError(f"no adapter registered for provider {provider!r}")
+                raise ValueError(_service_unknown_provider_message(provider))
             cached = _import_path(dotted)()
             _ADAPTER_CACHE[provider] = cached
         return cached
@@ -677,3 +677,64 @@ def search_category(
     if error is not None:
         payload["error"] = str(error)
     return payload
+
+_FACTORY_PATHS = {
+    "openalex": "gossamer.research_providers.OpenAlexAdapter",
+    "crossref": "gossamer.research_providers.CrossrefAdapter",
+    "arxiv": "gossamer.research_providers.ArxivAdapter",
+    "courtlistener": "gossamer.research_providers.CourtListenerAdapter",
+    "ecfr": "gossamer.research_providers.EcfrAdapter",
+    "federalregister": "gossamer.research_providers.FederalRegisterAdapter",
+    "alphavantage": "gossamer.research_providers.AlphaVantageAdapter",
+    "yahoo": "gossamer.research_providers.YahooFinanceAdapter",
+    "frankfurter": "gossamer.research_providers.FrankfurterAdapter",
+    "eurostat": "gossamer.research_providers.EurostatAdapter",
+    "bundesbank": "gossamer.research_providers.BundesbankAdapter",
+    "bis": "gossamer.research_providers.BisAdapter",
+    "coingecko": "gossamer.research_providers.CoinGeckoAdapter",
+    "zenodo": "gossamer.research_providers.ZenodoAdapter",
+    "semanticscholar": "gossamer.research_providers.SemanticScholarAdapter",
+    "huggingface": "gossamer.research_providers.HuggingFaceAdapter",
+    "huggingface-papers": "gossamer.research_providers.HuggingFacePapersAdapter",
+    "overpass": "gossamer.research_providers.OverpassAdapter",
+    "oldp": "gossamer.research_providers.OldpAdapter",
+    "hudoc": "gossamer.research_providers.HudocAdapter",
+    "govinfo": "gossamer.research_providers.GovInfoAdapter",
+    "epo": "gossamer.research_providers.EpoOpsAdapter",
+    "kipris": "gossamer.research_providers.KiprisAdapter",
+    "patentsview": "gossamer.research_providers.PatentsViewAdapter",
+    "lens": "gossamer.research_providers.LensAdapter",
+    "google-patents": "gossamer.research_providers.GooglePatentsAdapter",
+    "open-meteo": "gossamer.research_providers.OpenMeteoAdapter",
+}
+
+
+def _service_provider_factory_path(provider):
+    return _FACTORY_PATHS.get(provider)
+
+
+def _service_unknown_provider_message(provider):
+    return f"no adapter registered for provider {provider!r}"
+
+# >>> rust-anything: research-service-rs is on. `rust-anything disable ../rust/research-service-rs` removes this block.
+def _rust_anything_research_service_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESEARCH_SERVICE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/research-service-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("research_service_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_provider_factory_path", "_service_unknown_provider_message"]})
+
+
+_rust_anything_research_service_rs()
+del _rust_anything_research_service_rs
+# <<< rust-anything: research-service-rs

@@ -91,5 +91,7 @@ _service_normalize_research = _native._service_normalize_research
 _service_research_order = _native._service_research_order
 _service_rate_state_from_headers = _native._service_rate_state_from_headers
 _service_local_name = _native._service_local_name
+_service_provider_factory_path = _native._service_provider_factory_path
+_service_unknown_provider_message = _native._service_unknown_provider_message
 
-__all__ = ['_service_normalize_research', '_service_research_order', '_service_rate_state_from_headers', '_service_local_name']
+__all__ = ['_service_normalize_research', '_service_research_order', '_service_rate_state_from_headers', '_service_local_name', '_service_provider_factory_path', '_service_unknown_provider_message']

@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Research provider registry lookup (done 2026-11-23)
+
+- The closed 27-provider factory table and unknown-provider error text now
+  live in `gossamer::service::research`; adapter instantiation stays
+  Python-side. Restored the `max_results=0` PyO3 default after `refresh`.
+- Binding: extended `rust/research-service-rs` to 11/11 cases; gate passed.
+- Full pytest: 11467 passed / 36 skipped; app replay 43/43.
+
 ### JATS route planning (done 2026-11-23)
 
 - Spreadsheet-suffix gating and JATS cache-key suffixing now live in

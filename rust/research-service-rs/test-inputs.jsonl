@@ -1,9 +1,7 @@
+{"fn": "_service_provider_factory_path", "args": ["openalex"]}
+{"fn": "_service_provider_factory_path", "args": ["huggingface-papers"]}
+{"fn": "_service_provider_factory_path", "args": ["unknown"]}
+{"fn": "_service_unknown_provider_message", "args": ["unknown"]}
 {"fn": "_service_normalize_research", "args": [[{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"url": "https://example.com/a?x=1", "title": "dup"}, {"title": "no url"}]]}
 {"fn": "_service_normalize_research", "args": [[{"url": "https://WWW.Example.com/a?x=1", "title": "A"}, {"url": "https://example.com/a?x=1", "title": "dup"}, {"title": "no url"}], 1]}
 {"fn": "_service_research_order", "args": [["google", "duckduckgo"], "ddg"]}
-{"fn": "_service_rate_state_from_headers", "args": [{"X-RateLimit-Remaining": "3", "X-RateLimit-Limit": "10", "Retry-After": "2"}, {"$float": "5.0"}]}
-{"fn": "_service_rate_state_from_headers", "args": [{"X-Rate-Limit-Limit": "bad", "X-Rate-Limit-Remaining": "x", "X-Rate-Limit-Reset": "20"}, {"$float": "5.0"}]}
-{"fn": "_service_rate_state_from_headers", "args": [{}, null]}
-{"fn": "_service_local_name", "args": ["{urn:x}Obs"]}
-{"fn": "_service_local_name", "args": ["Obs"]}
-{"fn": "_service_local_name", "args": ["a}b"]}

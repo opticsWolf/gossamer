@@ -114,6 +114,30 @@ fn service_local_name(tag: String) -> PyResult<String> {
     service_local_name_inner(tag).map_err(error)
 }
 
+fn service_provider_factory_path_inner(provider: String) -> Result<Option<String>, String> {
+    let out = port::service_provider_factory_path(provider)?;
+    Ok(out)
+}
+
+/// `_service_provider_factory_path`.
+#[pyfunction]
+#[pyo3(name = "_service_provider_factory_path", signature = (provider))]
+fn service_provider_factory_path(provider: String) -> PyResult<Option<String>> {
+    service_provider_factory_path_inner(provider).map_err(error)
+}
+
+fn service_unknown_provider_message_inner(provider: String) -> Result<String, String> {
+    let out = port::service_unknown_provider_message(provider)?;
+    Ok(out)
+}
+
+/// `_service_unknown_provider_message`.
+#[pyfunction]
+#[pyo3(name = "_service_unknown_provider_message", signature = (provider))]
+fn service_unknown_provider_message(provider: String) -> PyResult<String> {
+    service_unknown_provider_message_inner(provider).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -121,5 +145,7 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_research_order, m)?)?;
     m.add_function(wrap_pyfunction!(service_rate_state_from_headers, m)?)?;
     m.add_function(wrap_pyfunction!(service_local_name, m)?)?;
+    m.add_function(wrap_pyfunction!(service_provider_factory_path, m)?)?;
+    m.add_function(wrap_pyfunction!(service_unknown_provider_message, m)?)?;
     Ok(())
 }

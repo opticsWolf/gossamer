@@ -45,3 +45,42 @@ pub fn research_plan(topic: &str, depth: i64, max_results: Option<i64>, max_page
         .unwrap_or_else(|| (depth * 2).clamp(1, 20));
     serde_json::json!({"topic": topic, "depth": depth, "plan_results": plan_results})
 }
+
+/// Resolve a research provider id to its closed import path.
+pub fn provider_factory_path(provider: &str) -> Option<&'static str> {
+    const FACTORIES: [(&str, &str); 27] = [
+        ("openalex", "gossamer.research_providers.OpenAlexAdapter"),
+        ("crossref", "gossamer.research_providers.CrossrefAdapter"),
+        ("arxiv", "gossamer.research_providers.ArxivAdapter"),
+        ("courtlistener", "gossamer.research_providers.CourtListenerAdapter"),
+        ("ecfr", "gossamer.research_providers.EcfrAdapter"),
+        ("federalregister", "gossamer.research_providers.FederalRegisterAdapter"),
+        ("alphavantage", "gossamer.research_providers.AlphaVantageAdapter"),
+        ("yahoo", "gossamer.research_providers.YahooFinanceAdapter"),
+        ("frankfurter", "gossamer.research_providers.FrankfurterAdapter"),
+        ("eurostat", "gossamer.research_providers.EurostatAdapter"),
+        ("bundesbank", "gossamer.research_providers.BundesbankAdapter"),
+        ("bis", "gossamer.research_providers.BisAdapter"),
+        ("coingecko", "gossamer.research_providers.CoinGeckoAdapter"),
+        ("zenodo", "gossamer.research_providers.ZenodoAdapter"),
+        ("semanticscholar", "gossamer.research_providers.SemanticScholarAdapter"),
+        ("huggingface", "gossamer.research_providers.HuggingFaceAdapter"),
+        ("huggingface-papers", "gossamer.research_providers.HuggingFacePapersAdapter"),
+        ("overpass", "gossamer.research_providers.OverpassAdapter"),
+        ("oldp", "gossamer.research_providers.OldpAdapter"),
+        ("hudoc", "gossamer.research_providers.HudocAdapter"),
+        ("govinfo", "gossamer.research_providers.GovInfoAdapter"),
+        ("epo", "gossamer.research_providers.EpoOpsAdapter"),
+        ("kipris", "gossamer.research_providers.KiprisAdapter"),
+        ("patentsview", "gossamer.research_providers.PatentsViewAdapter"),
+        ("lens", "gossamer.research_providers.LensAdapter"),
+        ("google-patents", "gossamer.research_providers.GooglePatentsAdapter"),
+        ("open-meteo", "gossamer.research_providers.OpenMeteoAdapter"),
+    ];
+    FACTORIES.iter().find(|(id, _)| *id == provider).map(|(_, path)| *path)
+}
+
+/// Canonical error text for an unregistered research provider.
+pub fn unknown_provider_message(provider: &str) -> String {
+    format!("no adapter registered for provider '{provider}'")
+}

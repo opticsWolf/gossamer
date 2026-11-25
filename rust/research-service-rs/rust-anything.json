@@ -96,6 +96,42 @@
       "is_generator": false,
       "type_params": [],
       "uses_instanceof": false
+    },
+    {
+      "name": "_service_provider_factory_path",
+      "file": "gossamer/research_categories.py",
+      "line": 285,
+      "params": [
+        {
+          "name": "provider",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_unknown_provider_message",
+      "file": "gossamer/research_categories.py",
+      "line": 289,
+      "params": [
+        {
+          "name": "provider",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
     }
   ],
   "classes": [],
