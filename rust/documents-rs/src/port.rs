@@ -4,7 +4,7 @@
 
 #![forbid(unsafe_code)]
 
-use gossamer::document::sanitize_filename;
+use gossamer::document::{jats_cache_key, jats_tables_allows, sanitize_filename};
 use gossamer::documents::{
     absolutize_markdown_links as absolutize, follow_up_candidates,
     normalize_batch_results as core_normalize_batch_results, office_cell_text as cell_text,
@@ -79,6 +79,14 @@ pub fn service_sanitize_filename(name: String, fallback: Option<String>) -> Resu
         &name,
         fallback.as_deref().unwrap_or("document"),
     ))
+}
+
+pub fn service_jats_tables_allows(source: String, tables_as: String) -> Result<bool, String> {
+    Ok(jats_tables_allows(&source, &tables_as))
+}
+
+pub fn service_jats_cache_key(base: String) -> Result<String, String> {
+    Ok(jats_cache_key(&base))
 }
 
 #[cfg(test)]

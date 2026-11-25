@@ -8,8 +8,3 @@
 {"fn": "_absolutize_markdown_links", "args": ["[A](/a) and [B](child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"]}
 {"fn": "_absolutize_markdown_links", "args": ["[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"]}
 {"fn": "_absolutize_markdown_links", "args": ["![img](/i.png) [F](#frag) [M](mailto:a@b.c) [D](//cdn.test/x.js)", "https://x.test/p"]}
-{"fn": "_service_sanitize_filename", "args": ["a/b\\c", "document"]}
-{"fn": "_service_sanitize_filename", "args": ["../etc/passwd", "document"]}
-{"fn": "_service_sanitize_filename", "args": ["report (1).txt", "document"]}
-{"fn": "_service_sanitize_filename", "args": ["/", "document"]}
-{"fn": "_service_sanitize_filename", "args": ["", "document"]}

@@ -114,5 +114,7 @@ build_follow_up_candidates = _candidates(_native.build_follow_up_candidates)
 _absolutize_markdown_links = _native._absolutize_markdown_links
 _service_normalize_batch_results = _native._service_normalize_batch_results
 _service_sanitize_filename = _native._service_sanitize_filename
+_service_jats_tables_allows = _native._service_jats_tables_allows
+_service_jats_cache_key = _native._service_jats_cache_key
 
-__all__ = ['office_ir_tables', '_office_cell_text', 'build_follow_up_candidates', '_absolutize_markdown_links', '_service_normalize_batch_results', '_service_sanitize_filename']
+__all__ = ['office_ir_tables', '_office_cell_text', 'build_follow_up_candidates', '_absolutize_markdown_links', '_service_normalize_batch_results', '_service_sanitize_filename', '_service_jats_tables_allows', '_service_jats_cache_key']

@@ -1,0 +1,5 @@
+{"fn":"_service_jats_tables_allows","args":["https://example.com/a.xlsx","json"]}
+{"fn":"_service_jats_tables_allows","args":["/tmp/a.CSV","json"]}
+{"fn":"_service_jats_tables_allows","args":["https://example.com/a.xlsx","markdown"]}
+{"fn":"_service_jats_tables_allows","args":["https://example.com/a.xlsx?download=1","json"]}
+{"fn":"_service_jats_cache_key","args":["https://example.com/a"]}

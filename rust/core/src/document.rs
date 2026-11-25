@@ -116,3 +116,24 @@ pub fn sanitize_filename(name: &str, fallback: &str) -> String {
     if cleaned.is_empty() { fallback.to_string() } else { cleaned.to_string() }
 }
 
+
+/// Whether the JATS route may handle a source under the requested table format.
+pub fn jats_tables_allows(source: &str, tables_as: &str) -> bool {
+    if tables_as == "markdown" { return true; }
+    let whole = source.rsplit('/').next().unwrap_or(source);
+    let direct = whole.rfind('.').map(|index| whole[index..].to_ascii_lowercase()).unwrap_or_default();
+    if !direct.is_empty() {
+        return !matches!(direct.as_str(), ".xlsx" | ".xls" | ".xlsb" | ".csv");
+    }
+    let without_fragment = source.split('#').next().unwrap_or(source);
+    let without_query = without_fragment.split('?').next().unwrap_or(without_fragment);
+    let last = without_query.rsplit('/').next().unwrap_or(without_query);
+    let suffix = last.rfind('.').map(|index| last[index..].to_ascii_lowercase()).unwrap_or_default();
+    !matches!(suffix.as_str(), ".xlsx" | ".xls" | ".xlsb" | ".csv")
+}
+
+/// Append the JATS route marker to an already-canonical cache base.
+pub fn jats_cache_key(base: &str) -> String {
+    format!("{base}#jats")
+}
+

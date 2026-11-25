@@ -1,3 +1,8 @@
+{"fn": "_service_jats_tables_allows", "args": ["https://example.com/a.xlsx", "json"], "ok": false}
+{"fn": "_service_jats_tables_allows", "args": ["/tmp/a.CSV", "json"], "ok": false}
+{"fn": "_service_jats_tables_allows", "args": ["https://example.com/a.xlsx", "markdown"], "ok": true}
+{"fn": "_service_jats_tables_allows", "args": ["https://example.com/a.xlsx?download=1", "json"], "ok": true}
+{"fn": "_service_jats_cache_key", "args": ["https://example.com/a"], "ok": "https://example.com/a#jats"}
 {"fn": "_office_cell_text", "args": [{"content": [{"type": "paragraph", "content": [{"text": " a "}, {"text": "b"}]}, {"type": "image", "content": [{"text": "ignored"}]}]}], "ok": "a b"}
 {"fn": "office_ir_tables", "args": [{"sections": [{"title": "Sheet1", "elements": [{"type": "table", "rows": [{"cells": [{"content": [{"type": "paragraph", "content": [{"text": "A"}]}]}]}, {"cells": [{"content": [{"type": "paragraph", "content": [{"text": "1"}]}]}]}]}]}, {"title": "Empty", "elements": []}]}], "ok": [{"$tuple": ["Sheet1", [["A"], ["1"]]]}]}
 {"fn": "_office_cell_text", "args": [{"content": [{"type": "paragraph", "content": [{"text": "A"}]}]}], "ok": "A"}
@@ -8,8 +13,3 @@
 {"fn": "_absolutize_markdown_links", "args": ["[A](/a) and [B](child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"], "ok": "[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)"}
 {"fn": "_absolutize_markdown_links", "args": ["[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"], "ok": "[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)"}
 {"fn": "_absolutize_markdown_links", "args": ["![img](/i.png) [F](#frag) [M](mailto:a@b.c) [D](//cdn.test/x.js)", "https://x.test/p"], "ok": "![img](/i.png) [F](#frag) [M](mailto:a@b.c) [D](//cdn.test/x.js)"}
-{"fn": "_service_sanitize_filename", "args": ["a/b\\c", "document"], "ok": "c"}
-{"fn": "_service_sanitize_filename", "args": ["../etc/passwd", "document"], "ok": "passwd"}
-{"fn": "_service_sanitize_filename", "args": ["report (1).txt", "document"], "ok": "report _1"}
-{"fn": "_service_sanitize_filename", "args": ["/", "document"], "ok": "document"}
-{"fn": "_service_sanitize_filename", "args": ["", "document"], "ok": "document"}

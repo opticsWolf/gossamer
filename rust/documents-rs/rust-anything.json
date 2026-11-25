@@ -132,6 +132,48 @@
       "is_generator": false,
       "type_params": [],
       "uses_instanceof": false
+    },
+    {
+      "name": "_service_jats_tables_allows",
+      "file": "gossamer/document.py",
+      "line": 350,
+      "params": [
+        {
+          "name": "source",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "tables_as",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "_service_jats_cache_key",
+      "file": "gossamer/document.py",
+      "line": 401,
+      "params": [
+        {
+          "name": "base",
+          "ts_type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
     }
   ],
   "classes": [],

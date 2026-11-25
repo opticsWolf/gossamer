@@ -341,18 +341,7 @@ class DocumentExtractor:
     _JATS_SPREADSHEET_SUFFIXES = (".xlsx", ".xls", ".xlsb", ".csv")
 
     def _jats_tables_allows(self, source: str, tables_as: str) -> bool:
-        if tables_as == "markdown":
-            return True
-        try:
-            suffix = Path(source).suffix.lower()
-        except (OSError, ValueError):
-            suffix = ""
-        if not suffix:
-            try:
-                suffix = Path(urlparse(source).path).suffix.lower()
-            except Exception:  # noqa: BLE001 - seatbelt
-                suffix = ""
-        return suffix not in self._JATS_SPREADSHEET_SUFFIXES
+        return _service_jats_tables_allows(source, tables_as)
 
     def _jats_resolvable_offline(self, source: str) -> bool:
         """Offline resolvability check (no network, no file read beyond DOI scan)."""
@@ -399,7 +388,7 @@ class DocumentExtractor:
                 base = source
         except Exception:  # noqa: BLE001 - seatbelt
             base = source
-        return f"{base}#jats"
+        return _service_jats_cache_key(base)
 
     def _try_jats_route(
         self, source: str, *, store: bool = False,
@@ -1763,3 +1752,22 @@ def _rust_anything_documents_rs():
 _rust_anything_documents_rs()
 del _rust_anything_documents_rs
 # <<< rust-anything: documents-rs
+
+def _service_jats_tables_allows(source, tables_as):
+    if tables_as == "markdown":
+        return True
+    try:
+        suffix = Path(source).suffix.lower()
+    except (OSError, ValueError):
+        suffix = ""
+    if not suffix:
+        try:
+            suffix = Path(urlparse(source).path).suffix.lower()
+        except Exception:  # noqa: BLE001 - seatbelt
+            suffix = ""
+    return suffix not in (".xlsx", ".xls", ".xlsb", ".csv")
+
+
+def _service_jats_cache_key(base):
+    return f"{base}#jats"
+

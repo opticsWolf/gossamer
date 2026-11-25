@@ -130,6 +130,30 @@ fn service_sanitize_filename(name: String, fallback: Option<String>) -> PyResult
     service_sanitize_filename_inner(name, fallback).map_err(error)
 }
 
+fn service_jats_tables_allows_inner(source: String, tables_as: String) -> Result<bool, String> {
+    let out = port::service_jats_tables_allows(source, tables_as)?;
+    Ok(out)
+}
+
+/// `_service_jats_tables_allows`.
+#[pyfunction]
+#[pyo3(name = "_service_jats_tables_allows", signature = (source, tables_as))]
+fn service_jats_tables_allows(source: String, tables_as: String) -> PyResult<bool> {
+    service_jats_tables_allows_inner(source, tables_as).map_err(error)
+}
+
+fn service_jats_cache_key_inner(base: String) -> Result<String, String> {
+    let out = port::service_jats_cache_key(base)?;
+    Ok(out)
+}
+
+/// `_service_jats_cache_key`.
+#[pyfunction]
+#[pyo3(name = "_service_jats_cache_key", signature = (base))]
+fn service_jats_cache_key(base: String) -> PyResult<String> {
+    service_jats_cache_key_inner(base).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -139,5 +163,7 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(absolutize_markdown_links, m)?)?;
     m.add_function(wrap_pyfunction!(service_normalize_batch_results, m)?)?;
     m.add_function(wrap_pyfunction!(service_sanitize_filename, m)?)?;
+    m.add_function(wrap_pyfunction!(service_jats_tables_allows, m)?)?;
+    m.add_function(wrap_pyfunction!(service_jats_cache_key, m)?)?;
     Ok(())
 }
