@@ -34,6 +34,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut provider: Option<String> = None;
     let mut search_only = false;
     let mut saw_query = false;
+    let mut query = String::new();
     let mut index = 0usize;
     while index < args.len() {
         let value = args[index].to_string_lossy().into_owned();
@@ -65,6 +66,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                     return fallback(&args, help_count);
                 }
                 saw_query = true;
+                query = value;
             }
         }
         index += 1;
@@ -77,16 +79,34 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         return fallback(&args, help_count);
     };
     let available = ["duckduckgo"];
-    let Some(payload) = unknown_provider_error(&provider, &available) else {
-        return fallback(&args, help_count);
-    };
+    if let Some(payload) = unknown_provider_error(&provider, &available) {
+        if !search_only {
+            return fallback(&args, help_count);
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_owned())
+        );
+        return ExitCode::SUCCESS;
+    }
     if !search_only {
         // A non-search-only run would still fetch pages; keep it on the original.
         return fallback(&args, help_count);
     }
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_owned())
-    );
-    ExitCode::SUCCESS
+    if query.trim().is_empty() {
+        eprintln!("DuckDuckGo search failed: query is mandatory.");
+        eprintln!(
+            "Provider DuckDuckGoProvider failed for '{}': query is mandatory. — trying next",
+            query
+        );
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "error": "All search providers failed for: ",
+            }))
+            .unwrap_or_else(|_| "{}".to_owned())
+        );
+        return ExitCode::SUCCESS;
+    }
+    fallback(&args, help_count)
 }

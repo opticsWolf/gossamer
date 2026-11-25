@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `search` empty-query body (done 2026-11-23)
+
+- `gossamer search --search-only` now emits the canonical all-providers-failed
+  envelope for an empty query instead of falling back. Real provider calls
+  remain outside this slice. Added one deterministic replay case.
+- App replay 57/57; full pytest 11467 passed / 36 skipped.
+
 ### CLI `crawl` validation body (done 2026-11-23)
 
 - `gossamer crawl` now validates its root URL with exact crawl-prefixed error
