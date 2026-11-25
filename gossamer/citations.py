@@ -102,38 +102,22 @@ def enrich_with_doi(
     record: BibliographicRecord,
     adapter: Optional[Any] = None,
 ) -> BibliographicRecord:
-    """Fill missing ``venue`` / ``abstract`` via one canonical DOI lookup.
-
-    Only runs when ``record.doi`` is set and *adapter* is provided. The
-    adapter must implement ``fetch(doi) -> list[dict]`` returning the same
-    result-dict shape as the scholarly adapters; the first hit's venue/
-    abstract are merged in. Returns the same (mutated) record.
-
-    *adapter* is injectable so tests pass a fake and stay offline.
-    """
+    """Fill missing ``venue`` / ``abstract`` via one canonical DOI lookup."""
     if not record.doi or adapter is None:
         return record
     try:
         hits = adapter.fetch(record.doi) or []
     except Exception:  # noqa: BLE001 -- enrichment is best-effort, never fatal
         return record
-    for h in hits:
-        if not isinstance(h, dict):
-            continue
-        if not record.venue:
-            v = h.get("venue") or _venue_from_raw(h.get("raw"))
-            if v:
-                record.venue = v
-        if not record.abstract:
-            ab = h.get("abstract")
-            if isinstance(ab, dict):
-                ab = ab.get("#text") or ab.get("a") or ""
-            if not ab:
-                ab = _abstract_from_raw(h.get("raw"))
-            if ab:
-                record.abstract = ab
-        if record.venue and record.abstract:
-            break
+    snapshot = {
+        "venue": record.venue,
+        "abstract": record.abstract,
+    }
+    venue, abstract = _service_enrichment_plan(snapshot, hits)
+    if venue:
+        record.venue = venue
+    if abstract:
+        record.abstract = abstract
     return record
 
 
@@ -381,4 +365,26 @@ def _service_find_doi_in_text(text):
     if not match:
         return None
     return match.group(0).rstrip(".,;:")
+
+def _service_enrichment_plan(record, hits):
+    venue = record.get("venue") or None
+    abstract = record.get("abstract") or None
+    for h in hits or []:
+        if not isinstance(h, dict):
+            continue
+        if not venue:
+            v = h.get("venue") or _venue_from_raw(h.get("raw"))
+            if v:
+                venue = v
+        if not abstract:
+            ab = h.get("abstract")
+            if isinstance(ab, dict):
+                ab = ab.get("#text") or ab.get("a") or ""
+            if not ab:
+                ab = _abstract_from_raw(h.get("raw"))
+            if ab:
+                abstract = ab
+        if venue and abstract:
+            break
+    return venue, abstract
 

@@ -1,3 +1,4 @@
+{"fn": "_service_enrichment_plan", "args": [{"venue": null, "abstract": null}, [{"title": ["T"], "doi": "10.1/x", "container_title": ["The Journal"], "abstract": {"#text": "Full abstract."}, "raw": "{\"message\": {\"container_title\": [\"The Journal\"], \"abstract\": {\"#text\": \"Full abstract.\"}}}"}]]}
 {"fn": "_service_citation_style", "args": ["bibtex"]}
 {"fn": "_service_citation_style", "args": ["csl-json"]}
 {"fn": "_service_citation_style", "args": ["apa"]}
@@ -5,6 +6,7 @@
 {"fn": "_service_citation_input", "args": ["10.1038/s41586-020-0694-2"]}
 {"fn": "_service_citation_input", "args": ["https://example.com/paper"]}
 {"fn": "_service_citation_input", "args": ["10.1/x"]}
+{"fn": "_service_enrichment_plan", "args": [{"venue": null, "abstract": null}, [{"title": ["T"], "doi": "10.1/x", "container_title": ["J"], "abstract": {"#text": "abs"}, "raw": "{\"message\": {\"container_title\": [\"J\"], \"abstract\": {\"#text\": \"abs\"}}}"}]]}
 {"fn": "_service_citation_style", "args": ["ris"]}
 {"fn": "_service_find_doi_in_text", "args": ["see DOI: 10.1234/example-doi."]}
 {"fn": "_service_find_doi_in_text", "args": ["https://doi.org/10.1234/ABC"]}

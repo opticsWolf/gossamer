@@ -76,11 +76,35 @@ fn service_find_doi_in_text(text: Bound<'_, PyAny>) -> PyResult<Option<String>> 
     service_find_doi_in_text_inner(text).map_err(error)
 }
 
+fn service_enrichment_plan_inner(
+    record: Bound<'_, PyAny>,
+    hits: Bound<'_, PyAny>,
+) -> Result<Value, String> {
+    let record: Value = crate::pyconv::FromPy::from_py(&record)?;
+    let hits: Value = crate::pyconv::FromPy::from_py(&hits)?;
+    let out = port::service_enrichment_plan(record, hits)?;
+    Ok(out)
+}
+
+/// `_service_enrichment_plan`.
+#[pyfunction]
+#[pyo3(name = "_service_enrichment_plan", signature = (record, hits))]
+fn service_enrichment_plan(
+    py: Python<'_>,
+    record: Bound<'_, PyAny>,
+    hits: Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    service_enrichment_plan_inner(record, hits)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_citation_style, m)?)?;
     m.add_function(wrap_pyfunction!(service_citation_input, m)?)?;
     m.add_function(wrap_pyfunction!(service_find_doi_in_text, m)?)?;
+    m.add_function(wrap_pyfunction!(service_enrichment_plan, m)?)?;
     Ok(())
 }

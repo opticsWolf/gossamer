@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Citation enrichment planning (done 2026-11-23)
+
+- `enrich_with_doi` now delegates venue/abstract hit selection to
+  `gossamer::cite::enrichment_plan`; adapter calls stay Python-side.
+- Binding: extended `rust/citation-dispatch-rs` to 17/17 cases; gate passed.
+- Full pytest: 11465 passed / 36 skipped; app replay 43/43.
+
 ### In-text DOI detection (done 2026-11-23)
 
 - `find_doi_in_text` now delegates DOI scanning and trailing-punctuation
