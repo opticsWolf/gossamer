@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Embedded figure planning (done 2026-11-23)
+
+- `ResourceStore.extract_embedded` now delegates filename selection, figure
+  section rendering and manifest assembly to
+  `gossamer::resourcestore::embedded_figures`; byte writes remain Python-side.
+- Binding: extended `rust/resource-store-rs` to 18/18 cases; gate passed.
+- Full pytest: 11463 passed / 36 skipped; app replay 43/43.
+
 ### Resource image rewriting (done 2026-11-23)
 
 - `ResourceStore.extract` now delegates image-reference extraction and

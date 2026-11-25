@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::Value;
 
-use crate::urlparts::join_url;
+use crate::{cacheutils::resource_safe_name, urlparts::join_url};
 
 /// Canonical image suffix from magic bytes, or `None` when unknown.
 pub fn detect_ext_from_magic(data: &[u8]) -> Option<&'static str> {
@@ -94,6 +94,53 @@ pub fn rewrite_image_refs(refs: &Value, markdown: &str, stem: &str, resolutions:
         "referenced": count,
         "files": files,
         "skipped": skipped,
+    })
+}
+
+
+/// Plan the embedded-figure manifest without touching the filesystem.
+pub fn embedded_figures(markdown: &str, stem: &str, images: &[Value]) -> Value {
+    let mut injected: Vec<(usize, String)> = Vec::new();
+    let mut written: Vec<String> = Vec::new();
+    for (index, image) in images.iter().enumerate() {
+        let Some(object) = image.as_object() else { continue; };
+        let Some(data) = object.get("data") else { continue; };
+        let bytes = data.as_array().or_else(|| data.get("$bytes").and_then(Value::as_array));
+        let Some(bytes) = bytes else { continue; };
+        if bytes.is_empty() { continue; }
+        let raw: Vec<u8> = bytes.iter().filter_map(Value::as_u64).map(|b| b.min(255) as u8).collect();
+        let detected = detect_ext_from_magic(&raw).unwrap_or("img").to_string();
+        let declared = object.get("ext").and_then(Value::as_str).unwrap_or(&detected);
+        let ext = match declared.strip_prefix('.').unwrap_or(declared) {
+            "jpeg" => "jpg", "jpg" => "jpg", "png" => "png", "gif" => "gif",
+            "webp" => "webp", "bmp" => "bmp", "svg" => "svg", "tiff" | "tif" => "tiff",
+            other => other,
+        };
+        let name = object.get("filename").and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| resource_safe_name(&format!("figure-{}", index + 1), ext));
+        if !written.contains(&name) { written.push(name.clone()); }
+        injected.push((index + 1, name));
+    }
+    let mut md = markdown.to_string();
+    if !injected.is_empty() {
+        md = format!("{}
+
+## Figures
+
+", md.trim_end());
+        for (index, name) in &injected {
+            md.push_str(&format!("![figure {}](./{}.files/{})
+
+", index, stem, name));
+        }
+    }
+    let files: Vec<String> = written.iter().map(|name| format!("{stem}.files/{name}")).collect();
+    serde_json::json!({
+        "markdown": md,
+        "embedded": injected.len(),
+        "files": files,
+        "written": written,
     })
 }
 

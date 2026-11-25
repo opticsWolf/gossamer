@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
-use gossamer::resourcestore::{detect_ext_from_magic, image_refs, rewrite_image_refs};
+use gossamer::resourcestore::{
+    detect_ext_from_magic, embedded_figures, image_refs, rewrite_image_refs,
+};
 use serde_json::Value;
 
 pub fn service_detect_ext_from_magic(data: Value) -> Result<Option<String>, String> {
@@ -34,4 +36,13 @@ pub fn service_rewrite_image_refs(
         &stem,
         &resolutions,
     ))
+}
+
+pub fn service_embedded_figures(
+    markdown: String,
+    stem: String,
+    images: Value,
+) -> Result<Value, String> {
+    let images = images.as_array().cloned().unwrap_or_default();
+    Ok(embedded_figures(&markdown, &stem, &images))
 }

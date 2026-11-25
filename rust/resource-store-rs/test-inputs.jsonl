@@ -9,7 +9,10 @@
 {"fn": "_service_rewrite_image_refs", "args": [[{"whole": "![d](https://x.com/d.pdf)", "alt": "d", "target": "https://x.com/d.pdf", "title": null, "resolved": "https://x.com/d.pdf", "resolvable": true}, {"whole": "![img](https://x.com/i.png)", "alt": "img", "target": "https://x.com/i.png", "title": null, "resolved": "https://x.com/i.png", "resolvable": true}], "![d](https://x.com/d.pdf)\n\n![img](https://x.com/i.png)", "p", {"https://x.com/d.pdf": null, "https://x.com/i.png": "i.png"}]}
 {"fn": "_service_extract_image_refs", "args": ["![meta](https://169.254.169.254/metadata)\n\n![ok](https://x.com/i.png)", "https://x.com"]}
 {"fn": "_service_rewrite_image_refs", "args": [[{"whole": "![meta](https://169.254.169.254/metadata)", "alt": "meta", "target": "https://169.254.169.254/metadata", "title": null, "resolved": "https://169.254.169.254/metadata", "resolvable": true}, {"whole": "![ok](https://x.com/i.png)", "alt": "ok", "target": "https://x.com/i.png", "title": null, "resolved": "https://x.com/i.png", "resolvable": true}], "![meta](https://169.254.169.254/metadata)\n\n![ok](https://x.com/i.png)", "p", {"https://169.254.169.254/metadata": null, "https://x.com/i.png": "i.png"}]}
+{"fn": "_service_embedded_figures", "args": ["# Doc\n", "paper", [{"data": {"$bytes": [137, 80, 78, 71, 13, 10, 26, 10, 102, 97, 107, 101, 112, 110, 103]}}, {"data": {"$bytes": [255, 216, 255, 216, 102, 97, 107, 101, 106, 112, 101, 103]}}]]}
 {"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [137, 80, 78, 71, 13, 10, 26, 10, 102, 97, 107, 101, 112, 110, 103]}]}
 {"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [255, 216, 255, 216, 102, 97, 107, 101, 106, 112, 101, 103]}]}
+{"fn": "_service_embedded_figures", "args": ["", "p", [{"data": {"$bytes": [137, 80, 78, 71, 13, 10, 26, 10, 102, 97, 107, 101, 112, 110, 103]}}]]}
 {"fn": "_service_extract_image_refs", "args": ["# no images here", "https://example.com"]}
 {"fn": "_service_rewrite_image_refs", "args": [[], "# no images here", "p", {}]}
+{"fn": "_service_embedded_figures", "args": ["# doc", "p", []]}

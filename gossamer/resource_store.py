@@ -195,46 +195,27 @@ class ResourceStore:
         markdown is returned unchanged.
         """
         files_dir = Path(out_dir) / f"{stem}.files"
-        if not images:
-            return {
-                "markdown": markdown,
-                "dir": str(files_dir),
-                "stem": stem,
-                "referenced": 0,
-                "embedded": 0,
-                "files": [],
-                "skipped": [],
-            }
-
-        injected: list[tuple[int, str]] = []
-        written: dict[str, str] = {}
-        for idx, img in enumerate(images, start=1):
+        plan = _service_embedded_figures(markdown, stem, images)
+        for fname in plan["written"]:
+            # Payload bytes are re-read from the caller's image list below.
+            pass
+        for img in images:
             data = img.get("data")
             if not data:
                 continue
             ext = img.get("ext") or _detect_ext_from_magic(data) or "img"
             ext = _IMAGE_EXTS.get("." + ext, ext)
-            fname = img.get("filename") or _safe_name(f"figure-{idx}", ext)
-            if fname not in written:
-                self._write_bytes(files_dir, fname, data)
-                written[fname] = fname
-            injected.append((idx, fname))
-
-        injected.sort(key=lambda t: t[0])
-        md = markdown or ""
-        if injected:
-            md = md.rstrip() + "\n\n"
-            md += "## Figures\n\n"
-            for idx, fname in injected:
-                md += f"![figure {idx}](./{stem}.files/{fname})\n\n"
-
+            fname = img.get("filename") or _safe_name(
+                f"figure-{images.index(img) + 1}", ext
+            )
+            self._write_bytes(files_dir, fname, data)
         return {
-            "markdown": md,
+            "markdown": plan["markdown"],
             "dir": str(files_dir),
             "stem": stem,
             "referenced": 0,
-            "embedded": len(injected),
-            "files": sorted(f"{stem}.files/{p}" for p in written.values()),
+            "embedded": plan["embedded"],
+            "files": plan["files"],
             "skipped": [],
         }
 
@@ -382,5 +363,30 @@ def _service_rewrite_image_refs(refs, markdown, stem, resolutions):
         "referenced": count,
         "files": sorted(files),
         "skipped": skipped,
+    }
+
+def _service_embedded_figures(markdown, stem, images):
+    injected = []
+    written = []
+    for idx, img in enumerate(images, start=1):
+        data = img.get("data")
+        if not data:
+            continue
+        ext = img.get("ext") or _detect_ext_from_magic(data) or "img"
+        ext = _IMAGE_EXTS.get("." + ext, ext)
+        fname = img.get("filename") or _safe_name(f"figure-{idx}", ext)
+        if fname not in written:
+            written.append(fname)
+        injected.append((idx, fname))
+    md = markdown or ""
+    if injected:
+        md = md.rstrip() + "\n\n" + "## Figures\n\n"
+        for idx, fname in injected:
+            md += f"![figure {idx}](./{stem}.files/{fname})\n\n"
+    return {
+        "markdown": md,
+        "embedded": len(injected),
+        "files": sorted(f"{stem}.files/{p}" for p in written),
+        "written": written,
     }
 

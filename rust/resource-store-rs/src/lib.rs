@@ -96,11 +96,36 @@ fn service_rewrite_image_refs(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_embedded_figures_inner(
+    markdown: String,
+    stem: String,
+    images: Bound<'_, PyAny>,
+) -> Result<Value, String> {
+    let images: Value = crate::pyconv::FromPy::from_py(&images)?;
+    let out = port::service_embedded_figures(markdown, stem, images)?;
+    Ok(out)
+}
+
+/// `_service_embedded_figures`.
+#[pyfunction]
+#[pyo3(name = "_service_embedded_figures", signature = (markdown, stem, images))]
+fn service_embedded_figures(
+    py: Python<'_>,
+    markdown: String,
+    stem: String,
+    images: Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    service_embedded_figures_inner(markdown, stem, images)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_detect_ext_from_magic, m)?)?;
     m.add_function(wrap_pyfunction!(service_extract_image_refs, m)?)?;
     m.add_function(wrap_pyfunction!(service_rewrite_image_refs, m)?)?;
+    m.add_function(wrap_pyfunction!(service_embedded_figures, m)?)?;
     Ok(())
 }
