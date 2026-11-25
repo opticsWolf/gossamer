@@ -113,5 +113,6 @@ _office_cell_text = _native._office_cell_text
 build_follow_up_candidates = _candidates(_native.build_follow_up_candidates)
 _absolutize_markdown_links = _native._absolutize_markdown_links
 _service_normalize_batch_results = _native._service_normalize_batch_results
+_service_sanitize_filename = _native._service_sanitize_filename
 
-__all__ = ['office_ir_tables', '_office_cell_text', 'build_follow_up_candidates', '_absolutize_markdown_links', '_service_normalize_batch_results']
+__all__ = ['office_ir_tables', '_office_cell_text', 'build_follow_up_candidates', '_absolutize_markdown_links', '_service_normalize_batch_results', '_service_sanitize_filename']

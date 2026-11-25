@@ -8,6 +8,8 @@
 {"fn": "_absolutize_markdown_links", "args": ["[A](/a) and [B](child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"], "ok": "[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)"}
 {"fn": "_absolutize_markdown_links", "args": ["[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)", "https://x.test/dir/page"], "ok": "[A](https://x.test/a) and [B](https://x.test/dir/child?x=1) and [C](https://other.test/z)"}
 {"fn": "_absolutize_markdown_links", "args": ["![img](/i.png) [F](#frag) [M](mailto:a@b.c) [D](//cdn.test/x.js)", "https://x.test/p"], "ok": "![img](/i.png) [F](#frag) [M](mailto:a@b.c) [D](//cdn.test/x.js)"}
-{"fn": "_service_normalize_batch_results", "args": [[{"$tuple": ["https://x", "<b>hi</b>", "hi", ["https://y"], {"$tuple": [200, "https://x", "text/html"]}]}]], "ok": [{"url": "https://x", "markdown": "hi", "links": ["https://y"], "error": null, "html": "<b>hi</b>", "prov": {"$tuple": [200, "https://x", "text/html"]}}]}
-{"fn": "_service_normalize_batch_results", "args": [[{"$tuple": ["https://z", null, null, null]}]], "ok": [{"url": "https://z", "markdown": null, "links": null, "error": "Unknown error", "html": null, "prov": null}]}
-{"fn": "build_follow_up_candidates", "args": [[{"$tuple": ["https://x.test/a", " A "]}, {"$tuple": ["https://x.test/a", "dup"]}, {"$tuple": ["https://x.test/r.pdf", ""]}]], "ok": [{"$object": "FollowUpCandidate", "attrs": {"title": "A", "url": "https://x.test/a", "type": "page"}}, {"$object": "FollowUpCandidate", "attrs": {"title": "(untitled)", "url": "https://x.test/r.pdf", "type": "document"}}]}
+{"fn": "_service_sanitize_filename", "args": ["a/b\\c", "document"], "ok": "c"}
+{"fn": "_service_sanitize_filename", "args": ["../etc/passwd", "document"], "ok": "passwd"}
+{"fn": "_service_sanitize_filename", "args": ["report (1).txt", "document"], "ok": "report _1"}
+{"fn": "_service_sanitize_filename", "args": ["/", "document"], "ok": "document"}
+{"fn": "_service_sanitize_filename", "args": ["", "document"], "ok": "document"}

@@ -115,6 +115,21 @@ fn service_normalize_batch_results(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_sanitize_filename_inner(
+    name: String,
+    fallback: Option<String>,
+) -> Result<String, String> {
+    let out = port::service_sanitize_filename(name, fallback)?;
+    Ok(out)
+}
+
+/// `_service_sanitize_filename`.
+#[pyfunction]
+#[pyo3(name = "_service_sanitize_filename", signature = (name, fallback))]
+fn service_sanitize_filename(name: String, fallback: Option<String>) -> PyResult<String> {
+    service_sanitize_filename_inner(name, fallback).map_err(error)
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -123,5 +138,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_follow_up_candidates, m)?)?;
     m.add_function(wrap_pyfunction!(absolutize_markdown_links, m)?)?;
     m.add_function(wrap_pyfunction!(service_normalize_batch_results, m)?)?;
+    m.add_function(wrap_pyfunction!(service_sanitize_filename, m)?)?;
     Ok(())
 }

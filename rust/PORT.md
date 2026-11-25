@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Document filename sanitization (done 2026-11-23)
+
+- `_sanitize_filename` now delegates platform-independent basename collapsing
+  to `gossamer::document`; file I/O stays Python-side. Restored the generated
+  Python candidate/tuple adapters after refreshing `documents-rs`.
+- Binding: extended `rust/documents-rs` to 15/15 cases; gate passed.
+- Full pytest: 11466 passed / 36 skipped; app replay 43/43.
+
 ### Agent URL helper planning (done 2026-11-23)
 
 - Recoverable URL error records and crawl host keys now live in

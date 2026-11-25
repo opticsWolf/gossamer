@@ -98,3 +98,21 @@ pub fn prepare_url(raw: &str, runtime_minor: Option<u32>) -> Result<String, UrlP
     })?;
     Ok(normalized)
 }
+
+/// Collapse a name to one safe basename, matching `Path(...).stem` on Windows inputs.
+pub fn sanitize_filename(name: &str, fallback: &str) -> String {
+    let last = name.replace('\\', "/").rsplit('/').next().unwrap_or("").to_string();
+    let stem = match last.rfind('.') {
+        Some(index) if index > 0 && index + 1 < last.len() => &last[..index],
+        _ => &last[..],
+    };
+    let replaced = stem
+        .replace("..", "_")
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_alphanumeric() || matches!(ch, '-' | '_' | ' ') { ch } else { '_' })
+        .collect::<String>();
+    let cleaned = replaced.trim_matches(|ch| matches!(ch, '.' | '_' | '-'));
+    if cleaned.is_empty() { fallback.to_string() } else { cleaned.to_string() }
+}
+

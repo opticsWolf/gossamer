@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+use gossamer::document::sanitize_filename;
 use gossamer::documents::{
     absolutize_markdown_links as absolutize, follow_up_candidates,
     normalize_batch_results as core_normalize_batch_results, office_cell_text as cell_text,
@@ -71,6 +72,13 @@ pub fn absolutize_markdown_links(markdown: String, base_url: String) -> Result<S
 
 pub fn service_normalize_batch_results(results: Vec<Value>) -> Result<Vec<Value>, String> {
     Ok(core_normalize_batch_results(&results))
+}
+
+pub fn service_sanitize_filename(name: String, fallback: Option<String>) -> Result<String, String> {
+    Ok(sanitize_filename(
+        &name,
+        fallback.as_deref().unwrap_or("document"),
+    ))
 }
 
 #[cfg(test)]

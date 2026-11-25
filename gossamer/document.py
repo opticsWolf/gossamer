@@ -48,14 +48,7 @@ logger = logging.getLogger(__name__)
 
 def _sanitize_filename(name: str, fallback: str = "document") -> str:
     """Collapse ``name`` to a single safe basename (no separators, no ``..``)."""
-    # Split on both separators explicitly: `Path.stem` only honors the
-    # platform separator, so backslash names would leak through on POSIX
-    # (and vice versa) — stored filenames must not depend on the OS.
-    stem = Path(str(name).replace("\\", "/").rsplit("/", 1)[-1]).stem or ""
-    stem = stem.replace("/", "_").replace("\\", "_").replace("..", "_").strip()
-    stem = "".join(ch if (ch.isalnum() or ch in "-_ ") else "_" for ch in stem)
-    stem = stem.strip("._-")
-    return stem or fallback
+    return _service_sanitize_filename(name, fallback)
 
 
 class DocumentExtractor:
@@ -1740,3 +1733,33 @@ def _rust_anything_caller_kernels_rs():
 _rust_anything_caller_kernels_rs()
 del _rust_anything_caller_kernels_rs
 # <<< rust-anything: caller-kernels-rs
+
+def _service_sanitize_filename(name, fallback):
+    stem = Path(str(name).replace("\\", "/").rsplit("/", 1)[-1]).stem or ""
+    stem = stem.replace("/", "_").replace("\\", "_").replace("..", "_").strip()
+    stem = "".join(ch if (ch.isalnum() or ch in "-_ ") else "_" for ch in stem)
+    stem = stem.strip("._-")
+    return stem or fallback
+
+# >>> rust-anything: documents-rs is on. `rust-anything disable ../rust/documents-rs` removes this block.
+def _rust_anything_documents_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_DOCUMENTS") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/documents-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("documents_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_sanitize_filename"]})
+
+
+_rust_anything_documents_rs()
+del _rust_anything_documents_rs
+# <<< rust-anything: documents-rs
