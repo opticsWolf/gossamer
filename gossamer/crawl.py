@@ -248,26 +248,9 @@ class Crawler:
         zero density yields None (an empty excerpt is noise). Ellipses
         mark a window that does not touch the head or the tail.
         """
-        text = text or ""
-        if not terms or not text:
-            return None
-        if window is None:
-            window = cls._CRAWL_EXCERPT_WINDOW
-        if step is None:
-            step = cls._CRAWL_EXCERPT_STEP
-        best = None  # (density, start)
-        for start in range(0, len(text), step):
-            density = cls._crawl_term_hits(text[start:start + window], terms)
-            if best is None or density > best[0]:
-                best = (density, start)
-        density, start = best
-        if density == 0:
-            return None
-        excerpt = text[start:start + window]
-        prefix = "\u2026" if start > 0 else ""
-        suffix = "\u2026" if start + len(excerpt) < len(text) else ""
-        return prefix + excerpt + suffix
-
+        return _service_crawl_excerpt(
+            text, terms, window, step,
+        )
     @classmethod
     def _crawl_expand_query(
         cls, base_terms: set, clusters: tuple = None
@@ -280,27 +263,8 @@ class Crawler:
         never grows past twice its size.  Returns
         ``(expanded_set, added_count)``.
         """
-        base = set(base_terms)
-        if not base:
-            return base, 0
-        if clusters is None:
-            _version, clusters = _load_thesaurus()
-        seen = set(base)
-        added = 0
-        cap = len(base)
-        for term in sorted(base):
-            for cluster in clusters:
-                if term not in cluster:
-                    continue
-                for member in cluster:
-                    if member in seen:
-                        continue
-                    seen.add(member)
-                    added += 1
-                    if added >= cap:
-                        return seen, added
-        return seen, added
-
+        expanded, added = _service_crawl_expand_query(base_terms, clusters)
+        return set(expanded), added
     @classmethod
     def _crawl_score(
         cls, url, anchor, depth, query_terms, page_terms, corpus=None,
@@ -991,4 +955,46 @@ def _service_crawl_term_hits(text, terms):
     if not terms or not text:
         return 0
     return sum(1 for t in re.findall(r"[a-z0-9]+", text.lower()) if t in terms)
+
+def _service_crawl_excerpt(text, terms, window, step):
+    text = text or ""
+    if not terms or not text:
+        return None
+    window = window if window is not None else Crawler._CRAWL_EXCERPT_WINDOW
+    step = step if step is not None else Crawler._CRAWL_EXCERPT_STEP
+    best = None
+    for start in range(0, len(text), step):
+        density = Crawler._crawl_term_hits(text[start:start + window], terms)
+        if best is None or density > best[0]:
+            best = (density, start)
+    density, start = best
+    if density == 0:
+        return None
+    excerpt = text[start:start + window]
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if start + len(excerpt) < len(text) else ""
+    return prefix + excerpt + suffix
+
+
+def _service_crawl_expand_query(base_terms, clusters):
+    base = set(base_terms)
+    if not base:
+        return [], 0
+    if clusters is None:
+        _version, clusters = _load_thesaurus()
+    seen = set(base)
+    added = 0
+    cap = len(base)
+    for term in sorted(base):
+        for cluster in clusters:
+            if term not in cluster:
+                continue
+            for member in cluster:
+                if member in seen:
+                    continue
+                seen.add(member)
+                added += 1
+                if added >= cap:
+                    return sorted(seen), added
+    return sorted(seen), added
 

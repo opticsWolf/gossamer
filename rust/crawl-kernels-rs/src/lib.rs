@@ -198,6 +198,53 @@ fn service_crawl_term_hits(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_crawl_excerpt_inner(
+    text: Option<String>,
+    terms: Vec<String>,
+    window: Option<i64>,
+    step: Option<i64>,
+) -> Result<Option<String>, String> {
+    let out = port::service_crawl_excerpt(text, terms, window, step)?;
+    Ok(out)
+}
+
+/// `_service_crawl_excerpt`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_excerpt", signature = (text, terms, window, step))]
+fn service_crawl_excerpt(
+    text: Option<String>,
+    terms: Vec<String>,
+    window: Option<i64>,
+    step: Option<i64>,
+) -> PyResult<Option<String>> {
+    service_crawl_excerpt_inner(text, terms, window, step).map_err(error)
+}
+
+fn service_crawl_expand_query_inner(
+    base_terms: Vec<String>,
+    clusters: Option<Bound<'_, PyAny>>,
+) -> Result<serde_json::Value, String> {
+    let clusters: Option<Value> = match &clusters {
+        None => None,
+        Some(v) => Some(crate::pyconv::FromPy::from_py(v)?),
+    };
+    let out = port::service_crawl_expand_query(base_terms, clusters)?;
+    serde_json::to_value(out).map_err(|e| e.to_string())
+}
+
+/// `_service_crawl_expand_query`.
+#[pyfunction]
+#[pyo3(name = "_service_crawl_expand_query", signature = (base_terms, clusters))]
+fn service_crawl_expand_query(
+    py: Python<'_>,
+    base_terms: Vec<String>,
+    clusters: Option<Bound<'_, PyAny>>,
+) -> PyResult<Py<PyAny>> {
+    service_crawl_expand_query_inner(base_terms, clusters)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -209,5 +256,7 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_crawl_anchor_context, m)?)?;
     m.add_function(wrap_pyfunction!(service_crawl_path_prior, m)?)?;
     m.add_function(wrap_pyfunction!(service_crawl_term_hits, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_excerpt, m)?)?;
+    m.add_function(wrap_pyfunction!(service_crawl_expand_query, m)?)?;
     Ok(())
 }

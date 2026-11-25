@@ -1,3 +1,11 @@
+{"fn": "_service_crawl_excerpt", "args": ["intro rust here", ["rust"], 5, 5]}
+{"fn": "_service_crawl_term_hits", "args": ["intro", ["rust"]]}
+{"fn": "_service_crawl_term_hits", "args": [" rust", ["rust"]]}
+{"fn": "_service_crawl_term_hits", "args": [" here", ["rust"]]}
+{"fn": "_service_crawl_excerpt", "args": ["nothing", ["rust"], 5, 5]}
+{"fn": "_service_crawl_term_hits", "args": ["nothi", ["rust"]]}
+{"fn": "_service_crawl_term_hits", "args": ["ng", ["rust"]]}
+{"fn": "_service_crawl_expand_query", "args": [["rust"], [["rust", "cargo"]]]}
 {"fn": "_service_crawl_anchor_context", "args": ["about rust rust and python", "rust", 50, 8]}
 {"fn": "_service_crawl_path_prior", "args": ["https://x/docs/a"]}
 {"fn": "_service_crawl_path_prior", "args": ["https://x/pricing"]}

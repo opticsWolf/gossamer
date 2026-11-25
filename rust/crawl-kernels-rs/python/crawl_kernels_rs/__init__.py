@@ -95,5 +95,15 @@ _service_crawl_is_document = _native._service_crawl_is_document
 _service_crawl_anchor_context = _native._service_crawl_anchor_context
 _service_crawl_path_prior = _native._service_crawl_path_prior
 _service_crawl_term_hits = _native._service_crawl_term_hits
+_service_crawl_excerpt = _native._service_crawl_excerpt
+def _expand_tuple(fn):
+    def call(base_terms, clusters=None):
+        value = fn(_enc(base_terms), _enc(clusters) if clusters is not None else None)
+        if isinstance(value, dict) and value.get("$tuple") is not None:
+            return tuple(value["$tuple"])
+        return value
+    return call
 
-__all__ = ['_service_crawl_score', '_service_shrink_crawl', '_service_crawl_tokens', '_service_crawl_topic_words', '_service_crawl_is_document', '_service_crawl_anchor_context', '_service_crawl_path_prior', '_service_crawl_term_hits']
+_service_crawl_expand_query = _expand_tuple(_native._service_crawl_expand_query)
+
+__all__ = ['_service_crawl_score', '_service_shrink_crawl', '_service_crawl_tokens', '_service_crawl_topic_words', '_service_crawl_is_document', '_service_crawl_anchor_context', '_service_crawl_path_prior', '_service_crawl_term_hits', '_service_crawl_excerpt', '_service_crawl_expand_query']

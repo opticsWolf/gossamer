@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 use gossamer::service::crawl::{
-    crawl_anchor_context, crawl_is_document, crawl_path_prior, crawl_score, crawl_term_hits,
-    crawl_tokens, crawl_topic_words, shrink_crawl,
+    crawl_anchor_context, crawl_excerpt, crawl_expand_query, crawl_is_document, crawl_path_prior,
+    crawl_score, crawl_term_hits, crawl_tokens, crawl_topic_words, shrink_crawl,
 };
 use serde_json::Value;
 
@@ -66,4 +66,25 @@ pub fn service_crawl_path_prior(url: String) -> Result<f64, String> {
 }
 pub fn service_crawl_term_hits(text: Option<String>, terms: Vec<String>) -> Result<usize, String> {
     Ok(crawl_term_hits(text.as_deref(), &terms))
+}
+
+pub fn service_crawl_excerpt(
+    text: Option<String>,
+    terms: Vec<String>,
+    window: Option<i64>,
+    step: Option<i64>,
+) -> Result<Option<String>, String> {
+    Ok(crawl_excerpt(
+        text.as_deref(),
+        &terms,
+        window.unwrap_or(300).max(0) as usize,
+        step.unwrap_or(100).max(1) as usize,
+    ))
+}
+pub fn service_crawl_expand_query(
+    base_terms: Vec<String>,
+    clusters: Option<Value>,
+) -> Result<Value, String> {
+    let (terms, added) = crawl_expand_query(&base_terms, clusters.as_ref().unwrap_or(&Value::Null));
+    Ok(serde_json::json!({"$tuple": [terms, added]}))
 }

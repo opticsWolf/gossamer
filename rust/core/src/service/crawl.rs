@@ -185,6 +185,62 @@ pub fn crawl_term_hits(text: Option<&str>, terms: &[String]) -> usize {
         .filter(|token| terms.contains(token)).count()
 }
 
+
+
+/// Densest keyword window of a text, with Python-style ellipses.
+pub fn crawl_excerpt(
+    text: Option<&str>,
+    terms: &[String],
+    window: usize,
+    step: usize,
+) -> Option<String> {
+    let chars: Vec<char> = text.unwrap_or("").chars().collect();
+    if terms.is_empty() || chars.is_empty() || step == 0 { return None; }
+    let mut best: Option<(usize, usize)> = None;
+    let mut start = 0usize;
+    while start < chars.len() {
+        let end = (start + window).min(chars.len());
+        let slice: String = chars[start..end].iter().collect();
+        let density = crawl_term_hits(Some(&slice), terms);
+        if best.is_none_or(|(value, _)| density > value) {
+            best = Some((density, start));
+        }
+        start += step;
+    }
+    let (density, start) = best?;
+    if density == 0 { return None; }
+    let end = (start + window).min(chars.len());
+    let excerpt: String = chars[start..end].iter().collect();
+    let prefix = if start > 0 { "…" } else { "" };
+    let suffix = if end < chars.len() { "…" } else { "" };
+    Some(format!("{prefix}{excerpt}{suffix}"))
+}
+
+/// Expand base terms with ordered synonym clusters, capped at the base size.
+pub fn crawl_expand_query(base_terms: &[String], clusters: &Value) -> (Vec<String>, usize) {
+    let mut seen: Vec<String> = base_terms.to_vec();
+    seen.sort();
+    seen.dedup();
+    if seen.is_empty() { return (Vec::new(), 0); }
+    let cap = seen.len();
+    let mut added = 0usize;
+    for term in base_terms.iter().cloned().collect::<std::collections::BTreeSet<_>>() {
+        let Some(groups) = clusters.as_array() else { break; };
+        for group in groups {
+            let Some(members) = group.as_array() else { continue; };
+            if !members.iter().any(|member| member.as_str() == Some(term.as_str())) { continue; }
+            for member in members.iter().filter_map(Value::as_str) {
+                if seen.iter().any(|existing| existing == member) { continue; }
+                seen.push(member.to_string());
+                added += 1;
+                if added >= cap { seen.sort(); return (seen, added); }
+            }
+        }
+    }
+    seen.sort();
+    (seen, added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

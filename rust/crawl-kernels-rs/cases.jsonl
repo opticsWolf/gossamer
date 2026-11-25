@@ -1,4 +1,12 @@
 {"fn": "_service_crawl_score", "args": [], "error": "TypeError: _service_crawl_score() missing 7 required positional arguments: 'label', 'query_terms', 'page_terms', 'idf', 'base_terms', 'corpus_n', and 'path_prior'"}
+{"fn": "_service_crawl_excerpt", "args": ["intro rust here", ["rust"], 5, 5], "ok": "… rust…"}
+{"fn": "_service_crawl_term_hits", "args": ["intro", ["rust"]], "ok": 0}
+{"fn": "_service_crawl_term_hits", "args": [" rust", ["rust"]], "ok": 1}
+{"fn": "_service_crawl_term_hits", "args": [" here", ["rust"]], "ok": 0}
+{"fn": "_service_crawl_excerpt", "args": ["nothing", ["rust"], 5, 5], "ok": null}
+{"fn": "_service_crawl_term_hits", "args": ["nothi", ["rust"]], "ok": 0}
+{"fn": "_service_crawl_term_hits", "args": ["ng", ["rust"]], "ok": 0}
+{"fn": "_service_crawl_expand_query", "args": [["rust"], [["rust", "cargo"]]], "ok": {"$tuple": [["cargo", "rust"], 1]}}
 {"fn": "_service_crawl_anchor_context", "args": ["about rust rust and python", "rust", 50, 8], "ok": ["rust", "python"]}
 {"fn": "_service_crawl_path_prior", "args": ["https://x/docs/a"], "ok": 1.15}
 {"fn": "_service_crawl_path_prior", "args": ["https://x/pricing"], "ok": 0.85}
