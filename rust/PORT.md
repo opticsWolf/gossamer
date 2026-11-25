@@ -96,6 +96,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `crawl` link-graph body (done 2026-11-25)
+
+- `gossamer crawl` now fetches the root, builds a scored frontier from Rust
+  crawl kernels, fetches bounded children, and emits the full crawl envelope.
+  Search-prior, seed URLs, document scoring and cache/robots side effects
+  remain outside this slice.
+- Verified against the Python oracle on `https://example.com --query example
+  --max-pages 2 --max-depth 1` (exact stable output); app replay 57/57,
+  full pytest 11468 passed / 36 skipped.
+
 ### CLI `research` general body (done 2026-11-25)
 
 - `gossamer research` now classifies the query via `gossamer::categories::classify_query`,
