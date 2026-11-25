@@ -96,6 +96,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `extract` validation body (done 2026-11-23)
+
+- `gossamer extract` now rejects incompatible image/store/structured flag
+  combinations with exact JSON envelopes in Rust. Real extraction remains
+  outside this slice. Added two deterministic replay cases.
+- App replay 52/52; full pytest 11467 passed / 36 skipped.
+
 ### CLI `download` validation body (done 2026-11-23)
 
 - `gossamer download` now validates output paths, URL normalization, and SSRF

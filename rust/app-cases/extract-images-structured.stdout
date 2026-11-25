@@ -1,0 +1,3 @@
+{
+  "error": "include_images cannot be combined with structured=True; use store=True instead"
+}
