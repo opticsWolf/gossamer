@@ -29,6 +29,7 @@ pub mod metaextract;
 pub mod miscutils;
 pub mod port;
 pub mod research_merge;
+pub mod resourcestore;
 pub mod robots;
 pub mod search;
 pub mod sections;

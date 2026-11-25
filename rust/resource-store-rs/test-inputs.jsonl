@@ -1,0 +1,5 @@
+{"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [137, 80, 78, 71, 13, 10, 26, 10, 120, 120]}]}
+{"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [82, 73, 70, 70, 120, 120, 120, 120, 87, 69, 66, 80]}]}
+{"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [110, 111, 112, 101]}]}
+{"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [137, 80, 78, 71, 13, 10, 26, 10, 102, 97, 107, 101, 112, 110, 103]}]}
+{"fn": "_service_detect_ext_from_magic", "args": [{"$bytes": [255, 216, 255, 216, 102, 97, 107, 101, 106, 112, 101, 103]}]}

@@ -1,0 +1,30 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "D:\\User\\Documents\\Rust\\gossamer",
+  "unit": "gossamer/resource_store.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "resource-store-rs",
+  "exports": [
+    {
+      "name": "_service_detect_ext_from_magic",
+      "file": "gossamer/resource_store.py",
+      "line": 80,
+      "params": [
+        {
+          "name": "data",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

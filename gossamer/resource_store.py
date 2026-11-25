@@ -91,13 +91,7 @@ _DEFAULT_MAX_IMAGES = 200
 
 def _detect_ext_from_magic(data: bytes) -> str | None:
     """Return a canonical image suffix from magic bytes, else ``None``."""
-    for magic, ext in _MAGIC_TO_EXT.items():
-        if data[: len(magic)] == magic:
-            return ext
-    # RIFF/AVI container: WebP is "RIFFxxxxWEBP".
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
-    return None
+    return _service_detect_ext_from_magic(data)
 
 
 def _detect_ext_from_content_type(ctype: str) -> str | None:
@@ -328,3 +322,34 @@ class ResourceStore:
             (files_dir / fname).write_bytes(data)
         except OSError as e:
             logger.debug("ResourceStore write failed for %s: %s", fname, e)
+
+def _service_detect_ext_from_magic(data):
+    for magic, ext in _MAGIC_TO_EXT.items():
+        if data[: len(magic)] == magic:
+            return ext
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+# >>> rust-anything: resource-store-rs is on. `rust-anything disable ../rust/resource-store-rs` removes this block.
+def _rust_anything_resource_store_rs():
+    import importlib, os, sys
+    mode = os.environ.get("RUST_ANYTHING_MODE")
+    if mode == "old" or os.environ.get("RUST_ANYTHING_UNIT_RESOURCE_STORE") == "original":
+        return
+    at = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../rust/resource-store-rs/python"))
+    sys.path.insert(0, at)
+    try:
+        native = importlib.import_module("resource_store_rs")
+    except ImportError:
+        if mode == "new":
+            raise
+        return
+    finally:
+        sys.path.remove(at)
+    globals().update({name: getattr(native, name) for name in ["_service_detect_ext_from_magic"]})
+
+
+_rust_anything_resource_store_rs()
+del _rust_anything_resource_store_rs
+# <<< rust-anything: resource-store-rs

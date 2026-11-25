@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Resource magic detection (done 2026-11-23)
+
+- `_detect_ext_from_magic` now delegates byte-prefix classification to
+  `gossamer::resourcestore::detect_ext_from_magic`; the PyO3 wrapper decodes
+  rust-anything's `$bytes` marker.
+- Binding: `rust/resource-store-rs` (5/5); gate passed.
+- Full pytest: 11463 passed / 36 skipped; app replay 43/43.
+
 ### Sitemap parsing kernel (done 2026-11-23)
 
 - `_probe_sitemaps` now delegates XML parsing, namespace-safe `loc`
