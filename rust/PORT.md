@@ -443,14 +443,18 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Current state
 
-- `dev_rustify` after `7b97a2e` plus the provider-policy slice: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
-- Rust owns: `env`/`settings` config resolution (unit 1), documents payload helpers (unit 2), deterministic FetchService kernels (unit 3), deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
-  `verify-bundled-assets`, `cache` maintenance, `categories`, document URL rejection,
-  search provider aliases/errors, CLI help/error text, MCP schema constant.
-- Rust does not yet own: `research`, `download`, `locate-pdf`, `extract`, `check`, `discover`,
-  `crawl`, `cite` (stubs), live `search`/`research`/`inspect`/`batch`, MCP transport and tool
-  bodies, provider HTTP, document extraction, config resolution.
-- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,461 passing tests.
+- `dev_rustify` after `cc3bb78`: pure Rust front door lifted, replay 43/43, fallback 0, no fallback path.
+- Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
+  deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
+  `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
+  search provider aliases/errors, CLI help/error text, MCP schema/tool-body envelopes,
+  crawl/scoring/excerpt kernels, provider policy/rate-state kernels, research planning and
+  merge kernels, download candidate/error/finish validation, OA candidate mapping, citation
+  dispatch/enrichment/DOI scanning, and resource-store image/figure planning.
+- Rust does not yet own: live HTTP/provider/browser transport, binary PDF/Office extraction,
+  filesystem side effects, MCP transport, live tool bodies, live CLI command bodies, the full
+  crawl loop, and the final PyO3-wrapper retirement/cutover.
+- Verification: 43 replay cases; Python suite is the behavioral oracle at 11,466 passing tests.
 
 ## Open questions
 
