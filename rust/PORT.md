@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `inspect` live body (done 2026-11-23)
+
+- `gossamer inspect` now fetches HTML, extracts markdown/links/metadata,
+  applies chunked reads, and emits the full `InspectionResult` envelope in
+  Rust. Cache/revalidation/structured/store modes remain outside this slice.
+- Verified against the Python oracle on `https://example.com` (only cache hit
+  state and timestamp differ by design); replay remains 57/57.
+- Full pytest 11467 passed / 36 skipped.
+
 ### CLI `search` live DuckDuckGo body (done 2026-11-23)
 
 - `gossamer search --search-only --provider duckduckgo` now fetches and parses

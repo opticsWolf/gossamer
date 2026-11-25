@@ -44,3 +44,28 @@ pub fn py_round(value: f64, digits: u32) -> f64 {
         Err(_) => value,
     }
 }
+
+/// Serialize JSON with Python `json.dumps` default separators (`, ` and `: `).
+pub fn py_dumps(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_string(),
+        Value::Bool(flag) => flag.to_string(),
+        Value::Number(number) => number.to_string(),
+        Value::String(text) => serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string()),
+        Value::Array(items) => format!(
+            "[{}]",
+            items.iter().map(py_dumps).collect::<Vec<_>>().join(", ")
+        ),
+        Value::Object(map) => format!(
+            "{{{}}}",
+            map.iter()
+                .map(|(key, value)| format!(
+                    "{}: {}",
+                    serde_json::to_string(key).unwrap_or_else(|_| "\"\"".to_string()),
+                    py_dumps(value)
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
