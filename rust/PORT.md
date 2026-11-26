@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Download size-cap error parity (done 2026-11-25)
+
+- `gossamer::downloader::download_bytes` now reports declared body size, final
+  URL, and status in a structured too-large marker instead of an opaque string.
+- CLI `download --max-bytes` now emits the exact Python `too_large` envelope.
+- Verified live against the Python oracle; app replay 57/57, full pytest
+  11468 passed / 36 skipped.
+
 ### Download error envelope parity (done 2026-11-25)
 
 - CLI `download` now emits the full canonical error object from the Rust

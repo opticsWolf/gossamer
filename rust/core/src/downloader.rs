@@ -253,13 +253,21 @@ pub fn download_bytes(
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .map(str::to_string);
+        let declared_bytes = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<usize>().ok());
         let bytes = response
             .bytes()
             .await
             .map_err(|error| format!("HTTPError: {error}"))?
             .to_vec();
         if bytes.len() > max_bytes {
-            return Err(format!("The download exceeded the {max_bytes}-byte limit."));
+            let declared = declared_bytes.unwrap_or(bytes.len());
+            return Err(format!(
+                "too_large {status} {final_url} {declared} {max_bytes}"
+            ));
         }
         Ok((bytes, status, final_url, content_type))
     })
