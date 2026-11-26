@@ -67,6 +67,16 @@ pub fn find_feed_links(html: &str, base_url: &str) -> Vec<Value> {
 
 /// Fetch a text payload for resource discovery, returning the final URL.
 pub fn fetch_text(url: &str, timeout_seconds: f64) -> Result<(String, String), String> {
+    let (body, final_url, _) = fetch_text_inner(url, timeout_seconds, None)?;
+    Ok((body, final_url))
+}
+
+/// Fetch text together with the final HTTP status, for providers whose error
+/// envelope depends on the status code.
+pub fn fetch_text_with_status(
+    url: &str,
+    timeout_seconds: f64,
+) -> Result<(String, String, u16), String> {
     fetch_text_inner(url, timeout_seconds, None)
 }
 
@@ -78,14 +88,15 @@ pub fn fetch_text_with_user_agent(
     timeout_seconds: f64,
     user_agent: &str,
 ) -> Result<(String, String), String> {
-    fetch_text_inner(url, timeout_seconds, Some(user_agent))
+    let (body, final_url, _) = fetch_text_inner(url, timeout_seconds, Some(user_agent))?;
+    Ok((body, final_url))
 }
 
 fn fetch_text_inner(
     url: &str,
     timeout_seconds: f64,
     user_agent: Option<&str>,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, u16), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -109,11 +120,12 @@ fn fetch_text_inner(
             .await
             .map_err(|error| format!("HTTPError: {error}"))?;
         let final_url = response.url().to_string();
+        let status = response.status().as_u16();
         let body = response
             .text()
             .await
             .map_err(|error| format!("HTTPError: {error}"))?;
-        Ok((body, final_url))
+        Ok((body, final_url, status))
     })
 }
 

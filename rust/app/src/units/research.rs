@@ -6,10 +6,11 @@ use std::process::ExitCode;
 use clap::ArgMatches;
 use gossamer::adapters::scholar::{
     crossref_parse_search_impl, huggingface_papers_parse_search_impl,
-    huggingface_parse_search_impl, openalex_parse_search_impl, zenodo_parse_search_impl,
+    huggingface_parse_search_impl, openalex_parse_search_impl, semanticscholar_parse_search_impl,
+    zenodo_parse_search_impl,
 };
 use gossamer::categories::classify_query;
-use gossamer::discovery::{fetch_text, fetch_text_with_user_agent};
+use gossamer::discovery::{fetch_text, fetch_text_with_status, fetch_text_with_user_agent};
 use gossamer::jsonfmt::py_dumps;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::taxonomy::CATEGORIES_JSON;
@@ -248,6 +249,87 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("OpenAlex search failed: {error}");
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
+    } else if selected == "semanticscholar" {
+        let limit = max_results.min(1000).to_string();
+        let fields = "paperId,title,abstract,year,publicationDate,authors,citationCount,referenceCount,venue,externalIds,url,openAccessPdf,fieldsOfStudy,publicationTypes";
+        let url = url::Url::parse_with_params(
+            "https://api.semanticscholar.org/graph/v1/paper/search",
+            &[
+                ("query", query.as_str()),
+                ("fields", fields),
+                ("offset", "0"),
+                ("limit", limit.as_str()),
+            ],
+        )
+        .map(|value| value.to_string())
+        .unwrap_or_else(|_| {
+            format!("https://api.semanticscholar.org/graph/v1/paper/search?query={query}")
+        });
+        match fetch_text_with_status(&url, 30.0) {
+            Ok((_, _, 429)) => {
+                let message = "Semantic Scholar returned HTTP 429 for a keyless request; unauthenticated traffic shares a rate-limit pool. Set GOSSAMER_SEMANTICSCHOLAR_API_KEY for an individual one-request-per-second allowance, or wait before retrying.";
+                let payload = json!({
+                    "query": query,
+                    "category": category_name,
+                    "provider": selected,
+                    "available_providers": available,
+                    "provider_kind": entry.get("provider_kind").cloned().unwrap_or(Value::Null),
+                    "description": entry.get("description").cloned().unwrap_or(Value::Null),
+                    "results": [],
+                    "error": format!("semanticscholar search failed: {message}"),
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+            Ok((_body, _, status)) if status >= 400 => {
+                let message = format!("Semantic Scholar returned HTTP {status}");
+                let payload = json!({
+                    "query": query,
+                    "category": category_name,
+                    "provider": selected,
+                    "available_providers": available,
+                    "provider_kind": entry.get("provider_kind").cloned().unwrap_or(Value::Null),
+                    "description": entry.get("description").cloned().unwrap_or(Value::Null),
+                    "results": [],
+                    "error": format!("semanticscholar search failed: {message}"),
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+            Ok((body, _, _)) => {
+                let parsed_body = serde_json::from_str::<Value>(&body).ok();
+                let items = parsed_body
+                    .as_ref()
+                    .and_then(|value| value.get("data"))
+                    .and_then(Value::as_array);
+                let mut records =
+                    semanticscholar_parse_search_impl(&body, max_results as i64, None)
+                        .unwrap_or_default();
+                if let Some(items) = items {
+                    for (record, item) in records.iter_mut().zip(items.iter()) {
+                        if let Some(object) = record.as_object_mut() {
+                            object.insert("raw".to_string(), Value::String(py_dumps(item)));
+                        }
+                    }
+                }
+                records
+            }
+            Err(error) => {
+                eprintln!("Semantic Scholar search failed: {error}");
                 let payload = json!({"error": format!("All search providers failed for: {query}")});
                 println!(
                     "{}",
