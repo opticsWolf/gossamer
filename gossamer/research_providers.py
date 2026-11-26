@@ -336,6 +336,11 @@ class SemanticScholarAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     BASE = "https://api.semanticscholar.org/graph/v1"
+    AUTH_POLICY = {
+        "headers": [
+            {"key": "x-api-key", "from": "api_key", "when": "api_key"}
+        ]
+    }
     PAPER_FIELDS = (
         "paperId,title,abstract,year,publicationDate,authors,citationCount,"
         "referenceCount,venue,externalIds,url,openAccessPdf,fieldsOfStudy,"
@@ -361,12 +366,6 @@ class SemanticScholarAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.1),
             fetch_delay,
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        headers = dict(headers or {})
-        if self.api_key:
-            headers.setdefault("x-api-key", self.api_key)
-        return url, dict(params or {}), headers
 
     def parse_headers(self, status, headers):
         return RateState(rps=1.0)
@@ -768,6 +767,14 @@ class CrossrefAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     BASE = "https://api.crossref.org"
+    AUTH_UA = _UA
+    AUTH_POLICY = {
+        "headers": [
+            {"key": "User-Agent", "template": "{ua}?email={email}"},
+            {"key": "Contact-Agent", "template": "{ua}?email={email}"},
+            {"key": "Accept", "value": "application/json"},
+        ]
+    }
 
     def __init__(
         self,
@@ -784,13 +791,6 @@ class CrossrefAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=0.2, jitter=0.1),
             fetch_delay,
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        h.setdefault("User-Agent", f"{_UA}?email={self.email}")
-        h.setdefault("Contact-Agent", f"{_UA}?email={self.email}")
-        h.setdefault("Accept", "application/json")
-        return url, dict(params or {}), h
 
     def parse_headers(self, status, headers):
         return _rate_state_from_headers(headers, default_rps=10.0)
@@ -1169,6 +1169,16 @@ class GitHubAdapter(ResourceAdapter):
     domain = "tech"
     requires_key = False
     BASE = "https://api.github.com"
+    AUTH_POLICY = {
+        "headers": [
+            {"key": "Accept", "value": "application/vnd.github+json"},
+            {
+                "key": "Authorization",
+                "template": "Bearer {api_key}",
+                "when": "api_key",
+            },
+        ]
+    }
 
     def __init__(
         self,
@@ -1183,13 +1193,6 @@ class GitHubAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.1, jitter=0.05)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        h.setdefault("Accept", "application/vnd.github+json")
-        if self.api_key:
-            h.setdefault("Authorization", f"Bearer {self.api_key}")
-        return url, dict(params or {}), h
 
     def parse_headers(self, status, headers):
         return _rate_state_from_headers(headers, default_rps=50.0)
@@ -1481,6 +1484,9 @@ class NASAAdapter(ResourceAdapter):
     domain = "geo"
     requires_key = False
     BASE = "https://api.nasa.gov"
+    AUTH_POLICY = {
+        "params": [{"key": "api_key", "from": "api_key"}]
+    }
 
     def __init__(
         self,
@@ -1495,11 +1501,6 @@ class NASAAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=2.0, jitter=0.5)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        p.setdefault("api_key", self.api_key)
-        return url, p, dict(headers or {})
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -1552,6 +1553,11 @@ class NvdAdapter(ResourceAdapter):
     domain = "tech"
     requires_key = False
     BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    AUTH_POLICY = {
+        "params": [
+            {"key": "apiKey", "from": "api_key", "when": "api_key", "mode": "overwrite"}
+        ]
+    }
 
     def __init__(
         self,
@@ -1566,12 +1572,6 @@ class NvdAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=6.0, jitter=1.0)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        if self.api_key:
-            p["apiKey"] = self.api_key
-        return url, p, dict(headers or {})
 
     def parse_headers(self, status, headers):
         return _rate_state_from_headers(headers, default_rps=50.0)

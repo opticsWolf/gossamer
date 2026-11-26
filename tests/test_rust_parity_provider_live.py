@@ -1,6 +1,13 @@
 import pytest
 
-from gossamer.research_providers import OpenAlexAdapter
+from gossamer.research_providers import (
+    CrossrefAdapter,
+    GitHubAdapter,
+    NASAAdapter,
+    NvdAdapter,
+    OpenAlexAdapter,
+    SemanticScholarAdapter,
+)
 from gossamer.search_providers import _service_provider_request_plan
 
 
@@ -87,3 +94,45 @@ def test_openalex_inject_auth_uses_policy():
     assert params == {"q": "x", "mailto": "dev@example.test"}
     assert headers["User-Agent"].startswith("gossamer/")
     assert headers["Contact-Agent"].endswith("(mailto:dev@example.test)")
+
+
+def test_semanticscholar_inject_auth_uses_policy():
+    adapter = SemanticScholarAdapter(api_key="secret", delay=0.0)
+    _, params, headers = adapter.inject_auth("https://x", {"q": "x"}, {})
+    assert params == {"q": "x"}
+    assert headers == {"x-api-key": "secret"}
+
+
+def test_crossref_inject_auth_uses_policy():
+    adapter = CrossrefAdapter(email="me@example.org", delay=0.0)
+    _, params, headers = adapter.inject_auth("https://x", {"query": "x"}, {})
+    assert params == {"query": "x"}
+    assert headers["Accept"] == "application/json"
+    assert headers["User-Agent"].endswith("?email=me@example.org")
+    assert headers == {"User-Agent": headers["User-Agent"], "Contact-Agent": headers["Contact-Agent"], "Accept": "application/json"}
+
+
+def test_github_inject_auth_uses_policy():
+    adapter = GitHubAdapter(api_key="secret", delay=0.0)
+    _, params, headers = adapter.inject_auth("https://x", {"q": "x"}, {})
+    assert params == {"q": "x"}
+    assert headers == {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer secret",
+    }
+
+
+def test_nvd_inject_auth_uses_policy():
+    adapter = NvdAdapter(api_key="secret", delay=0.0)
+    _, params, headers = adapter.inject_auth(
+        "https://x", {"apiKey": "old", "q": "x"}, {}
+    )
+    assert params == {"apiKey": "secret", "q": "x"}
+    assert headers == {}
+
+
+def test_nasa_inject_auth_uses_policy():
+    adapter = NASAAdapter(api_key="DEMO_KEY", delay=0.0)
+    _, params, headers = adapter.inject_auth("https://x", {}, {})
+    assert params == {"api_key": "DEMO_KEY"}
+    assert headers == {}

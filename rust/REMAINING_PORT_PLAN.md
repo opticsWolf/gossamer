@@ -259,8 +259,9 @@ ProviderFailure {
 
 **Completed slice**
 
-- `provider_request_plan` is implemented and gated 11/11; base
-  `ResourceAdapter.inject_auth` and `OpenAlexAdapter` now use it.
+- `provider_request_plan` is implemented and gated 16/16; base
+  `ResourceAdapter.inject_auth`, `OpenAlexAdapter`, `SemanticScholarAdapter`,
+  `CrossrefAdapter`, `GitHubAdapter`, `NvdAdapter`, and `NASAAdapter` now use it.
 - Bench is 0.08x: this is a correctness kernel, not a speed port.
 
 **Exit criteria**
