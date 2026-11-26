@@ -5,9 +5,9 @@ use std::process::ExitCode;
 
 use clap::ArgMatches;
 use gossamer::adapters::scholar::{
-    crossref_parse_search_impl, huggingface_papers_parse_search_impl,
-    huggingface_parse_search_impl, openalex_parse_search_impl, semanticscholar_parse_search_impl,
-    zenodo_parse_search_impl,
+    arxiv_entry_raw, arxiv_parse_search_impl, crossref_parse_search_impl,
+    huggingface_papers_parse_search_impl, huggingface_parse_search_impl,
+    openalex_parse_search_impl, semanticscholar_parse_search_impl, zenodo_parse_search_impl,
 };
 use gossamer::categories::classify_query;
 use gossamer::discovery::{fetch_text, fetch_text_with_status, fetch_text_with_user_agent};
@@ -249,6 +249,45 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("OpenAlex search failed: {error}");
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
+    } else if selected == "arxiv" {
+        let limit = max_results.min(100).to_string();
+        let url = url::Url::parse_with_params(
+            "https://export.arxiv.org/api/query",
+            &[
+                ("search_query", query.as_str()),
+                ("start", "0"),
+                ("max_results", limit.as_str()),
+            ],
+        )
+        .map(|value| value.to_string())
+        .unwrap_or_else(|_| format!("https://export.arxiv.org/api/query?search_query={query}"));
+        let user_agent = format!(
+            "{} (+https://github.com/opticsWolf/gossamer)",
+            gossamer::USER_AGENT
+        );
+        match fetch_text_with_user_agent(&url, 20.0, &user_agent) {
+            Ok((body, _)) => {
+                let mut records =
+                    arxiv_parse_search_impl(&body, max_results as i64).unwrap_or_default();
+                for (index, record) in records.iter_mut().enumerate() {
+                    if let (Some(object), Some(raw)) =
+                        (record.as_object_mut(), arxiv_entry_raw(&body, index))
+                    {
+                        object.insert("raw".to_string(), Value::String(raw));
+                    }
+                }
+                records
+            }
+            Err(error) => {
+                eprintln!("arXiv search failed: {error}");
                 let payload = json!({"error": format!("All search providers failed for: {query}")});
                 println!(
                     "{}",

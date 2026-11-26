@@ -115,10 +115,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   returning `Result` with canonical `TypeError` messages and no unsafe code.
 - CLI `research --provider crossref`, `--provider openalex`,
   `--provider zenodo`, `--provider huggingface`, `--provider huggingface-papers`,
-  and `--provider semanticscholar` now run live Rust HTTP calls and use the
-  matching `adapters::scholar` parsers plus Python-style `raw` serialization.
+  `--provider semanticscholar`, and `--provider arxiv` now run live Rust HTTP
+  calls and use the matching `adapters::scholar` parsers plus Python-style
+  `raw` serialization.
   Verified against the Python oracle on live scholarly queries; live results
   are not replay-pinned.
+- Added `adapters::scholar::arxiv_entry_raw`, reproducing ElementTree namespace
+  prefixing and tail newlines for arXiv `raw` payloads.
 - Added `discovery::fetch_text_with_user_agent` and core `USER_AGENT` for APIs
   that reject generic clients (needed by Zenodo), plus
   `fetch_text_with_status` for provider status-dependent envelopes; documented

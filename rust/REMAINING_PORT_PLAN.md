@@ -268,7 +268,8 @@ ProviderFailure {
   Retry-After cap, and jitter-cap parity cases.
 - CLI `research --provider crossref`, `--provider openalex`,
   `--provider zenodo`, `--provider huggingface`, `--provider huggingface-papers`,
-  and `--provider semanticscholar` are live Rust provider dispatches; manual
+  `--provider semanticscholar`, and `--provider arxiv` are live Rust provider
+  dispatches; manual
   live parity verified (exact stdout for Hugging Face; parsed JSON equal with
   only provider response key ordering variation for OpenAlex), not replay-pinned.
 - `py_dumps` float formatting now matches Python repr for scientific notation.

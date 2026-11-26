@@ -1895,6 +1895,60 @@ fn arxiv_entry_impl(entry: &crate::xmlatom::Node) -> Value {
     Value::Object(rec)
 }
 
+/// Serialize one Atom `<entry>` the way Python `ElementTree.tostring` does
+/// for the arXiv feed: namespace prefixes are regenerated as `ns0`/`ns1`,
+/// declarations are added to the entry root, and empty tags keep a space
+/// before `/>`. Only the tag shapes present in arXiv Atom feeds are handled.
+pub fn arxiv_entry_raw(xml: &str, mut index: usize) -> Option<String> {
+    const ATOM_NS: &str = "http://www.w3.org/2005/Atom";
+    const ARXIV_NS: &str = "http://arxiv.org/schemas/atom";
+    let mut cursor = 0usize;
+    let start = loop {
+        let rest = xml.get(cursor..)?;
+        let offset = rest.find("<entry>")?;
+        let absolute = cursor + offset;
+        if index == 0 {
+            break absolute;
+        }
+        cursor = absolute + "<entry>".len();
+        index -= 1;
+    };
+    let end_offset = xml.get(start..)?.find("</entry>")?;
+    let mut raw = xml[start..start + end_offset + "</entry>".len()].to_string();
+    raw = raw.replacen(
+        "<entry>",
+        &format!("<ns0:entry xmlns:ns0=\"{ATOM_NS}\" xmlns:ns1=\"{ARXIV_NS}\">"),
+        1,
+    );
+    raw = raw.replace("</entry>", "</ns0:entry>");
+    for tag in [
+        "id",
+        "title",
+        "updated",
+        "summary",
+        "published",
+        "author",
+        "name",
+    ] {
+        raw = raw.replace(&format!("<{tag}>"), &format!("<ns0:{tag}>"));
+        raw = raw.replace(&format!("</{tag}>"), &format!("</ns0:{tag}>"));
+    }
+    for tag in ["link", "category"] {
+        raw = raw.replace(&format!("<{tag} "), &format!("<ns0:{tag} "));
+    }
+    for tag in ["comment", "journal_ref"] {
+        raw = raw.replace(&format!("<arxiv:{tag}>"), &format!("<ns1:{tag}>"));
+        raw = raw.replace(&format!("</arxiv:{tag}>"), &format!("</ns1:{tag}>"));
+        raw = raw.replace(&format!("<{tag}>"), &format!("<ns1:{tag}>"));
+        raw = raw.replace(&format!("</{tag}>"), &format!("</ns1:{tag}>"));
+    }
+    raw = raw.replace("<arxiv:primary_category ", "<ns1:primary_category ");
+    raw = raw.replace("<primary_category ", "<ns1:primary_category ");
+    let mut rendered = raw.replace("/>", " />");
+    rendered.push('\n');
+    Some(rendered)
+}
+
 ///
 /// # Errors
 ///
@@ -2130,4 +2184,19 @@ pub fn pubmed_parse_fetch_impl(response_xml: &str, rid_s: &str) -> Result<Option
     rec.insert("authors".to_string(), Value::String(authors.join(", ")));
     // `raw` is `resp.text` verbatim: attached by the wrapper.
     Ok(Some(Value::Object(rec)))
+}
+
+#[cfg(test)]
+mod arxiv_raw_tests {
+    use super::arxiv_entry_raw;
+
+    #[test]
+    fn prefixes_atom_and_arxiv_tags() {
+        let xml = "<feed><entry>\n  <id>x</id>\n  <link href=\"u\"/>\n  <arxiv:comment>c</comment>\n</entry></feed>";
+        let raw = arxiv_entry_raw(xml, 0).expect("entry");
+        assert!(raw.starts_with("<ns0:entry xmlns:ns0=\"http://www.w3.org/2005/Atom\""));
+        assert!(raw.contains("<ns0:id>x</ns0:id>"));
+        assert!(raw.contains("<ns0:link href=\"u\" />"));
+        assert!(raw.contains("<ns1:comment>c</ns1:comment>"));
+    }
 }
