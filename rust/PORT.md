@@ -102,10 +102,9 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 - Added `gossamer::providers::live::provider_request_plan`, a declarative
   auth/header/query policy evaluator used by `ResourceAdapter.inject_auth`.
-- `OpenAlexAdapter`, `SemanticScholarAdapter`, `CrossrefAdapter`,
-  `GitHubAdapter`, `NvdAdapter`, and `NASAAdapter` now supply policy data
-  instead of Python `inject_auth` mutation logic; other adapters keep their
-  overrides until their own slices.
+- Every `ResourceAdapter` subclass now supplies declarative `AUTH_POLICY`
+  data; all 18 Python `inject_auth` mutation bodies were removed and flow
+  through the Rust request-planning kernel.
 - `retry_decision` now caps jitter at 0.25 s to match the Python decorator;
   `_service_retry_plan` is enabled from Rust for every `ResourceAdapter.search`
   retry, including status/transport/quota/cap verdicts.
@@ -114,7 +113,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   kept despite slow crossing because the caller is not batched yet).
 - Rust-guidelines review: `M-PANIC-IS-STOP` and `M-UNSAFE` satisfied by
   returning `Result` with canonical `TypeError` messages and no unsafe code.
-- Full pytest 11478 passed / 36 skipped; app replay 57/57.
+- Full pytest 11479 passed / 36 skipped; app replay 57/57.
 
 ### Download size-cap error parity (done 2026-11-25)
 
@@ -689,7 +688,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
   full download filesystem side effects, MCP transport, remaining live tool bodies, the full
   crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
-- Verification: 57 replay cases; Python suite is the behavioral oracle at 11,478 passing tests.
+- Verification: 57 replay cases; Python suite is the behavioral oracle at 11,479 passing tests.
 
 ## Open questions
 

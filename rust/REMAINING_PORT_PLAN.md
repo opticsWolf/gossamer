@@ -259,9 +259,9 @@ ProviderFailure {
 
 **Completed slice**
 
-- `provider_request_plan` is implemented and gated 16/16; base
-  `ResourceAdapter.inject_auth`, `OpenAlexAdapter`, `SemanticScholarAdapter`,
-  `CrossrefAdapter`, `GitHubAdapter`, `NvdAdapter`, and `NASAAdapter` now use it.
+- `provider_request_plan` is implemented and gated 39/39; every adapter now
+  supplies declarative `AUTH_POLICY` data and no Python `inject_auth` mutation
+  bodies remain.
 - Bench is 0.08x: this is a correctness kernel, not a speed port.
 - Retry verdicts now flow through Rust as well; gate extended to 27/27 with
   quota, permanent status, transient status, transport, final attempt,

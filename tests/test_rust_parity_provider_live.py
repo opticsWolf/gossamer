@@ -1,12 +1,24 @@
 import pytest
 
 from gossamer.research_providers import (
+    AlphaVantageAdapter,
+    CensusAdapter,
+    ChemRxivAdapter,
+    CongressAdapter,
+    CourtListenerAdapter,
     CrossrefAdapter,
+    FederalRegisterAdapter,
+    FredAdapter,
     GitHubAdapter,
+    HuggingFaceAdapter,
     NASAAdapter,
     NvdAdapter,
     OpenAlexAdapter,
+    OpenLibraryAdapter,
+    PubmedAdapter,
     SemanticScholarAdapter,
+    YahooFinanceAdapter,
+    ZenodoAdapter,
 )
 from gossamer.search_providers import _service_provider_request_plan
 
@@ -136,3 +148,29 @@ def test_nasa_inject_auth_uses_policy():
     _, params, headers = adapter.inject_auth("https://x", {}, {})
     assert params == {"api_key": "DEMO_KEY"}
     assert headers == {}
+
+
+def test_remaining_auth_policies():
+    cases = [
+        (HuggingFaceAdapter(api_token="tok", delay=0.0), {}, {"Authorization": "Bearer tok"}),
+        (FredAdapter(api_key="k", delay=0.0), {"api_key": "k"}, {}),
+        (OpenLibraryAdapter(email="me@example.org", delay=0.0), {}, {"User-Agent": None}),
+        (PubmedAdapter(email="me@example.org", api_key="k", delay=0.0), {"email": "me@example.org", "tool": "gossamer", "api_key": "k"}, {}),
+        (ZenodoAdapter(api_key="k", delay=0.0), {"access_token": "k"}, {}),
+        (CongressAdapter(api_key="k", delay=0.0), {"api_key": "k"}, {}),
+        (YahooFinanceAdapter(delay=0.0), {}, {"User-Agent": None}),
+        (CensusAdapter(api_key="k", delay=0.0), {"key": "k"}, {}),
+        (CourtListenerAdapter(api_key="k", delay=0.0), {}, {"Authorization": "Token k", "User-Agent": None}),
+        (FederalRegisterAdapter(delay=0.0), {}, {}),
+        (ChemRxivAdapter(api_key="k", delay=0.0), {}, {"Authorization": "Bearer k"}),
+        (AlphaVantageAdapter(api_key="k", delay=0.0), {"apikey": "k"}, {}),
+    ]
+    for adapter, expected_params, expected_headers in cases:
+        _, params, headers = adapter.inject_auth("https://x", {}, {})
+        assert params == expected_params, type(adapter).__name__
+        for key, value in expected_headers.items():
+            if value is not None:
+                assert headers[key] == value, (type(adapter).__name__, key)
+            else:
+                assert key in headers, (type(adapter).__name__, key)
+        assert len(headers) == len(expected_headers), type(adapter).__name__

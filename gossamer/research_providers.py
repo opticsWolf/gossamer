@@ -468,6 +468,15 @@ class HuggingFaceAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     BASE = "https://huggingface.co/api"
+    AUTH_POLICY = {
+        "headers": [
+            {
+                "key": "Authorization",
+                "template": "Bearer {api_token}",
+                "when": "api_token",
+            }
+        ]
+    }
     CARD_MAX_CHARS = 20000
     CARD_REVISIONS = ("main", "master")
 
@@ -486,12 +495,6 @@ class HuggingFaceAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.1),
             fetch_delay,
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        headers = dict(headers or {})
-        if self.api_token:
-            headers.setdefault("Authorization", f"Bearer {self.api_token}")
-        return url, dict(params or {}), headers
 
     def parse_headers(self, status, headers):
         return RateState(rps=1.0)
@@ -1088,6 +1091,9 @@ class FredAdapter(ResourceAdapter):
     domain = "financial"
     requires_key = False
     BASE = "https://api.stlouisfed.org/fred"
+    AUTH_POLICY = {
+        "params": [{"key": "api_key", "from": "api_key", "when": "api_key"}]
+    }
     GRAPH_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 
     def __init__(
@@ -1103,12 +1109,6 @@ class FredAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.25)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        if self.api_key:
-            p.setdefault("api_key", self.api_key)
-        return url, p, dict(headers or {})
 
     def _search_impl(self, query, max_results=5):
         # No public search: resolve the query as a series id and return its
@@ -1246,6 +1246,10 @@ class OpenLibraryAdapter(ResourceAdapter):
     domain = "library"
     requires_key = False
     BASE = "https://openlibrary.org"
+    AUTH_UA = _UA
+    AUTH_POLICY = {
+        "headers": [{"key": "User-Agent", "template": "{ua}?email={email}"}]
+    }
 
     def __init__(
         self,
@@ -1260,11 +1264,6 @@ class OpenLibraryAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        h.setdefault("User-Agent", f"{_UA}?email={self.email}")
-        return url, dict(params or {}), h
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -1361,6 +1360,13 @@ class PubmedAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     SEARCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+    AUTH_POLICY = {
+        "params": [
+            {"key": "email", "from": "email"},
+            {"key": "tool", "value": "gossamer"},
+            {"key": "api_key", "from": "api_key", "when": "api_key"},
+        ]
+    }
     FETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
     def __init__(
@@ -1388,14 +1394,6 @@ class PubmedAdapter(ResourceAdapter):
                 quota_window="day",
             )
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        p.setdefault("email", self.email)
-        p.setdefault("tool", "gossamer")
-        if self.api_key:
-            p.setdefault("api_key", self.api_key)
-        return url, p, dict(headers or {})
 
     def parse_headers(self, status, headers):
         return _rate_state_from_headers(headers, default_rps=10.0)
@@ -1630,6 +1628,16 @@ class ZenodoAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     BASE = "https://zenodo.org/api"
+    AUTH_POLICY = {
+        "params": [
+            {
+                "key": "access_token",
+                "from": "api_key",
+                "when": "api_key",
+                "mode": "overwrite",
+            }
+        ]
+    }
 
     def __init__(
         self,
@@ -1644,12 +1652,6 @@ class ZenodoAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=1.0, jitter=0.5)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        if self.api_key:
-            p["access_token"] = self.api_key
-        return url, p, dict(headers or {})
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -1769,6 +1771,11 @@ class CongressAdapter(ResourceAdapter):
     domain = "legal"
     requires_key = True
     BASE = "https://api.data.gov/congress/v1"
+    AUTH_POLICY = {
+        "params": [
+            {"key": "api_key", "from": "api_key", "mode": "overwrite"}
+        ]
+    }
 
     def __init__(
         self,
@@ -1783,11 +1790,6 @@ class CongressAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.1, jitter=0.02)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        p["api_key"] = self.api_key
-        return url, p, dict(headers or {})
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -1861,6 +1863,10 @@ class YahooFinanceAdapter(ResourceAdapter):
     domain = "financial"
     requires_key = False
     BASE = "https://query2.finance.yahoo.com"
+    AUTH_UA = _UA
+    AUTH_POLICY = {
+        "headers": [{"key": "User-Agent", "template": "{ua}"}]
+    }
 
     def __init__(
         self,
@@ -1872,11 +1878,6 @@ class YahooFinanceAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.25)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        h.setdefault("User-Agent", _UA)
-        return url, dict(params or {}), h
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -1980,6 +1981,11 @@ class CensusAdapter(ResourceAdapter):
     domain = "geo"
     requires_key = True
     BASE = "https://api.census.gov/data"
+    AUTH_POLICY = {
+        "params": [
+            {"key": "key", "from": "api_key", "when": "api_key", "mode": "overwrite"}
+        ]
+    }
 
     def __init__(
         self,
@@ -1994,13 +2000,6 @@ class CensusAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.25)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        # Never send an empty key (the API answers keyless-shaped errors).
-        if self.api_key:
-            p["key"] = self.api_key
-        return url, p, dict(headers or {})
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -2058,6 +2057,18 @@ class CourtListenerAdapter(ResourceAdapter):
     domain = "legal"
     requires_key = False
     BASE = "https://www.courtlistener.com/api/rest/v4"
+    AUTH_UA = _UA
+    AUTH_POLICY = {
+        "headers": [
+            {"key": "User-Agent", "template": "{ua}"},
+            {
+                "key": "Authorization",
+                "template": "Token {api_key}",
+                "when": "api_key",
+                "mode": "overwrite",
+            },
+        ]
+    }
 
     def __init__(
         self,
@@ -2073,13 +2084,6 @@ class CourtListenerAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.1, jitter=0.02)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        h.setdefault("User-Agent", _UA)
-        if self.api_key:
-            h["Authorization"] = f"Token {self.api_key}"
-        return url, dict(params or {}), h
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -2252,9 +2256,6 @@ class FederalRegisterAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=0.25, jitter=0.05)
         )
 
-    def inject_auth(self, url, params=None, headers=None):
-        return url, dict(params or {}), dict(headers or {})
-
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
         url, params, headers = self.inject_auth(
@@ -2410,6 +2411,16 @@ class ChemRxivAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = True
     BASE = "https://chemrxiv.org/engage/api-gateway/chemrxiv/assets/orp/item"
+    AUTH_POLICY = {
+        "headers": [
+            {
+                "key": "Authorization",
+                "template": "Bearer {api_key}",
+                "when": "api_key",
+                "mode": "overwrite",
+            }
+        ]
+    }
 
     def __init__(
         self,
@@ -2424,12 +2435,6 @@ class ChemRxivAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.1)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        if self.api_key:
-            h["Authorization"] = f"Bearer {self.api_key}"
-        return url, dict(params or {}), h
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
@@ -2483,6 +2488,11 @@ class AlphaVantageAdapter(ResourceAdapter):
     domain = "financial"
     requires_key = True
     BASE = "https://www.alphavantage.co"
+    AUTH_POLICY = {
+        "params": [
+            {"key": "apikey", "from": "api_key", "mode": "overwrite"}
+        ]
+    }
 
     def __init__(
         self,
@@ -2497,11 +2507,6 @@ class AlphaVantageAdapter(ResourceAdapter):
         self._init_rate_limit(
             delay if delay is not None else RateLimit(search_interval=2.0, jitter=1.0)
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        p = dict(params or {})
-        p["apikey"] = self.api_key
-        return url, p, dict(headers or {})
 
     def _search_impl(self, query, max_results=5):
         self._enforce_delay()
