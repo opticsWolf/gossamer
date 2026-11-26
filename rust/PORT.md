@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### XML/RSS feed extraction kernel (done 2026-11-25)
+
+- Added `gossamer::document::xml_feed_text`, rendering RSS/Atom/RDF entries via
+  the pure-core `xmlatom` parser and returning `None` when the document has no
+  entries so callers fall back to raw text.
+- `gossamer extract` now uses it for local and remote `.xml`/`.rss`/`.atom`
+  sources. Verified exactly against the Python oracle on an RSS fixture;
+  core unit tests 2/2, app replay 57/57, full pytest 11468 passed / 36 skipped.
+
 ### CLI `extract` unsupported URL formats (done 2026-11-25)
 
 - Remote extraction now rejects URL suffixes the Python extractor does not

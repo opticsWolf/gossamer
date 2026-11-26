@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
+use gossamer::document::xml_feed_text;
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
@@ -58,6 +59,12 @@ fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
     if ext == "json" {
         let value: Value = serde_json::from_slice(bytes).ok()?;
         return serde_json::to_string_pretty(&value).ok();
+    }
+    if matches!(ext.as_str(), "xml" | "rss" | "atom") {
+        let text = std::str::from_utf8(bytes)
+            .ok()?
+            .trim_start_matches('\u{feff}');
+        return Some(xml_feed_text(text).unwrap_or_else(|| text.to_string()));
     }
     None
 }
@@ -182,13 +189,18 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
             println!("{}", py_dumps(&payload));
             return ExitCode::SUCCESS;
         }
+        let raw = String::from_utf8_lossy(&bytes)
+            .trim_start_matches('\u{feff}')
+            .to_string();
         let content = if url_suffix == "json" {
             serde_json::from_slice::<Value>(&bytes)
                 .ok()
                 .and_then(|value| serde_json::to_string_pretty(&value).ok())
-                .unwrap_or_else(|| String::from_utf8_lossy(&bytes).into_owned())
+                .unwrap_or(raw)
+        } else if matches!(url_suffix.as_str(), "xml" | "rss" | "atom") {
+            xml_feed_text(&raw).unwrap_or(raw)
         } else {
-            String::from_utf8_lossy(&bytes).into_owned()
+            raw
         };
         (
             source.clone(),
