@@ -267,6 +267,8 @@ ProviderFailure {
   `research_merge::merge_scholarly_records`; app replay expanded to 59/59.
 - `service::search::{failover_results, merged_results}` are gated 25/25 and
   wired as lazy Python seams; provider calls and logging stay caller-side.
+- `stats::fetch_stats_record` is gated 7/7 and owns fetch-stat counters,
+  bounded latency window, and FIFO key eviction; Python keeps locking/state.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.

@@ -72,10 +72,101 @@ pub fn fetch_stats_dict(
     })
 }
 
+fn bump_key(bucket: &mut Map<String, Value>, key: &str, max_keys: usize) {
+    if !bucket.contains_key(key)
+        && bucket.len() >= max_keys
+        && let Some(first) = bucket.keys().next().cloned()
+    {
+        bucket.remove(&first);
+    }
+    let count = bucket
+        .get(key)
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .saturating_add(1);
+    bucket.insert(key.to_string(), json!(count));
+}
+
+fn state_i64(state: &Value, key: &str) -> i64 {
+    state.get(key).and_then(Value::as_i64).unwrap_or(0)
+}
+
+/// Apply one successful or failed fetch to a serializable stats snapshot.
+///
+/// Python keeps the lock and mutable instance; Rust owns counter, bounded
+/// latency-window, and FIFO key-eviction decisions.
+pub fn fetch_stats_record(
+    state: &Value,
+    domain: &str,
+    latency: f64,
+    nbytes: Option<i64>,
+    error_class: Option<&str>,
+    latency_window: usize,
+    max_keys: usize,
+) -> Value {
+    let mut latencies: Vec<f64> = state
+        .get("latencies")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_f64)
+        .collect();
+    latencies.push(latency);
+    let window = latency_window.max(1);
+    while latencies.len() > window {
+        latencies.remove(0);
+    }
+    let mut by_domain = state
+        .get("by_domain")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut by_error = state
+        .get("by_error")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    bump_key(&mut by_domain, domain, max_keys.max(1));
+    let errors = state_i64(state, "errors") + i64::from(error_class.is_some());
+    let bytes = state_i64(state, "bytes") + nbytes.unwrap_or(0);
+    if let Some(class) = error_class {
+        bump_key(&mut by_error, class, max_keys.max(1));
+    }
+    json!({
+        "latencies": latencies,
+        "bytes": bytes,
+        "fetches": state_i64(state, "fetches") + 1,
+        "errors": errors,
+        "by_domain": by_domain,
+        "by_error": by_error,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn stats_record_bounds_and_evicts() {
+        let state = json!({
+            "latencies": [0.1, 0.2],
+            "bytes": 5,
+            "fetches": 2,
+            "errors": 0,
+            "by_domain": {"a.test": 2, "b.test": 1},
+            "by_error": {}
+        });
+        let out = fetch_stats_record(&state, "c.test", 0.3, Some(10), Some("ValueError"), 2, 2);
+        assert_eq!(out["latencies"].as_array().map_or(0, Vec::len), 2);
+        assert_eq!(out["bytes"], json!(15));
+        assert_eq!(out["fetches"], json!(3));
+        assert_eq!(out["errors"], json!(1));
+        assert!(!out["by_domain"].get("a.test").is_some());
+        assert_eq!(out["by_domain"]["b.test"], json!(1));
+        assert_eq!(out["by_domain"]["c.test"], json!(1));
+        assert_eq!(out["by_error"]["ValueError"], json!(1));
+    }
+
     #[test]
     fn stats_shape_and_rounding() {
         let out = fetch_stats_dict(

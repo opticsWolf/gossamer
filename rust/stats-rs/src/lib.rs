@@ -80,9 +80,56 @@ fn service_fetch_stats_dict(
     .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_fetch_stats_record_inner(
+    state: Bound<'_, PyAny>,
+    domain: String,
+    latency: f64,
+    nbytes: Option<i64>,
+    error_class: Option<String>,
+    latency_window: usize,
+    max_keys: usize,
+) -> Result<Value, String> {
+    let state: Value = crate::pyconv::FromPy::from_py(&state)?;
+    port::service_fetch_stats_record(
+        state,
+        domain,
+        latency,
+        nbytes,
+        error_class,
+        latency_window,
+        max_keys,
+    )
+}
+
+/// `_service_fetch_stats_record`.
+#[pyfunction]
+#[pyo3(name = "_service_fetch_stats_record", signature = (state, domain, latency, nbytes, error_class, latency_window, max_keys))]
+fn service_fetch_stats_record(
+    py: Python<'_>,
+    state: Bound<'_, PyAny>,
+    domain: String,
+    latency: f64,
+    nbytes: Option<i64>,
+    error_class: Option<String>,
+    latency_window: usize,
+    max_keys: usize,
+) -> PyResult<Py<PyAny>> {
+    service_fetch_stats_record_inner(
+        state,
+        domain,
+        latency,
+        nbytes,
+        error_class,
+        latency_window,
+        max_keys,
+    )
+    .map_err(error)
+    .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_fetch_stats_dict, m)?)?;
+    m.add_function(wrap_pyfunction!(service_fetch_stats_record, m)?)?;
     Ok(())
 }

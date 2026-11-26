@@ -1,2 +1,3 @@
-{"fn": "_service_fetch_stats_dict", "args": [3, 1, 30, [0.00125, 0.00225, 0.00325], {"b.test": 1, "a.test": 2}, {"ValueError": 1}]}
-{"fn": "_service_fetch_stats_dict", "args": [0, 0, 0, [], {}, {}]}
+{"fn": "_service_fetch_stats_record", "args": [{"latencies": [0.1, 0.2], "bytes": 5, "fetches": 2, "errors": 0, "by_domain": {"a.test": 2, "b.test": 1}, "by_error": {}}, "c.test", 0.3, 10, null, 2, 2]}
+{"fn": "_service_fetch_stats_record", "args": [{"latencies": [], "bytes": 0, "fetches": 0, "errors": 0, "by_domain": {}, "by_error": {}}, "example.com", 0.05, null, "ValueError", 4, 2]}
+{"fn": "_service_fetch_stats_record", "args": [{"latencies": [0.1], "bytes": 1, "fetches": 1, "errors": 1, "by_domain": {"a.test": 5}, "by_error": {"RuntimeError": 1}}, "a.test", 0.2, 4, "RuntimeError", 2, 2]}

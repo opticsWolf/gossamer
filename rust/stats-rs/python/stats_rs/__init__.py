@@ -88,5 +88,6 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_fetch_stats_dict = _native._service_fetch_stats_dict
+_service_fetch_stats_record = _native._service_fetch_stats_record
 
-__all__ = ['_service_fetch_stats_dict']
+__all__ = ['_service_fetch_stats_dict', '_service_fetch_stats_record']

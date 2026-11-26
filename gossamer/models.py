@@ -51,20 +51,51 @@ class FetchStats:
             del bucket[next(iter(bucket))]
         bucket[key] = bucket.get(key, 0) + 1
 
+    def _snapshot(self) -> dict:
+        return {
+            "latencies": list(self._latencies),
+            "bytes": self._bytes,
+            "fetches": self._fetches,
+            "errors": self._errors,
+            "by_domain": dict(self._by_domain),
+            "by_error": dict(self._by_error),
+        }
+
+    def _apply(self, state: dict) -> None:
+        self._latencies = deque(state["latencies"], maxlen=self._latencies.maxlen)
+        self._bytes = state["bytes"]
+        self._fetches = state["fetches"]
+        self._errors = state["errors"]
+        self._by_domain = state["by_domain"]
+        self._by_error = state["by_error"]
+
     def record_success(self, domain: str, latency_s: float, nbytes: int) -> None:
         with self._lock:
-            self._latencies.append(latency_s)
-            self._bytes += max(0, int(nbytes))
-            self._fetches += 1
-            self._bump(self._by_domain, domain)
+            self._apply(
+                _service_fetch_stats_record(
+                    self._snapshot(),
+                    domain,
+                    latency_s,
+                    max(0, int(nbytes)),
+                    None,
+                    self._latencies.maxlen or 1,
+                    self.MAX_KEYS,
+                )
+            )
 
     def record_error(self, domain: str, latency_s: float, exc: BaseException) -> None:
         with self._lock:
-            self._latencies.append(latency_s)
-            self._fetches += 1
-            self._errors += 1
-            self._bump(self._by_domain, domain)
-            self._bump(self._by_error, type(exc).__name__)
+            self._apply(
+                _service_fetch_stats_record(
+                    self._snapshot(),
+                    domain,
+                    latency_s,
+                    None,
+                    type(exc).__name__,
+                    self._latencies.maxlen or 1,
+                    self.MAX_KEYS,
+                )
+            )
 
     @staticmethod
     def _percentile(sorted_vals, p: float) -> float:
@@ -418,6 +449,39 @@ del _rust_anything_documents_rs
 # <<< rust-anything: documents-rs
 
 
+def _service_fetch_stats_record(
+    state, domain, latency, nbytes, error_class, latency_window, max_keys
+):
+    """Apply one fetch observation to a serializable stats snapshot."""
+    latencies = list(state.get("latencies", []))
+    latencies.append(latency)
+    window = max(1, latency_window)
+    while len(latencies) > window:
+        latencies.pop(0)
+
+    def bump(bucket, key):
+        bucket = dict(bucket)
+        if key not in bucket and len(bucket) >= max(1, max_keys):
+            first = next(iter(bucket), None)
+            if first is not None:
+                del bucket[first]
+        bucket[key] = bucket.get(key, 0) + 1
+        return bucket
+
+    return {
+        "latencies": latencies,
+        "bytes": state.get("bytes", 0) + (nbytes or 0),
+        "fetches": state.get("fetches", 0) + 1,
+        "errors": state.get("errors", 0) + (1 if error_class is not None else 0),
+        "by_domain": bump(state.get("by_domain", {}), domain),
+        "by_error": (
+            bump(state.get("by_error", {}), error_class)
+            if error_class is not None
+            else dict(state.get("by_error", {}))
+        ),
+    }
+
+
 def _service_fetch_stats_dict(
     fetches, errors, bytes_downloaded, latencies, by_domain, by_error
 ):
@@ -453,7 +517,7 @@ def _rust_anything_stats_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_fetch_stats_dict"]})
+    globals().update({name: getattr(native, name) for name in ["_service_fetch_stats_dict", "_service_fetch_stats_record"]})
 
 
 _rust_anything_stats_rs()
