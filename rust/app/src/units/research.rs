@@ -12,6 +12,7 @@ use gossamer::adapters::scholar::{
 use gossamer::categories::classify_query;
 use gossamer::discovery::{fetch_text, fetch_text_with_status, fetch_text_with_user_agent};
 use gossamer::jsonfmt::py_dumps;
+use gossamer::research_merge::merge_scholarly_records;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::taxonomy::CATEGORIES_JSON;
 use serde_json::{Value, json};
@@ -34,6 +35,248 @@ fn unsupported() -> ExitCode {
     ExitCode::from(1)
 }
 
+fn attach_raw(records: &mut [Value], items: Option<&Vec<Value>>) {
+    if let Some(items) = items {
+        for (record, item) in records.iter_mut().zip(items.iter()) {
+            if let Some(object) = record.as_object_mut() {
+                object.insert("raw".to_string(), Value::String(py_dumps(item)));
+            }
+        }
+    }
+}
+
+fn fetch_provider_records(
+    provider: &str,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<Value>, String> {
+    let limit = max_results.to_string();
+    match provider {
+        "crossref" => {
+            let url =
+                url::Url::parse_with_params("https://api.crossref.org/works", &[("query", query)])
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|_| format!("https://api.crossref.org/works?query={query}"));
+            let (body, _) = fetch_text(&url, 20.0)
+                .map_err(|error| format!("crossref search failed: {error}"))?;
+            let mut records = crossref_parse_search_impl(&body, max_results as i64, None)
+                .map_err(|error| error.to_string())?;
+            if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+                let items = parsed
+                    .get("message")
+                    .and_then(|value| value.get("items"))
+                    .and_then(Value::as_array);
+                attach_raw(&mut records, items);
+            }
+            Ok(records)
+        }
+        "openalex" => {
+            let per_page = max_results.min(100).to_string();
+            let url = url::Url::parse_with_params(
+                "https://api.openalex.org/works",
+                &[("search", query), ("per_page", per_page.as_str())],
+            )
+            .map(|value| value.to_string())
+            .unwrap_or_else(|_| format!("https://api.openalex.org/works?search={query}"));
+            let (body, _) = fetch_text(&url, 15.0)
+                .map_err(|error| format!("openalex search failed: {error}"))?;
+            let mut records = openalex_parse_search_impl(&body, max_results as i64, None)
+                .map_err(|error| error.to_string())?;
+            if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+                attach_raw(
+                    &mut records,
+                    parsed.get("results").and_then(Value::as_array),
+                );
+            }
+            Ok(records)
+        }
+        "zenodo" => {
+            let size = max_results.min(100).to_string();
+            let url = url::Url::parse_with_params(
+                "https://zenodo.org/api/records",
+                &[("q", query), ("size", size.as_str()), ("page", "1")],
+            )
+            .map(|value| value.to_string())
+            .unwrap_or_else(|_| format!("https://zenodo.org/api/records?q={query}"));
+            let user_agent = format!("{}?email=", gossamer::USER_AGENT);
+            let (body, _) = fetch_text_with_user_agent(&url, 20.0, &user_agent)
+                .map_err(|error| format!("zenodo search failed: {error}"))?;
+            let mut records = zenodo_parse_search_impl(&body, max_results as i64, None)
+                .map_err(|error| error.to_string())?;
+            if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+                let items = parsed
+                    .get("hits")
+                    .and_then(|value| value.get("hits"))
+                    .and_then(Value::as_array);
+                attach_raw(&mut records, items);
+            }
+            Ok(records)
+        }
+        "huggingface" | "huggingface-papers" => {
+            let total_limit = max_results.min(1000).to_string();
+            let (path, params): (&str, Vec<(&str, &str)>) = if provider == "huggingface" {
+                (
+                    "/models",
+                    vec![
+                        ("search", query),
+                        ("sort", "downloads"),
+                        ("direction", "-1"),
+                        ("limit", total_limit.as_str()),
+                    ],
+                )
+            } else {
+                (
+                    "/papers/search",
+                    vec![("q", query), ("limit", total_limit.as_str())],
+                )
+            };
+            let url =
+                url::Url::parse_with_params(&format!("https://huggingface.co/api{path}"), params)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|_| format!("https://huggingface.co/api{path}?q={query}"));
+            let (body, _) = fetch_text(&url, 30.0)
+                .map_err(|error| format!("huggingface search failed: {error}"))?;
+            let items = serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|value| value.as_array().cloned());
+            let mut records = if provider == "huggingface" {
+                huggingface_parse_search_impl(&body, max_results as i64, None)
+            } else {
+                huggingface_papers_parse_search_impl(&body, max_results as i64, None)
+            }
+            .map_err(|error| error.to_string())?;
+            attach_raw(&mut records, items.as_ref());
+            Ok(records)
+        }
+        "arxiv" => {
+            let url = url::Url::parse_with_params(
+                "https://export.arxiv.org/api/query",
+                &[
+                    ("search_query", query),
+                    ("start", "0"),
+                    ("max_results", limit.as_str()),
+                ],
+            )
+            .map(|value| value.to_string())
+            .unwrap_or_else(|_| format!("https://export.arxiv.org/api/query?search_query={query}"));
+            let user_agent = format!(
+                "{} (+https://github.com/opticsWolf/gossamer)",
+                gossamer::USER_AGENT
+            );
+            let (body, _) = fetch_text_with_user_agent(&url, 20.0, &user_agent)
+                .map_err(|error| format!("arxiv search failed: {error}"))?;
+            let mut records = arxiv_parse_search_impl(&body, max_results as i64)
+                .map_err(|error| error.to_string())?;
+            for (index, record) in records.iter_mut().enumerate() {
+                if let (Some(object), Some(raw)) =
+                    (record.as_object_mut(), arxiv_entry_raw(&body, index))
+                {
+                    object.insert("raw".to_string(), Value::String(raw));
+                }
+            }
+            Ok(records)
+        }
+        "semanticscholar" => {
+            let fields = "paperId,title,abstract,year,publicationDate,authors,citationCount,referenceCount,venue,externalIds,url,openAccessPdf,fieldsOfStudy,publicationTypes";
+            let url = url::Url::parse_with_params(
+                "https://api.semanticscholar.org/graph/v1/paper/search",
+                &[
+                    ("query", query),
+                    ("fields", fields),
+                    ("offset", "0"),
+                    ("limit", limit.as_str()),
+                ],
+            )
+            .map(|value| value.to_string())
+            .unwrap_or_else(|_| {
+                format!("https://api.semanticscholar.org/graph/v1/paper/search?query={query}")
+            });
+            let (body, _, status) = fetch_text_with_status(&url, 30.0)
+                .map_err(|error| format!("semanticscholar search failed: {error}"))?;
+            if status == 429 {
+                return Err("Semantic Scholar returned HTTP 429 for a keyless request; unauthenticated traffic shares a rate-limit pool. Set GOSSAMER_SEMANTICSCHOLAR_API_KEY for an individual one-request-per-second allowance, or wait before retrying.".to_string());
+            }
+            if status >= 400 {
+                return Err(format!("Semantic Scholar returned HTTP {status}"));
+            }
+            let items = serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|value| value.get("data").and_then(Value::as_array).cloned());
+            let mut records = semanticscholar_parse_search_impl(&body, max_results as i64, None)
+                .map_err(|error| error.to_string())?;
+            attach_raw(&mut records, items.as_ref());
+            Ok(records)
+        }
+        other => Err(format!("unknown provider: {other}")),
+    }
+}
+
+fn run_providers(query: &str, requested: &[String], max_results: usize) -> ExitCode {
+    let taxonomy: Value = serde_json::from_str(CATEGORIES_JSON).unwrap_or_else(|_| json!([]));
+    let entry = taxonomy
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|entry| entry.get("category").and_then(Value::as_str) == Some("scholarly"))
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let available = entry.get("providers").cloned().unwrap_or_else(|| json!([]));
+    let known: Vec<String> = available
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    let unknown: Vec<String> = requested
+        .iter()
+        .filter(|name| !known.contains(name))
+        .cloned()
+        .collect();
+    if !unknown.is_empty() {
+        let payload = json!({
+            "query": query,
+            "results": [],
+            "providers": requested,
+            "error": format!("unknown provider(s): {}", unknown.join(", ")),
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+        );
+        return ExitCode::SUCCESS;
+    }
+    let mut pairs = Vec::new();
+    let mut errors = Vec::new();
+    for name in requested {
+        match fetch_provider_records(name, query, max_results) {
+            Ok(records) => pairs.push(json!([name, records])),
+            Err(message) => errors.push(json!({"provider": name, "message": message})),
+        }
+    }
+    let merged = merge_scholarly_records(&Value::Array(pairs));
+    let mut payload = json!({
+        "query": query,
+        "category": "scholarly",
+        "provider": Value::Null,
+        "providers": requested,
+        "available_providers": available,
+        "provider_kind": entry.get("provider_kind").cloned().unwrap_or(Value::Null),
+        "description": entry.get("description").cloned().unwrap_or(Value::Null),
+        "results": merged,
+    });
+    if !errors.is_empty()
+        && let Some(object) = payload.as_object_mut()
+    {
+        object.insert("provider_errors".to_string(), Value::Array(errors));
+    }
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+    );
+    ExitCode::SUCCESS
+}
+
 pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     if let Some(code) = super::cli::maybe_run(command, matches) {
         return code;
@@ -52,11 +295,27 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut query: Option<String> = None;
     let mut category: Option<String> = None;
     let mut provider: Option<String> = None;
+    let mut providers: Vec<String> = Vec::new();
     let mut max_results = 5usize;
     let mut index = 0usize;
     while index < args.len() {
         let value = args[index].to_string_lossy().into_owned();
         if value.starts_with('-') {
+            if value == "--providers" {
+                index += 1;
+                while index < args.len() {
+                    let item = args[index].to_string_lossy().into_owned();
+                    if item.starts_with('-') {
+                        break;
+                    }
+                    providers.push(item);
+                    index += 1;
+                }
+                if providers.is_empty() {
+                    return unsupported();
+                }
+                continue;
+            }
             if !KNOWN_FLAGS.contains(&value.as_str()) || index + 1 >= args.len() {
                 return unsupported();
             }
@@ -86,6 +345,21 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         Ok(value) => value,
         Err(_) => return unsupported(),
     };
+    if provider.is_some() && !providers.is_empty() {
+        let payload = json!({
+            "query": query,
+            "results": [],
+            "error": "use either provider= or providers=, not both",
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+        );
+        return ExitCode::SUCCESS;
+    }
+    if !providers.is_empty() {
+        return run_providers(&query, &providers, max_results);
+    }
     if query.trim().is_empty() {
         println!(
             "{}",

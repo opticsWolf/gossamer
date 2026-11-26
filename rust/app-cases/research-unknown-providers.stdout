@@ -1,0 +1,8 @@
+{
+  "query": "x",
+  "results": [],
+  "providers": [
+    "nope"
+  ],
+  "error": "unknown provider(s): nope"
+}

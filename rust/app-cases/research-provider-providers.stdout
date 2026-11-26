@@ -1,0 +1,5 @@
+{
+  "query": "x",
+  "results": [],
+  "error": "use either provider= or providers=, not both"
+}
