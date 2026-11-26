@@ -279,6 +279,8 @@ ProviderFailure {
   legacy Office formats; replay fixture `extract-local-docx` brings app to 62/62.
 - `document::office_structured_payload` now backs `extract --structured` for
   local Office files; replay fixture `extract-structured-docx` brings app to 63/63.
+- `download --try-mirrors` now runs the Rust candidate loop with replay case
+  `download-mirrors-blocked`; app replay is 64/64.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.

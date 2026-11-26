@@ -150,7 +150,10 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   `document::office_markdown` (`office_oxide`) with a DOCX replay fixture.
 - `extract --structured` now emits the full document payload for local Office
   files, including IR metadata/tables, with a DOCX replay fixture.
-- Full pytest 11484 passed / 36 skipped; app replay 63/63.
+- CLI `download --try-mirrors` now runs a Rust candidate loop using
+  `candidate_list` / `finalize_candidates` with per-URL SSRF checks; resume
+  remains the next download slice.
+- Full pytest 11484 passed / 36 skipped; app replay 64/64.
 
 ### Download size-cap error parity (done 2026-11-25)
 
@@ -711,7 +714,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Current state
 
-- `dev_rustify` after U3: pure Rust front door lifted, replay 63/63, fallback 0, no fallback path.
+- `dev_rustify` after U5: pure Rust front door lifted, replay 64/64, fallback 0, no fallback path.
 - Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
   deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
@@ -725,7 +728,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
   full download filesystem side effects, MCP transport, remaining live tool bodies, the full
   crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
-- Verification: 63 replay cases; Python suite is the behavioral oracle at 11,484 passing tests.
+- Verification: 64 replay cases; Python suite is the behavioral oracle at 11,484 passing tests.
 
 ## Open questions
 

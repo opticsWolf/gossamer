@@ -1,0 +1,30 @@
+{
+  "source": "http://127.0.0.1",
+  "status": "error",
+  "error": {
+    "code": "all_sources_failed",
+    "message": "All caller-supplied download candidates failed.",
+    "attempted_urls": [
+      "http://127.0.0.1",
+      "http://10.0.0.1"
+    ],
+    "attempts": [
+      {
+        "url": "http://127.0.0.1",
+        "status": "error",
+        "error": {
+          "code": "url_rejected",
+          "message": "Host '127.0.0.1' (127.0.0.1) is not a public address"
+        }
+      },
+      {
+        "url": "http://10.0.0.1",
+        "status": "error",
+        "error": {
+          "code": "url_rejected",
+          "message": "Host '10.0.0.1' (10.0.0.1) is not a public address"
+        }
+      }
+    ]
+  }
+}
