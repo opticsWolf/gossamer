@@ -67,11 +67,37 @@ pub fn find_feed_links(html: &str, base_url: &str) -> Vec<Value> {
 
 /// Fetch a text payload for resource discovery, returning the final URL.
 pub fn fetch_text(url: &str, timeout_seconds: f64) -> Result<(String, String), String> {
+    fetch_text_inner(url, timeout_seconds, None)
+}
+
+/// Fetch text with an explicit `User-Agent` for APIs that reject generic
+/// clients. The caller owns the user-agent value so provider identity rules
+/// stay outside the shared discovery helper.
+pub fn fetch_text_with_user_agent(
+    url: &str,
+    timeout_seconds: f64,
+    user_agent: &str,
+) -> Result<(String, String), String> {
+    fetch_text_inner(url, timeout_seconds, Some(user_agent))
+}
+
+fn fetch_text_inner(
+    url: &str,
+    timeout_seconds: f64,
+    user_agent: Option<&str>,
+) -> Result<(String, String), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| format!("RuntimeError: {error}"))?;
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(user_agent) = user_agent {
+        let value = reqwest::header::HeaderValue::from_str(user_agent)
+            .map_err(|error| format!("ValueError: invalid User-Agent: {error}"))?;
+        headers.insert(reqwest::header::USER_AGENT, value);
+    }
     let client = reqwest::Client::builder()
+        .default_headers(headers)
         .redirect(reqwest::redirect::Policy::limited(10))
         .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
         .build()

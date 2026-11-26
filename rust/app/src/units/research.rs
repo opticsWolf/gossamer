@@ -4,9 +4,11 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
-use gossamer::adapters::scholar::{crossref_parse_search_impl, openalex_parse_search_impl};
+use gossamer::adapters::scholar::{
+    crossref_parse_search_impl, openalex_parse_search_impl, zenodo_parse_search_impl,
+};
 use gossamer::categories::classify_query;
-use gossamer::discovery::fetch_text;
+use gossamer::discovery::{fetch_text, fetch_text_with_user_agent};
 use gossamer::jsonfmt::py_dumps;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::taxonomy::CATEGORIES_JSON;
@@ -245,6 +247,48 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("OpenAlex search failed: {error}");
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
+    } else if selected == "zenodo" {
+        let size = max_results.min(100).to_string();
+        let url = url::Url::parse_with_params(
+            "https://zenodo.org/api/records",
+            &[
+                ("q", query.as_str()),
+                ("size", size.as_str()),
+                ("page", "1"),
+            ],
+        )
+        .map(|value| value.to_string())
+        .unwrap_or_else(|_| format!("https://zenodo.org/api/records?q={query}"));
+        let user_agent = format!("{}?email=", gossamer::USER_AGENT);
+        match fetch_text_with_user_agent(&url, 20.0, &user_agent) {
+            Ok((body, _)) => {
+                let mut records =
+                    zenodo_parse_search_impl(&body, max_results as i64, None).unwrap_or_default();
+                if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+                    let items = parsed
+                        .get("hits")
+                        .and_then(|value| value.get("hits"))
+                        .and_then(Value::as_array);
+                    if let Some(items) = items {
+                        for (record, item) in records.iter_mut().zip(items.iter()) {
+                            if let Some(object) = record.as_object_mut() {
+                                object.insert("raw".to_string(), Value::String(py_dumps(item)));
+                            }
+                        }
+                    }
+                }
+                records
+            }
+            Err(error) => {
+                eprintln!("Zenodo search failed: {error}");
                 let payload = json!({"error": format!("All search providers failed for: {query}")});
                 println!(
                     "{}",

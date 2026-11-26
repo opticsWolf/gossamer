@@ -16,6 +16,9 @@ pub mod compat;
 pub mod config;
 pub mod dedupe;
 pub mod discovery;
+
+/// User-agent product token shared by live provider calls.
+pub const USER_AGENT: &str = concat!("gossamer/", env!("CARGO_PKG_VERSION"));
 pub mod document;
 pub mod documents;
 pub mod downloader;
