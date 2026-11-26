@@ -312,6 +312,25 @@
       "type_params": [],
       "uses_instanceof": false
     }
+
+    ,{
+      "name": "_service_provider_request_plan",
+      "file": "gossamer/search_providers.py",
+      "line": 1015,
+      "params": [
+        {"name": "url", "ts_type": "string", "optional": false, "rest": false},
+        {"name": "params", "ts_type": "unknown", "optional": false, "rest": false},
+        {"name": "headers", "ts_type": "unknown", "optional": false, "rest": false},
+        {"name": "policy", "ts_type": "unknown", "optional": false, "rest": false},
+        {"name": "context", "ts_type": "unknown", "optional": false, "rest": false}
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+
   ],
   "classes": [],
   "js_only": []

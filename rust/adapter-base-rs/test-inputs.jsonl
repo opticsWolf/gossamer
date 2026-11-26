@@ -1,8 +1,5 @@
-{"fn": "_service_provider_call_gate", "args": ["duckduckgo", null, 0, "day", null, "2026-01-01T00:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, 0.5, 0.25]}
-{"fn": "_service_quota_period", "args": ["day", "2026-01-01T00:00:00+00:00"]}
-{"fn": "_service_politeness_wait", "args": [{"$float": "9.0"}, {"$float": "10.0"}, {"$float": "1.0"}, 0.5, 0.25]}
-{"fn": "_service_provider_call_gate", "args": ["google", 3, 9, "day", "2025-12-31", "2026-01-01T00:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}]}
-{"fn": "_service_politeness_wait", "args": [{"$float": "9.0"}, {"$float": "10.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}]}
-{"fn": "_service_provider_call_gate", "args": ["google", 2, 2, "day", "2026-01-01", "2026-01-01T12:00:00+00:00", {"$float": "10.0"}, {"$float": "9.0"}, {"$float": "1.0"}, {"$float": "0.0"}, {"$float": "0.0"}]}
-{"fn": "_service_quota_period", "args": ["day", "2026-01-01T12:00:00+00:00"]}
-{"fn": "_service_quota_message", "args": ["google", 2, 2, "day"]}
+{"fn": "_service_provider_request_plan", "args": ["https://example.test", {"q": "x"}, {"Accept": "application/json"}, {}, {}]}
+{"fn": "_service_provider_request_plan", "args": ["https://api.openalex.org/works", {"filter": "x"}, {"Accept": "application/json"}, {"headers": [{"key": "Contact-Agent", "template": "{ua} (mailto:{email})", "when": "email"}, {"key": "User-Agent", "template": "{ua} (mailto:{email})", "when": "email"}, {"key": "User-Agent", "template": "{ua}"}], "params": [{"key": "mailto", "from": "email", "when": "email"}, {"key": "api_key", "from": "api_key", "when": "api_key"}]}, {"ua": "gossamer/1", "email": "dev@example.test", "api_key": ""}]}
+{"fn": "_service_provider_request_plan", "args": ["https://example.test", {"q": "caller"}, {"User-Agent": "caller"}, {"headers": [{"key": "User-Agent", "value": "rust", "mode": "overwrite"}], "params": [{"key": "q", "value": "default", "mode": "setdefault"}]}, {}]}
+{"fn": "_service_provider_request_plan", "args": ["https://example.test", [], {}, {}, {}]}
+{"fn": "_service_provider_request_plan", "args": ["https://api.openalex.org/works", {"q": "x"}, {"Accept": "application/json"}, {"headers": [{"key": "Contact-Agent", "template": "{ua} (mailto:{email})", "when": "email"}, {"key": "User-Agent", "template": "{ua} (mailto:{email})", "when": "email"}, {"key": "User-Agent", "template": "{ua}"}], "params": [{"key": "mailto", "from": "email", "when": "email"}, {"key": "api_key", "from": "api_key", "when": "api_key"}]}, {"ua": "gossamer/0.11.1", "email": "dev@example.test", "api_key": "", "api_token": ""}]}

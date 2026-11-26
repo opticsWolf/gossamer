@@ -98,6 +98,19 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### U1 provider request-planning kernel (done 2026-11-25)
+
+- Added `gossamer::providers::live::provider_request_plan`, a declarative
+  auth/header/query policy evaluator used by `ResourceAdapter.inject_auth`.
+- `OpenAlexAdapter.inject_auth` now supplies policy data instead of Python
+  mutation logic; other adapters keep their overrides until their own slices.
+- Extended `rust/adapter-base-rs` with `_service_provider_request_plan`; gate
+  **11/11 cases match**, bench 0.08x (correctness kernel; kept despite slow
+  crossing because the caller is not batched yet).
+- Rust-guidelines review: `M-PANIC-IS-STOP` and `M-UNSAFE` satisfied by
+  returning `Result` with canonical `TypeError` messages and no unsafe code.
+- Full pytest 11473 passed / 36 skipped; app replay 57/57.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final
@@ -657,7 +670,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Current state
 
-- `dev_rustify` after `f675136`: pure Rust front door lifted, replay 57/57, fallback 0, no fallback path.
+- `dev_rustify` after U1: pure Rust front door lifted, replay 57/57, fallback 0, no fallback path.
 - Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
   deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
@@ -671,7 +684,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
   full download filesystem side effects, MCP transport, remaining live tool bodies, the full
   crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
-- Verification: 57 replay cases; Python suite is the behavioral oracle at 11,467 passing tests.
+- Verification: 57 replay cases; Python suite is the behavioral oracle at 11,473 passing tests.
 
 ## Open questions
 

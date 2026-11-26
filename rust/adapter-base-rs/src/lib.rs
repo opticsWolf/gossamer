@@ -255,6 +255,32 @@ fn _service_provider_call_gate(
     .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn provider_request_plan_inner(
+    url: String,
+    params: String,
+    headers: String,
+    policy: String,
+    context: String,
+) -> Result<Value, String> {
+    port::service_provider_request_plan(url, params, headers, policy, context)
+}
+
+/// `_service_provider_request_plan`.
+#[pyfunction]
+#[pyo3(name = "_service_provider_request_plan", signature = (url, params, headers, policy, context))]
+fn provider_request_plan(
+    py: Python<'_>,
+    url: String,
+    params: String,
+    headers: String,
+    policy: String,
+    context: String,
+) -> PyResult<Py<PyAny>> {
+    provider_request_plan_inner(url, params, headers, policy, context)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -265,5 +291,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_retry_plan, m)?)?;
     m.add_function(wrap_pyfunction!(service_quota_period, m)?)?;
     m.add_function(wrap_pyfunction!(_service_provider_call_gate, m)?)?;
+    m.add_function(wrap_pyfunction!(provider_request_plan, m)?)?;
     Ok(())
 }

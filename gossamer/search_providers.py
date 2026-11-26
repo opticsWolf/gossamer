@@ -8,6 +8,7 @@ runtime.
 """
 
 import importlib.util
+import json
 import logging
 import random
 import time
@@ -247,6 +248,8 @@ class ResourceAdapter(ABC):
     domain: str = ""
     #: whether a key is required (surface can gate on this)
     requires_key: bool = False
+    #: declarative auth policy consumed by :meth:`inject_auth`
+    AUTH_POLICY: dict = {}
 
     # politeness / quota state — set per instance in _init_rate_limit
     rate_limit: RateLimit
@@ -341,7 +344,16 @@ class ResourceAdapter(ABC):
         it. Missing keys are not raised here — the tool surface gates on
         :attr:`requires_key` before construction.
         """
-        return url, dict(params or {}), dict(headers or {})
+        context = {
+            "ua": getattr(self, "AUTH_UA", getattr(self, "_UA", "gossamer")),
+            "email": getattr(self, "email", "") or "",
+            "api_key": getattr(self, "api_key", "") or "",
+            "api_token": getattr(self, "api_token", "") or "",
+        }
+        plan = _service_provider_request_plan(
+            url, params or {}, headers or {}, self.AUTH_POLICY, context
+        )
+        return plan["url"], plan["params"], plan["headers"]
 
     def parse_headers(self, status: int, headers: Mapping[str, str]) -> RateState:
         """Read server rate-limit headers into a :class:`RateState`.
@@ -992,6 +1004,56 @@ def _service_provider_call_gate(name, quota, used, window, quota_period, now_iso
         "wait": wait,
         "quota_used_after": after,
     }
+def _service_provider_request_plan(url, params, headers, policy, context):
+    """Apply a declarative auth/header policy to a provider request."""
+    def as_object(value, name):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            if isinstance(value, bool):
+                kind = "bool"
+            elif isinstance(value, (int, float)):
+                kind = "float"
+            elif isinstance(value, str):
+                kind = "str"
+            elif isinstance(value, list):
+                kind = "list"
+            else:
+                kind = "dict"
+            raise TypeError(f"{name} must be an object, got {kind}")
+        return dict(value)
+
+    out_params = as_object(params, "params")
+    out_headers = as_object(headers, "headers")
+    policy = as_object(policy, "policy")
+    context = as_object(context, "context")
+    groups = (
+        (out_headers, policy.get("headers") or []),
+        (out_params, policy.get("params") or []),
+    )
+    for target, rules in groups:
+        for rule in rules:
+            key = rule["key"]
+            when = rule.get("when", "always")
+            if when != "always" and not context.get(when):
+                continue
+            if "from" in rule:
+                raw = context.get(rule["from"])
+                if not raw:
+                    continue
+                value = str(raw)
+            elif "template" in rule:
+                value = rule["template"]
+                for name, raw in context.items():
+                    value = value.replace("{" + name + "}", "" if raw is None else str(raw))
+            else:
+                raw = rule.get("value")
+                value = "" if raw is None else str(raw)
+            if rule.get("mode") == "overwrite" or key not in target:
+                target[key] = value
+    return {"url": url, "params": out_params, "headers": out_headers}
+
+
 # >>> rust-anything: adapter-base-rs is on. `rust-anything disable ../rust/adapter-base-rs` removes this block.
 def _rust_anything_adapter_base_rs():
     import importlib, os, sys
@@ -1008,7 +1070,7 @@ def _rust_anything_adapter_base_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_quota_message", "_service_politeness_wait", "_service_provider_call_gate"]})
+    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_quota_message", "_service_politeness_wait", "_service_provider_call_gate", "_service_provider_request_plan"]})
 
 
 _rust_anything_adapter_base_rs()

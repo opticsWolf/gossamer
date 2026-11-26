@@ -190,6 +190,8 @@ flag that still returns the generic unsupported message is a port gap.
 
 ### U1. Live provider dispatch (`ResourceAdapter.search`)
 
+**Status:** first slice complete 2026-11-25.
+
 **Priority:** highest. **CodeRadar evidence:** 99 dependents; `affected` shows
 provider, browser, HuggingFace, live smoke, and fallback tests.
 
@@ -254,6 +256,12 @@ ProviderFailure {
    least one non-DDG provider has a recorded case.
 7. Follow `coderadar affected` on `ResourceAdapter.search` before each caller
    edit; browser provider tests and provider fallback tests are required gates.
+
+**Completed slice**
+
+- `provider_request_plan` is implemented and gated 11/11; base
+  `ResourceAdapter.inject_auth` and `OpenAlexAdapter` now use it.
+- Bench is 0.08x: this is a correctness kernel, not a speed port.
 
 **Exit criteria**
 

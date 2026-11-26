@@ -95,4 +95,13 @@ _service_retry_plan = _native._service_retry_plan
 _service_quota_period = _native._service_quota_period
 _service_provider_call_gate = _native._service_provider_call_gate
 
-__all__ = ['_service_retryable_status', '_service_retry_wait', '_service_quota_message', '_service_politeness_wait', '_service_retry_plan', '_service_quota_period', '_service_provider_call_gate']
+
+def _service_provider_request_plan(url, params, headers, policy, context):
+    return _wrap(
+        _native._service_provider_request_plan,
+        (1, 2, 3, 4),
+        (),
+        False,
+    )(url, params, headers, policy, context)
+
+__all__ = ['_service_retryable_status', '_service_retry_wait', '_service_quota_message', '_service_politeness_wait', '_service_retry_plan', '_service_quota_period', '_service_provider_call_gate', '_service_provider_request_plan']

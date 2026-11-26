@@ -98,3 +98,21 @@ pub fn service_provider_call_gate(
         jitter_value,
     ))
 }
+
+pub fn service_provider_request_plan(
+    url: String,
+    params: String,
+    headers: String,
+    policy: String,
+    context: String,
+) -> Result<Value, String> {
+    let params = serde_json::from_str(&params)
+        .map_err(|error| format!("ValueError: invalid params JSON: {error}"))?;
+    let headers = serde_json::from_str(&headers)
+        .map_err(|error| format!("ValueError: invalid headers JSON: {error}"))?;
+    let policy = serde_json::from_str(&policy)
+        .map_err(|error| format!("ValueError: invalid policy JSON: {error}"))?;
+    let context = serde_json::from_str(&context)
+        .map_err(|error| format!("ValueError: invalid context JSON: {error}"))?;
+    gossamer::providers::live::provider_request_plan(&url, &params, &headers, &policy, &context)
+}

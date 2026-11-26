@@ -59,6 +59,7 @@ from gossamer.search_providers import (
     RateLimit,
     RateState,
     ResourceAdapter,
+    _service_provider_request_plan,
     retry,
     retry_after_seconds,
 )
@@ -121,6 +122,26 @@ class OpenAlexAdapter(ResourceAdapter):
     domain = "scholarly"
     requires_key = False
     BASE = "https://api.openalex.org"
+    AUTH_UA = _UA
+    AUTH_POLICY = {
+        "headers": [
+            {
+                "key": "Contact-Agent",
+                "template": "{ua} (mailto:{email})",
+                "when": "email",
+            },
+            {
+                "key": "User-Agent",
+                "template": "{ua} (mailto:{email})",
+                "when": "email",
+            },
+            {"key": "User-Agent", "template": "{ua}"},
+        ],
+        "params": [
+            {"key": "mailto", "from": "email", "when": "email"},
+            {"key": "api_key", "from": "api_key", "when": "api_key"},
+        ],
+    }
 
     def __init__(
         self,
@@ -142,21 +163,6 @@ class OpenAlexAdapter(ResourceAdapter):
             delay if delay is not None else RateLimit(search_interval=0.5, jitter=0.25),
             fetch_delay,
         )
-
-    def inject_auth(self, url, params=None, headers=None):
-        h = dict(headers or {})
-        p = dict(params or {})
-        ua = _UA
-        if self.email:
-            # OpenAlex recommends identifying the client with mailto in the
-            # User-Agent; its API also accepts the conventional query param.
-            ua = f"{_UA} (mailto:{self.email})"
-            h.setdefault("Contact-Agent", ua)
-            p.setdefault("mailto", self.email)
-        h.setdefault("User-Agent", ua)
-        if self.api_key:
-            p.setdefault("api_key", self.api_key)
-        return url, p, h
 
     def parse_headers(self, status, headers):
         """Read the documented ``X-RateLimit-*`` headers into a RateState.
