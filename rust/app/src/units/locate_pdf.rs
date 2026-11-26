@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use clap::ArgMatches;
 use gossamer::adapters::scholar::openalex_parse_fetch_impl;
 use gossamer::discovery::fetch_text;
-use gossamer::openaccess::{normalize_doi, oa_candidate};
+use gossamer::openaccess::{normalize_doi, oa_candidate, unpaywall_candidates};
 use serde_json::{Value, json};
 
 const KNOWN_FLAGS: [&str; 5] = [
@@ -24,6 +24,59 @@ fn unsupported() -> ExitCode {
 
 fn pretty(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+}
+
+fn unpaywall_email() -> String {
+    std::env::var("GOSSAMER_UNPAYWALL_EMAIL")
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn unpaywall_sources(email: &str) -> Value {
+    if email.is_empty() {
+        json!(["openalex"])
+    } else {
+        json!(["openalex", "unpaywall"])
+    }
+}
+
+fn unpaywall_fallback(doi: &str, email: &str) -> (Vec<Value>, Value, Option<Value>) {
+    if email.is_empty() {
+        return (Vec::new(), json!({}), None);
+    }
+    let base = url::Url::parse("https://api.unpaywall.org/v2/")
+        .expect("fixed Unpaywall base URL must parse");
+    let mut url = base.clone();
+    url.path_segments_mut()
+        .expect("fixed Unpaywall base URL has path segments")
+        .push(doi);
+    url.query_pairs_mut().append_pair("email", email);
+    let body = match fetch_text(url.as_str(), 20.0) {
+        Ok((body, _)) => body,
+        Err(error) => {
+            return (
+                Vec::new(),
+                json!({}),
+                Some(json!({
+                    "code": "provider_error",
+                    "message": error.strip_prefix("ValueError: ").unwrap_or(&error),
+                })),
+            );
+        }
+    };
+    let payload: Value = match serde_json::from_str(&body) {
+        Ok(value) => value,
+        Err(error) => {
+            return (
+                Vec::new(),
+                json!({}),
+                Some(json!({"code": "provider_error", "message": error.to_string()})),
+            );
+        }
+    };
+    let (candidates, work) = unpaywall_candidates(&payload);
+    (candidates, work, None)
 }
 
 pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
@@ -88,13 +141,38 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let payload = match fetch_text(&url, 15.0) {
         Ok((body, _)) => body,
         Err(error) => {
+            let email = unpaywall_email();
+            let (fallback, fallback_work, fallback_error) = unpaywall_fallback(&doi, &email);
+            if !fallback.is_empty() {
+                println!(
+                    "{}",
+                    pretty(&json!({
+                        "doi": doi,
+                        "provider": "unpaywall",
+                        "sources": ["openalex", "unpaywall"],
+                        "status": "open_access",
+                        "work": fallback_work,
+                        "candidates": fallback,
+                        "provider_errors": [{"provider": "openalex", "message": error.strip_prefix("ValueError: ").unwrap_or(&error)}],
+                    }))
+                );
+                return ExitCode::SUCCESS;
+            }
+            let mut failure = json!({
+                "code": "provider_error",
+                "message": error.strip_prefix("ValueError: ").unwrap_or(&error),
+            });
+            if let Some(unpaywall) = fallback_error {
+                failure["unpaywall"] = unpaywall;
+            }
             println!(
                 "{}",
                 pretty(&json!({
                     "doi": doi,
                     "provider": "openalex",
+                    "sources": unpaywall_sources(&email),
                     "status": "error",
-                    "error": {"code": "provider_error", "message": error.strip_prefix("ValueError: ").unwrap_or(&error)},
+                    "error": failure,
                     "candidates": [],
                 }))
             );
@@ -124,12 +202,28 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         .cloned()
         .unwrap_or(Value::Null);
     if work.is_null() {
+        let email = unpaywall_email();
+        let (fallback, fallback_work, _) = unpaywall_fallback(&doi, &email);
+        if !fallback.is_empty() {
+            println!(
+                "{}",
+                pretty(&json!({
+                    "doi": doi,
+                    "provider": "unpaywall",
+                    "sources": ["openalex", "unpaywall"],
+                    "status": "open_access",
+                    "work": fallback_work,
+                    "candidates": fallback,
+                }))
+            );
+            return ExitCode::SUCCESS;
+        }
         println!(
             "{}",
             pretty(&json!({
                 "doi": doi,
                 "provider": "openalex",
-                "sources": ["openalex"],
+                "sources": unpaywall_sources(&email),
                 "status": "not_found",
                 "candidates": [],
             }))
@@ -192,6 +286,70 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "is_oa": work_is_oa,
         "oa_status": open_access.get("oa_status").cloned().unwrap_or(Value::Null),
     });
+    if candidates.is_empty() {
+        let email = unpaywall_email();
+        let (fallback, fallback_work, _) = unpaywall_fallback(&doi, &email);
+        if !fallback.is_empty() {
+            let mut seen: Vec<String> = Vec::new();
+            let mut merged = Vec::new();
+            for item in &fallback {
+                let url = item
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                if seen.contains(&url) {
+                    continue;
+                }
+                seen.push(url);
+                merged.push(item.clone());
+            }
+            let title = work_payload
+                .get("title")
+                .filter(|value| !value.is_null())
+                .cloned()
+                .unwrap_or_else(|| fallback_work.get("title").cloned().unwrap_or(Value::Null));
+            let published = work_payload
+                .get("published")
+                .filter(|value| !value.is_null())
+                .cloned()
+                .unwrap_or_else(|| {
+                    fallback_work
+                        .get("published")
+                        .cloned()
+                        .unwrap_or(Value::Null)
+                });
+            let oa_status = work_payload
+                .get("oa_status")
+                .filter(|value| !value.is_null())
+                .cloned()
+                .unwrap_or_else(|| {
+                    fallback_work
+                        .get("oa_status")
+                        .cloned()
+                        .unwrap_or(Value::Null)
+                });
+            println!(
+                "{}",
+                pretty(&json!({
+                    "doi": doi,
+                    "provider": "unpaywall",
+                    "sources": ["openalex", "unpaywall"],
+                    "status": "open_access",
+                    "work": {
+                        "id": work_payload.get("id").cloned().unwrap_or(Value::Null),
+                        "title": title,
+                        "url": work_payload.get("url").cloned().unwrap_or(Value::Null),
+                        "published": published,
+                        "is_oa": true,
+                        "oa_status": oa_status,
+                    },
+                    "candidates": merged,
+                }))
+            );
+            return ExitCode::SUCCESS;
+        }
+    }
     let status = if !candidates.is_empty() {
         "open_access"
     } else if work_is_oa {
@@ -199,10 +357,11 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     } else {
         "closed_access"
     };
+    let email = unpaywall_email();
     let payload = json!({
         "doi": doi,
         "provider": "openalex",
-        "sources": ["openalex"],
+        "sources": unpaywall_sources(&email),
         "status": status,
         "work": work_payload,
         "candidates": candidates,

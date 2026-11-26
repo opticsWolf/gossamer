@@ -141,6 +141,8 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - CLI `inspect --structured` now emits the full `ParsedDocumentPayload`
   envelope from Rust, including HTML tables and Pydantic-compatible metadata
   field order; exact text parity verified against the Python oracle.
+- CLI `locate-pdf` now implements the Unpaywall fallback gated by
+  `GOSSAMER_UNPAYWALL_EMAIL`, including merged candidates and source lists.
 - Full pytest 11484 passed / 36 skipped; app replay 60/60.
 
 ### Download size-cap error parity (done 2026-11-25)

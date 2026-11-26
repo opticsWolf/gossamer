@@ -271,6 +271,8 @@ ProviderFailure {
   bounded latency window, and FIFO key eviction; Python keeps locking/state.
 - `document::structured_html_payload` now backs CLI `inspect --structured`;
   exact text parity verified on `https://example.com`, replay 60/60.
+- CLI `locate-pdf` now follows the full OpenAlex → Unpaywall fallback with
+  env-gated email and exact source/error envelopes; replay remains 60/60.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.
