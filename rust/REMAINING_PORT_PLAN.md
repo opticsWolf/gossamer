@@ -281,6 +281,8 @@ ProviderFailure {
   local Office files; replay fixture `extract-structured-docx` brings app to 63/63.
 - `download --try-mirrors` now runs the Rust candidate loop with replay case
   `download-mirrors-blocked`; app replay is 64/64.
+- `download --resume` now owns Range/If-Range, Content-Range validation,
+  append/restart paths, and resume state; app replay is 65/65.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.

@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["download", "http://127.0.0.1", "-o", "tmp_resume.bin", "--resume"]
+status.code = 0
+fs.sandbox = true

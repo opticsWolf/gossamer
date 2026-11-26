@@ -273,6 +273,76 @@ pub fn download_bytes(
     })
 }
 
+/// Download one ranged response with conditional validators.
+///
+/// Returns `(status, final_url, content_type, headers, body)`. Header names are
+/// lower-cased so callers can compare them without case folding.
+type RangeDownload = (
+    u16,
+    String,
+    Option<String>,
+    std::collections::HashMap<String, String>,
+    Vec<u8>,
+);
+
+pub fn download_range_bytes(
+    url: &str,
+    offset: usize,
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+    timeout_seconds: f64,
+    max_bytes: usize,
+) -> Result<RangeDownload, String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))?;
+    runtime.block_on(async {
+        let mut request = client
+            .get(url)
+            .header(reqwest::header::RANGE, format!("bytes={offset}-"));
+        if let Some(value) = etag.filter(|value| !value.is_empty()) {
+            request = request.header(reqwest::header::IF_RANGE, value);
+        } else if let Some(value) = last_modified.filter(|value| !value.is_empty()) {
+            request = request.header(reqwest::header::IF_RANGE, value);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| format!("HTTPError: {error}"))?;
+        let status = response.status().as_u16();
+        let final_url = response.url().to_string();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let mut headers = std::collections::HashMap::new();
+        for (name, value) in response.headers().iter() {
+            if let Ok(text) = value.to_str() {
+                headers.insert(name.as_str().to_ascii_lowercase(), text.to_string());
+            }
+        }
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| format!("HTTPError: {error}"))?
+            .to_vec();
+        if body.len() > max_bytes {
+            return Err(format!(
+                "too_large\u{0}{status}\u{0}{final_url}\u{0}{}\u{0}{max_bytes}",
+                body.len()
+            ));
+        }
+        Ok((status, final_url, content_type, headers, body))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

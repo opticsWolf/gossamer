@@ -1,0 +1,8 @@
+{
+  "source": "http://127.0.0.1",
+  "status": "error",
+  "error": {
+    "code": "url_rejected",
+    "message": "Host '127.0.0.1' (127.0.0.1) is not a public address"
+  }
+}
