@@ -4,8 +4,10 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
+use gossamer::adapters::scholar::crossref_parse_search_impl;
 use gossamer::categories::classify_query;
 use gossamer::discovery::fetch_text;
+use gossamer::jsonfmt::py_dumps;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::taxonomy::CATEGORIES_JSON;
 use serde_json::{Value, json};
@@ -179,25 +181,63 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    if selected != "duckduckgo" {
-        return unsupported();
-    }
-    let url = duckduckgo_search_url(&query);
-    let results = match fetch_text(&url, 20.0) {
-        Ok((html, _)) => duckduckgo_results(&html, max_results),
-        Err(error) => {
-            eprintln!("DuckDuckGo search failed: {error}");
-            eprintln!(
-                "Provider DuckDuckGoProvider failed for '{}': {error} — trying next",
-                query
-            );
-            let payload = json!({"error": format!("All search providers failed for: {query}")});
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-            );
-            return ExitCode::SUCCESS;
+    let results = if selected == "crossref" {
+        let url = url::Url::parse_with_params(
+            "https://api.crossref.org/works",
+            &[("query", query.as_str())],
+        )
+        .map(|value| value.to_string())
+        .unwrap_or_else(|_| format!("https://api.crossref.org/works?query={query}"));
+        match fetch_text(&url, 20.0) {
+            Ok((body, _)) => {
+                let mut records =
+                    crossref_parse_search_impl(&body, max_results as i64, None).unwrap_or_default();
+                if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+                    let items = parsed
+                        .get("message")
+                        .and_then(|value| value.get("items"))
+                        .and_then(Value::as_array);
+                    if let Some(items) = items {
+                        for (record, item) in records.iter_mut().zip(items.iter().take(max_results))
+                        {
+                            if let Some(object) = record.as_object_mut() {
+                                object.insert("raw".to_string(), Value::String(py_dumps(item)));
+                            }
+                        }
+                    }
+                }
+                records
+            }
+            Err(error) => {
+                eprintln!("Crossref search failed: {error}");
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
         }
+    } else if selected == "duckduckgo" {
+        let url = duckduckgo_search_url(&query);
+        match fetch_text(&url, 20.0) {
+            Ok((html, _)) => duckduckgo_results(&html, max_results),
+            Err(error) => {
+                eprintln!("DuckDuckGo search failed: {error}");
+                eprintln!(
+                    "Provider DuckDuckGoProvider failed for '{}': {error} — trying next",
+                    query
+                );
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
+    } else {
+        return unsupported();
     };
     let payload = json!({
         "query": query,

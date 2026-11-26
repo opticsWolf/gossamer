@@ -263,9 +263,11 @@ ProviderFailure {
   supplies declarative `AUTH_POLICY` data and no Python `inject_auth` mutation
   bodies remain.
 - Bench is 0.08x: this is a correctness kernel, not a speed port.
-- Retry verdicts now flow through Rust as well; gate extended to 27/27 with
+- Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.
+- CLI `research --provider crossref` is the first non-DuckDuckGo live provider
+  dispatched in Rust; manual live parity verified, not replay-pinned.
 
 **Exit criteria**
 
