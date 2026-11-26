@@ -99,11 +99,54 @@ fn service_resolve_order(
     service_resolve_order_inner(provider_name, registered).map_err(error)
 }
 
+fn service_failover_results_inner(
+    provider_results: Bound<'_, PyAny>,
+    max_results: usize,
+) -> Result<Value, String> {
+    let provider_results: Value = crate::pyconv::FromPy::from_py(&provider_results)?;
+    port::service_failover_results(provider_results, max_results)
+}
+
+/// `serviceFailoverResults`.
+#[pyfunction]
+#[pyo3(name = "_service_failover_results", signature = (provider_results, max_results))]
+fn service_failover_results(
+    py: Python<'_>,
+    provider_results: Bound<'_, PyAny>,
+    max_results: usize,
+) -> PyResult<Py<PyAny>> {
+    service_failover_results_inner(provider_results, max_results)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
+
+fn service_merged_results_inner(
+    provider_results: Bound<'_, PyAny>,
+    max_results: usize,
+) -> Result<Value, String> {
+    let provider_results: Value = crate::pyconv::FromPy::from_py(&provider_results)?;
+    port::service_merged_results(provider_results, max_results)
+}
+
+/// `serviceMergedResults`.
+#[pyfunction]
+#[pyo3(name = "_service_merged_results", signature = (provider_results, max_results))]
+fn service_merged_results(
+    py: Python<'_>,
+    provider_results: Bound<'_, PyAny>,
+    max_results: usize,
+) -> PyResult<Py<PyAny>> {
+    service_merged_results_inner(provider_results, max_results)
+        .map_err(error)
+        .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
+}
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_dedup_results, m)?)?;
     m.add_function(wrap_pyfunction!(service_fallback_note, m)?)?;
     m.add_function(wrap_pyfunction!(service_resolve_order, m)?)?;
+    m.add_function(wrap_pyfunction!(service_failover_results, m)?)?;
+    m.add_function(wrap_pyfunction!(service_merged_results, m)?)?;
     Ok(())
 }

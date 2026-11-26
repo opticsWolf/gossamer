@@ -211,20 +211,26 @@ class SearchService:
     def _search_failover(self, providers_to_try, query, max_results):
         """Tier 2.8: default strict-failover search (first success wins).
 
-        Returns ``(results, any_ok)``; results are deduped by URL.
+        Provider calls stay here; dedupe and selection are Rust seams.
+        Returns ``(results, any_ok)``.
         """
+        outcomes = []
         for prov in providers_to_try:
+            name = prov.__class__.__name__
             try:
                 results = prov.search(query, max_results=max_results)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - failover diagnostics
                 logger.warning(
                     "Provider %s failed for '%s': %s — trying next",
-                    prov.__class__.__name__, query, e,
+                    name, query, e,
                 )
+                outcomes.append([name, None])
                 continue
-            deduped = self._dedup_results(results)
-            self._last_search_dropped = len(results) - len(deduped)
-            return deduped, True
+            outcomes.append([name, results])
+            payload = _service_failover_results(outcomes, max_results)
+            if payload["any_ok"]:
+                self._last_search_dropped = payload["dropped_dupes"]
+                return payload["results"], True
         return [], False
 
     def _search_merged(self, providers_to_try, query, max_results):
@@ -234,36 +240,27 @@ class SearchService:
         and deduped by URL; collection stops once *max_results* distinct
         results have accumulated. Returns ``(results, any_ok)``.
         """
-        merged: list = []
-        seen: set = set()
+        outcomes = []
         any_ok = False
-        dropped_dupes = 0
         for prov in providers_to_try:
+            name = prov.__class__.__name__
             try:
                 results = prov.search(query, max_results=max_results)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - merge diagnostics
                 logger.warning(
                     "Provider %s failed for '%s': %s — skipping",
-                    prov.__class__.__name__, query, e,
+                    name, query, e,
                 )
+                outcomes.append([name, None])
                 continue
             any_ok = True
-            for r in results:
-                if not isinstance(r, dict):
-                    continue
-                key = self._result_url_key(r)
-                if key:
-                    if key in seen:
-                        dropped_dupes += 1
-                        continue
-                    seen.add(key)
-                merged.append(r)
-                if len(merged) >= max_results:
-                    break
-            if len(merged) >= max_results:
-                break
-        self._last_search_dropped = dropped_dupes
-        return merged[:max_results], any_ok
+            outcomes.append([name, results])
+            payload = _service_merged_results(outcomes, max_results)
+            if len(payload["results"]) >= max_results:
+                self._last_search_dropped = payload["dropped_dupes"]
+                return payload["results"], True
+        self._last_search_dropped = payload["dropped_dupes"] if any_ok else 0
+        return (payload["results"] if any_ok else []), any_ok
 
     @staticmethod
     def _result_url_key(result: dict) -> str:
@@ -452,6 +449,51 @@ def _service_resolve_order(provider_name, registered):
         return names
     matched = [name for name in names if name == canonical]
     return matched + [name for name in names if name != canonical]
+
+
+def _service_failover_results(provider_results, max_results):
+    """First provider with a result list wins; results are URL-deduped."""
+    for _provider, results in provider_results:
+        if results is None or not isinstance(results, list):
+            continue
+        deduped = _service_dedup_results(results)
+        return {
+            "results": deduped,
+            "any_ok": True,
+            "dropped_dupes": len(results) - len(deduped),
+        }
+    return {"results": [], "any_ok": False, "dropped_dupes": 0}
+
+
+def _service_merged_results(provider_results, max_results):
+    """Merge every successful provider list, capping at *max_results*."""
+    merged = []
+    seen = set()
+    any_ok = False
+    dropped_dupes = 0
+    for _provider, results in provider_results:
+        if results is None or not isinstance(results, list):
+            continue
+        any_ok = True
+        for result in results:
+            if len(merged) >= max_results:
+                break
+            if not isinstance(result, dict):
+                continue
+            key = SearchService._result_url_key(result)
+            if key:
+                if key in seen:
+                    dropped_dupes += 1
+                    continue
+                seen.add(key)
+            merged.append(result)
+        if len(merged) >= max_results:
+            break
+    return {
+        "results": merged[:max_results],
+        "any_ok": any_ok,
+        "dropped_dupes": dropped_dupes,
+    }
 # >>> rust-anything: search-service-rs is on. `rust-anything disable ../rust/search-service-rs` removes this block.
 def _rust_anything_search_service_rs():
     import importlib, os, sys
@@ -468,7 +510,7 @@ def _rust_anything_search_service_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_dedup_results", "_service_fallback_note", "_service_resolve_order"]})
+    globals().update({name: getattr(native, name) for name in ["_service_dedup_results", "_service_fallback_note", "_service_resolve_order", "_service_failover_results", "_service_merged_results"]})
 
 
 _rust_anything_search_service_rs()

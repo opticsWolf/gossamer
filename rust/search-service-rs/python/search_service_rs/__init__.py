@@ -90,5 +90,7 @@ def _method(name, positions, names, json_result):
 _service_dedup_results = _native._service_dedup_results
 _service_fallback_note = _native._service_fallback_note
 _service_resolve_order = _native._service_resolve_order
+_service_failover_results = _native._service_failover_results
+_service_merged_results = _native._service_merged_results
 
-__all__ = ['_service_dedup_results', '_service_fallback_note', '_service_resolve_order']
+__all__ = ['_service_dedup_results', '_service_fallback_note', '_service_resolve_order', '_service_failover_results', '_service_merged_results']

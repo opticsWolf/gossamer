@@ -1,5 +1,13 @@
-{"fn": "_service_dedup_results", "args": [[{"url": "https://WWW.Example.com/a?x=1"}, {"url": "https://example.com/a?x=1"}, {"url": "not a url"}]]}
-{"fn": "_service_fallback_note", "args": ["ddg", ["google", "duckduckgo"]]}
-{"fn": "_service_fallback_note", "args": ["bing", ["google"]]}
-{"fn": "_service_resolve_order", "args": ["ddg", ["google", "duckduckgo"]]}
-{"fn": "_service_resolve_order", "args": [null, ["google", "duckduckgo"]]}
+{"fn": "_service_failover_results", "args": [[], 5]}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", null]], 5]}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", []], ["google", [{"url": "https://example.com/a"}]]], 5]}
+{"fn": "_service_dedup_results", "args": [[]]}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", null], ["google", [{"url": "https://example.com/a"}, {"url": "https://WWW.Example.com/a"}, {"title": "no url"}]]], 5]}
+{"fn": "_service_dedup_results", "args": [[{"url": "https://example.com/a"}, {"url": "https://WWW.Example.com/a"}, {"title": "no url"}]]}
+{"fn": "_service_failover_results", "args": [[["google", [{"url": "not a url"}, {"url": "not a url"}]]], 5]}
+{"fn": "_service_dedup_results", "args": [[{"url": "not a url"}, {"url": "not a url"}]]}
+{"fn": "_service_merged_results", "args": [[], 5]}
+{"fn": "_service_merged_results", "args": [[["duckduckgo", null]], 5]}
+{"fn": "_service_merged_results", "args": [[["google", [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}]], ["bing", [{"url": "https://example.com/a"}, {"url": "https://example.com/c"}]]], 3]}
+{"fn": "_service_merged_results", "args": [[["google", [1, {"url": "https://example.com/a"}, {"no": "url"}]], ["bing", [{"url": "https://example.com/b"}]]], 5]}
+{"fn": "_service_merged_results", "args": [[["google", [{"url": "https://example.com/a"}]], ["bing", [{"url": "https://example.com/a"}]]], 1]}

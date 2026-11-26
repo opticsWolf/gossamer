@@ -132,7 +132,10 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   merges records with `research_merge::merge_scholarly_records`, and preserves
   `provider_errors`. Mutual exclusion with `--provider` and unknown-provider
   envelopes are replay-pinned.
-- Full pytest 11479 passed / 36 skipped; app replay 59/59.
+- SearchService failover/merge selection now delegates to Rust
+  `service::search::{failover_results, merged_results}`; provider calls remain
+  lazy in Python so call counts and "stop at max_results" behavior stay exact.
+- Full pytest 11481 passed / 36 skipped; app replay 59/59.
 
 ### Download size-cap error parity (done 2026-11-25)
 
@@ -707,7 +710,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
   full download filesystem side effects, MCP transport, remaining live tool bodies, the full
   crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
-- Verification: 59 replay cases; Python suite is the behavioral oracle at 11,479 passing tests.
+- Verification: 59 replay cases; Python suite is the behavioral oracle at 11,481 passing tests.
 
 ## Open questions
 

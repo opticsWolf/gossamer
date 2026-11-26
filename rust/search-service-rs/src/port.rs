@@ -21,3 +21,27 @@ pub fn service_resolve_order(
         &registered,
     ))
 }
+
+pub fn service_failover_results(
+    provider_results: Value,
+    max_results: usize,
+) -> Result<Value, String> {
+    let out = k::failover_results(&provider_results, max_results);
+    if let Some(message) = out.get("error").and_then(serde_json::Value::as_str) {
+        Err(message.to_string())
+    } else {
+        Ok(out)
+    }
+}
+
+pub fn service_merged_results(
+    provider_results: Value,
+    max_results: usize,
+) -> Result<Value, String> {
+    let out = k::merged_results(&provider_results, max_results);
+    if let Some(message) = out.get("error").and_then(serde_json::Value::as_str) {
+        Err(message.to_string())
+    } else {
+        Ok(out)
+    }
+}

@@ -1,5 +1,25 @@
-{"fn": "_service_dedup_results", "args": [[{"url": "https://WWW.Example.com/a?x=1"}, {"url": "https://example.com/a?x=1"}, {"url": "not a url"}]], "ok": [{"url": "https://WWW.Example.com/a?x=1"}, {"url": "not a url"}]}
-{"fn": "_service_fallback_note", "args": ["ddg", ["google", "duckduckgo"]], "ok": null}
-{"fn": "_service_fallback_note", "args": ["bing", ["google"]], "ok": {"requested": "bing", "reason": "provider not registered", "used": ["google"]}}
-{"fn": "_service_resolve_order", "args": ["ddg", ["google", "duckduckgo"]], "ok": ["duckduckgo", "google"]}
-{"fn": "_service_resolve_order", "args": [null, ["google", "duckduckgo"]], "ok": ["google", "duckduckgo"]}
+{"fn": "_service_failover_results", "args": [[], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", null]], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", []], ["google", [{"url": "https://example.com/a"}]]], 5], "ok": {"results": [], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", null], ["google", [{"url": "https://example.com/a"}, {"url": "https://WWW.Example.com/a"}, {"title": "no url"}]]], 5], "ok": {"results": [{"url": "https://example.com/a"}, {"title": "no url"}], "any_ok": true, "dropped_dupes": 1}}
+{"fn": "_service_failover_results", "args": [[["google", [{"url": "not a url"}, {"url": "not a url"}]]], 5], "ok": {"results": [{"url": "not a url"}, {"url": "not a url"}], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[["duckduckgo", null]], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[["google", [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}]], ["bing", [{"url": "https://example.com/a"}, {"url": "https://example.com/c"}]]], 3], "ok": {"results": [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}, {"url": "https://example.com/c"}], "any_ok": true, "dropped_dupes": 1}}
+{"fn": "_service_merged_results", "args": [[["google", [1, {"url": "https://example.com/a"}, {"no": "url"}]], ["bing", [{"url": "https://example.com/b"}]]], 5], "ok": {"results": [{"url": "https://example.com/a"}, {"no": "url"}, {"url": "https://example.com/b"}], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[["google", [{"url": "https://example.com/a"}]], ["bing", [{"url": "https://example.com/a"}]]], 1], "ok": {"results": [{"url": "https://example.com/a"}], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_failover_results", "args": ["bad", 5], "error": "ValueError: not enough values to unpack (expected 2, got 1)"}
+{"fn": "_service_merged_results", "args": ["bad", 5], "error": "ValueError: not enough values to unpack (expected 2, got 1)"}
+{"fn": "_service_failover_results", "args": [[], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", null]], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", []], ["google", [{"url": "https://example.com/a"}]]], 5], "ok": {"results": [], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_dedup_results", "args": [[]], "ok": []}
+{"fn": "_service_failover_results", "args": [[["duckduckgo", null], ["google", [{"url": "https://example.com/a"}, {"url": "https://WWW.Example.com/a"}, {"title": "no url"}]]], 5], "ok": {"results": [{"url": "https://example.com/a"}, {"title": "no url"}], "any_ok": true, "dropped_dupes": 1}}
+{"fn": "_service_dedup_results", "args": [[{"url": "https://example.com/a"}, {"url": "https://WWW.Example.com/a"}, {"title": "no url"}]], "ok": [{"url": "https://example.com/a"}, {"title": "no url"}]}
+{"fn": "_service_failover_results", "args": [[["google", [{"url": "not a url"}, {"url": "not a url"}]]], 5], "ok": {"results": [{"url": "not a url"}, {"url": "not a url"}], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_dedup_results", "args": [[{"url": "not a url"}, {"url": "not a url"}]], "ok": [{"url": "not a url"}, {"url": "not a url"}]}
+{"fn": "_service_merged_results", "args": [[], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[["duckduckgo", null]], 5], "ok": {"results": [], "any_ok": false, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[["google", [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}]], ["bing", [{"url": "https://example.com/a"}, {"url": "https://example.com/c"}]]], 3], "ok": {"results": [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}, {"url": "https://example.com/c"}], "any_ok": true, "dropped_dupes": 1}}
+{"fn": "_service_merged_results", "args": [[["google", [1, {"url": "https://example.com/a"}, {"no": "url"}]], ["bing", [{"url": "https://example.com/b"}]]], 5], "ok": {"results": [{"url": "https://example.com/a"}, {"no": "url"}, {"url": "https://example.com/b"}], "any_ok": true, "dropped_dupes": 0}}
+{"fn": "_service_merged_results", "args": [[["google", [{"url": "https://example.com/a"}]], ["bing", [{"url": "https://example.com/a"}]]], 1], "ok": {"results": [{"url": "https://example.com/a"}], "any_ok": true, "dropped_dupes": 0}}
