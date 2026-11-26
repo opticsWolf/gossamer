@@ -45,12 +45,30 @@ pub fn py_round(value: f64, digits: u32) -> f64 {
     }
 }
 
+/// Python `repr` spelling for a finite float. Rust and Python both use the
+/// shortest round-tripping mantissa, but Python pads the exponent to at least
+/// two digits and always includes its sign.
+fn py_float(value: f64) -> String {
+    let rendered = format!("{value:?}");
+    let Some((mantissa, exponent)) = rendered.split_once('e') else {
+        return rendered;
+    };
+    let Ok(number) = exponent.parse::<i32>() else {
+        return rendered;
+    };
+    let sign = if number < 0 { '-' } else { '+' };
+    format!("{mantissa}e{sign}{:02}", number.unsigned_abs())
+}
+
 /// Serialize JSON with Python `json.dumps` default separators (`, ` and `: `).
 pub fn py_dumps(value: &Value) -> String {
     match value {
         Value::Null => "null".to_string(),
         Value::Bool(flag) => flag.to_string(),
-        Value::Number(number) => number.to_string(),
+        Value::Number(number) => match number.as_f64() {
+            Some(value) if number.is_f64() => py_float(value),
+            _ => number.to_string(),
+        },
         Value::String(text) => serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string()),
         Value::Array(items) => format!(
             "[{}]",
@@ -67,5 +85,21 @@ pub fn py_dumps(value: &Value) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+    }
+}
+
+#[cfg(test)]
+mod py_float_tests {
+    use super::py_dumps;
+    use serde_json::json;
+
+    #[test]
+    fn formats_small_floats_like_python() {
+        assert_eq!(
+            py_dumps(&json!({"score": 9.999999747378752e-5})),
+            "{\"score\": 9.999999747378752e-05}"
+        );
+        assert_eq!(py_dumps(&json!({"score": 1e16})), "{\"score\": 1e+16}");
+        assert_eq!(py_dumps(&json!({"score": 1})), "{\"score\": 1}");
     }
 }

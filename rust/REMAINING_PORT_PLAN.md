@@ -266,8 +266,10 @@ ProviderFailure {
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.
-- CLI `research --provider crossref` is the first non-DuckDuckGo live provider
-  dispatched in Rust; manual live parity verified, not replay-pinned.
+- CLI `research --provider crossref` and `--provider openalex` are live Rust
+  provider dispatches; manual live parity verified (parsed JSON equal; only
+  provider response key ordering varied), not replay-pinned.
+- `py_dumps` float formatting now matches Python repr for scientific notation.
 
 **Exit criteria**
 

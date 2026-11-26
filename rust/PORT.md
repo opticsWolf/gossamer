@@ -113,10 +113,12 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   kept despite slow crossing because the caller is not batched yet).
 - Rust-guidelines review: `M-PANIC-IS-STOP` and `M-UNSAFE` satisfied by
   returning `Result` with canonical `TypeError` messages and no unsafe code.
-- CLI `research --provider crossref` now runs a live Rust HTTP call and uses
-  `adapters::scholar::crossref_parse_search_impl` plus Python-style `raw`
-  serialization. Verified against the Python oracle on a live scholarly query;
-  live results are not replay-pinned.
+- CLI `research --provider crossref` and `--provider openalex` now run live
+  Rust HTTP calls and use the matching `adapters::scholar` parsers plus
+  Python-style `raw` serialization. Verified against the Python oracle on
+  live scholarly queries; live results are not replay-pinned.
+- `jsonfmt::py_dumps` now formats floats with Python `repr` exponent spelling,
+  fixing scientific-notation differences in embedded `raw` payloads.
 - Full pytest 11479 passed / 36 skipped; app replay 57/57.
 
 ### Download size-cap error parity (done 2026-11-25)

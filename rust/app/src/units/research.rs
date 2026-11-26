@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
-use gossamer::adapters::scholar::crossref_parse_search_impl;
+use gossamer::adapters::scholar::{crossref_parse_search_impl, openalex_parse_search_impl};
 use gossamer::categories::classify_query;
 use gossamer::discovery::fetch_text;
 use gossamer::jsonfmt::py_dumps;
@@ -210,6 +210,41 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("Crossref search failed: {error}");
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
+    } else if selected == "openalex" {
+        let per_page = max_results.min(100).to_string();
+        let url = url::Url::parse_with_params(
+            "https://api.openalex.org/works",
+            &[("search", query.as_str()), ("per_page", per_page.as_str())],
+        )
+        .map(|value| value.to_string())
+        .unwrap_or_else(|_| format!("https://api.openalex.org/works?search={query}"));
+        match fetch_text(&url, 15.0) {
+            Ok((body, _)) => {
+                let mut records =
+                    openalex_parse_search_impl(&body, max_results as i64, None).unwrap_or_default();
+                if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+                    let items = parsed.get("results").and_then(Value::as_array);
+                    if let Some(items) = items {
+                        for (record, item) in records.iter_mut().zip(items.iter().take(max_results))
+                        {
+                            if let Some(object) = record.as_object_mut() {
+                                object.insert("raw".to_string(), Value::String(py_dumps(item)));
+                            }
+                        }
+                    }
+                }
+                records
+            }
+            Err(error) => {
+                eprintln!("OpenAlex search failed: {error}");
                 let payload = json!({"error": format!("All search providers failed for: {query}")});
                 println!(
                     "{}",
