@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
 use gossamer::document::{
-    page_selection_error, pdf_markdown, structured_format_error, xml_feed_text,
+    office_markdown, page_selection_error, pdf_markdown, structured_format_error, xml_feed_text,
 };
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
@@ -60,6 +60,12 @@ fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
     }
     if ext == "pdf" {
         return pdf_markdown(bytes).ok();
+    }
+    if matches!(
+        ext.as_str(),
+        "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt"
+    ) {
+        return office_markdown(bytes, &ext).ok();
     }
     if ext == "json" {
         let value: Value = serde_json::from_slice(bytes).ok()?;
@@ -206,7 +212,20 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         && !url_suffix.is_empty()
         && !matches!(
             url_suffix.as_str(),
-            "txt" | "md" | "csv" | "json" | "xml" | "rss" | "atom"
+            "txt"
+                | "md"
+                | "csv"
+                | "json"
+                | "xml"
+                | "rss"
+                | "atom"
+                | "pdf"
+                | "docx"
+                | "xlsx"
+                | "pptx"
+                | "doc"
+                | "xls"
+                | "ppt"
         )
     {
         let payload = json!({"error": format!("Document extraction failed: Unsupported document format: .{url_suffix}")});
@@ -255,6 +274,13 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 .unwrap_or(raw)
         } else if matches!(url_suffix.as_str(), "xml" | "rss" | "atom") {
             xml_feed_text(&raw).unwrap_or(raw)
+        } else if url_suffix == "pdf" {
+            pdf_markdown(&bytes).unwrap_or(raw)
+        } else if matches!(
+            url_suffix.as_str(),
+            "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt"
+        ) {
+            office_markdown(&bytes, &url_suffix).unwrap_or(raw)
         } else {
             raw
         };

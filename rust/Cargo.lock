@@ -1326,6 +1326,7 @@ dependencies = [
  "html2md",
  "log",
  "meta_oxide",
+ "office_oxide",
  "pdf_oxide",
  "quick-xml",
  "regex",

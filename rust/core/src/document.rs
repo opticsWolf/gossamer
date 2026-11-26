@@ -288,6 +288,19 @@ pub fn page_selection_error(source: &str, is_url: bool) -> Option<String> {
     ))
 }
 
+/// Extract Markdown from Office bytes with the embedded `office_oxide` engine.
+pub fn office_markdown(bytes: &[u8], extension: &str) -> Result<String, String> {
+    use std::io::Cursor;
+
+    use office_oxide::{Document, format::DocumentFormat};
+
+    let format = DocumentFormat::from_extension(extension)
+        .ok_or_else(|| format!("Unsupported document format: .{extension}"))?;
+    let document = Document::from_reader(Cursor::new(bytes.to_vec()), format)
+        .map_err(|error| error.to_string())?;
+    Ok(document.to_markdown())
+}
+
 /// Extract Markdown from PDF bytes with the embedded `pdf_oxide` engine.
 ///
 /// Errors are returned as strings so CLI/Python adapters can preserve their

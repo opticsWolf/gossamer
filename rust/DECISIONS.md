@@ -248,3 +248,11 @@ Consequences:
   on extracted Markdown, not on implementation internals.
 - No OCR, rendering, or bundled binaries are enabled. Binary extraction stays
   behind the explicit CLI/kernel boundary and reports canonical errors.
+
+## ADR-015: pure-core Office extraction uses `office_oxide`
+
+- Date: 2026-11-27.
+- `rust/core` depends on `office_oxide 0.1.17` with default features disabled.
+- Extraction is format-extension driven and uses `Document::from_reader`;
+  parity is compared on Markdown output against the Python oracle.
+- No editing, rendering, or external binaries are enabled.
