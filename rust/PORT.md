@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Download error envelope parity (done 2026-11-25)
+
+- CLI `download` now emits the full canonical error object from the Rust
+  classifier: `http_status`, `url`, and `retry_after` for HTTP failures, plus
+  byte/status/url fields for validation failures.
+- Verified against the Python oracle for `not_found` and `too_small` live
+  cases; app replay 57/57, full pytest 11468 passed / 36 skipped.
+
 ### Structured-format rejection kernel (done 2026-11-25)
 
 - Added `gossamer::document::structured_format_error`, computing the canonical

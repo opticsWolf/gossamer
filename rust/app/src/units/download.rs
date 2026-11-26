@@ -20,6 +20,18 @@ fn pretty(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 }
 
+fn emit_error_payload(source: &str, error: Value) -> ExitCode {
+    println!(
+        "{}",
+        pretty(&json!({
+            "source": source,
+            "status": "error",
+            "error": error,
+        }))
+    );
+    ExitCode::SUCCESS
+}
+
 fn emit_error(source: &str, code: &str, message: &str) -> ExitCode {
     println!(
         "{}",
@@ -191,15 +203,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             &final_url,
             None,
         );
-        let code = payload
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("http_error");
-        let message = payload
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("HTTP download failed");
-        return emit_error(&final_url, code, message);
+        return emit_error_payload(&url, payload);
     }
     if let Some(payload) = validate_finished_file(
         Some(&bytes[..bytes.len().min(5)]),
@@ -211,15 +215,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         status as i64,
         &final_url,
     ) {
-        let code = payload
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("invalid_file");
-        let message = payload
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("invalid downloaded file");
-        return emit_error(&final_url, code, message);
+        return emit_error_payload(&url, payload);
     }
     if std::fs::write(&target, &bytes).is_err() {
         return emit_error(
