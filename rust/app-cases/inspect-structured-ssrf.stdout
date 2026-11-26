@@ -1,0 +1,5 @@
+{
+  "url": "http://127.0.0.1",
+  "error": "URL rejected: Host '127.0.0.1' (127.0.0.1) is not a public address",
+  "error_type": "SsrfBlockedError"
+}

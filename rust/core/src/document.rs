@@ -288,6 +288,99 @@ pub fn page_selection_error(source: &str, is_url: bool) -> Option<String> {
     ))
 }
 
+/// Build the `ParsedDocumentPayload` envelope for an HTML fetch.
+///
+/// The CLI structured-inspect path uses this to emit the same flat metadata
+/// shape as the Python Pydantic model while keeping parsing in pure core.
+pub fn structured_html_payload(
+    markdown: &str,
+    links: &Value,
+    html_metadata: &Value,
+    url: &str,
+    max_links: i64,
+    tables: &[crate::tables::ExtractedTableGrid],
+) -> Value {
+    let parsed = url::Url::parse(url).ok();
+    let path_slug = parsed
+        .as_ref()
+        .map(|value| value.path().trim_matches('/'))
+        .unwrap_or("");
+    let slug = if path_slug.is_empty() {
+        parsed
+            .as_ref()
+            .and_then(url::Url::host_str)
+            .unwrap_or(url)
+            .to_string()
+    } else {
+        path_slug.to_string()
+    };
+    let base = serde_json::json!({
+        "file_name": slug,
+        "format": "html",
+        "canonical": url,
+    });
+    let enriched = crate::metaextract::merge_into_document_metadata(html_metadata, &base);
+    let get = |key: &str| enriched.get(key).cloned().unwrap_or(Value::Null);
+    let get_or = |key: &str, default: Value| {
+        let value = get(key);
+        if value.is_null() { default } else { value }
+    };
+    let metadata = serde_json::json!({
+        "jsonld": get("jsonld"),
+        "microdata": get("microdata"),
+        "microformats": get("microformats"),
+        "dublin_core": get("dublin_core"),
+        "rdfa": get("rdfa"),
+        "rel_links": get("rel_links"),
+        "manifest": get("manifest"),
+        "extra_meta": get_or("extra_meta", json!({})),
+        "twitter_card": get("twitter_card"),
+        "twitter_title": get("twitter_title"),
+        "twitter_description": get("twitter_description"),
+        "twitter_image": get("twitter_image"),
+        "twitter_site": get("twitter_site"),
+        "og_title": get("og_title"),
+        "og_type": get("og_type"),
+        "og_image": get("og_image"),
+        "og_images": get("og_images"),
+        "og_description": get("og_description"),
+        "og_site_name": get("og_site_name"),
+        "og_url": get("og_url"),
+        "canonical": get("canonical"),
+        "language": get("language"),
+        "keywords": get("keywords"),
+        "robots": get("robots"),
+        "file_name": get("file_name"),
+        "file_size_bytes": get_or("file_size_bytes", json!(0)),
+        "format": get("format"),
+        "title": get("title"),
+        "author": get("author"),
+        "description": get("description"),
+        "created_at": get("created_at"),
+        "modified_at": get("modified_at"),
+        "page_count": get_or("page_count", json!(1)),
+    });
+    let table_values: Vec<Value> = tables
+        .iter()
+        .map(|(name, headers, rows)| {
+            serde_json::json!({"name": name, "headers": headers, "rows": rows})
+        })
+        .collect();
+    let page = serde_json::json!({
+        "page_number": 1,
+        "raw_text": markdown,
+        "markdown": markdown,
+        "tables": table_values,
+    });
+    serde_json::json!({
+        "metadata": metadata,
+        "pages": [page],
+        "tables": table_values,
+        "links": crate::documents::follow_up_candidates(links, max_links),
+        "guard": Value::Null,
+    })
+}
+
 #[cfg(test)]
 mod xml_feed_tests {
     use super::xml_feed_text;
@@ -387,5 +480,50 @@ mod structured_format_tests {
             None
         );
         assert_eq!(structured_format_error("/tmp/a.docx", false), None);
+    }
+}
+
+#[cfg(test)]
+mod structured_payload_tests {
+    use super::*;
+
+    #[test]
+    fn builds_pydantic_compatible_shape() {
+        let metadata = json!({
+            "meta": {"title": "T", "description": "D"},
+            "opengraph": {"title": "OG"},
+            "rel_links": {"icon": ["data:,"]},
+        });
+        let links = json!([["https://a.test/x", "A"]]);
+        let out = structured_html_payload(
+            "# T",
+            &links,
+            &metadata,
+            "https://example.com/a",
+            5,
+            &[(
+                "Table 1".to_string(),
+                vec!["A".to_string()],
+                vec![vec!["1".to_string()]],
+            )],
+        );
+        assert_eq!(out["metadata"]["file_name"], json!("a"));
+        assert_eq!(out["metadata"]["title"], json!("T"));
+        assert_eq!(out["metadata"]["og_title"], json!("OG"));
+        assert_eq!(out["metadata"]["description"], json!("D"));
+        assert_eq!(out["pages"][0]["markdown"], json!("# T"));
+        assert_eq!(out["tables"][0]["name"], json!("Table 1"));
+        assert_eq!(out["links"][0]["url"], json!("https://a.test/x"));
+        assert_eq!(
+            out.as_object()
+                .map(|m| m.keys().cloned().collect::<Vec<_>>()),
+            Some(vec![
+                "metadata".to_string(),
+                "pages".to_string(),
+                "tables".to_string(),
+                "links".to_string(),
+                "guard".to_string(),
+            ])
+        );
     }
 }

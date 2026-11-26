@@ -5,12 +5,13 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
-use gossamer::document::prepare_url;
+use gossamer::document::{prepare_url, structured_html_payload};
 use gossamer::fetch::fetch_html_full_single;
 use gossamer::jsonfmt::{pretty_record, py_dumps};
 use gossamer::metaextract::meta_extract_all;
 use gossamer::miscutils::{classify_link, sha256_hex};
 use gossamer::service::fetch::{compact_metadata, slice_markdown};
+use gossamer::tables::extract_tables;
 use gossamer::tokens::count_tokens;
 use serde_json::{Value, json};
 
@@ -81,16 +82,22 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
 
     let mut url: Option<String> = None;
     let mut query: Option<String> = None;
+    let mut structured = false;
     let mut offset = 0i64;
     let mut max_chunks = 1i64;
     let mut index = 0usize;
     while index < args.len() {
         let value = args[index].to_string_lossy().into_owned();
         if value.starts_with('-') {
-            if !known_flag(&value) || index + 1 >= args.len() && value != "--structured" {
+            if !known_flag(&value) {
                 return unsupported();
             }
             if value == "--structured" {
+                structured = true;
+                index += 1;
+                continue;
+            }
+            if index + 1 >= args.len() {
                 return unsupported();
             }
             let flag_value = args[index + 1].to_string_lossy().into_owned();
@@ -150,6 +157,26 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let (http_status, final_url, content_type) = meta;
     let raw_metadata: Value =
         serde_json::from_str(&meta_extract_all(&html, Some(&final_url))).unwrap_or(Value::Null);
+    if structured {
+        let link_pairs: Vec<Value> = links
+            .iter()
+            .map(|(link_url, anchor)| json!([link_url, anchor]))
+            .collect();
+        let tables = extract_tables(&html, 20, 500);
+        let payload = structured_html_payload(
+            &full_markdown,
+            &Value::Array(link_pairs),
+            &raw_metadata,
+            &url,
+            20,
+            &tables,
+        );
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+        );
+        return ExitCode::SUCCESS;
+    }
     let metadata = compact_metadata(&raw_metadata);
 
     let mut follow_up_links = Vec::new();

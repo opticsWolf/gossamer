@@ -138,7 +138,10 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - `FetchStats.record_success` / `record_error` now apply Rust-owned counter,
   bounded latency-window, and FIFO key-eviction decisions through
   `stats::fetch_stats_record`; Python keeps the lock and mutable instance.
-- Full pytest 11484 passed / 36 skipped; app replay 59/59.
+- CLI `inspect --structured` now emits the full `ParsedDocumentPayload`
+  envelope from Rust, including HTML tables and Pydantic-compatible metadata
+  field order; exact text parity verified against the Python oracle.
+- Full pytest 11484 passed / 36 skipped; app replay 60/60.
 
 ### Download size-cap error parity (done 2026-11-25)
 
@@ -699,7 +702,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Current state
 
-- `dev_rustify` after U1: pure Rust front door lifted, replay 59/59, fallback 0, no fallback path.
+- `dev_rustify` after U2: pure Rust front door lifted, replay 60/60, fallback 0, no fallback path.
 - Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
   deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
@@ -713,7 +716,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
   full download filesystem side effects, MCP transport, remaining live tool bodies, the full
   crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
-- Verification: 59 replay cases; Python suite is the behavioral oracle at 11,484 passing tests.
+- Verification: 60 replay cases; Python suite is the behavioral oracle at 11,484 passing tests.
 
 ## Open questions
 

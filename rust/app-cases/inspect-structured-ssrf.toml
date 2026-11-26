@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["inspect", "http://127.0.0.1", "--structured"]
+status.code = 0
+fs.sandbox = true
