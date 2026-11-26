@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
-use gossamer::document::{page_selection_error, xml_feed_text};
+use gossamer::document::{page_selection_error, structured_format_error, xml_feed_text};
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
@@ -174,10 +174,24 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     }
     // Pages, store and structured extraction keep their existing contract;
     // this slice owns the text-like flat local-file path.
-    if structured || !tables_as.eq_ignore_ascii_case("json") {
+    if !tables_as.eq_ignore_ascii_case("json") {
         return unsupported();
     }
     let is_url = source.starts_with("http://") || source.starts_with("https://");
+    if structured {
+        if let Some(error) = structured_format_error(&source, is_url) {
+            let display = source.replace('\\', "/");
+            eprintln!("Structured extraction failed for {display}: {error}");
+            let payload =
+                json!({"error": format!("Structured document extraction failed: {error}")});
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+            );
+            return ExitCode::SUCCESS;
+        }
+        return unsupported();
+    }
     let url_suffix = Path::new(&source)
         .extension()
         .and_then(|ext| ext.to_str())
@@ -220,8 +234,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 _ => "HTTP Error",
             };
             let message = format!(
-                "Client error '{status} {reason}' for url '{source}'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
+                "Client error '{status} {reason}' for url '{source}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
             );
             let payload = json!({"error": format!("Document extraction failed: {message}")});
             println!("{}", py_dumps(&payload));

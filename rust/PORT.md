@@ -96,6 +96,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Structured-format rejection kernel (done 2026-11-25)
+
+- Added `gossamer::document::structured_format_error`, computing the canonical
+  unsupported-format message (including URL-path suffixes) and the exact stderr
+  log line used by the CLI.
+- `gossamer extract --structured` now reproduces the Python envelope for flat
+  formats. Core unit tests 2/2; app replay 57/57, full pytest 11468 passed /
+  36 skipped.
+
 ### CLI `extract` stored local text (done 2026-11-25)
 
 - `gossamer extract --store` now writes the original bytes and extracted

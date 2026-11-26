@@ -311,6 +311,37 @@ mod xml_feed_tests {
     }
 }
 
+/// Canonical structured-extraction error for formats the structured parser
+/// does not accept. `None` means the parser owns the source.
+pub fn structured_format_error(source: &str, is_url: bool) -> Option<String> {
+    let suffix = if is_url {
+        let after_scheme = source.split_once("://").map_or(source, |(_, rest)| rest);
+        let path = after_scheme
+            .split(['?', '#'])
+            .next()
+            .unwrap_or(after_scheme);
+        let last = path.rsplit('/').next().unwrap_or(path);
+        last.rfind('.')
+            .map(|index| last[index..].to_ascii_lowercase())
+            .unwrap_or_default()
+    } else {
+        std::path::Path::new(source)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| format!(".{}", ext.to_ascii_lowercase()))
+            .unwrap_or_default()
+    };
+    if matches!(
+        suffix.as_str(),
+        ".pdf" | ".docx" | ".xlsx" | ".pptx" | ".xls" | ".ppt" | ".xlsb" | ".ods" | ".doc"
+    ) {
+        return None;
+    }
+    Some(format!(
+        "Unsupported file format '{suffix}'. Supported: pdf, docx, xlsx, pptx, xls, ppt, xlsb, ods, doc."
+    ))
+}
+
 #[cfg(test)]
 mod page_selection_tests {
     use super::page_selection_error;
@@ -332,5 +363,29 @@ mod page_selection_tests {
             None
         );
         assert_eq!(page_selection_error("/tmp/a.xlsx", false), None);
+    }
+}
+
+#[cfg(test)]
+mod structured_format_tests {
+    use super::structured_format_error;
+
+    #[test]
+    fn rejects_text() {
+        assert_eq!(
+            structured_format_error("/tmp/a.txt", false).as_deref(),
+            Some(
+                "Unsupported file format '.txt'. Supported: pdf, docx, xlsx, pptx, xls, ppt, xlsb, ods, doc."
+            )
+        );
+    }
+
+    #[test]
+    fn accepts_structured_formats() {
+        assert_eq!(
+            structured_format_error("https://x.test/a.pdf?download=1", true),
+            None
+        );
+        assert_eq!(structured_format_error("/tmp/a.docx", false), None);
     }
 }
