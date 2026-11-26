@@ -156,7 +156,10 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - CLI `download --resume` now performs Range/If-Range requests, validates
   Content-Range, appends/restarts safely, and maintains the resume state file;
   manual live 206 parity verified, replay covers SSRF validation.
-- Full pytest 11484 passed / 36 skipped; app replay 65/65.
+- CLI `crawl --seed-urls` and `--search-prior` are now implemented in Rust,
+  with SSRF-checked seeds and DDG-ranked prior candidates; replay covers the
+  SSRF seed envelope.
+- Full pytest 11484 passed / 36 skipped; app replay 66/66.
 
 ### Download size-cap error parity (done 2026-11-25)
 
@@ -717,7 +720,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 
 ## Current state
 
-- `dev_rustify` after U5: pure Rust front door lifted, replay 65/65, fallback 0, no fallback path.
+- `dev_rustify` after U7: pure Rust front door lifted, replay 66/66, fallback 0, no fallback path.
 - Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
   deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
@@ -731,7 +734,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
   full download filesystem side effects, MCP transport, remaining live tool bodies, the full
   crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
-- Verification: 65 replay cases; Python suite is the behavioral oracle at 11,484 passing tests.
+- Verification: 66 replay cases; Python suite is the behavioral oracle at 11,484 passing tests.
 
 ## Open questions
 

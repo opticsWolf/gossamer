@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["crawl", "https://example.com", "--query", "example", "--max-pages", "1", "--seed-urls", "http://127.0.0.1"]
+status.code = 0
+fs.sandbox = true

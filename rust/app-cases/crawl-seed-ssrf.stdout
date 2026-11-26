@@ -1,0 +1,39 @@
+{
+  "root": "https://example.com",
+  "query": "example",
+  "max_depth": 3,
+  "max_pages": 1,
+  "same_host": false,
+  "min_score": 0.05,
+  "excerpts": false,
+  "search_prior": false,
+  "pages": [
+    {
+      "url": "https://example.com",
+      "depth": 0,
+      "status": "ok",
+      "title": "Example Domain",
+      "score": 1.0,
+      "markdown": "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.",
+      "links_total": 0,
+      "fetch_method": "static",
+      "content_chars": 156,
+      "term_hits": 0
+    }
+  ],
+  "errors": [],
+  "errors_total": 0,
+  "documents": [],
+  "documents_total": 0,
+  "documents_below_score": 0,
+  "skipped": [
+    {
+      "url": "http://127.0.0.1",
+      "reason": "ssrf blocked"
+    }
+  ],
+  "skipped_total": 1,
+  "queue_dropped": 0,
+  "count": 1,
+  "stop": "frontier exhausted"
+}

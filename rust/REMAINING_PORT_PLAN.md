@@ -283,6 +283,8 @@ ProviderFailure {
   `download-mirrors-blocked`; app replay is 64/64.
 - `download --resume` now owns Range/If-Range, Content-Range validation,
   append/restart paths, and resume state; app replay is 65/65.
+- CLI crawl now accepts `--seed-urls` and `--search-prior`; replay case
+  `crawl-seed-ssrf` brings app replay to 66/66.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.
