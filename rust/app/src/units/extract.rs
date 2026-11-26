@@ -69,6 +69,15 @@ fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
     None
 }
 
+fn platform_display(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    if cfg!(windows) {
+        text.replace('/', "\\")
+    } else {
+        text.replace('\\', "/")
+    }
+}
+
 pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     if let Some(code) = super::cli::maybe_run(command, matches) {
         return code;
@@ -88,6 +97,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut include_images = false;
     let mut structured = false;
     let mut store = false;
+    let mut store_dir: Option<String> = None;
     let mut pages: Option<String> = None;
     let mut source: Option<String> = None;
     let mut index = 0usize;
@@ -105,6 +115,8 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 }
                 if value == "--pages" {
                     pages = Some(args[index + 1].to_string_lossy().into_owned());
+                } else if value == "--store-dir" {
+                    store_dir = Some(args[index + 1].to_string_lossy().into_owned());
                 }
                 index += 1;
             }
@@ -162,7 +174,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     }
     // Pages, store and structured extraction keep their existing contract;
     // this slice owns the text-like flat local-file path.
-    if structured || store || !tables_as.eq_ignore_ascii_case("json") {
+    if structured || !tables_as.eq_ignore_ascii_case("json") {
         return unsupported();
     }
     let is_url = source.starts_with("http://") || source.starts_with("https://");
@@ -260,6 +272,55 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
             Value::Null,
         )
     };
+    let stored = if store {
+        if is_url {
+            return unsupported();
+        }
+        let directory = PathBuf::from(store_dir.unwrap_or_else(|| "stored_documents".to_string()));
+        let directory = if directory.is_absolute() {
+            directory
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(directory)
+        };
+        if std::fs::create_dir_all(&directory).is_err() {
+            return unsupported();
+        }
+        let raw_path = PathBuf::from(&source);
+        let stem = raw_path
+            .file_stem()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "document".to_string());
+        let ext = raw_path
+            .extension()
+            .map(|value| format!(".{}", value.to_string_lossy()))
+            .unwrap_or_default();
+        let original_path = directory.join(format!("{stem}{ext}"));
+        let markdown_path = directory.join(format!("{stem}.md"));
+        let resources_dir = directory.join(format!("{stem}.files"));
+        if std::fs::write(&original_path, &bytes).is_err()
+            || std::fs::write(&markdown_path, content.as_bytes()).is_err()
+        {
+            return unsupported();
+        }
+        json!({
+            "directory": platform_display(&directory),
+            "original": platform_display(&original_path),
+            "markdown": platform_display(&markdown_path),
+            "original_bytes": bytes.len(),
+            "markdown_chars": content.chars().count(),
+            "content_type": content_type,
+            "resources": {
+                "dir": platform_display(&resources_dir),
+                "files": [],
+                "referenced": 0,
+                "embedded": 0,
+            },
+        })
+    } else {
+        Value::Null
+    };
     let payload = json!({
         "source": display,
         "content": content,
@@ -276,7 +337,7 @@ For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/St
         "content_hash": sha256_bytes(&bytes),
         "links": [],
         "guard": Value::Null,
-        "stored": Value::Null,
+        "stored": stored,
         "resolved_doi": Value::Null,
         "jats_source": Value::Null,
         "jats_title": Value::Null,

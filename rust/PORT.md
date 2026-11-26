@@ -96,6 +96,14 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### CLI `extract` stored local text (done 2026-11-25)
+
+- `gossamer extract --store` now writes the original bytes and extracted
+  markdown for local text-like files and reports the platform-native stored
+  paths plus resource counts in the exact Python envelope shape.
+- Verified against the Python oracle on a `.txt` fixture; app replay 57/57,
+  full pytest 11468 passed / 36 skipped.
+
 ### Page-range rejection kernel (done 2026-11-25)
 
 - Added `gossamer::document::page_selection_error`, computing the canonical
