@@ -1,6 +1,8 @@
 # PORT — canonical port decisions and state
 
 Small, canonical copy of the `rust-core-port` decisions for the remaining gossamer work.
+
+Detailed execution plan derived from CodeRadar: `rust/REMAINING_PORT_PLAN.md`.
 Detail lives in `rust/DECISIONS.md` (ADRs), `rust/MAP.md` (waves/checkpoints),
 `rust/HANDOFF.md` (session state) and `rust/PORT_MAP.md` (generated unit map).
 If this file and those disagree, this file wins for *decisions*; the ADRs win for *rationale*.
