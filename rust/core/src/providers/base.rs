@@ -3,6 +3,9 @@
 use serde_json::Value;
 
 const MAX_RETRY_AFTER_SECONDS: f64 = 60.0;
+/// Upper bound for sampled jitter, matching the Python retry decorator.
+/// Larger values would let a single retry dominate the bounded backoff.
+const MAX_JITTER_SECONDS: f64 = 0.25;
 
 /// True for transient HTTP statuses handled by the retry decorator.
 pub fn retryable_status(status: i64) -> bool {
@@ -30,7 +33,7 @@ pub fn retry_wait(
         return None;
     }
     let base = delay.max(retry_after.unwrap_or(0.0));
-    let jitter = jitter_value.clamp(0.0, (0.25_f64).min(base * 0.1));
+    let jitter = jitter_value.clamp(0.0, MAX_JITTER_SECONDS.min(base * 0.1));
     Some((base + jitter).min(MAX_RETRY_AFTER_SECONDS))
 }
 
@@ -196,7 +199,12 @@ pub fn retry_decision(
         return serde_json::json!({"action": "raise", "final": true, "cap": false});
     }
     let base = delay.max(retry_after.unwrap_or(0.0));
-    let jitter = jitter_value.clamp(0.0, MAX_RETRY_AFTER_SECONDS.min(base * 0.1));
+    let jitter = jitter_value.clamp(
+        0.0,
+        MAX_RETRY_AFTER_SECONDS
+            .min(MAX_JITTER_SECONDS)
+            .min(base * 0.1),
+    );
     let wait = (base + jitter).min(MAX_RETRY_AFTER_SECONDS);
     let _ = backoff;
     serde_json::json!({"action": "retry", "wait": wait})
@@ -263,6 +271,10 @@ mod tests {
         assert_eq!(
             retry_decision("status", Some(429), 0, 3, 1.0, 2.0, None, 0.05)["action"],
             "retry"
+        );
+        assert_eq!(
+            retry_decision("status", Some(429), 0, 3, 10.0, 2.0, None, 1.0)["wait"],
+            serde_json::json!(10.25)
         );
     }
     #[test]

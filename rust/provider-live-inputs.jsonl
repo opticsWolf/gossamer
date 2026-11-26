@@ -4,3 +4,9 @@
 {"fn":"_service_provider_request_plan","args":["https://api.openalex.org/works",{}, {}, {"headers":[{"key":"Contact-Agent","template":"{ua} (mailto:{email})","when":"email"},{"key":"User-Agent","template":"{ua} (mailto:{email})","when":"email"},{"key":"User-Agent","template":"{ua}"}],"params":[{"key":"mailto","from":"email","when":"email"},{"key":"api_key","from":"api_key","when":"api_key"}]},{"ua":"gossamer/1","email":"","api_key":"key-1"}]}
 {"fn":"_service_provider_request_plan","args":["https://example.test",{"q":"caller"}, {"User-Agent":"caller"}, {"headers":[{"key":"User-Agent","value":"rust","mode":"overwrite"}],"params":[{"key":"q","value":"default","mode":"setdefault"}]},{}]}
 {"fn":"_service_provider_request_plan","args":["https://example.test",[], {}, {}, {}]}
+{"fn":"_service_retry_plan","args":["quota",null,0,3,1.0,2.0,null,0.0]}
+{"fn":"_service_retry_plan","args":["status",404,0,3,1.0,2.0,null,0.0]}
+{"fn":"_service_retry_plan","args":["status",429,0,3,1.0,2.0,null,0.05]}
+{"fn":"_service_retry_plan","args":["transport",null,2,3,1.0,2.0,null,0.0]}
+{"fn":"_service_retry_plan","args":["status",503,0,3,1.0,2.0,90.0,0.0]}
+{"fn":"_service_retry_plan","args":["status",429,0,3,10.0,2.0,null,1.0]}

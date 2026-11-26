@@ -106,9 +106,12 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   `GitHubAdapter`, `NvdAdapter`, and `NASAAdapter` now supply policy data
   instead of Python `inject_auth` mutation logic; other adapters keep their
   overrides until their own slices.
+- `retry_decision` now caps jitter at 0.25 s to match the Python decorator;
+  `_service_retry_plan` is enabled from Rust for every `ResourceAdapter.search`
+  retry, including status/transport/quota/cap verdicts.
 - Extended `rust/adapter-base-rs` with `_service_provider_request_plan`; gate
-  **16/16 cases match**, bench 0.08x (correctness kernel; kept despite slow
-  crossing because the caller is not batched yet).
+  **27/27 cases match**, bench 0.08x for request planning (correctness kernel;
+  kept despite slow crossing because the caller is not batched yet).
 - Rust-guidelines review: `M-PANIC-IS-STOP` and `M-UNSAFE` satisfied by
   returning `Result` with canonical `TypeError` messages and no unsafe code.
 - Full pytest 11478 passed / 36 skipped; app replay 57/57.

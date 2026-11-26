@@ -263,6 +263,9 @@ ProviderFailure {
   `ResourceAdapter.inject_auth`, `OpenAlexAdapter`, `SemanticScholarAdapter`,
   `CrossrefAdapter`, `GitHubAdapter`, `NvdAdapter`, and `NASAAdapter` now use it.
 - Bench is 0.08x: this is a correctness kernel, not a speed port.
+- Retry verdicts now flow through Rust as well; gate extended to 27/27 with
+  quota, permanent status, transient status, transport, final attempt,
+  Retry-After cap, and jitter-cap parity cases.
 
 **Exit criteria**
 

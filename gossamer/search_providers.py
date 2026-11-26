@@ -1070,7 +1070,7 @@ def _rust_anything_adapter_base_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_quota_message", "_service_politeness_wait", "_service_provider_call_gate", "_service_provider_request_plan"]})
+    globals().update({name: getattr(native, name) for name in ["_service_retryable_status", "_service_retry_wait", "_service_retry_plan", "_service_quota_message", "_service_politeness_wait", "_service_quota_period", "_service_provider_call_gate", "_service_provider_request_plan"]})
 
 
 _rust_anything_adapter_base_rs()
