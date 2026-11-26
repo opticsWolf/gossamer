@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
-use gossamer::document::xml_feed_text;
+use gossamer::document::{page_selection_error, xml_feed_text};
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
@@ -88,6 +88,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut include_images = false;
     let mut structured = false;
     let mut store = false;
+    let mut pages: Option<String> = None;
     let mut source: Option<String> = None;
     let mut index = 0usize;
     while index < args.len() {
@@ -101,6 +102,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             | "--log-level" | "--fetch-mode" => {
                 if index + 1 >= args.len() {
                     return unsupported();
+                }
+                if value == "--pages" {
+                    pages = Some(args[index + 1].to_string_lossy().into_owned());
                 }
                 index += 1;
             }
@@ -134,6 +138,28 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let Some(source) = source else {
         return unsupported();
     };
+    if let Some(pages) = pages.as_deref()
+        && !pages.trim().is_empty()
+    {
+        if store {
+            let payload = json!({"error": "store=True cannot be combined with pages=...; store the full document instead"});
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+            );
+            return ExitCode::SUCCESS;
+        }
+        let is_url = source.starts_with("http://") || source.starts_with("https://");
+        if let Some(error) = page_selection_error(&source, is_url) {
+            let payload = json!({"error": error});
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+            );
+            return ExitCode::SUCCESS;
+        }
+        return unsupported();
+    }
     // Pages, store and structured extraction keep their existing contract;
     // this slice owns the text-like flat local-file path.
     if structured || store || !tables_as.eq_ignore_ascii_case("json") {

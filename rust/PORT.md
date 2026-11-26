@@ -96,6 +96,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining in Python: actual HTTP dispatch, browser process calls, cache I/O
   and `batch_inspect_pages_impl`.
 
+### Page-range rejection kernel (done 2026-11-25)
+
+- Added `gossamer::document::page_selection_error`, computing the canonical
+  actionable error for page-range reads on flat formats, including URL-path
+  suffix handling and query/fragment stripping.
+- `gossamer extract` now emits the exact Python envelope for `--pages` on text
+  files and for `--pages --store`; paged formats remain outside this slice.
+- Core unit tests 2/2; exact Python parity verified; app replay 57/57,
+  full pytest 11468 passed / 36 skipped.
+
 ### XML/RSS feed extraction kernel (done 2026-11-25)
 
 - Added `gossamer::document::xml_feed_text`, rendering RSS/Atom/RDF entries via

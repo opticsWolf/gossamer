@@ -258,6 +258,36 @@ pub fn xml_feed_text(xml: &str) -> Option<String> {
     Some(lines.join("\n"))
 }
 
+/// Error text for a page-range request on a format without page structure.
+///
+/// PDF and spreadsheet sources are page-capable; every other suffix gets the
+/// canonical actionable message from the Python extractor.
+pub fn page_selection_error(source: &str, is_url: bool) -> Option<String> {
+    let suffix = if is_url {
+        let after_scheme = source.split_once("://").map_or(source, |(_, rest)| rest);
+        let path = after_scheme
+            .split(['?', '#'])
+            .next()
+            .unwrap_or(after_scheme);
+        let last = path.rsplit('/').next().unwrap_or(path);
+        last.rfind('.')
+            .map(|index| last[index..].to_ascii_lowercase())
+            .unwrap_or_default()
+    } else {
+        std::path::Path::new(source)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| format!(".{}", ext.to_ascii_lowercase()))
+            .unwrap_or_default()
+    };
+    if matches!(suffix.as_str(), ".pdf" | ".xlsx" | ".xls" | ".xlsb") {
+        return None;
+    }
+    Some(format!(
+        "Page selection is supported for PDF (pages) and Excel workbooks (sheets); this source is {suffix}. Call extract_document without pages, or convert the file to PDF."
+    ))
+}
+
 #[cfg(test)]
 mod xml_feed_tests {
     use super::xml_feed_text;
@@ -278,5 +308,29 @@ mod xml_feed_tests {
             None
         );
         assert_eq!(xml_feed_text("<broken"), None);
+    }
+}
+
+#[cfg(test)]
+mod page_selection_tests {
+    use super::page_selection_error;
+
+    #[test]
+    fn rejects_flat_formats() {
+        assert_eq!(
+            page_selection_error("/tmp/a.txt", false).as_deref(),
+            Some(
+                "Page selection is supported for PDF (pages) and Excel workbooks (sheets); this source is .txt. Call extract_document without pages, or convert the file to PDF."
+            )
+        );
+    }
+
+    #[test]
+    fn accepts_paged_formats() {
+        assert_eq!(
+            page_selection_error("https://x.test/a.pdf?download=1", true),
+            None
+        );
+        assert_eq!(page_selection_error("/tmp/a.xlsx", false), None);
     }
 }
