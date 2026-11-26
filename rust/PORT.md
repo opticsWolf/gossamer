@@ -113,9 +113,10 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   kept despite slow crossing because the caller is not batched yet).
 - Rust-guidelines review: `M-PANIC-IS-STOP` and `M-UNSAFE` satisfied by
   returning `Result` with canonical `TypeError` messages and no unsafe code.
-- CLI `research --provider crossref`, `--provider openalex`, and
-  `--provider zenodo` now run live Rust HTTP calls and use the matching
-  `adapters::scholar` parsers plus Python-style `raw` serialization.
+- CLI `research --provider crossref`, `--provider openalex`,
+  `--provider zenodo`, `--provider huggingface`, and
+  `--provider huggingface-papers` now run live Rust HTTP calls and use the
+  matching `adapters::scholar` parsers plus Python-style `raw` serialization.
   Verified against the Python oracle on live scholarly queries; live results
   are not replay-pinned.
 - Added `discovery::fetch_text_with_user_agent` and core `USER_AGENT` for APIs

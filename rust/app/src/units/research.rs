@@ -5,7 +5,8 @@ use std::process::ExitCode;
 
 use clap::ArgMatches;
 use gossamer::adapters::scholar::{
-    crossref_parse_search_impl, openalex_parse_search_impl, zenodo_parse_search_impl,
+    crossref_parse_search_impl, huggingface_papers_parse_search_impl,
+    huggingface_parse_search_impl, openalex_parse_search_impl, zenodo_parse_search_impl,
 };
 use gossamer::categories::classify_query;
 use gossamer::discovery::{fetch_text, fetch_text_with_user_agent};
@@ -247,6 +248,57 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             }
             Err(error) => {
                 eprintln!("OpenAlex search failed: {error}");
+                let payload = json!({"error": format!("All search providers failed for: {query}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
+    } else if selected == "huggingface" || selected == "huggingface-papers" {
+        let limit = max_results.min(1000).to_string();
+        let (path, params): (&str, Vec<(&str, &str)>) = if selected == "huggingface" {
+            (
+                "/models",
+                vec![
+                    ("search", query.as_str()),
+                    ("sort", "downloads"),
+                    ("direction", "-1"),
+                    ("limit", limit.as_str()),
+                ],
+            )
+        } else {
+            (
+                "/papers/search",
+                vec![("q", query.as_str()), ("limit", limit.as_str())],
+            )
+        };
+        let url = url::Url::parse_with_params(&format!("https://huggingface.co/api{path}"), params)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|_| format!("https://huggingface.co/api{path}?q={query}"));
+        match fetch_text(&url, 30.0) {
+            Ok((body, _)) => {
+                let parsed_body = serde_json::from_str::<Value>(&body).ok();
+                let items = parsed_body.as_ref().and_then(Value::as_array);
+                let mut records = if selected == "huggingface" {
+                    huggingface_parse_search_impl(&body, max_results as i64, None)
+                        .unwrap_or_default()
+                } else {
+                    huggingface_papers_parse_search_impl(&body, max_results as i64, None)
+                        .unwrap_or_default()
+                };
+                if let Some(items) = items {
+                    for (record, item) in records.iter_mut().zip(items.iter()) {
+                        if let Some(object) = record.as_object_mut() {
+                            object.insert("raw".to_string(), Value::String(py_dumps(item)));
+                        }
+                    }
+                }
+                records
+            }
+            Err(error) => {
+                eprintln!("Hugging Face search failed: {error}");
                 let payload = json!({"error": format!("All search providers failed for: {query}")});
                 println!(
                     "{}",
