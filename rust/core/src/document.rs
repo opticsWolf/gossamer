@@ -301,6 +301,137 @@ pub fn office_markdown(bytes: &[u8], extension: &str) -> Result<String, String> 
     Ok(document.to_markdown())
 }
 
+/// Build a structured `ParsedDocumentPayload` for Office bytes.
+pub fn office_structured_payload(
+    bytes: &[u8],
+    extension: &str,
+    file_name: &str,
+    file_size_bytes: u64,
+) -> Result<Value, String> {
+    use std::io::Cursor;
+
+    use office_oxide::{Document, format::DocumentFormat};
+
+    let format = DocumentFormat::from_extension(extension)
+        .ok_or_else(|| format!("Unsupported document format: .{extension}"))?;
+    let document = Document::from_reader(Cursor::new(bytes.to_vec()), format)
+        .map_err(|error| error.to_string())?;
+    let ir_text = document
+        .to_ir()
+        .to_json_string()
+        .map_err(|error| error.to_string())?;
+    let ir: Value = serde_json::from_str(&ir_text).unwrap_or(Value::Null);
+    let source_meta = ir.get("metadata").and_then(Value::as_object);
+    let title = source_meta
+        .and_then(|map| map.get("title"))
+        .or_else(|| ir.get("title"))
+        .filter(|value| !value.is_null())
+        .cloned()
+        .unwrap_or(Value::Null);
+    let author = source_meta
+        .and_then(|map| map.get("author"))
+        .or_else(|| map_get(&ir, "creator"))
+        .or_else(|| map_get(&ir, "author"))
+        .filter(|value| !value.is_null())
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut extra_meta = serde_json::Map::new();
+    if let Some(map) = source_meta {
+        for (key, value) in map {
+            if key != "title" && key != "author" {
+                extra_meta.insert(
+                    key.clone(),
+                    Value::String(crate::config::py_str_value(value)),
+                );
+            }
+        }
+    }
+    let spreadsheet = matches!(extension, "xlsx" | "xls" | "pptx" | "ppt");
+    let page_count = if spreadsheet {
+        ir.get("sections")
+            .and_then(Value::as_array)
+            .map_or(1, |items| items.len().max(1))
+    } else {
+        1
+    };
+    let mut tables = Vec::new();
+    if spreadsheet {
+        for (index, pair) in crate::documents::office_ir_tables(&ir)
+            .into_iter()
+            .enumerate()
+        {
+            let pair = pair.as_array().cloned().unwrap_or_default();
+            let title = pair.first().and_then(Value::as_str).unwrap_or("Section 1");
+            let rows = pair
+                .get(1)
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if rows.is_empty() {
+                continue;
+            }
+            tables.push(serde_json::json!({
+                "name": format!("{title}_table_{index}"),
+                "headers": rows[0],
+                "rows": rows.iter().skip(1).cloned().collect::<Vec<_>>(),
+            }));
+        }
+    }
+    let metadata = serde_json::json!({
+        "jsonld": Value::Null,
+        "microdata": Value::Null,
+        "microformats": Value::Null,
+        "dublin_core": Value::Null,
+        "rdfa": Value::Null,
+        "rel_links": Value::Null,
+        "manifest": Value::Null,
+        "extra_meta": extra_meta,
+        "twitter_card": Value::Null,
+        "twitter_title": Value::Null,
+        "twitter_description": Value::Null,
+        "twitter_image": Value::Null,
+        "twitter_site": Value::Null,
+        "og_title": Value::Null,
+        "og_type": Value::Null,
+        "og_image": Value::Null,
+        "og_images": Value::Null,
+        "og_description": Value::Null,
+        "og_site_name": Value::Null,
+        "og_url": Value::Null,
+        "canonical": Value::Null,
+        "language": Value::Null,
+        "keywords": Value::Null,
+        "robots": Value::Null,
+        "file_name": file_name,
+        "file_size_bytes": file_size_bytes,
+        "format": extension,
+        "title": title,
+        "author": author,
+        "description": Value::Null,
+        "created_at": Value::Null,
+        "modified_at": Value::Null,
+        "page_count": page_count,
+    });
+    let plain = document.plain_text();
+    let markdown = document.to_markdown();
+    Ok(serde_json::json!({
+        "metadata": metadata,
+        "pages": [{
+            "page_number": 1,
+            "raw_text": plain,
+            "markdown": markdown,
+            "tables": tables,
+        }],
+        "tables": tables,
+        "links": [],
+        "guard": Value::Null,
+    }))
+}
+
+fn map_get<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
+    value.get(key).filter(|value| !value.is_null())
+}
+
 /// Extract Markdown from PDF bytes with the embedded `pdf_oxide` engine.
 ///
 /// Errors are returned as strings so CLI/Python adapters can preserve their

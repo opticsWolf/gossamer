@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "jsonld": null,
+    "microdata": null,
+    "microformats": null,
+    "dublin_core": null,
+    "rdfa": null,
+    "rel_links": null,
+    "manifest": null,
+    "extra_meta": {
+      "format": "docx",
+      "keywords": "[]"
+    },
+    "twitter_card": null,
+    "twitter_title": null,
+    "twitter_description": null,
+    "twitter_image": null,
+    "twitter_site": null,
+    "og_title": null,
+    "og_type": null,
+    "og_image": null,
+    "og_images": null,
+    "og_description": null,
+    "og_site_name": null,
+    "og_url": null,
+    "canonical": null,
+    "language": null,
+    "keywords": null,
+    "robots": null,
+    "file_name": "sample.docx",
+    "file_size_bytes": 1230,
+    "format": "docx",
+    "title": null,
+    "author": null,
+    "description": null,
+    "created_at": null,
+    "modified_at": null,
+    "page_count": 1
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "raw_text": "Hello DOCX",
+      "markdown": "Hello DOCX",
+      "tables": []
+    }
+  ],
+  "tables": [],
+  "links": [],
+  "guard": null
+}

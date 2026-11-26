@@ -7,7 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
 use gossamer::document::{
-    office_markdown, page_selection_error, pdf_markdown, structured_format_error, xml_feed_text,
+    office_markdown, office_structured_payload, page_selection_error, pdf_markdown,
+    structured_format_error, xml_feed_text,
 };
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
@@ -195,6 +196,43 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             eprintln!("Structured extraction failed for {display}: {error}");
             let payload =
                 json!({"error": format!("Structured document extraction failed: {error}")});
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+            );
+            return ExitCode::SUCCESS;
+        }
+        let suffix = Path::new(&source)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !is_url
+            && matches!(
+                suffix.as_str(),
+                "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt"
+            )
+        {
+            let raw_path = PathBuf::from(&source);
+            let path = if raw_path.is_absolute() {
+                raw_path
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(raw_path)
+            };
+            let Ok(bytes) = std::fs::read(&path) else {
+                return unsupported();
+            };
+            let file_name = path
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "document".to_string());
+            let payload =
+                match office_structured_payload(&bytes, &suffix, &file_name, bytes.len() as u64) {
+                    Ok(payload) => payload,
+                    Err(_) => return unsupported(),
+                };
             println!(
                 "{}",
                 serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
