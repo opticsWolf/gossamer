@@ -288,6 +288,19 @@ pub fn page_selection_error(source: &str, is_url: bool) -> Option<String> {
     ))
 }
 
+/// Extract Markdown from PDF bytes with the embedded `pdf_oxide` engine.
+///
+/// Errors are returned as strings so CLI/Python adapters can preserve their
+/// own error envelopes instead of panicking on malformed input.
+pub fn pdf_markdown(bytes: &[u8]) -> Result<String, String> {
+    let document =
+        pdf_oxide::PdfDocument::from_bytes(bytes.to_vec()).map_err(|error| error.to_string())?;
+    let options = pdf_oxide::converters::ConversionOptions::default();
+    document
+        .to_markdown_all(&options)
+        .map_err(|error| error.to_string())
+}
+
 /// Build the `ParsedDocumentPayload` envelope for an HTML fetch.
 ///
 /// The CLI structured-inspect path uses this to emit the same flat metadata

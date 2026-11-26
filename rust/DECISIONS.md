@@ -239,3 +239,12 @@ Consequences:
 - `mcp_server.py` and `cli.py` are last because they own the external contracts.
 - Benchmark timing normalizers must not hide result-shape differences.
 - Fallback rate is reported after every unit; no attempt to force 0% by deleting or weakening cases.
+
+## ADR-014: pure-core PDF extraction uses `pdf_oxide`
+
+- Date: 2026-11-27.
+- `rust/core` depends on `pdf_oxide 0.3.78` with default features disabled.
+- The Python oracle uses the same upstream engine via PyO3; parity is compared
+  on extracted Markdown, not on implementation internals.
+- No OCR, rendering, or bundled binaries are enabled. Binary extraction stays
+  behind the explicit CLI/kernel boundary and reports canonical errors.

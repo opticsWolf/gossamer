@@ -16,6 +16,7 @@ blake2 = "0.11"
 html2md = "0.2"
 log = "0.4"
 meta_oxide = { path = "vendor/meta_oxide", default-features = false }
+pdf_oxide = { version = "0.3.78", default-features = false }
 quick-xml = "0.42.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "brotli", "gzip", "deflate", "cookies", "charset", "http2", "rustls-tls"] }
 scraper = "0.22"

@@ -6,7 +6,9 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
-use gossamer::document::{page_selection_error, structured_format_error, xml_feed_text};
+use gossamer::document::{
+    page_selection_error, pdf_markdown, structured_format_error, xml_feed_text,
+};
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
@@ -55,6 +57,9 @@ fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
         .to_ascii_lowercase();
     if matches!(ext.as_str(), "txt" | "md" | "csv") {
         return std::str::from_utf8(bytes).ok().map(str::to_string);
+    }
+    if ext == "pdf" {
+        return pdf_markdown(bytes).ok();
     }
     if ext == "json" {
         let value: Value = serde_json::from_slice(bytes).ok()?;
@@ -277,7 +282,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             return unsupported();
         };
         (
-            path.to_string_lossy().replace('\\', "/"),
+            source.replace('\\', "/"),
             bytes,
             content,
             Value::Null,
@@ -347,7 +352,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "http_status": http_status,
         "final_url": final_url,
         "content_type": content_type,
-        "content_hash": sha256_bytes(&bytes),
+        "content_hash": sha256_bytes(content.as_bytes()),
         "links": [],
         "guard": Value::Null,
         "stored": stored,

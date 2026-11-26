@@ -273,6 +273,8 @@ ProviderFailure {
   exact text parity verified on `https://example.com`, replay 60/60.
 - CLI `locate-pdf` now follows the full OpenAlex → Unpaywall fallback with
   env-gated email and exact source/error envelopes; replay remains 60/60.
+- `document::pdf_markdown` now leverages `pdf_oxide` for local PDF extraction;
+  replay fixture `extract-local-pdf` brings the app to 61/61.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.
