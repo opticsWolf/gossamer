@@ -1,0 +1,635 @@
+{
+  "1": {
+    "id": 1,
+    "jsonrpc": "2.0",
+    "result": {
+      "capabilities": {
+        "prompts": {
+          "listChanged": false
+        },
+        "resources": {
+          "listChanged": false,
+          "subscribe": false
+        },
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "instructions": "Web research toolkit: search the web, fetch pages as LLM-friendly markdown with follow-up links, and extract text/tables from documents (PDF, DOCX, XLSX, PPTX) and text formats (TXT, MD, CSV, JSON, XML, RSS/Atom). Results are cached, rate-limited per domain, and token-budgeted.\n\n## Rendering (JS pages / anti-bot)\n\nPage fetches use a render strategy: `auto` (static first; stealth browser on failure/non-text), `browser` (stealth first, static fallback), or `static` (never renders). Select it per call with `use_smart` on `web_search` (when not search_only), `inspect_html_page`, `batch_inspect_pages`, and `crawl`, or set the process default with the `GOSSAMER_FETCH_MODE` environment variable. Browser rendering needs the optional `gossamer-web[browser]` extra; `provider='browser'` is the corresponding stealth search engine.\n\n## Skill pack\n\nThe `gossamer` agent skill ships inside this package and is readable as the resource `skills://gossamer` (routing, budgets, auth, cache behavior, and the literature-collection recipe). Run `gossamer skills show gossamer` to print it, or `gossamer skills install` to copy it into Claude Code / OpenCode discovery directories.",
+      "protocolVersion": "2024-11-05",
+      "serverInfo": {
+        "name": "gossamer",
+        "version": ""
+      }
+    }
+  },
+  "2": {
+    "id": 2,
+    "jsonrpc": "2.0",
+    "result": {}
+  },
+  "3": {
+    "id": 3,
+    "jsonrpc": "2.0",
+    "result": {
+      "tools": [
+        {
+          "description": "Unified web search + research. search_only=true (default false) is a pure provider search across engines (duckduckgo/google/bing/exa/browser) returning a deduped list. search_only=false also fetches up to depth candidate pages, returning one record per source with status, markdown, and provenance for a cited synthesis. When fetching, use_smart selects the render strategy.\n\nArgs:\n    query: The search query / research topic\n    search_only: true returns only provider search results; false also fetches up to depth pages and returns per-source records.\n    max_results: Maximum number of search results to consider (default: 5).\n    depth: Number of candidate pages to fetch when search_only=false (default: 5).\n    max_tokens: Global token budget for the whole response (0 = toolbox default).\n    provider: Search engine to prefer, in both modes. search_only=false plans the research run through this provider. Falls back through other providers on failure.\n    use_smart: Render strategy for fetched pages: 'auto' (default; follows fetch_mode), 'browser' (stealth browser first, static fallback), or 'static' (never renders). Ignored when search_only=true.",
+          "inputSchema": {
+            "properties": {
+              "depth": {
+                "default": 5,
+                "description": "Number of candidate pages to fetch when search_only=false (default: 5).",
+                "title": "Depth",
+                "type": "integer"
+              },
+              "max_results": {
+                "default": 5,
+                "description": "Maximum number of search results to consider (default: 5).",
+                "title": "Max Results",
+                "type": "integer"
+              },
+              "max_tokens": {
+                "default": 0,
+                "description": "Global token budget for the whole response (0 = toolbox default).",
+                "title": "Max Tokens",
+                "type": "integer"
+              },
+              "provider": {
+                "default": "duckduckgo",
+                "description": "Search engine to prefer, in both modes. search_only=false plans the research run through this provider. Falls back through other providers on failure.",
+                "enum": [
+                  "duckduckgo",
+                  "google",
+                  "bing",
+                  "exa",
+                  "browser"
+                ],
+                "title": "Provider",
+                "type": "string"
+              },
+              "query": {
+                "description": "The search query / research topic",
+                "title": "Query",
+                "type": "string"
+              },
+              "search_only": {
+                "default": false,
+                "description": "true returns only provider search results; false also fetches up to depth pages and returns per-source records.",
+                "title": "Search Only",
+                "type": "boolean"
+              },
+              "use_smart": {
+                "default": "auto",
+                "description": "Render strategy for fetched pages: 'auto' (default; follows fetch_mode), 'browser' (stealth browser first, static fallback), or 'static' (never renders). Ignored when search_only=true.",
+                "enum": [
+                  "auto",
+                  "browser",
+                  "static"
+                ],
+                "title": "Use Smart",
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "title": "web_searchArguments",
+            "type": "object"
+          },
+          "name": "web_search"
+        },
+        {
+          "description": "Fetch and extract markdown content from a web page. Set use_smart='browser' for JS-rendered pages (SPA, anti-bot); 'auto' (default) follows fetch_mode; 'static' is static-only. If the page exceeds the output budget, pass the research query to keep only the most relevant sections, or offset / max_chunks to page through it in chunks. Returns markdown, follow-up links, and provenance.\n\nArgs:\n    url: The URL to inspect\n    use_smart: Render strategy: 'auto' (default), 'browser' (headless browser first, static on failure), or 'static'.\n    query: The research query. When the page exceeds the output budget, only the most relevant sections are returned.\n    offset: Character offset into the page markdown to start from; pass the previous call's next_offset to resume.\n    max_chunks: Number of consecutive budget-sized chunks to return (each chunk respects the output budget; the total may exceed it).\n    structured: true returns a structured payload (metadata, tables, links) instead of raw markdown.",
+          "inputSchema": {
+            "properties": {
+              "max_chunks": {
+                "default": 1,
+                "description": "Number of consecutive budget-sized chunks to return (each chunk respects the output budget; the total may exceed it).",
+                "title": "Max Chunks",
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "description": "Character offset into the page markdown to start from; pass the previous call's next_offset to resume.",
+                "title": "Offset",
+                "type": "integer"
+              },
+              "query": {
+                "default": null,
+                "description": "The research query. When the page exceeds the output budget, only the most relevant sections are returned.",
+                "title": "Query",
+                "type": "string"
+              },
+              "structured": {
+                "default": false,
+                "description": "true returns a structured payload (metadata, tables, links) instead of raw markdown.",
+                "title": "Structured",
+                "type": "boolean"
+              },
+              "url": {
+                "description": "The URL to inspect",
+                "title": "Url",
+                "type": "string"
+              },
+              "use_smart": {
+                "default": "auto",
+                "description": "Render strategy: 'auto' (default), 'browser' (headless browser first, static on failure), or 'static'.",
+                "enum": [
+                  "auto",
+                  "browser",
+                  "static"
+                ],
+                "title": "Use Smart",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "title": "inspect_html_pageArguments",
+            "type": "object"
+          },
+          "name": "inspect_html_page"
+        },
+        {
+          "description": "Fetch multiple web pages. Returns markdown and links for each. use_smart selects the render strategy: 'auto' (default; follows fetch_mode with a stealth fallback on non-text pages), 'browser' (stealth browser first, fetched sequentially, static fallback), or 'static' (never renders).\n\nArgs:\n    urls: List of URLs to inspect\n    use_smart: Render strategy: 'auto' (default; follows fetch_mode), 'browser' (stealth browser first; sequential), or 'static' (never renders).",
+          "inputSchema": {
+            "properties": {
+              "urls": {
+                "description": "List of URLs to inspect",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Urls",
+                "type": "array"
+              },
+              "use_smart": {
+                "default": "auto",
+                "description": "Render strategy: 'auto' (default; follows fetch_mode), 'browser' (stealth browser first; sequential), or 'static' (never renders).",
+                "enum": [
+                  "auto",
+                  "browser",
+                  "static"
+                ],
+                "title": "Use Smart",
+                "type": "string"
+              }
+            },
+            "required": [
+              "urls"
+            ],
+            "title": "batch_inspect_pagesArguments",
+            "type": "object"
+          },
+          "name": "batch_inspect_pages"
+        },
+        {
+          "description": "Download a remote file to an explicit local path without requiring document extraction. Streams under the configured/per-call byte cap, follows and revalidates redirects, respects robots.txt and SSRF protections, and validates PDF magic when expected_format='pdf' or the output ends in .pdf. Existing destinations are preserved unless overwrite=true. Optional fallback_urls are caller-supplied OA/repository candidates tried sequentially; every URL is checked independently and bot walls are never bypassed.\n\nArgs:\n    source: Remote HTTP(S) URL to download\n    output_path: Local destination file path\n    min_bytes: Minimum accepted file size in bytes (default: 1).\n    max_bytes: Maximum bytes (0 uses the configured max_response_bytes cap).\n    expected_format: 'auto' validates PDF when output_path ends in .pdf; 'pdf' always validates the %PDF- signature.\n    overwrite: Replace an existing destination only when true.\n    resume: Continue an existing partial file with Range/If-Range; servers that ignore Range restart the file.\n    fallback_urls: Optional caller-supplied ordered OA/repository mirrors to try sequentially after the primary URL; every candidate still obeys robots/SSRF checks.",
+          "inputSchema": {
+            "properties": {
+              "expected_format": {
+                "default": "auto",
+                "description": "'auto' validates PDF when output_path ends in .pdf; 'pdf' always validates the %PDF- signature.",
+                "enum": [
+                  "auto",
+                  "pdf"
+                ],
+                "title": "Expected Format",
+                "type": "string"
+              },
+              "fallback_urls": {
+                "default": [],
+                "description": "Optional caller-supplied ordered OA/repository mirrors to try sequentially after the primary URL; every candidate still obeys robots/SSRF checks.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Fallback Urls",
+                "type": "array"
+              },
+              "max_bytes": {
+                "default": 0,
+                "description": "Maximum bytes (0 uses the configured max_response_bytes cap).",
+                "title": "Max Bytes",
+                "type": "integer"
+              },
+              "min_bytes": {
+                "default": 1,
+                "description": "Minimum accepted file size in bytes (default: 1).",
+                "title": "Min Bytes",
+                "type": "integer"
+              },
+              "output_path": {
+                "description": "Local destination file path",
+                "title": "Output Path",
+                "type": "string"
+              },
+              "overwrite": {
+                "default": false,
+                "description": "Replace an existing destination only when true.",
+                "title": "Overwrite",
+                "type": "boolean"
+              },
+              "resume": {
+                "default": false,
+                "description": "Continue an existing partial file with Range/If-Range; servers that ignore Range restart the file.",
+                "title": "Resume",
+                "type": "boolean"
+              },
+              "source": {
+                "description": "Remote HTTP(S) URL to download",
+                "title": "Source",
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "output_path"
+            ],
+            "title": "download_fileArguments",
+            "type": "object"
+          },
+          "name": "download_file"
+        },
+        {
+          "description": "Resolve a DOI through OpenAlex (plus Unpaywall v2 when GOSSAMER_UNPAYWALL_EMAIL is configured) and return inspectable open-access PDF or landing-page candidates with source/license/version provenance. This locates but does not download; use download_file separately. Returns not_found, closed_access, open_access, or a top-level error status.\n\nArgs:\n    doi: Bare DOI, doi: prefixed value, or https://doi.org/ resolver URL",
+          "inputSchema": {
+            "properties": {
+              "doi": {
+                "description": "Bare DOI, doi: prefixed value, or https://doi.org/ resolver URL",
+                "title": "Doi",
+                "type": "string"
+              }
+            },
+            "required": [
+              "doi"
+            ],
+            "title": "locate_pdfArguments",
+            "type": "object"
+          },
+          "name": "locate_pdf"
+        },
+        {
+          "description": "Extract text content from documents via URL or local path: PDF, DOCX, XLSX, PPTX, plus text formats (TXT, MD, CSV, JSON, XML) and RSS/Atom feeds. For large documents, pass pages (e.g. '10-20') to read a page range instead of the whole file.\n\nArgs:\n    source: URL or local file path to the document\n    pages: 1-based inclusive page range for PDFs ('10', '10-20', '10-', '-20'); for XLSX the range selects sheets. Omitted -> the whole document.\n    structured: true returns a validated ParsedDocumentPayload (metadata, pages, tables) as JSON instead of plain text.\n    store: true writes the original bytes and the full extracted text to disk under store_dir; the result includes a 'stored' object with paths and sizes. Cannot combine with pages=.\n    store_dir: Directory to write stored files into (created if missing). Only used when store=true.\n    include_images: PDF only; requires store=true. Also extract embedded raster images into <stem>.files/ with a ## Figures section (reported under stored.resources). Vector-only figures are skipped; tables render by default.\n    tables_as: Rendering of spreadsheet (XLSX) tables in the returned content: 'json' (default; array of {sheet, headers, rows}), 'markdown' (pipe tables), or 'csv' (comma-separated, one ## <sheet> block per sheet). Other formats keep markdown rendering.\n    prefer_jats: JATS-first scholarly route (default true): DOI-resolvable sources try publisher full-text XML (EuropePMC, then PLOS) via the in-house _core JATS kernel before the PDF path. pages= with a JATS-resolvable source errors; structured=true or tables_as != 'markdown' skips the route.",
+          "inputSchema": {
+            "properties": {
+              "include_images": {
+                "default": false,
+                "description": "PDF only; requires store=true. Also extract embedded raster images into <stem>.files/ with a ## Figures section (reported under stored.resources). Vector-only figures are skipped; tables render by default.",
+                "title": "Include Images",
+                "type": "boolean"
+              },
+              "pages": {
+                "default": null,
+                "description": "1-based inclusive page range for PDFs ('10', '10-20', '10-', '-20'); for XLSX the range selects sheets. Omitted -> the whole document.",
+                "title": "Pages",
+                "type": "string"
+              },
+              "prefer_jats": {
+                "default": true,
+                "description": "JATS-first scholarly route (default true): DOI-resolvable sources try publisher full-text XML (EuropePMC, then PLOS) via the in-house _core JATS kernel before the PDF path. pages= with a JATS-resolvable source errors; structured=true or tables_as != 'markdown' skips the route.",
+                "title": "Prefer Jats",
+                "type": "boolean"
+              },
+              "source": {
+                "description": "URL or local file path to the document",
+                "title": "Source",
+                "type": "string"
+              },
+              "store": {
+                "default": false,
+                "description": "true writes the original bytes and the full extracted text to disk under store_dir; the result includes a 'stored' object with paths and sizes. Cannot combine with pages=.",
+                "title": "Store",
+                "type": "boolean"
+              },
+              "store_dir": {
+                "default": null,
+                "description": "Directory to write stored files into (created if missing). Only used when store=true.",
+                "title": "Store Dir",
+                "type": "string"
+              },
+              "structured": {
+                "default": false,
+                "description": "true returns a validated ParsedDocumentPayload (metadata, pages, tables) as JSON instead of plain text.",
+                "title": "Structured",
+                "type": "boolean"
+              },
+              "tables_as": {
+                "default": "json",
+                "description": "Rendering of spreadsheet (XLSX) tables in the returned content: 'json' (default; array of {sheet, headers, rows}), 'markdown' (pipe tables), or 'csv' (comma-separated, one ## <sheet> block per sheet). Other formats keep markdown rendering.",
+                "enum": [
+                  "markdown",
+                  "csv",
+                  "json"
+                ],
+                "title": "Tables As",
+                "type": "string"
+              }
+            },
+            "required": [
+              "source"
+            ],
+            "title": "extract_documentArguments",
+            "type": "object"
+          },
+          "name": "extract_document"
+        },
+        {
+          "description": "Discover a site's structured resources without crawling the link graph (Tier 3.12). Finds feed declarations (<link rel=alternate> RSS/Atom/Feed-JSON) on the page and probes the site root for /sitemap.xml, following bounded sitemap indexes. Returns deduplicated, budgeted lists of feed URLs and sitemap page URLs.\n\nArgs:\n    url: A page or site URL to discover resources for",
+          "inputSchema": {
+            "properties": {
+              "url": {
+                "description": "A page or site URL to discover resources for",
+                "title": "Url",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "title": "discover_resourcesArguments",
+            "type": "object"
+          },
+          "name": "discover_resources"
+        },
+        {
+          "description": "Relevance-ranked crawl of a URL's link graph (cross-domain by default) to find the pages most relevant to a query. Walks from root_url, scoring candidates by query relevance that decays with depth, so the page budget lands on the most relevant links. Optionally seed with a site-scoped search (search_prior) and/or extra URLs (seed_urls). Returns per page: title, relevance score, and a short skim; plus unfetched document links and skipped links. Full pages stay cached for later re-reads.\n\nArgs:\n    root_url: Seed URL to start the traversal from\n    query: Relevance focus for the frontier ranking. When omitted, the root page's own title and content words stand in for it.\n    max_depth: Maximum link hops from the root (0 = root only; hard cap 5)\n    max_pages: Total pages fetched across all depths (1-50); failed fetches do not count\n    same_host: When true, follow only links on the root's host (www. ignored); false follows external links too\n    min_score: Minimum relevance score for a candidate to enter the frontier (0 = follow everything that passes the boilerplate filters)\n    excerpts: Also return a keyword-densest 300-char excerpt per page (raises the payload size; pair with a lower max_pages)\n    search_prior: Before traversing, run one site-scoped web search and feed its top results into the frontier at depth 1 (exempt from min_score; a failed search is non-fatal)\n    seed_urls: Extra starting URLs, pushed at depth 0 (children at depth 1); they respect min_score\n    use_smart: Render strategy for crawled pages: 'auto' (default), 'browser' (headless first), or 'static'.",
+          "inputSchema": {
+            "properties": {
+              "excerpts": {
+                "default": false,
+                "description": "Also return a keyword-densest 300-char excerpt per page (raises the payload size; pair with a lower max_pages)",
+                "title": "Excerpts",
+                "type": "boolean"
+              },
+              "max_depth": {
+                "default": 3,
+                "description": "Maximum link hops from the root (0 = root only; hard cap 5)",
+                "title": "Max Depth",
+                "type": "integer"
+              },
+              "max_pages": {
+                "default": 15,
+                "description": "Total pages fetched across all depths (1-50); failed fetches do not count",
+                "title": "Max Pages",
+                "type": "integer"
+              },
+              "min_score": {
+                "default": 0.05,
+                "description": "Minimum relevance score for a candidate to enter the frontier (0 = follow everything that passes the boilerplate filters)",
+                "title": "Min Score",
+                "type": "number"
+              },
+              "query": {
+                "default": null,
+                "description": "Relevance focus for the frontier ranking. When omitted, the root page's own title and content words stand in for it.",
+                "title": "Query",
+                "type": "string"
+              },
+              "root_url": {
+                "description": "Seed URL to start the traversal from",
+                "title": "Root Url",
+                "type": "string"
+              },
+              "same_host": {
+                "default": false,
+                "description": "When true, follow only links on the root's host (www. ignored); false follows external links too",
+                "title": "Same Host",
+                "type": "boolean"
+              },
+              "search_prior": {
+                "default": false,
+                "description": "Before traversing, run one site-scoped web search and feed its top results into the frontier at depth 1 (exempt from min_score; a failed search is non-fatal)",
+                "title": "Search Prior",
+                "type": "boolean"
+              },
+              "seed_urls": {
+                "default": [],
+                "description": "Extra starting URLs, pushed at depth 0 (children at depth 1); they respect min_score",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Seed Urls",
+                "type": "array"
+              },
+              "use_smart": {
+                "default": "auto",
+                "description": "Render strategy for crawled pages: 'auto' (default), 'browser' (headless first), or 'static'.",
+                "enum": [
+                  "auto",
+                  "browser",
+                  "static"
+                ],
+                "title": "Use Smart",
+                "type": "string"
+              }
+            },
+            "required": [
+              "root_url"
+            ],
+            "title": "crawlArguments",
+            "type": "object"
+          },
+          "name": "crawl"
+        },
+        {
+          "description": "Unified cache maintenance. action='clear' wipes the memory and disk caches plus the visited-URL set (force fresh fetches); action='prune' (default) removes expired entries and evicts to the size cap while keeping valid ones; action='reset' forgets visited URLs without clearing caches (retry a failed page).\n\nArgs:\n    action: Cache operation: 'clear' (wipe caches + visited), 'prune' (default, evict expired/LRU to size cap), or 'reset' (forget visited URLs only).",
+          "inputSchema": {
+            "properties": {
+              "action": {
+                "default": "prune",
+                "description": "Cache operation: 'clear' (wipe caches + visited), 'prune' (default, evict expired/LRU to size cap), or 'reset' (forget visited URLs only).",
+                "enum": [
+                  "clear",
+                  "prune",
+                  "reset"
+                ],
+                "title": "Action",
+                "type": "string"
+              }
+            },
+            "title": "manage_cacheArguments",
+            "type": "object"
+          },
+          "name": "manage_cache"
+        },
+        {
+          "description": "Category-aware, provider-specific search. Classifies the query into a domain category (scholarly, legal, patent, financial, geo, general) and calls that category's default provider. Omit the query to return the full taxonomy (category descriptions and provider ids) as JSON. Pass provider=<id> to call a specific source; pass category=<name> to skip classification. No automatic fallback between providers -- the caller chooses. Pass providers=[...] for an explicit scholarly multi-search merged by DOI/arXiv ID. OpenAlex-only filter/select/title/author options pass through to that API. Returns the chosen category, provider, and results as JSON. Provider failures keep results as an empty list and add a top-level error field.\n\nArgs:\n    query: The search query. Omit it to return the full category -> provider taxonomy as JSON instead, so you can discover which provider to use.\n    category: Optional category to use directly (e.g. 'scholarly', 'legal', 'financial', 'geo', 'general'); skips classification. Pair with provider= to pick a source within it.\n    max_results: Maximum number of results to return.\n    provider: Optional provider id to call (see the taxonomy from a no-query call). Given alone, its owning category is used; with category= it must belong to that category. Omitted -> the category's default provider. No automatic fallback.\n    filter: OpenAlex-native filter expression; valid only with provider='openalex'.\n    select: OpenAlex-native comma-separated field projection; valid only with provider='openalex'.\n    title: OpenAlex title search; maps to verified title.search filter. Valid only with provider='openalex'.\n    author: OpenAlex author search; maps to verified raw_author_name.search filter. Valid only with provider='openalex'.\n    providers: Explicit providers for sequential scholarly search/merge, e.g. ['openalex', 'arxiv']. Mutually exclusive with provider= and supported only for scholarly.",
+          "inputSchema": {
+            "properties": {
+              "author": {
+                "default": null,
+                "description": "OpenAlex author search; maps to verified raw_author_name.search filter. Valid only with provider='openalex'.",
+                "title": "Author",
+                "type": "string"
+              },
+              "category": {
+                "default": null,
+                "description": "Optional category to use directly (e.g. 'scholarly', 'legal', 'financial', 'geo', 'general'); skips classification. Pair with provider= to pick a source within it.",
+                "title": "Category",
+                "type": "string"
+              },
+              "filter": {
+                "default": null,
+                "description": "OpenAlex-native filter expression; valid only with provider='openalex'.",
+                "title": "Filter",
+                "type": "string"
+              },
+              "max_results": {
+                "default": 5,
+                "description": "Maximum number of results to return.",
+                "title": "Max Results",
+                "type": "integer"
+              },
+              "provider": {
+                "default": null,
+                "description": "Optional provider id to call (see the taxonomy from a no-query call). Given alone, its owning category is used; with category= it must belong to that category. Omitted -> the category's default provider. No automatic fallback.",
+                "title": "Provider",
+                "type": "string"
+              },
+              "providers": {
+                "default": [],
+                "description": "Explicit providers for sequential scholarly search/merge, e.g. ['openalex', 'arxiv']. Mutually exclusive with provider= and supported only for scholarly.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Providers",
+                "type": "array"
+              },
+              "query": {
+                "default": null,
+                "description": "The search query. Omit it to return the full category -> provider taxonomy as JSON instead, so you can discover which provider to use.",
+                "title": "Query",
+                "type": "string"
+              },
+              "select": {
+                "default": null,
+                "description": "OpenAlex-native comma-separated field projection; valid only with provider='openalex'.",
+                "title": "Select",
+                "type": "string"
+              },
+              "title": {
+                "default": null,
+                "description": "OpenAlex title search; maps to verified title.search filter. Valid only with provider='openalex'.",
+                "title": "Title",
+                "type": "string"
+              }
+            },
+            "title": "research_by_categoryArguments",
+            "type": "object"
+          },
+          "name": "research_by_category"
+        },
+        {
+          "description": "Reconstruct and export citations from search results. Pass a list of DOIs, URLs, or JSON-serialized adapter result dicts; returns them formatted as bibtex (default), csl-json, apa, or mla. DOIs and URLs are resolved via the scholarly adapters (openalex, crossref, arxiv, pubmed, doaj).\n\nArgs:\n    results: List of DOIs ('10.xxxx/...'), URLs, or JSON-serialized adapter result dicts to cite.\n    style: Citation style: bibtex, csl-json, apa, or mla.\n    enrich: When true, make one canonical DOI lookup per unique DOI to fill in a missing venue/abstract.\n    dedupe: Collapse records that share a DOI or URL before formatting.\n    from_pdf: Treat every string input as a local PDF path and cite its detected DOI; PDFs without a DOI return an error.",
+          "inputSchema": {
+            "properties": {
+              "dedupe": {
+                "default": true,
+                "description": "Collapse records that share a DOI or URL before formatting.",
+                "title": "Dedupe",
+                "type": "boolean"
+              },
+              "enrich": {
+                "default": false,
+                "description": "When true, make one canonical DOI lookup per unique DOI to fill in a missing venue/abstract.",
+                "title": "Enrich",
+                "type": "boolean"
+              },
+              "from_pdf": {
+                "default": false,
+                "description": "Treat every string input as a local PDF path and cite its detected DOI; PDFs without a DOI return an error.",
+                "title": "From Pdf",
+                "type": "boolean"
+              },
+              "results": {
+                "description": "List of DOIs ('10.xxxx/...'), URLs, or JSON-serialized adapter result dicts to cite.",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Results",
+                "type": "array"
+              },
+              "style": {
+                "default": "bibtex",
+                "description": "Citation style: bibtex, csl-json, apa, or mla.",
+                "enum": [
+                  "bibtex",
+                  "csl-json",
+                  "apa",
+                  "mla"
+                ],
+                "title": "Style",
+                "type": "string"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "export_citationsArguments",
+            "type": "object"
+          },
+          "name": "export_citations"
+        },
+        {
+          "description": "Probe whether source URLs are reachable without downloading their pages (Workstream 2). Takes a list of URLs (strings or {url} dicts), validates each through the SSRF guard, runs a lightweight status probe per URL (polite / parallel / bounded), and returns per-URL status: ok (2xx/3xx), unreachable (4xx/5xx), blocked (SSRF), or error (network/timeout). Reuses the shared fetch pipeline -- no new HTTP surface.\n\nArgs:\n    urls: List of URLs to probe (plain strings or {url} dicts).\n    mode: Probe mode: 'status' (HEAD/minimal GET, default) or 'content' (full fetch).",
+          "inputSchema": {
+            "properties": {
+              "mode": {
+                "default": "status",
+                "description": "Probe mode: 'status' (HEAD/minimal GET, default) or 'content' (full fetch).",
+                "enum": [
+                  "status",
+                  "content"
+                ],
+                "title": "Mode",
+                "type": "string"
+              },
+              "urls": {
+                "description": "List of URLs to probe (plain strings or {url} dicts).",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Urls",
+                "type": "array"
+              }
+            },
+            "required": [
+              "urls"
+            ],
+            "title": "check_sourcesArguments",
+            "type": "object"
+          },
+          "name": "check_sources"
+        }
+      ]
+    }
+  },
+  "4": {
+    "id": 4,
+    "jsonrpc": "2.0",
+    "result": {
+      "resources": [
+        {
+          "description": "Web research toolkit (search, fetch pages as markdown, extract documents, patent/legal/financial domain research). Use whenever the task needs current external information â€” docs, APIs, papers, case law, market data, patents â€” instead of guessing from training data. Prefers cached, rate-limited, token-budgeted tools over raw curl/fetch loops.",
+          "mimeType": "text/markdown",
+          "name": "gossamer",
+          "uri": "skills://gossamer"
+        }
+      ]
+    }
+  },
+  "5": {
+    "id": 5,
+    "jsonrpc": "2.0",
+    "result": {
+      "contents": [
+        {
+          "mimeType": "text/markdown",
+          "text": "---\nname: gossamer\ndescription: Web research toolkit (search, fetch pages as markdown, extract documents, patent/legal/financial domain research). Use whenever the task needs current external information â€” docs, APIs, papers, case law, market data, patents â€” instead of guessing from training data. Prefers cached, rate-limited, token-budgeted tools over raw curl/fetch loops.\n---\n\n# Gossamer\n\nWeb research toolkit: search the web, fetch pages as LLM-friendly markdown\nwith follow-up links, and extract text/tables from documents (PDF, DOCX,\nXLSX, PPTX, feeds). Domain adapters route scholarly / legal / patent /\nfinancial / geo queries to the right APIs. Everything is cached,\nper-domain rate-limited, and token-budgeted.\n\n## Access (use whichever the harness provides)\n\n- **MCP tools** (`gossamer_*` in pi with directTools, or plain names in\n  Codex/Claude Code): `web_search`, `inspect_html_page`,\n  `batch_inspect_pages`, `download_file`, `locate_pdf`, `extract_document`,\n  `discover_resources`, `crawl`, `manage_cache`, `research_by_category`,\n  `export_citations`, `check_sources`.\n- **MCP resource** `skills://gossamer`: this file, readable from any MCP\n  host without a repo checkout.\n- **CLI** (identical JSON, no MCP setup; 14 subcommands â€” the 12 MCP tools\n  1:1, plus `categories` and `skills`): `search QUERY [--max-results N --max-tokens T\n  --search-only --provider P --depth D --use-smart auto|browser|static]` Â· `research QUERY [--category C\n  --provider P --providers Pâ€¦ --max-results N --filter F --select F --title T --author A]` Â· `inspect URL [--query Q --offset N\n  --max-chunks N --structured --use-smart auto|browser|static]` Â·\n  `batch URLâ€¦ [--use-smart auto|browser|static]` Â· `download URL -o PATH [--min-bytes N --max-bytes N --expect-format auto|pdf --overwrite --resume --try-mirrors URLâ€¦]` Â·\n  `locate-pdf DOI` Â· `extract FILE|URL [--pages A-B --structured --tables-as json|markdown|csv --store\n  --store-dir D --include-images]` Â· `check URLâ€¦ [--mode status|content]` Â·\n  `discover URL` Â· `crawl ROOT [--query Q --max-depth D --max-pages N\n  --min-score S --same-host --excerpts --search-prior --seed-urls Uâ€¦\n  --use-smart auto|browser|static]` Â· `cache [--action prune|clear|reset]` Â·\n  `cite DOI|URL|PDFâ€¦ [--style bibtex|csl-json|apa|mla --enrich --no-dedupe --from-pdf]` Â·\n  `categories` Â·\n  `skills list|show|install [--dest DIRâ€¦] [--project] [--skill NAMEâ€¦] [--force]`.\n  Run via the project venv\n  (`â€¦/.venv/Scripts/python.exe -m gossamer.cli â€¦` on Windows); `skills\n  show gossamer` prints this file, and `skills install` copies it into\n  Claude Code / OpenCode skill directories. CLI defaults:\n  `--max-results 5` (search/research), `--depth 5`, `--max-tokens 0`\n  (budget default), crawl `--max-depth 3 --max-pages 15 --min-score 0.05`.\n  `--fetch-mode auto|browser|static` sets the render baseline for the whole\n  run; `--use-smart` overrides it per page-fetching command.\n\n## Tool call signatures (defaults shown; one JSON envelope per call)\n\nRequired parameters have no default. `None`/empty means \"not supplied\";\n`0` budgets mean \"toolbox default\".\n\n### Search & read\n\n```python\nweb_search(query, search_only=False, max_results=5, depth=5,\n           max_tokens=0, provider=\"duckduckgo\", use_smart=\"auto\")\ninspect_html_page(url, use_smart=\"auto\", query=None, offset=0,\n                  max_chunks=1, structured=False)\nbatch_inspect_pages(urls, use_smart=\"auto\")\ncrawl(root_url, query=None, max_depth=3, max_pages=15, same_host=False,\n      min_score=0.05, excerpts=False, search_prior=False, seed_urls=[],\n      use_smart=\"auto\")\n```\n\n`crawl` caps: `max_depth` hard cap 5, `max_pages` 1-50 (failed fetches do\nnot count). `use_smart` applies to every page-fetching tool (`web_search`\nwhen it fetches, `inspect_html_page`, `batch_inspect_pages`, `crawl`);\n`use_smart=\"browser\"` needs the `gossamer-web[browser]` extra. Browser\nbatches are sequential; `auto` is static-first with a stealth fallback.\n\n### Documents & files\n\n```python\nextract_document(source, pages=None, structured=False, store=False,\n                 store_dir=None, include_images=False, tables_as=\"json\",\n                 prefer_jats=True)\ndownload_file(source, output_path, min_bytes=1, max_bytes=0,\n              expected_format=\"auto\", overwrite=False, resume=False,\n              fallback_urls=[])\ndiscover_resources(url)\ncheck_sources(urls, mode=\"status\")\n```\n\n`extract_document(pages=\"10-20\")` is 1-based inclusive for PDFs (sheet\nrange for XLSX) and cannot combine with `store=True`; `include_images`\nneeds `store=True` and is PDF-only. Scholarly extraction prefers publisher\nfull text (JATS XML via EuropePMC, then PLOS) when resolvable\n(`prefer_jats=True`, default); `pages=` with a JATS-resolvable source\nerrors, `structured=True` or `tables_as!=\"markdown\"` skips the route,\nand `include_images` is a no-op on the JATS route (remote hrefs, not saved). `download_file(max_bytes=0)` uses the\nconfigured cap; `fallback_urls` are caller-supplied mirrors, each checked\nindependently. `check_sources(mode=\"status\")` is a HEAD probe;\n`\"content\"` is a GET for hosts that reject HEAD.\n\n### Research & citations\n\n```python\nresearch_by_category(query=None, category=None, max_results=5,\n                     provider=None, filter=None, select=None, title=None,\n                     author=None, providers=[])\nlocate_pdf(doi)\nexport_citations(results, style=\"bibtex\", enrich=False, dedupe=True,\n                 from_pdf=False)\nmanage_cache(action=\"prune\")\n```\n\n`research_by_category(query)` with no category auto-routes; omit `query`\nentirely to get the provider taxonomy. `filter`/`select`/`title`/`author`\nare valid only with `provider=\"openalex\"` and rejected otherwise;\n`providers=[...]` is scholarly-only and mutually exclusive with\n`provider`. `locate_pdf` locates candidates, it never downloads.\n\n## Routing (don't guess â€” classify first)\n\n`research` auto-routes, or pick explicitly. Category â†’ default provider:\n\n- `scholarly` â†’ `openalex` by default; `crossref`, `arxiv`, `zenodo`, `semanticscholar`, `huggingface` (models + cards), and `huggingface-papers` (Daily Papers, arXiv-joined, search-only) are opt-in scholarly providers. Hub search is conjunctive â€” prefer short queries (`stable diffusion model`, not full sentences)\n- `legal` â†’ `courtlistener` (US case law) Â· `oldp` (German cases) Â·\n  `hudoc` (ECtHR) Â· `ecfr`/`federalregister`/`govinfo` (US regs)\n- `patent` â†’ `epo` (worldwide via INPADOC) Â· `kipris` (Korea) Â·\n  `patentsview` (USPTO) Â· `lens` (WO/EP/DE/CN/US aggregator) â€” key-gated, fail fast without keys Â·\n  `google-patents` (keyless number lookup; free text via `site:patents.google.com` search)\n- `financial` â†’ `yahoo` (quotes) Â· `frankfurter` (FX) Â· `eurostat` /\n  `bundesbank` / `bis` (EU macro) Â· `coingecko` (crypto)\n- `geo` â†’ `open-meteo` / `overpass` (weather, places, coordinates)\n- anything else â†’ general web search (`duckduckgo`; `browser` is the\n  stealth DDG HTML engine and needs the `gossamer-web[browser]` extra)\n\n`gossamer categories` prints this table live â€”\nprefer it over memory when unsure.\n\n`research --filter F --select F --title T --author A` passes OpenAlex-native controls and is valid\nonly with `--provider openalex`; gossamer rejects these options for other\nproviders rather than silently ignoring them. `--title`/`--author` map to the verified\n`title.search`/`raw_author_name.search` filters and combine with `--filter`. `--providers` explicitly runs a\nsequential scholarly merge by DOI/arXiv ID; it never runs by default and keeps\nall per-provider source records.\n\nProvider failures from `research` keep `results` as an empty list and put the\nmessage in a top-level `error` field. The CLI exits nonzero for these failures.\nFor arXiv HTTP 406, which can reflect a temporary upstream edge/IP limit,\navoid immediate repeat calls and honor the provider's three-second minimum.\n\n## Budgets (avoid harness timeouts)\n\n- `use_smart=\"browser\"` (JS rendering) needs the `gossamer-web[browser]`\n  extra, Windows/macOS only â€” without it browser-first falls back to\n  static and browser-only modes raise a clear dependency error. Even with\n  it, bot-walled sites (Cloudflare challenges, CAPTCHAs) still fail.\n  Explicit `browser`/`static` requests bypass a cached result produced by\n  the other engine; the reply's `fetch_method` reports `static`, `browser`,\n  or `stealth-fallback`. Browser batches are sequential, so keep them small.\n  Renders run in a child process (45s timeout): a native engine abort/hang\n  becomes a fetch error: browser-first falls back to static, strict browser\n  failures return an error, and the host stays alive.\n  `GOSSAMER_BROWSER_ISOLATION=0` is debug-only.\n- Keep `max_pages` â‰¤ 15 on crawls; set an explicit `max_tokens` budget.\n- Long extractions: `extract â€¦ --pages 10-20` instead of whole documents.\n- `check` URLs with `--mode status` before fetching the shaky ones.\n\n## Auth\n\nAPI keys live in the keystore (`~/.gossamer/keys.json`;\n`python -m gossamer.keystore --init`), never in harness configs or prompts.\nKeyed providers raise an actionable error naming the exact variable\n(e.g. `GOSSAMER_EPO_KEY`) â€” surface it to the user instead of retrying.\nOpenAlex works keyless for casual use; `GOSSAMER_OPENALEX_KEY` is optional\nand raises the API's daily budget. Set `GOSSAMER_OPENALEX_EMAIL` to send your\nown `mailto` contact; gossamer does not invent a default email. OpenAlex\n429s come in two documented kinds: a per-second rate limit (wait a moment\nand retry) and a daily credit-budget refusal (`not_enough_credits` â€” wait\nfor the daily reset; the typed error carries `X-RateLimit-Reset` seconds).\nSemantic Scholar can run keyless, but its unauthenticated pool is shared and\nmay return 429. Configure `GOSSAMER_SEMANTICSCHOLAR_API_KEY` for the\nindividual one-request-per-second allowance; if keyless use returns 429,\nwait or set that exact variable rather than looping retries.\n\n## Config / cache (where stuff actually is)\n\n- Cache: `GOSSAMER_CACHE_DIR` (see `mcp.json`) > `gossamer.json:cache_dir` > `./.gossamer_cache`.\n- Render baseline: `GOSSAMER_FETCH_MODE` > `gossamer.json:fetch_mode` > `auto`; CLI `--fetch-mode` overrides it for one run, and `--use-smart`/`use_smart` overrides it per call.\n- Keys: `$GOSSAMER_KEYSTORE` > `gossamer.json:keystore` > `~/.gossamer/keys.json` (created only via `keystore --init`; absent = normal, not a broken install).\n- Check effective paths in `mcp.json` + `python -m gossamer.keystore --check`, not `~/.gossamer`.\n\n## Cache behavior (when a result is cached)\n\n- Page/document reads are cached: `inspect`/`extract` responses carry `cache_hit: true` when served from cache; repeat reads within the TTL skip the network. Paging (`--offset`/`--max-chunks`, `--pages`) reads the cached full text, so re-reads stay cheap.\n- `search` results are cached per query for the configured TTL; repeats do not re-query the provider. Provider adapters (`research --provider â€¦`) are live calls with per-domain rate limits, not result caches.\n- `check`, `download`, `locate-pdf`, and `cite` are never cached: `check` probes liveness, `download` writes files, `locate-pdf` resolves current OA state, and `cite` formats on demand.\n- Maintenance: `cache --action prune` drops expired/over-cap entries (keeps valid ones and visited URLs); `clear` wipes caches plus visited URLs for fully fresh fetches; `reset` forgets visited URLs only, to retry a failed page without clearing caches.\n- No global PATH shim is provided: run the CLI from the project venv (`â€¦/.venv/Scripts/python.exe -m gossamer.cli â€¦` on Windows) or via MCP tools.\n\n## Documents (PDF limits that matter)\n\n- Tables render as markdown tables by default â€” no flag needed.\n- Figures need `extract â€¦ --store --include-images` (PDF only): rasters land in `<stem>.files/` with a `## Figures` section; without the flag (or without `--store`) you get text-only and an empty manifest. Vector-only figures have no bytes to save.\n- Large PDFs: use `--pages 10-20` ranges (cannot combine with `--store`).\n- Use `download URL -o file.pdf --expect-format pdf` to save a remote file without parsing it; use `extract URL --store` when you also want extracted text. Downloads obey robots/SSRF checks, enforce a byte cap, and never bypass bot walls. Add `--resume` to continue an existing partial file with Range/If-Range (servers that ignore Range restart; unsatisfiable ranges keep the partial file). `--try-mirrors` accepts only caller-supplied, known OA/repository URLs; each is checked independently and attempts are returned with provenance.\n\n## Literature collection workflow\n\n1. Search via `research QUERY --category scholarly --max-results N`; use `--providers openalex arxiv` only when you explicitly want a sequential multi-provider merge.\n2. Probe candidate pages with `check URL --mode status` before spending a full fetch/download.\n3. For a DOI, run `locate-pdf DOI`, inspect the returned `candidates`, and prefer an OA PDF URL with clear source/license metadata. This step locates candidates; it does not fetch the file. OpenAlex runs first; Unpaywall v2 is queried only when `GOSSAMER_UNPAYWALL_EMAIL` is configured and OpenAlex yields nothing usable.\n4. Download with `download URL -o paper.pdf --expect-format pdf`. If a known OA repository mirror is already available, pass it with `--try-mirrors URLâ€¦`; each URL is still checked independently and no challenge is bypassed.\n5. Parse the saved file with `extract paper.pdf`; add `--store --store-dir DIR` if you also want the extracted Markdown/resources persisted.\n6. Export a citation with `cite DOI --style bibtex` (or another supported style), or `cite paper.pdf [--from-pdf]` to cite a downloaded PDF via its detected DOI. Review license/access terms before redistributing any full text.\n",
+          "uri": "skills://gossamer"
+        }
+      ]
+    }
+  }
+}

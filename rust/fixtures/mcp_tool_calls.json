@@ -1,0 +1,110 @@
+[
+  {
+    "name": "research_by_category",
+    "arguments": {},
+    "text": "[\n  {\n    \"category\": \"scholarly\",\n    \"description\": \"Academic works, papers, citations, DOIs, journals.\",\n    \"providers\": [\n      \"openalex\",\n      \"crossref\",\n      \"arxiv\",\n      \"zenodo\",\n      \"semanticscholar\",\n      \"huggingface\",\n      \"huggingface-papers\"\n    ],\n    \"default_provider\": \"openalex\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"legal\",\n    \"description\": \"Case law, statutes, regulations, bills, government codes; ECHR/HUDOC, CJEU/CELEX and German case law (BVerfG, BGH, Rechtsprechung).\",\n    \"providers\": [\n      \"courtlistener\",\n      \"ecfr\",\n      \"federalregister\",\n      \"oldp\",\n      \"hudoc\",\n      \"govinfo\"\n    ],\n    \"default_provider\": \"courtlistener\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"patent\",\n    \"description\": \"Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA; Lens aggregates WO/EP/DE/CN/US; Google Patents lookup is keyless). EPO/KIPRIS/PatentsView/Lens need keys; google-patents resolves publication numbers without one (free-text: site:patents.google.com web search).\",\n    \"providers\": [\n      \"epo\",\n      \"kipris\",\n      \"patentsview\",\n      \"lens\",\n      \"google-patents\"\n    ],\n    \"default_provider\": \"epo\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"financial\",\n    \"description\": \"Stock quotes, market data, exchange rates, indices; ECB/Eurozone rates and EU macro statistics (Bundesbank, Eurostat, HICP, Euribor).\",\n    \"providers\": [\n      \"yahoo\",\n      \"frankfurter\",\n      \"eurostat\",\n      \"bundesbank\",\n      \"bis\",\n      \"coingecko\",\n      \"alphavantage\"\n    ],\n    \"default_provider\": \"yahoo\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"geo\",\n    \"description\": \"Weather, climate, coordinates and place lookups.\",\n    \"providers\": [\n      \"open-meteo\",\n      \"overpass\"\n    ],\n    \"default_provider\": \"open-meteo\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"general\",\n    \"description\": \"General web search (fallback when no domain matches).\",\n    \"providers\": [\n      \"duckduckgo\"\n    ],\n    \"default_provider\": \"duckduckgo\",\n    \"provider_kind\": \"engine\"\n  }\n]",
+    "isError": false
+  },
+  {
+    "name": "research_by_category",
+    "arguments": {
+      "query": ""
+    },
+    "text": "[\n  {\n    \"category\": \"scholarly\",\n    \"description\": \"Academic works, papers, citations, DOIs, journals.\",\n    \"providers\": [\n      \"openalex\",\n      \"crossref\",\n      \"arxiv\",\n      \"zenodo\",\n      \"semanticscholar\",\n      \"huggingface\",\n      \"huggingface-papers\"\n    ],\n    \"default_provider\": \"openalex\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"legal\",\n    \"description\": \"Case law, statutes, regulations, bills, government codes; ECHR/HUDOC, CJEU/CELEX and German case law (BVerfG, BGH, Rechtsprechung).\",\n    \"providers\": [\n      \"courtlistener\",\n      \"ecfr\",\n      \"federalregister\",\n      \"oldp\",\n      \"hudoc\",\n      \"govinfo\"\n    ],\n    \"default_provider\": \"courtlistener\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"patent\",\n    \"description\": \"Patents and prior art (USPTO, EPO, KIPO, JPO, CNIPA, DPMA; Lens aggregates WO/EP/DE/CN/US; Google Patents lookup is keyless). EPO/KIPRIS/PatentsView/Lens need keys; google-patents resolves publication numbers without one (free-text: site:patents.google.com web search).\",\n    \"providers\": [\n      \"epo\",\n      \"kipris\",\n      \"patentsview\",\n      \"lens\",\n      \"google-patents\"\n    ],\n    \"default_provider\": \"epo\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"financial\",\n    \"description\": \"Stock quotes, market data, exchange rates, indices; ECB/Eurozone rates and EU macro statistics (Bundesbank, Eurostat, HICP, Euribor).\",\n    \"providers\": [\n      \"yahoo\",\n      \"frankfurter\",\n      \"eurostat\",\n      \"bundesbank\",\n      \"bis\",\n      \"coingecko\",\n      \"alphavantage\"\n    ],\n    \"default_provider\": \"yahoo\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"geo\",\n    \"description\": \"Weather, climate, coordinates and place lookups.\",\n    \"providers\": [\n      \"open-meteo\",\n      \"overpass\"\n    ],\n    \"default_provider\": \"open-meteo\",\n    \"provider_kind\": \"adapter\"\n  },\n  {\n    \"category\": \"general\",\n    \"description\": \"General web search (fallback when no domain matches).\",\n    \"providers\": [\n      \"duckduckgo\"\n    ],\n    \"default_provider\": \"duckduckgo\",\n    \"provider_kind\": \"engine\"\n  }\n]",
+    "isError": false
+  },
+  {
+    "name": "web_search",
+    "arguments": {
+      "query": ""
+    },
+    "text": "{\n  \"error\": \"research: topic is required\"\n}",
+    "isError": false
+  },
+  {
+    "name": "inspect_html_page",
+    "arguments": {
+      "url": "http://127.0.0.1"
+    },
+    "text": "{\n  \"url\": \"http://127.0.0.1\",\n  \"error\": \"URL rejected: Host '127.0.0.1' (127.0.0.1) is not a public address\",\n  \"error_type\": \"SsrfBlockedError\"\n}",
+    "isError": false
+  },
+  {
+    "name": "batch_inspect_pages",
+    "arguments": {
+      "urls": []
+    },
+    "text": "[]",
+    "isError": false
+  },
+  {
+    "name": "download_file",
+    "arguments": {
+      "source": "not a url",
+      "output_path": "tmp_mcp_download.bin"
+    },
+    "text": "{\n  \"source\": \"not a url\",\n  \"status\": \"error\",\n  \"error\": {\n    \"code\": \"invalid_url\",\n    \"message\": \"Cannot interpret 'not a url' as a URL (contains spaces)\"\n  }\n}",
+    "isError": false
+  },
+  {
+    "name": "locate_pdf",
+    "arguments": {
+      "doi": "not-a-doi"
+    },
+    "text": "{\n  \"doi\": \"not-a-doi\",\n  \"status\": \"error\",\n  \"error\": {\n    \"code\": \"invalid_doi\",\n    \"message\": \"expected a DOI such as '10.1234/example'\"\n  },\n  \"candidates\": []\n}",
+    "isError": false
+  },
+  {
+    "name": "extract_document",
+    "arguments": {
+      "source": "x.txt",
+      "tables_as": "bad"
+    },
+    "text": "{\n  \"error\": \"tables_as must be 'markdown', 'csv' or 'json'\"\n}",
+    "isError": false
+  },
+  {
+    "name": "check_sources",
+    "arguments": {
+      "urls": [
+        "http://127.0.0.1"
+      ],
+      "mode": "bad"
+    },
+    "text": "{\n  \"error\": \"Unknown check_sources mode: 'bad'; expected \\\"status\\\" or \\\"content\\\"\",\n  \"results\": []\n}",
+    "isError": false
+  },
+  {
+    "name": "discover_resources",
+    "arguments": {
+      "url": "http://127.0.0.1"
+    },
+    "text": "{\n  \"url\": \"http://127.0.0.1\",\n  \"error\": \"URL rejected: Host '127.0.0.1' (127.0.0.1) is not a public address\",\n  \"error_type\": \"SsrfBlockedError\"\n}",
+    "isError": false
+  },
+  {
+    "name": "crawl",
+    "arguments": {
+      "root_url": "not a url"
+    },
+    "text": "{\n  \"error\": \"crawl: Cannot interpret 'not a url' as a URL (contains spaces)\"\n}",
+    "isError": false
+  },
+  {
+    "name": "manage_cache",
+    "arguments": {
+      "action": "bad"
+    },
+    "text": "{\n  \"prune\": {\n    \"removed_expired\": 0,\n    \"removed_evicted\": 0,\n    \"total_entries\": 0,\n    \"total_bytes\": 0,\n    \"max_disk_bytes\": 0\n  }\n}",
+    "isError": false
+  },
+  {
+    "name": "export_citations",
+    "arguments": {
+      "results": [],
+      "style": "bad"
+    },
+    "text": "{\n  \"error\": \"unknown citation style 'bad'; expected one of ('bibtex', 'csl-json', 'apa', 'mla')\"\n}",
+    "isError": false
+  }
+]

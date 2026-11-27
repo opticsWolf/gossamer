@@ -1,0 +1,9 @@
+Web research toolkit: search the web, fetch pages as LLM-friendly markdown with follow-up links, and extract text/tables from documents (PDF, DOCX, XLSX, PPTX) and text formats (TXT, MD, CSV, JSON, XML, RSS/Atom). Results are cached, rate-limited per domain, and token-budgeted.
+
+## Rendering (JS pages / anti-bot)
+
+Page fetches use a render strategy: `auto` (static first; stealth browser on failure/non-text), `browser` (stealth first, static fallback), or `static` (never renders). Select it per call with `use_smart` on `web_search` (when not search_only), `inspect_html_page`, `batch_inspect_pages`, and `crawl`, or set the process default with the `GOSSAMER_FETCH_MODE` environment variable. Browser rendering needs the optional `gossamer-web[browser]` extra; `provider='browser'` is the corresponding stealth search engine.
+
+## Skill pack
+
+The `gossamer` agent skill ships inside this package and is readable as the resource `skills://gossamer` (routing, budgets, auth, cache behavior, and the literature-collection recipe). Run `gossamer skills show gossamer` to print it, or `gossamer skills install` to copy it into Claude Code / OpenCode discovery directories.

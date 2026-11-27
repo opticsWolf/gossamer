@@ -285,6 +285,9 @@ ProviderFailure {
   append/restart paths, and resume state; app replay is 65/65.
 - CLI crawl now accepts `--seed-urls` and `--search-prior`; replay case
   `crawl-seed-ssrf` brings app replay to 66/66.
+- `gossamer-mcp` now owns JSON-RPC framing and frozen protocol envelopes;
+  all 12 tool names dispatch through Rust, with Python-parity fixtures for
+  protocol shapes and deterministic tool errors (`tests/test_rust_mcp_transport.py`).
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.

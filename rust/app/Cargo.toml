@@ -12,6 +12,10 @@ description = "`gossamer` in Rust, lifted by rust-anything from its front door"
 name = "gossamer"
 path = "src/main.rs"
 
+[[bin]]
+name = "gossamer-mcp"
+path = "src/mcp.rs"
+
 [dependencies]
 clap = "4"
 gossamer = { package = "gossamer-web", path = "../core" }
