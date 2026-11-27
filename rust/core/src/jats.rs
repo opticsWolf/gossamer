@@ -54,6 +54,190 @@ impl JatsError {
     }
 }
 
+/// Base URL for EuropePMC's DOI search endpoint.
+pub const EUROPEPMC_SEARCH_URL: &str = "https://www.ebi.ac.uk/europepmc/webservices/rest/search";
+
+/// Template for EuropePMC full-text XML URLs.
+pub const EUROPEPMC_FULLTEXT_TMPL: &str =
+    "https://www.ebi.ac.uk/europepmc/webservices/rest/{source}/{id}/fullTextXML";
+
+/// Template for PLOS manuscript XML URLs.
+pub const PLOS_FILE_TMPL: &str =
+    "https://journals.plos.org/{journal}/article/file?id={doi}&type=manuscript";
+
+/// A picked EuropePMC search record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EuropepmcHit {
+    /// Source namespace (`PMC`, `MED`, ...).
+    pub source: String,
+    /// Numeric id for the source-scoped full-text URL.
+    pub id: String,
+    /// Canonical PMCID used by the Tier-1b retry.
+    pub pmcid: String,
+}
+
+fn normalize_doi_or_none(value: &str) -> Option<String> {
+    crate::openaccess::normalize_doi(value).ok()
+}
+
+/// First DOI-like substring in *text*, or `None`.
+pub fn extract_doi_candidate(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut index = 0usize;
+    while index + 3 < bytes.len() {
+        if &text[index..index + 3] != "10." {
+            index += 1;
+            continue;
+        }
+        let mut end = index + 3;
+        while end < bytes.len() && bytes[end].is_ascii_digit() && end - (index + 3) < 9 {
+            end += 1;
+        }
+        let digits = end - (index + 3);
+        if !(4..=9).contains(&digits) || end >= bytes.len() || bytes[end] != b'/' {
+            index += 1;
+            continue;
+        }
+        let mut tail = end + 1;
+        while tail < bytes.len() && !bytes[tail].is_ascii_whitespace() {
+            tail += 1;
+        }
+        return Some(
+            text[index..tail]
+                .trim_end_matches(|ch| matches!(ch, ')' | '.' | ',' | ';' | '"' | '\'' | '<' | '>'))
+                .to_string(),
+        );
+    }
+    None
+}
+
+/// Best-effort DOI for a URL, bare DOI, or `doi:` string.
+pub fn doi_from_source_string(source: &str) -> Option<String> {
+    if let Some(doi) = normalize_doi_or_none(source) {
+        return Some(doi);
+    }
+    let candidate = extract_doi_candidate(source)?;
+    let cut = candidate
+        .find(|ch| matches!(ch, '?' | '#' | '&' | ' ' | '\t' | '\n'))
+        .unwrap_or(candidate.len());
+    normalize_doi_or_none(&candidate[..cut])
+}
+
+/// DOI from a local PDF via its text layer, then a latin-1 raw scan.
+pub fn doi_from_pdf_path(path: &str) -> std::result::Result<Option<String>, String> {
+    let data = std::fs::read(path).map_err(|error| format!("cannot read PDF {path}: {error}"))?;
+    let markdown = crate::document::pdf_markdown(&data).ok();
+    for text in markdown
+        .into_iter()
+        .chain([data.iter().map(|byte| *byte as char).collect::<String>()])
+    {
+        if let Some(doi) = crate::cite::find_doi_in_text(Some(&text)) {
+            return Ok(Some(normalize_doi_or_none(&doi).unwrap_or(doi)));
+        }
+    }
+    Ok(None)
+}
+
+/// Picks the PMC record from a EuropePMC search payload.
+pub fn parse_europepmc_search(payload: &serde_json::Value) -> Option<EuropepmcHit> {
+    let results = payload
+        .get("resultList")
+        .and_then(|value| value.get("result"))
+        .and_then(serde_json::Value::as_array)?;
+    let chosen = results
+        .iter()
+        .find(|item| item.get("source").and_then(serde_json::Value::as_str) == Some("PMC"))
+        .or_else(|| {
+            results
+                .iter()
+                .find(|item| item.get("inPMC").and_then(serde_json::Value::as_str) == Some("Y"))
+        })?;
+    let id = chosen
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if id.is_empty() {
+        return None;
+    }
+    let claimed = chosen
+        .get("pmcid")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let pmcid = if claimed.to_ascii_uppercase().starts_with("PMC") {
+        claimed
+    } else if id.to_ascii_uppercase().starts_with("PMC") {
+        id.clone()
+    } else {
+        format!("PMC{id}")
+    };
+    let source = chosen
+        .get("source")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("PMC")
+        .trim()
+        .to_string();
+    let numeric = if id.to_ascii_uppercase().starts_with("PMC") {
+        id[3..].to_string()
+    } else {
+        id
+    };
+    Some(EuropepmcHit {
+        source: if source.is_empty() {
+            "PMC".into()
+        } else {
+            source
+        },
+        id: numeric,
+        pmcid,
+    })
+}
+
+/// EuropePMC full-text URL for one source/id pair.
+pub fn europepmc_fulltext_url(source: &str, numeric_id: &str) -> String {
+    EUROPEPMC_FULLTEXT_TMPL
+        .replace("{source}", source)
+        .replace("{id}", numeric_id)
+}
+
+/// PLOS manuscript URL for one journal and DOI.
+pub fn plos_file_url(journal: &str, doi: &str) -> String {
+    let encoded: String = url::form_urlencoded::byte_serialize(doi.as_bytes()).collect();
+    PLOS_FILE_TMPL
+        .replace("{journal}", journal)
+        .replace("{doi}", &encoded)
+}
+
+/// Whether a fetched body is XML and starts with `<`.
+pub fn is_xml_body(content_type: Option<&str>, body: &[u8]) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+    let Some(start) = body.iter().position(|byte| !byte.is_ascii_whitespace()) else {
+        return false;
+    };
+    body[start] == b'<'
+        && content_type
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .contains("xml")
+}
+
+/// Journal path segment from a `journals.plos.org` landing URL.
+pub fn plos_journal_from_url(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    if !parsed.host_str()?.to_ascii_lowercase().contains("plos.org") {
+        return None;
+    }
+    parsed
+        .path_segments()?
+        .find(|segment| !segment.is_empty())
+        .map(str::to_string)
+}
+
 impl fmt::Display for JatsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)

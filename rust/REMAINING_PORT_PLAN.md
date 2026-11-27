@@ -152,7 +152,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `cite` | DOI/URL/JSON formatting | `--enrich`, `--from-pdf` |
 | CLI `locate-pdf` | OpenAlex live lookup | full OpenAccessLocator flow |
 | CLI `download` | Bounded HTTP, validation, errors | mirrors, resume, streaming/multi-candidate loop |
-| CLI `extract` | local text/XML/RSS, PDF/Office, URL errors + SSRF/logging, local/URL store, links, tables-as CSV/JSON, paged PDF/Excel | full JATS route |
+| CLI `extract` | local text/XML/RSS, PDF/Office, URL errors + SSRF/logging, local/URL store, links, tables-as CSV/JSON, paged PDF/Excel, full JATS route | — |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
 | CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, runtime cache/visited/robots state | full document scoring state |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
@@ -331,6 +331,8 @@ ProviderFailure {
 - `gossamer::runtime` now owns page-cache, visited/in-flight, robots and domain
   throttle state; `inspect`, `batch` and `crawl` are wired to it and cache
   entries are cross-compatible with the Python oracle.
+- CLI `extract` now performs local JATS conversion and the EuropePMC/PLOS
+  route with Python-compatible cache envelopes and budget truncation.
 - `service::crawl` now embeds the Python thesaurus and uses the 40-word topic
   vocabulary; live crawl query echoes, term hits, and page records match.
 - CLI `extract` now validates SSRF before URL routing and logs URL failures

@@ -292,7 +292,22 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   successful fetches mark URLs visited. Cache entries are cross-compatible
   with Python: Python→Rust and Rust→Python cache hits agree on all fields.
 - Core tests 3/3 for runtime state and 1/1 for throttle parity; app replay
-  remains 73/73.
+  became 74/74 with the new local-JATS case.
+
+### U3 JATS route (done 2026-11-27)
+
+- Pure core now owns JATS router kernels: DOI acquisition from source/PDF,
+  EuropePMC search record selection, full-text URL templates, XML body
+  detection, PLOS journal derivation, and URL builders.
+- CLI `extract` now performs the local XML/JATS conversion and the full
+  EuropePMC → PLOS route with the same runtime cache/robots/throttle state.
+  JATS cache envelopes are cross-compatible with Python: a Python-produced
+  cache entry yields the same Rust result and a Rust-produced entry is read
+  by Python as a cache hit. Delivery uses the 8000-character budget while
+  hashes and links stay over the untruncated conversion.
+- Added deterministic `extract-local-jats` replay case; live PLOS DOI parity
+  matches except the expected `cache_hit` difference when one side runs first.
+  App replay is 74/74.
 
 ### Download size-cap error parity (done 2026-11-25)
 
