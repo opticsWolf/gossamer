@@ -226,6 +226,17 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   stay byte-identical.
 - Added replay case `search-empty-query-known-provider`; app replay 72/72.
 
+### Inspect fetch-failure envelopes (done 2026-11-27)
+
+- CLI `inspect` now tracks `--use-smart` and maps transport/HTTP failures to
+  the Python dispatch verdicts: `browser_oxide is not installed` for `auto`,
+  the core HTTP error for `static`, and the browser-unpack error for
+  `browser`. Structured mode uses the matching `Structured HTML inspection
+  failed` label.
+- stderr and pretty-printed JSON envelopes now match the Python oracle for
+  all six combinations of strategy and structured mode on an HTTP 404; app
+  replay remains 72/72.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

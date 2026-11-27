@@ -156,7 +156,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
 | CLI `crawl` | bounded link graph | search prior, seeds, robots/cache side effects |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
-| CLI `inspect` | static fetch + markdown/links/metadata | structured mode, transport retries, browser/cache |
+| CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failure envelopes | transport retries, browser/cache |
 | CLI `batch` | static batch envelope | browser/cache/visited state |
 | CLI `cache` | prune/clear/reset | none known |
 | MCP schema/tool bodies | frozen schema + planning/envelope kernels | MCP transport and live tool execution |
@@ -321,6 +321,9 @@ ProviderFailure {
   emits Python's `provider_fallback` note for recognized-but-unregistered
   engines. Replay case `search-empty-query-known-provider` brings the app to
   72/72.
+- CLI `inspect` now maps fetch failures through Python's dispatch verdicts
+  for `auto`/`static`/`browser`, including structured-mode labels; all six
+  live 404 combinations match the oracle exactly.
 
 **Exit criteria**
 

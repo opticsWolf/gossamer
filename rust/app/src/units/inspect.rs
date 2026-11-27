@@ -82,6 +82,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
 
     let mut url: Option<String> = None;
     let mut query: Option<String> = None;
+    let mut use_smart = "auto".to_string();
     let mut structured = false;
     let mut offset = 0i64;
     let mut max_chunks = 1i64;
@@ -101,10 +102,11 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 return unsupported();
             }
             let flag_value = args[index + 1].to_string_lossy().into_owned();
-            if value == "--use-smart"
-                && !matches!(flag_value.as_str(), "auto" | "browser" | "static")
-            {
-                return unsupported();
+            if value == "--use-smart" {
+                if !matches!(flag_value.as_str(), "auto" | "browser" | "static") {
+                    return unsupported();
+                }
+                use_smart = flag_value.clone();
             }
             if value == "--query" {
                 query = Some(flag_value);
@@ -145,15 +147,29 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         }
     };
 
-    let Ok((html, full_markdown, links, _removed, meta)) =
-        fetch_html_full_single(&url, 8000, 50_000_000)
-    else {
-        println!(
-            "{}",
-            py_dumps(&json!({"error": format!("HTML inspection failed for {url}")}))
-        );
-        return ExitCode::SUCCESS;
-    };
+    let (html, full_markdown, links, _removed, meta) =
+        match fetch_html_full_single(&url, 8000, 50_000_000) {
+            Ok(value) => value,
+            Err(error) => {
+                let detail = match use_smart.as_str() {
+                    "static" => error.to_string(),
+                    "browser" => "cannot unpack non-iterable NoneType object".to_string(),
+                    _ => "browser_oxide is not installed".to_string(),
+                };
+                let label = if structured {
+                    "Structured HTML inspection failed"
+                } else {
+                    "HTML inspection failed"
+                };
+                eprintln!("{label} for {url}: {detail}");
+                let payload = json!({"error": format!("{label}: {detail}")});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        };
     let (http_status, final_url, content_type) = meta;
     let raw_metadata: Value =
         serde_json::from_str(&meta_extract_all(&html, Some(&final_url))).unwrap_or(Value::Null);
