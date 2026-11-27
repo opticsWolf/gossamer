@@ -163,6 +163,8 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   initialize/list-tools/list-resources/read-resource/ping envelopes, and
   dispatch entries for all 12 frozen tools. Protocol and deterministic tool
   calls are replayed from Python fixtures.
+- MCP `inspect_html_page` now executes the Rust inspection body; live
+  `https://example.com` parity matches the Python oracle except timestamp.
 - Full pytest 11486 passed / 36 skipped; app replay 66/66.
 
 ### Download size-cap error parity (done 2026-11-25)
