@@ -301,6 +301,95 @@ pub fn office_markdown(bytes: &[u8], extension: &str) -> Result<String, String> 
     Ok(document.to_markdown())
 }
 
+/// Flatten one office IR row to its cell texts.
+fn spreadsheet_row(row: &Value) -> Vec<String> {
+    let Some(cells) = row.as_array() else {
+        return Vec::new();
+    };
+    cells
+        .iter()
+        .map(|cell| cell.as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+/// Quote one spreadsheet cell with Python's `csv.writer` minimal dialect.
+fn csv_field(value: &str, quote_empty_row: bool) -> String {
+    if (quote_empty_row && value.is_empty()) || value.contains([',', '"', '\r', '\n']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// Render spreadsheet bytes as the Python `tables_as` content variants.
+///
+/// `csv` emits one `## <sheet>` block per table with csv-quoted rows;
+/// `json` emits `json.dumps(..., indent=2)` shaped table objects. Other
+/// renderings are rejected so callers can fall back to Office Markdown.
+pub fn spreadsheet_tables(
+    bytes: &[u8],
+    extension: &str,
+    tables_as: &str,
+) -> Result<String, String> {
+    use std::io::Cursor;
+
+    use office_oxide::{Document, format::DocumentFormat};
+
+    if !matches!(tables_as, "csv" | "json") {
+        return Err(format!("Unsupported tables_as: {tables_as}"));
+    }
+    let format = DocumentFormat::from_extension(extension)
+        .ok_or_else(|| format!("Unsupported document format: .{extension}"))?;
+    let document = Document::from_reader(Cursor::new(bytes.to_vec()), format)
+        .map_err(|error| error.to_string())?;
+    let ir_text = document
+        .to_ir()
+        .to_json_string()
+        .map_err(|error| error.to_string())?;
+    let ir: Value = serde_json::from_str(&ir_text).map_err(|error| error.to_string())?;
+    let tables = crate::documents::office_ir_tables(&ir);
+
+    if tables_as == "csv" {
+        let mut blocks = Vec::new();
+        for pair in &tables {
+            let title = pair.get(0).and_then(Value::as_str).unwrap_or_default();
+            let Some(rows) = pair.get(1).and_then(Value::as_array) else {
+                continue;
+            };
+            let lines: Vec<String> = rows
+                .iter()
+                .map(|row| {
+                    let cells = spreadsheet_row(row);
+                    let quote_empty_row = cells.len() == 1;
+                    cells
+                        .iter()
+                        .map(|cell| csv_field(cell, quote_empty_row))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .collect();
+            blocks.push(format!("## {title}\n\n{}", lines.join("\n")));
+        }
+        return Ok(blocks.join("\n\n"));
+    }
+
+    let mut rendered = Vec::new();
+    for pair in &tables {
+        let title = pair
+            .get(0)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let Some(rows) = pair.get(1).and_then(Value::as_array) else {
+            continue;
+        };
+        let headers = rows.first().map(spreadsheet_row).unwrap_or_default();
+        let body = rows.iter().skip(1).map(spreadsheet_row).collect::<Vec<_>>();
+        rendered.push(json!({ "sheet": title, "headers": headers, "rows": body }));
+    }
+    Ok(crate::jsonfmt::py_dumps_pretty(&Value::Array(rendered)))
+}
+
 /// Build a structured `ParsedDocumentPayload` for Office bytes.
 pub fn office_structured_payload(
     bytes: &[u8],
@@ -682,5 +771,49 @@ mod structured_payload_tests {
                 "guard".to_string(),
             ])
         );
+    }
+}
+
+#[cfg(test)]
+mod spreadsheet_table_tests {
+    use super::spreadsheet_tables;
+
+    const XLSX: &[u8] = include_bytes!("../../fixtures/sample.xlsx");
+
+    #[test]
+    fn renders_csv_with_python_quoting() {
+        let content =
+            spreadsheet_tables(XLSX, "xlsx", "csv").expect("sample.xlsx must render as csv");
+        assert_eq!(
+            content,
+            concat!(
+                "## Results\n\n",
+                "name,note\n",
+                "alpha,\"with, comma\"\n",
+                "beta,\"say \"\"hi\"\"\"\n",
+                "gamma,\n\n",
+                "## Second\n\n",
+                "key,value\n",
+                "n,42"
+            )
+        );
+    }
+
+    #[test]
+    fn renders_json_with_python_indent() {
+        let content =
+            spreadsheet_tables(XLSX, "xlsx", "json").expect("sample.xlsx must render as json");
+        let value: serde_json::Value =
+            serde_json::from_str(&content).expect("rendered json must parse");
+        assert_eq!(value[0]["sheet"], serde_json::json!("Results"));
+        assert_eq!(value[0]["headers"][1], serde_json::json!("note"));
+        assert_eq!(value[0]["rows"][1][1], serde_json::json!("say \"hi\""));
+        assert_eq!(value[1]["rows"][0][1], serde_json::json!("42"));
+        assert!(content.starts_with("[\n  {\n"));
+    }
+
+    #[test]
+    fn rejects_unknown_rendering() {
+        assert!(spreadsheet_tables(XLSX, "xlsx", "markdown").is_err());
     }
 }

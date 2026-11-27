@@ -152,7 +152,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `cite` | DOI/URL/JSON formatting | `--enrich`, `--from-pdf` |
 | CLI `locate-pdf` | OpenAlex live lookup | full OpenAccessLocator flow |
 | CLI `download` | Bounded HTTP, validation, errors | mirrors, resume, streaming/multi-candidate loop |
-| CLI `extract` | local text/XML/RSS, URL errors, store | binaries, pages, tables-as CSV, URL store |
+| CLI `extract` | local text/XML/RSS, PDF/Office, URL errors, store, tables-as CSV/JSON | pages, URL store, full JATS route |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
 | CLI `crawl` | bounded link graph | search prior, seeds, robots/cache side effects |
 | CLI `search` | DuckDuckGo HTML | provider dispatch/auth/failover |
@@ -307,6 +307,10 @@ ProviderFailure {
   live parity verified (exact stdout for Hugging Face; parsed JSON equal with
   only provider response key ordering variation for OpenAlex), not replay-pinned.
 - `py_dumps` float formatting now matches Python repr for scientific notation.
+- `document::spreadsheet_tables` now renders XLSX/XLS/XLSB as Python-compatible
+  `tables_as=csv` or `tables_as=json`; `jsonfmt::py_dumps_pretty` supplies
+  `json.dumps(indent=2)` formatting. Replay cases `extract-xlsx-csv` and
+  `extract-xlsx-json` bring the app to 68/68.
 
 **Exit criteria**
 

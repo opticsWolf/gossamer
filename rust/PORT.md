@@ -176,6 +176,21 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   exact parity verified on missing/no-DOI/enrich cases.
 - Full pytest 11486 passed / 36 skipped; app replay 66/66.
 
+### Extract spreadsheet renderings (done 2026-11-27)
+
+- Added `gossamer::document::spreadsheet_tables`, rendering XLSX/XLS/XLSB
+  bytes as Python-compatible `tables_as=csv` blocks or `tables_as=json`
+  arrays from the existing office IR table kernel.
+- Added `jsonfmt::py_dumps_pretty` with Python `json.dumps(indent=2)`
+  key order, two-space indentation, `ensure_ascii=True`, and Python float
+  spelling; `py_dumps` now shares the same string escaping.
+- CLI `extract --tables-as csv|json` no longer returns the generic unsupported
+  shape for local or remote spreadsheet sources. CSV quoting matches Python
+  `csv.writer`, including the single-empty-field row exception.
+- Added `rust/fixtures/sample.xlsx` plus replay cases `extract-xlsx-csv`
+  and `extract-xlsx-json`; app replay 68/68, full pytest
+  11486 passed / 36 skipped.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

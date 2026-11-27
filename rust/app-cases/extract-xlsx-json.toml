@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["extract", "--tables-as", "json", "rust/fixtures/sample.xlsx", "--cache-dir", "rust/fixtures/cache-extract-xlsx-json"]
+status.code = 0
+fs.sandbox = true

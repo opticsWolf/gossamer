@@ -1,8 +1,8 @@
 # App replay
 
-Build: `D:/User/Documents/Rust/gossamer/rust/app/target/release/gossamer.exe`
+Build: `rust/app/target/debug/gossamer.exe`
 
-Passed: 66/66
+Passed: 68/68
 
 Fallback rate: not reported by this build
 

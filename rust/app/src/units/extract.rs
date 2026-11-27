@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use clap::ArgMatches;
 use gossamer::document::{
     office_markdown, office_structured_payload, page_selection_error, pdf_markdown,
-    structured_format_error, xml_feed_text,
+    spreadsheet_tables, structured_format_error, xml_feed_text,
 };
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
@@ -50,7 +50,7 @@ fn timestamp() -> String {
     )
 }
 
-fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
+fn local_text(path: &Path, bytes: &[u8], tables_as: &str) -> Option<String> {
     let ext = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -62,9 +62,12 @@ fn local_text(path: &Path, bytes: &[u8]) -> Option<String> {
     if ext == "pdf" {
         return pdf_markdown(bytes).ok();
     }
+    if matches!(ext.as_str(), "xlsx" | "xls" | "xlsb") && matches!(tables_as, "csv" | "json") {
+        return spreadsheet_tables(bytes, &ext, tables_as).ok();
+    }
     if matches!(
         ext.as_str(),
-        "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt"
+        "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb"
     ) {
         return office_markdown(bytes, &ext).ok();
     }
@@ -185,10 +188,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         return unsupported();
     }
     // Pages, store and structured extraction keep their existing contract;
-    // this slice owns the text-like flat local-file path.
-    if !tables_as.eq_ignore_ascii_case("json") {
-        return unsupported();
-    }
+    // this slice owns the flat local-file path plus spreadsheet renderings.
     let is_url = source.starts_with("http://") || source.starts_with("https://");
     if structured {
         if let Some(error) = structured_format_error(&source, is_url) {
@@ -210,7 +210,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         if !is_url
             && matches!(
                 suffix.as_str(),
-                "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt"
+                "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb"
             )
         {
             let raw_path = PathBuf::from(&source);
@@ -264,6 +264,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 | "doc"
                 | "xls"
                 | "ppt"
+                | "xlsb"
         )
     {
         let payload = json!({"error": format!("Document extraction failed: Unsupported document format: .{url_suffix}")});
@@ -314,9 +315,13 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             xml_feed_text(&raw).unwrap_or(raw)
         } else if url_suffix == "pdf" {
             pdf_markdown(&bytes).unwrap_or(raw)
+        } else if matches!(url_suffix.as_str(), "xlsx" | "xls" | "xlsb")
+            && matches!(tables_as.as_str(), "csv" | "json")
+        {
+            spreadsheet_tables(&bytes, &url_suffix, &tables_as).unwrap_or(raw)
         } else if matches!(
             url_suffix.as_str(),
-            "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt"
+            "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb"
         ) {
             office_markdown(&bytes, &url_suffix).unwrap_or(raw)
         } else {
@@ -342,7 +347,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         let Ok(bytes) = std::fs::read(&path) else {
             return unsupported();
         };
-        let Some(content) = local_text(&path, &bytes) else {
+        let Some(content) = local_text(&path, &bytes, &tables_as) else {
             return unsupported();
         };
         (
