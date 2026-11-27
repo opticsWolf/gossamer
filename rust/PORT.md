@@ -203,6 +203,17 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   path display; app replay 69/69. Live URL-store parity verified against
   `https://raw.githubusercontent.com/rust-lang/rust/master/README.md`.
 
+### Paged PDF and spreadsheet extraction (done 2026-11-27)
+
+- Added `gossamer::document::document_page_range` and `PageRangeContent`,
+  reusing `miscutils::parse_page_range`, per-page `pdf_oxide` Markdown, and
+  the single-page Office Markdown rendering for XLSX/XLS/XLSB.
+- CLI `extract --pages` now emits the full document envelope with exact
+  `page_range`, `page_start`, `page_end`, `total_pages`, content hash, and
+  Python error messages for invalid, out-of-bounds, and empty ranges.
+- Added `rust/fixtures/multipage.pdf` plus replay cases `extract-pdf-pages`
+  and `extract-pdf-pages-oob`; app replay 71/71.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

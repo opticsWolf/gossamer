@@ -42,3 +42,5 @@
 {"name":"extract-xlsx-json","args":["extract","--tables-as","json","rust/fixtures/sample.xlsx","--cache-dir","rust/fixtures/cache-extract-xlsx-json"]}
 {"name":"extract-xlsx-csv","args":["extract","--tables-as","csv","rust/fixtures/sample.xlsx","--cache-dir","rust/fixtures/cache-extract-xlsx-csv"]}
 {"name":"extract-store-docx","args":["extract","rust/fixtures/sample.docx","--store","--store-dir","tmp-store-docx","--cache-dir","rust/fixtures/cache-store-docx"]}
+{"name":"extract-pdf-pages","args":["extract", "rust/fixtures/multipage.pdf", "--pages", "2-3", "--cache-dir", "rust/fixtures/cache-pdf-pages"]}
+{"name":"extract-pdf-pages-oob","args":["extract", "rust/fixtures/multipage.pdf", "--pages", "9", "--cache-dir", "rust/fixtures/cache-pdf-pages-oob"]}

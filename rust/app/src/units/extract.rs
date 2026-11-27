@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
 use gossamer::document::{
-    office_markdown, office_structured_payload, page_selection_error, pdf_markdown,
-    spreadsheet_tables, structured_format_error, xml_feed_text,
+    document_page_range, office_markdown, office_structured_payload, page_selection_error,
+    pdf_markdown, spreadsheet_tables, structured_format_error, xml_feed_text,
 };
 use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
@@ -186,7 +186,6 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             );
             return ExitCode::SUCCESS;
         }
-        return unsupported();
     }
     // Pages, store and structured extraction keep their existing contract;
     // this slice owns the flat local-file path plus spreadsheet renderings.
@@ -272,7 +271,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         println!("{}", py_dumps(&payload));
         return ExitCode::SUCCESS;
     }
-    let (display, bytes, content, http_status, final_url, content_type) = if is_url {
+    let (display, bytes, mut content, http_status, final_url, content_type) = if is_url {
         let (bytes, status, final_url, content_type) =
             match download_bytes(&source, 20.0, 50_000_000) {
                 Ok(value) => value,
@@ -360,6 +359,38 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             Value::Null,
         )
     };
+    let mut page_range = Value::Null;
+    let mut page_start = 0i64;
+    let mut page_end = 0i64;
+    let mut total_pages = 0i64;
+    if let Some(spec) = pages.as_deref()
+        && !spec.trim().is_empty()
+    {
+        let plain = if is_url {
+            source.split(['?', '#']).next().unwrap_or(&source)
+        } else {
+            &source
+        };
+        let suffix = Path::new(plain)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        match document_page_range(&bytes, &suffix, spec, &source) {
+            Ok(range) => {
+                content = range.content;
+                page_range = Value::String(spec.to_string());
+                page_start = range.page_start;
+                page_end = range.page_end;
+                total_pages = range.total_pages;
+            }
+            Err(error) => {
+                let payload = json!({"error": error});
+                println!("{}", py_dumps(&payload));
+                return ExitCode::SUCCESS;
+            }
+        }
+    }
     let stored = if store {
         let directory = PathBuf::from(store_dir.unwrap_or_else(|| "stored_documents".to_string()));
         if std::fs::create_dir_all(&directory).is_err() {
@@ -404,10 +435,10 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "content": content,
         "content_tokens": count_tokens(&content, "gpt-4o").unwrap_or(0),
         "cache_hit": false,
-        "page_range": Value::Null,
-        "page_start": 0,
-        "page_end": 0,
-        "total_pages": 0,
+        "page_range": page_range,
+        "page_start": page_start,
+        "page_end": page_end,
+        "total_pages": total_pages,
         "fetched_at": timestamp(),
         "http_status": http_status,
         "final_url": final_url,

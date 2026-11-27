@@ -534,6 +534,90 @@ pub fn pdf_markdown(bytes: &[u8]) -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
+/// Resolved content for one page-range document read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageRangeContent {
+    /// Delivered Markdown, joined from the selected pages.
+    pub content: String,
+    /// 1-based first selected page.
+    pub page_start: i64,
+    /// 1-based last selected page.
+    pub page_end: i64,
+    /// Total page count of the source document.
+    pub total_pages: i64,
+}
+
+/// Extract one page range from PDF or spreadsheet bytes.
+///
+/// The parser mirrors `StructuredOxideParser.parse_file` at the boundary the
+/// document CLI needs: one Markdown string per page, joined with a blank line
+/// and stripped at the edges. Errors carry Python's exact user-facing text.
+pub fn document_page_range(
+    bytes: &[u8],
+    extension: &str,
+    pages_spec: &str,
+    source: &str,
+) -> Result<PageRangeContent, String> {
+    use crate::compat::py_repr;
+    use crate::miscutils::parse_page_range;
+
+    let (raw_start, raw_end) =
+        parse_page_range(pages_spec).map_err(|error| error.message().to_string())?;
+    let start = usize::try_from(raw_start).unwrap_or(usize::MAX);
+    let end = raw_end
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(usize::MAX);
+
+    let pages: Vec<String> = if extension.eq_ignore_ascii_case("pdf") {
+        let document = pdf_oxide::PdfDocument::from_bytes(bytes.to_vec())
+            .map_err(|error| error.to_string())?;
+        let count = document.page_count().map_err(|error| error.to_string())?;
+        let options = pdf_oxide::converters::ConversionOptions::default();
+        (0..count)
+            .map(|index| {
+                document
+                    .to_markdown(index, &options)
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else if matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "xlsx" | "xls" | "xlsb"
+    ) {
+        vec![office_markdown(bytes, extension)?]
+    } else {
+        return Err(page_selection_error(source, false)
+            .unwrap_or_else(|| format!("Unsupported document format: .{extension}")));
+    };
+
+    let total = pages.len();
+    if total == 0 {
+        return Err(format!("Document has no pages: {source}"));
+    }
+    let first = start.max(1);
+    if first > total {
+        return Err(format!(
+            "Page range {} out of bounds: document has {total} page(s).",
+            py_repr(pages_spec)
+        ));
+    }
+    let last = end.min(total).max(first);
+    let content = pages[first - 1..last].join("\n\n");
+    let content = content.trim().to_string();
+    if content.is_empty() {
+        return Err(format!(
+            "Page range {} produced no text.",
+            py_repr(pages_spec)
+        ));
+    }
+    Ok(PageRangeContent {
+        content,
+        page_start: first as i64,
+        page_end: last as i64,
+        total_pages: total as i64,
+    })
+}
+
 /// Build the `ParsedDocumentPayload` envelope for an HTML fetch.
 ///
 /// The CLI structured-inspect path uses this to emit the same flat metadata
@@ -776,9 +860,10 @@ mod structured_payload_tests {
 
 #[cfg(test)]
 mod spreadsheet_table_tests {
-    use super::spreadsheet_tables;
+    use super::{document_page_range, spreadsheet_tables};
 
     const XLSX: &[u8] = include_bytes!("../../fixtures/sample.xlsx");
+    const PDF: &[u8] = include_bytes!("../../fixtures/multipage.pdf");
 
     #[test]
     fn renders_csv_with_python_quoting() {
@@ -815,5 +900,38 @@ mod spreadsheet_table_tests {
     #[test]
     fn rejects_unknown_rendering() {
         assert!(spreadsheet_tables(XLSX, "xlsx", "markdown").is_err());
+    }
+
+    #[test]
+    fn reads_a_pdf_page_range() {
+        let range = document_page_range(PDF, "pdf", "2-3", "multipage.pdf")
+            .expect("page range must render");
+        assert_eq!(range.page_start, 2);
+        assert_eq!(range.page_end, 3);
+        assert_eq!(range.total_pages, 3);
+        assert_eq!(
+            range.content,
+            "Page two heading\n\nSecond body\n\n\nPage three heading\n\nThird body"
+        );
+    }
+
+    #[test]
+    fn reports_python_page_range_errors() {
+        assert_eq!(
+            document_page_range(PDF, "pdf", "9", "multipage.pdf").unwrap_err(),
+            "Page range '9' out of bounds: document has 3 page(s)."
+        );
+        assert_eq!(
+            document_page_range(PDF, "pdf", "10-5", "multipage.pdf").unwrap_err(),
+            "Invalid page range: start 10 is after end 5."
+        );
+    }
+
+    #[test]
+    fn spreadsheet_pages_are_one_markdown_block() {
+        let range = document_page_range(XLSX, "xlsx", "1", "sample.xlsx")
+            .expect("spreadsheet page must render");
+        assert_eq!(range.total_pages, 1);
+        assert!(range.content.contains("## Results"));
     }
 }

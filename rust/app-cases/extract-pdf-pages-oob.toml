@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["extract", "rust/fixtures/multipage.pdf", "--pages", "9", "--cache-dir", "rust/fixtures/cache-pdf-pages-oob"]
+status.code = 0
+fs.sandbox = true
