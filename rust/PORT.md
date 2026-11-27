@@ -265,6 +265,18 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   oracle while keeping the existing JSON envelope.
 - Added replay case `extract-ssrf-url`; app replay 73/73.
 
+### Inspect paging, query selection, and link cap (done 2026-11-27)
+
+- CLI `inspect` now computes Python's `markdown_truncated` flag from paging and
+  slice state, and reserves the 500-link candidate cap before deciding
+  `truncated`.
+- Query-based section selection now uses the pure-core `sections` kernel; the
+  envelope reports `query`, section counts, and anchors only when a selection
+  actually happened. Default and explicit-paging reads keep `query: null`.
+- Both `inspect` and `batch` now fetch with Python's 500-link cap; live parity
+  verified for default, `--offset/--max-chunks`, and `--query` reads. App replay
+  remains 73/73.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

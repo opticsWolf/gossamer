@@ -156,8 +156,8 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
 | CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, 40-word topic vocabulary | robots/cache side effects, full document scoring state |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
-| CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failure envelopes | transport retries, browser/cache |
-| CLI `batch` | static batch envelope, documented options, dedupe, metadata parity | browser/cache/visited state |
+| CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failures, paging/query selection | transport retries, browser/cache |
+| CLI `batch` | static batch envelope, documented options, dedupe, 500-link cap, metadata parity | browser/cache/visited state |
 | CLI `cache` | prune/clear/reset | none known |
 | MCP schema/tool bodies | frozen schema + planning/envelope kernels | MCP transport and live tool execution |
 | Python library | many deterministic kernels delegated to Rust | live orchestration classes remain |
@@ -326,6 +326,8 @@ ProviderFailure {
   live 404 combinations match the oracle exactly.
 - CLI `batch` now accepts all documented options and emits Python-compatible
   metadata for `auto`/`static`/`browser`; duplicate URLs remain deduped.
+- CLI `inspect` now computes Python's truncation flag and query-section
+  envelope; `inspect` and `batch` both use the 500-link candidate cap.
 - `service::crawl` now embeds the Python thesaurus and uses the 40-word topic
   vocabulary; live crawl query echoes, term hits, and page records match.
 - CLI `extract` now validates SSRF before URL routing and logs URL failures

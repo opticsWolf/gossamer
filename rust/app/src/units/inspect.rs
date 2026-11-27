@@ -10,6 +10,7 @@ use gossamer::fetch::fetch_html_full_single;
 use gossamer::jsonfmt::{pretty_record, py_dumps};
 use gossamer::metaextract::meta_extract_all;
 use gossamer::miscutils::{classify_link, sha256_hex};
+use gossamer::sections::select_relevant_sections;
 use gossamer::service::fetch::{compact_metadata, slice_markdown};
 use gossamer::tables::extract_tables;
 use gossamer::tokens::count_tokens;
@@ -148,7 +149,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     };
 
     let (html, full_markdown, links, _removed, meta) =
-        match fetch_html_full_single(&url, 8000, 50_000_000) {
+        match fetch_html_full_single(&url, 500, 50_000_000) {
             Ok(value) => value,
             Err(error) => {
                 let detail = match use_smart.as_str() {
@@ -211,15 +212,66 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     }
     let total_links = follow_up_links.len();
 
-    let slice = slice_markdown(&full_markdown, offset, max_chunks, 8000, 0, "gpt-4o")
-        .unwrap_or_else(|_| json!([full_markdown.clone(), full_markdown.chars().count(), false]));
-    let markdown = slice
-        .get(0)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let next_offset = slice.get(1).and_then(Value::as_i64);
-    let has_more = slice.get(2).and_then(Value::as_bool).unwrap_or(false);
+    let chars_total = full_markdown.chars().count();
+    let explicit_paging = offset > 0 || max_chunks != 1;
+    let query_text = query.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let selection = query_text
+        .filter(|_| !explicit_paging)
+        .and_then(|value| select_relevant_sections(&full_markdown, value, 8000));
+    let (
+        markdown,
+        next_offset,
+        has_more,
+        query_echo,
+        sections_available,
+        sections_selected,
+        section_anchors,
+        markdown_truncated,
+        offset_out,
+    ) = if let Some(selected) = selection {
+        (
+            selected.markdown,
+            Value::Null,
+            false,
+            query_text
+                .map(str::to_string)
+                .map(Value::String)
+                .unwrap_or(Value::Null),
+            selected.total_sections as i64,
+            selected.selected_count as i64,
+            Value::Array(
+                selected
+                    .anchors
+                    .into_iter()
+                    .map(Value::String)
+                    .collect::<Vec<_>>(),
+            ),
+            true,
+            0,
+        )
+    } else {
+        let slice = slice_markdown(&full_markdown, offset, max_chunks, 8000, 0, "gpt-4o")
+            .unwrap_or_else(|_| json!([full_markdown.clone(), chars_total, false]));
+        let markdown = slice
+            .get(0)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let next_offset = slice.get(1).cloned().unwrap_or(Value::Null);
+        let has_more = slice.get(2).and_then(Value::as_bool).unwrap_or(false);
+        let truncated = offset > 0 || has_more || markdown != full_markdown;
+        (
+            markdown,
+            next_offset,
+            has_more,
+            Value::Null,
+            0,
+            0,
+            Value::Array(Vec::new()),
+            truncated,
+            offset,
+        )
+    };
     let tokens = count_tokens(&markdown, "gpt-4o").unwrap_or(0);
 
     let mut payload = json!({
@@ -229,19 +281,19 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "follow_up_links": follow_up_links,
         "delivered_links": total_links,
         "total_links": total_links,
-        "truncated": false,
+        "truncated": markdown_truncated || total_links >= 500,
         "fetch_method": "static",
         "cache_hit": false,
         "revalidated": false,
         "metadata": metadata,
-        "query": query,
-        "sections_available": 0,
-        "sections_selected": 0,
-        "section_anchors": [],
-        "offset": offset,
+        "query": query_echo,
+        "sections_available": sections_available,
+        "sections_selected": sections_selected,
+        "section_anchors": section_anchors,
+        "offset": offset_out,
         "next_offset": next_offset,
         "has_more": has_more,
-        "chars_total": full_markdown.chars().count(),
+        "chars_total": chars_total,
         "fetched_at": timestamp(),
         "http_status": http_status,
         "final_url": final_url,

@@ -48,7 +48,7 @@ fn timestamp() -> String {
 }
 
 fn build_entry(url: &str) -> Value {
-    let Ok((html, full, links, _removed, meta)) = fetch_html_full_single(url, 8000, 50_000_000)
+    let Ok((html, full, links, _removed, meta)) = fetch_html_full_single(url, 500, 50_000_000)
     else {
         return json!({"url": url, "error": "fetch failed"});
     };
