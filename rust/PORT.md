@@ -321,6 +321,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   injected provider calls.
 - Citation enrichment keeps its existing Rust plan kernel; the injected
   adapter remains a caller-side dependency.
+
+### U2/U7 state-machine completion and browser policy (done 2026-11-27)
+
+- `service::crawl::CrawlCorpus` now owns live document-frequency state. CLI
+  `crawl` uses BM25/IDF scoring, ranks document links separately, feeds the
+  corpus after every fetched page, and expands child-page frontiers.
+- `browser_policy` now owns the default-off fallback contract: only a `shell`
+  verdict may escalate; challenge/auth/paywall/blocked/soft-404 are terminal.
+  No browser backend is enabled in the shipped app (ADR-019).
 - Installed `gossamer` / `gossamer-mcp` commands and repository `bin/` shims
   now launch the Rust binaries. Python remains the replay oracle but is no
   longer the production launcher. See ADR-017 and ADR-018.

@@ -5,6 +5,7 @@
 
 pub mod adapters;
 pub mod agent;
+pub mod browser_policy;
 pub mod budget;
 pub mod cache;
 pub mod cacheutils;

@@ -154,7 +154,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `download` | Bounded HTTP, validation, errors | mirrors, resume, streaming/multi-candidate loop |
 | CLI `extract` | local text/XML/RSS, PDF/Office, URL errors + SSRF/logging, local/URL store, links, tables-as CSV/JSON, paged PDF/Excel, full JATS route | — |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
-| CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, runtime cache/visited/robots state | full document scoring state |
+| CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, runtime cache/visited/robots state, live BM25 corpus and document ranking | default-off browser backend |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
 | CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failures, paging/query selection, runtime cache/visited/robots/throttle | transport retries, browser |
 | CLI `batch` | static batch envelope, documented options, dedupe, 500-link cap, metadata parity, runtime cache/visited/robots/throttle | browser strategies |

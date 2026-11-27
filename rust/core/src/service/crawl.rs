@@ -37,6 +37,70 @@ fn contains_any(haystack: &[String], needle: &[String]) -> usize {
     haystack.iter().filter(|item| needle.contains(item)).count()
 }
 
+/// Live page-frequency corpus used by BM25-style crawl scoring.
+#[derive(Debug, Clone)]
+pub struct CrawlCorpus {
+    n: i64,
+    df: std::collections::HashMap<String, i64>,
+    min_corpus: i64,
+}
+
+impl Default for CrawlCorpus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CrawlCorpus {
+    /// Create an empty corpus with Python's three-page degeneracy floor.
+    pub fn new() -> Self {
+        Self {
+            n: 0,
+            df: std::collections::HashMap::new(),
+            min_corpus: 3,
+        }
+    }
+
+    /// Register term presence for one fetched page.
+    pub fn add_page(&mut self, terms: &[String]) {
+        self.n += 1;
+        let mut seen = std::collections::HashSet::new();
+        for term in terms {
+            if seen.insert(term) {
+                *self.df.entry(term.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    /// Number of fetched pages in the corpus.
+    pub fn len(&self) -> i64 {
+        self.n
+    }
+
+    /// Whether no page has been fetched yet.
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+
+    /// Serialized document-frequency map for [`crawl_score`].
+    pub fn idf(&self) -> serde_json::Value {
+        let idf = self
+            .df
+            .iter()
+            .map(|(term, count)| {
+                let value = if self.n < self.min_corpus {
+                    1.0
+                } else {
+                    let d = *count as f64;
+                    0.0_f64.max((1.0 + (self.n as f64 - d + 0.5) / (d + 0.5)).ln())
+                };
+                (term.clone(), serde_json::Value::from(value))
+            })
+            .collect::<serde_json::Map<_, _>>();
+        serde_json::Value::Object(idf)
+    }
+}
+
 /// Score one crawl frontier candidate.
 pub fn crawl_score(
     label: &[String],

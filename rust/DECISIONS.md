@@ -287,3 +287,15 @@ Consequences:
   It does not get a new gossamer CLI command or MCP tool.
 - Adding that command would change the frozen CLI/MCP schema and therefore
   requires a separate ADR before implementation.
+
+## ADR-019: browser fallback stays default-off in Rust
+
+- Date: 2026-11-27.
+- `GOSSAMER_BROWSER_FALLBACK` accepts `off|auto|chrome|bladebro` and defaults
+  to `off`. No backend is bundled, downloaded, or enabled by the shipped app.
+- `browser_policy::browser_decision` only escalates a `shell`/no-usable-text
+  verdict. `challenge`, `auth`, `paywall`, `blocked`, and `soft_404` are terminal
+  walls and never escalate.
+- A real Chrome/CDP or optional Bladebro subprocess lane requires SSRF-safe
+  request interception first; adding it changes the launcher contract and needs
+  a follow-up ADR.

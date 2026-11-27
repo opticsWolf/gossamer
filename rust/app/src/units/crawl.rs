@@ -1,5 +1,6 @@
 //! `gossamer crawl`: bounded focused link-graph traversal in Rust.
 
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -14,8 +15,9 @@ use gossamer::metaextract::meta_extract_all;
 use gossamer::runtime::{RuntimeConfig, RuntimeState};
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::service::crawl::{
-    crawl_anchor_context, crawl_excerpt, crawl_expand_query, crawl_is_document, crawl_path_prior,
-    crawl_score, crawl_term_hits, crawl_thesaurus_clusters, crawl_tokens, crawl_topic_words,
+    CrawlCorpus, crawl_anchor_context, crawl_excerpt, crawl_expand_query, crawl_is_document,
+    crawl_path_prior, crawl_score, crawl_term_hits, crawl_thesaurus_clusters, crawl_tokens,
+    crawl_topic_words,
 };
 use gossamer::service::fetch::{compact_metadata, raw_entry_matches_strategy};
 use gossamer::ssrf::check_url;
@@ -61,6 +63,10 @@ fn skip_path(path: &str) -> bool {
         || EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
 }
 
+fn round3(value: f64) -> f64 {
+    (value * 1000.0).round() / 1000.0
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "mirrors the Python crawl external-candidate inputs exactly"
@@ -76,6 +82,9 @@ fn add_external(
     min_score: f64,
     terms: &[String],
     root_terms: &[String],
+    idf: &Value,
+    base_terms: &[String],
+    corpus_n: i64,
     seen: &mut Vec<String>,
     queue: &mut Vec<(f64, usize, usize, String, String)>,
     skipped: &mut Vec<Value>,
@@ -116,9 +125,9 @@ fn add_external(
         &label,
         terms,
         root_terms,
-        None,
-        None,
-        0,
+        Some(idf),
+        Some(base_terms),
+        corpus_n,
         crawl_path_prior(url),
     ) + rank_bonus;
     if score < min_score && !exempt_floor {
@@ -490,17 +499,57 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
 
     let mut queue: Vec<(f64, usize, usize, String, String)> = Vec::new();
     let mut seen: Vec<String> = vec![root.clone()];
+    let mut doc_seen: HashSet<String> = HashSet::new();
+    let mut documents: Vec<Value> = Vec::new();
+    let mut documents_total = 0usize;
+    let mut documents_below_score = 0usize;
     let mut queue_dropped = 0usize;
     let mut seq = 0usize;
     let mut skipped: Vec<Value> = Vec::new();
     let mut search_results = 0usize;
     let page_terms = crawl_topic_words(Some(&full), 40);
+    let mut corpus = CrawlCorpus::new();
+    corpus.add_page(&crawl_topic_words(
+        Some(&format!("{full} {root_title}")),
+        40,
+    ));
+    let idf = corpus.idf();
+    let corpus_n = corpus.len();
     for (link_url, anchor) in &links {
         let Ok(candidate) = Url::parse(link_url) else {
             continue;
         };
-        if !matches!(candidate.scheme(), "http" | "https") || crawl_is_document(link_url) {
+        if !matches!(candidate.scheme(), "http" | "https") {
             queue_dropped += 1;
+            continue;
+        }
+        if crawl_is_document(link_url) {
+            let key = runtime.identity_key(link_url);
+            if doc_seen.insert(key) {
+                documents_total += 1;
+                let label = crawl_tokens(Some(anchor));
+                let doc_score = crawl_score(
+                    &label,
+                    &terms,
+                    &page_terms,
+                    Some(&idf),
+                    Some(&base_terms),
+                    corpus_n,
+                    crawl_path_prior(link_url),
+                );
+                if doc_score < min_score {
+                    documents_below_score += 1;
+                    if skipped.len() < 200 {
+                        skipped.push(json!({"url": link_url, "reason": "below min score"}));
+                    }
+                } else if documents.len() < 200 {
+                    documents.push(json!({
+                        "url": link_url,
+                        "anchor": anchor,
+                        "score": round3(doc_score),
+                    }));
+                }
+            }
             continue;
         }
         if same_host && root_host.as_deref() != candidate.host_str() {
@@ -519,9 +568,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             &label,
             &terms,
             &page_terms,
-            None,
-            None,
-            0,
+            Some(&idf),
+            Some(&base_terms),
+            corpus_n,
             crawl_path_prior(link_url),
         );
         if score < min_score {
@@ -563,6 +612,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             min_score,
             &terms,
             &root_terms,
+            &idf,
+            &base_terms,
+            corpus_n,
             &mut seen,
             &mut queue,
             &mut skipped,
@@ -604,6 +656,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 min_score,
                 &terms,
                 &root_terms,
+                &idf,
+                &base_terms,
+                corpus_n,
                 &mut seen,
                 &mut queue,
                 &mut skipped,
@@ -631,6 +686,16 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         else {
             continue;
         };
+        let child_title = if child_html.is_empty() {
+            _child_meta
+                .get("title")
+                .or_else(|| _child_meta.get("meta").and_then(|meta| meta.get("title")))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        } else {
+            title_from_html(&child_html, &url)
+        };
         let mut record = page_record(
             &url,
             depth,
@@ -641,19 +706,84 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             excerpts,
         );
         if let Some(map) = record.as_object_mut() {
-            let title = if child_html.is_empty() {
-                _child_meta
-                    .get("title")
-                    .or_else(|| _child_meta.get("meta").and_then(|meta| meta.get("title")))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string()
-            } else {
-                title_from_html(&child_html, &url)
-            };
-            map.insert("title".to_string(), json!(title));
+            map.insert("title".to_string(), json!(child_title.clone()));
         }
         pages.push(record);
+        corpus.add_page(&crawl_topic_words(
+            Some(&format!("{child_md} {child_title}")),
+            40,
+        ));
+        let child_idf = corpus.idf();
+        let child_corpus_n = corpus.len();
+        let child_terms = crawl_topic_words(Some(&child_md), 40);
+        for (link_url, anchor) in child_links {
+            let Ok(candidate) = Url::parse(&link_url) else {
+                continue;
+            };
+            if !matches!(candidate.scheme(), "http" | "https") {
+                continue;
+            }
+            let key = runtime.identity_key(&link_url);
+            if seen.contains(&link_url) || doc_seen.contains(&key) {
+                continue;
+            }
+            if crawl_is_document(&link_url) {
+                doc_seen.insert(key);
+                documents_total += 1;
+                let label = crawl_tokens(Some(&anchor));
+                let doc_score = crawl_score(
+                    &label,
+                    &terms,
+                    &child_terms,
+                    Some(&child_idf),
+                    Some(&base_terms),
+                    child_corpus_n,
+                    crawl_path_prior(&link_url),
+                );
+                if doc_score < min_score {
+                    documents_below_score += 1;
+                } else if documents.len() < 200 {
+                    documents.push(json!({
+                        "url": link_url,
+                        "anchor": anchor,
+                        "score": round3(doc_score),
+                    }));
+                }
+                continue;
+            }
+            if same_host && root_host.as_deref() != candidate.host_str() {
+                continue;
+            }
+            let path = candidate.path().to_ascii_lowercase();
+            if skip_path(&path) {
+                continue;
+            }
+            seen.push(link_url.clone());
+            let mut label = crawl_tokens(Some(&anchor));
+            label.extend(crawl_anchor_context(Some(&child_md), Some(&anchor), 160, 8));
+            label.extend(crawl_tokens(Some(&link_url)));
+            let link_score = crawl_score(
+                &label,
+                &terms,
+                &child_terms,
+                Some(&child_idf),
+                Some(&base_terms),
+                child_corpus_n,
+                crawl_path_prior(&link_url),
+            );
+            if link_score < min_score {
+                queue_dropped += 1;
+                continue;
+            }
+            queue.push((
+                link_score * 0.7_f64.powi((depth + 1) as i32),
+                seq,
+                depth + 1,
+                link_url,
+                anchor,
+            ));
+            seq += 1;
+        }
     }
     if !queue.is_empty() && pages.len() >= max_pages {
         stop = "max_pages reached";
@@ -672,9 +802,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "pages": pages,
         "errors": [],
         "errors_total": 0,
-        "documents": [],
-        "documents_total": 0,
-        "documents_below_score": 0,
+        "documents": documents,
+        "documents_total": documents_total,
+        "documents_below_score": documents_below_score,
         "skipped": skipped,
         "skipped_total": skipped_total_value,
         "queue_dropped": queue_dropped,
