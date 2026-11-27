@@ -191,6 +191,18 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   and `extract-xlsx-json`; app replay 68/68, full pytest
   11486 passed / 36 skipped.
 
+### Extract store and document links (done 2026-11-27)
+
+- CLI `extract --store` now accepts URL sources and preserves the caller's
+  relative or absolute store path in the `stored` envelope, matching Python
+  on Windows. Local and remote store paths now agree with the oracle.
+- The document envelope now reports `links` from the pure-core
+  `textlinks::scan_text_links` scanner over the full extracted content
+  (before budget truncation), with Python's 50-link cap.
+- Added replay case `extract-store-docx` covering stored files and relative
+  path display; app replay 69/69. Live URL-store parity verified against
+  `https://raw.githubusercontent.com/rust-lang/rust/master/README.md`.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

@@ -134,7 +134,7 @@ Source scan of `rust/app/src/units/*.rs` found these real contract gaps:
 | `download` | `--resume`, `--try-mirrors` |
 | `cite` | `--enrich`, `--from-pdf` |
 | `research` | any provider other than DuckDuckGo |
-| `extract` | binary/PDF/Office formats, paged extraction, `tables-as` other than JSON, URL `--store` |
+| `extract` | paged extraction, full JATS route |
 | `batch` | browser strategy (`--use-smart browser`) |
 | `search` | provider live calls beyond DuckDuckGo HTML |
 
@@ -152,7 +152,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `cite` | DOI/URL/JSON formatting | `--enrich`, `--from-pdf` |
 | CLI `locate-pdf` | OpenAlex live lookup | full OpenAccessLocator flow |
 | CLI `download` | Bounded HTTP, validation, errors | mirrors, resume, streaming/multi-candidate loop |
-| CLI `extract` | local text/XML/RSS, PDF/Office, URL errors, store, tables-as CSV/JSON | pages, URL store, full JATS route |
+| CLI `extract` | local text/XML/RSS, PDF/Office, URL errors, local/URL store, links, tables-as CSV/JSON | pages, full JATS route |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
 | CLI `crawl` | bounded link graph | search prior, seeds, robots/cache side effects |
 | CLI `search` | DuckDuckGo HTML | provider dispatch/auth/failover |
@@ -311,6 +311,9 @@ ProviderFailure {
   `tables_as=csv` or `tables_as=json`; `jsonfmt::py_dumps_pretty` supplies
   `json.dumps(indent=2)` formatting. Replay cases `extract-xlsx-csv` and
   `extract-xlsx-json` bring the app to 68/68.
+- `extract --store` now supports URLs and preserves Python-relative store paths;
+  document envelopes report links from the pure-core scanner. Replay case
+  `extract-store-docx` brings the app to 69/69.
 
 **Exit criteria**
 

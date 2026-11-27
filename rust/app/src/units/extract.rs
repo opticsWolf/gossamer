@@ -14,6 +14,7 @@ use gossamer::downloader::download_bytes;
 use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::extract_validation;
 use gossamer::miscutils::sha256_bytes;
+use gossamer::textlinks::scan_text_links;
 use gossamer::tokens::count_tokens;
 use serde_json::{Value, json};
 
@@ -360,17 +361,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         )
     };
     let stored = if store {
-        if is_url {
-            return unsupported();
-        }
         let directory = PathBuf::from(store_dir.unwrap_or_else(|| "stored_documents".to_string()));
-        let directory = if directory.is_absolute() {
-            directory
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(directory)
-        };
         if std::fs::create_dir_all(&directory).is_err() {
             return unsupported();
         }
@@ -422,7 +413,10 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "final_url": final_url,
         "content_type": content_type,
         "content_hash": sha256_bytes(content.as_bytes()),
-        "links": [],
+        "links": scan_text_links(&content, 50)
+            .into_iter()
+            .map(Value::String)
+            .collect::<Vec<_>>(),
         "guard": Value::Null,
         "stored": stored,
         "resolved_doi": Value::Null,
