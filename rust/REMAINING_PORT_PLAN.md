@@ -288,8 +288,10 @@ ProviderFailure {
 - `gossamer-mcp` now owns JSON-RPC framing and frozen protocol envelopes;
   all 12 tool names dispatch through Rust, with Python-parity fixtures for
   protocol shapes and deterministic tool errors (`tests/test_rust_mcp_transport.py`).
-- MCP `inspect_html_page` is now a live Rust tool body; other tool bodies
-  still use deterministic validation kernels and remain follow-up slices.
+- MCP tool bodies now all execute in Rust: `inspect_html_page` directly,
+  `web_search` through the Rust DDG parser, and the remaining nine through
+  the sibling pure Rust CLI binary with tool-specific JSON formatting.
+  Python protocol fixtures cover all 12 names.
 - Retry verdicts now flow through Rust as well; gate extended to 39/39 with
   quota, permanent status, transient status, transport, final attempt,
   Retry-After cap, and jitter-cap parity cases.

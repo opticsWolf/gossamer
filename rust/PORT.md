@@ -29,8 +29,8 @@ If this file and those disagree, this file wins for *decisions*; the ADRs win fo
    `C:/Users/Main/.venv/Scripts/coderadar.exe` (0.16.0) — the `coderadar` on `PATH` is a
    stale 0.8.16 shim and must not be used.
 6. **Scope.** CLI (`gossamer`), MCP server (12 tools) and the Python library API all stay in
-   scope. Browser lane (`browser_isolation`, `browser_worker`, `browser_oxide`) and PDF/Office
-   binary extraction stay in Python until their crates are proven.
+   scope. PDF/Office extraction is proven in pure Rust crates; browser transport remains
+   isolated and default-off until SSRF/request interception exists.
 
 ## Chosen core units (ordered)
 
@@ -165,6 +165,9 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   calls are replayed from Python fixtures.
 - MCP `inspect_html_page` now executes the Rust inspection body; live
   `https://example.com` parity matches the Python oracle except timestamp.
+- All 12 MCP tool bodies now dispatch to Rust code. Nine tool bodies reuse
+  the pure Rust CLI binary and normalize JSON formatting to each tool's
+  Python serialization shape; `web_search` keeps its Rust DDG parser.
 - Full pytest 11486 passed / 36 skipped; app replay 66/66.
 
 ### Download size-cap error parity (done 2026-11-25)
@@ -737,9 +740,9 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust now owns substantial live CLI bodies: `check`, `discover`, `cite`, `locate-pdf`,
   download validation, extract validation, research validation, crawl validation, DuckDuckGo
   search, and static `inspect`/`batch`.
-- Rust does not yet own: browser transport and fallbacks, binary PDF/Office extraction,
-  full download filesystem side effects, MCP transport, remaining live tool bodies, the full
-  crawl loop, research provider fan-out, and the final PyO3-wrapper retirement/cutover.
+- Rust does not yet own: browser transport and fallbacks, the full crawl state machine,
+  page-cache/visited/robots side effects, research provider paths outside the seven scholarly
+  CLI providers, and the final PyO3-wrapper retirement/cutover.
 - Verification: 66 replay cases; Python suite is the behavioral oracle at 11,486 passing tests.
 
 ## Open questions

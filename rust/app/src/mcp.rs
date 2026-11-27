@@ -5,12 +5,12 @@
 //! altering `gossamer --help`.
 
 use std::io::{self, BufRead, Write};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gossamer::agent::url_error;
 use gossamer::document::{prepare_url, structured_html_payload};
 use gossamer::fetch::fetch_html_full_single;
-use gossamer::jsonfmt::py_dumps;
 use gossamer::mcp_dispatch::{check_sources_plan, extract_validation, tool_arguments};
 use gossamer::mcp_transport::{
     error_response, initialize_result, list_resources_result, list_tools_result, read_resource,
@@ -136,7 +136,10 @@ fn inspect_live(
             20,
             &tables,
         );
-        return (pretty(&payload), false);
+        return (
+            serde_json::to_string(&payload).unwrap_or_else(|_| pretty(&payload)),
+            false,
+        );
     }
     let metadata = compact_metadata(&raw_metadata);
     let mut follow_up_links = Vec::new();
@@ -197,7 +200,81 @@ fn inspect_live(
             full_markdown.chars().count()
         ));
     }
-    (py_dumps(&payload), false)
+    (
+        serde_json::to_string(&payload).unwrap_or_else(|_| pretty(&payload)),
+        false,
+    )
+}
+
+fn value_text(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(value) => value.to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn cli_output(arguments: &[String]) -> (String, bool) {
+    let executable = std::env::current_exe().unwrap_or_default();
+    let directory = executable.parent().unwrap_or(std::path::Path::new("."));
+    let name = if cfg!(windows) {
+        "gossamer.exe"
+    } else {
+        "gossamer"
+    };
+    let output = Command::new(directory.join(name)).args(arguments).output();
+    match output {
+        Ok(output) => {
+            let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+            if text.trim().is_empty() {
+                text = String::from_utf8_lossy(&output.stderr).to_string();
+            }
+            (
+                text.trim_end_matches(['\n', '\r']).to_string(),
+                !output.status.success(),
+            )
+        }
+        Err(error) => (format!("CLI body unavailable: {error}"), true),
+    }
+}
+
+fn cli_json_output(arguments: &[String], compact: bool) -> (String, bool) {
+    let (text, failed) = cli_output(arguments);
+    match serde_json::from_str::<Value>(&text) {
+        Ok(value) => {
+            let formatted = if compact {
+                serde_json::to_string(&value)
+            } else {
+                serde_json::to_string_pretty(&value)
+            };
+            (formatted.unwrap_or(text), failed)
+        }
+        Err(_) => (text, failed),
+    }
+}
+
+fn string_values(value: Option<&Value>) -> Vec<String> {
+    match value {
+        Some(Value::Array(items)) => items.iter().map(value_text).collect(),
+        Some(Value::String(text)) => vec![text.clone()],
+        _ => Vec::new(),
+    }
+}
+
+fn flag(arguments: &Value, key: &str, flag: &str, out: &mut Vec<String>) {
+    if arguments.get(key).and_then(Value::as_bool).unwrap_or(false) {
+        out.push(flag.to_string());
+    }
+}
+
+fn option(arguments: &Value, key: &str, flag: &str, out: &mut Vec<String>) {
+    if let Some(value) = arguments.get(key)
+        && !value.is_null()
+    {
+        out.push(flag.to_string());
+        out.push(value_text(value));
+    }
 }
 
 fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
@@ -210,9 +287,10 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
                     serde_json::from_str(CATEGORIES_JSON).unwrap_or_else(|_| json!([]));
                 return (pretty(&taxonomy), false);
             }
-            let url = duckduckgo_search_url(&query);
-            let results = fetch_results(&url, 5);
-            (pretty(&Value::Array(results)), false)
+            let mut args = vec!["research".to_string(), query];
+            option(&merged, "category", "--category", &mut args);
+            option(&merged, "max_results", "--max-results", &mut args);
+            cli_json_output(&args, false)
         }
         "web_search" => {
             let query = string_arg(&merged, "query");
@@ -257,12 +335,9 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             if items.is_empty() {
                 return ("[]".to_string(), false);
             }
-            (
-                pretty(
-                    &json!({"error": "batch inspection is not available in the MCP transport slice"}),
-                ),
-                true,
-            )
+            let mut args = vec!["batch".to_string()];
+            args.extend(items.iter().map(value_text));
+            cli_json_output(&args, false)
         }
         "download_file" => {
             let source = string_arg(&merged, "source");
@@ -288,28 +363,29 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             if failed {
                 return (text, failed);
             }
-            (
-                pretty(&json!({
-                    "source": url,
-                    "status": "error",
-                    "error": {"code": "download_error", "message": format!("output_path: {output_path}")},
-                })),
-                true,
-            )
+            let mut args = vec![
+                "download".to_string(),
+                source,
+                "-o".to_string(),
+                output_path,
+            ];
+            option(&merged, "min_bytes", "--min-bytes", &mut args);
+            option(&merged, "max_bytes", "--max-bytes", &mut args);
+            flag(&merged, "overwrite", "--overwrite", &mut args);
+            flag(&merged, "resume", "--resume", &mut args);
+            if let Some(mirrors) = merged.get("mirrors") {
+                let values = string_values(Some(mirrors));
+                if !values.is_empty() {
+                    args.push("--try-mirrors".to_string());
+                    args.extend(values);
+                }
+            }
+            cli_json_output(&args, false)
         }
         "locate_pdf" => {
             let doi = string_arg(&merged, "doi");
             match normalize_doi(&doi) {
-                Ok(normalized) => (
-                    pretty(&json!({
-                        "doi": normalized,
-                        "provider": "openalex",
-                        "sources": ["openalex"],
-                        "status": "not_found",
-                        "candidates": [],
-                    })),
-                    false,
-                ),
+                Ok(_normalized) => cli_json_output(&["locate-pdf".to_string(), doi], false),
                 Err(error) => (
                     pretty(&json!({
                         "doi": doi,
@@ -342,15 +418,14 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             if let Some(error) = extract_validation(&tables_as, include_images, structured, store) {
                 return (pretty(&error), true);
             }
-            (
-                pretty(&json!({
-                    "source": source,
-                    "content": "",
-                    "content_tokens": 0,
-                    "cache_hit": false,
-                })),
-                false,
-            )
+            let mut args = vec!["extract".to_string(), source];
+            option(&merged, "pages", "--pages", &mut args);
+            option(&merged, "store_dir", "--store-dir", &mut args);
+            option(&merged, "tables_as", "--tables-as", &mut args);
+            flag(&merged, "structured", "--structured", &mut args);
+            flag(&merged, "store", "--store", &mut args);
+            flag(&merged, "include_images", "--include-images", &mut args);
+            cli_json_output(&args, true)
         }
         "discover_resources" => {
             let raw = string_arg(&merged, "url");
@@ -362,18 +437,18 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             if failed {
                 return (text, failed);
             }
-            (
-                pretty(&json!({"url": url, "feeds": [], "sitemaps": []})),
-                false,
-            )
+            cli_json_output(&["discover".to_string(), raw], false)
         }
         "crawl" => {
             let raw = string_arg(&merged, "root_url");
             match normalize_url(Some(&raw), None, None) {
-                Ok(url) => (
-                    pretty(&json!({"root": url, "pages": [], "count": 0})),
-                    false,
-                ),
+                Ok(_url) => {
+                    let mut args = vec!["crawl".to_string(), raw];
+                    option(&merged, "query", "--query", &mut args);
+                    option(&merged, "max_depth", "--max-depth", &mut args);
+                    option(&merged, "max_pages", "--max-pages", &mut args);
+                    cli_json_output(&args, false)
+                }
                 Err(error) => {
                     let message = error
                         .message()
@@ -383,16 +458,16 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
                 }
             }
         }
-        "manage_cache" => (
-            pretty(&json!({"prune": {
-                "removed_expired": 0,
-                "removed_evicted": 0,
-                "total_entries": 0,
-                "total_bytes": 0,
-                "max_disk_bytes": 0,
-            }})),
-            false,
-        ),
+        "manage_cache" => {
+            let action = string_arg(&merged, "action");
+            let action = if matches!(action.as_str(), "prune" | "clear" | "reset") {
+                action
+            } else {
+                "prune".to_string()
+            };
+            let args = vec!["cache".to_string(), "--action".to_string(), action];
+            cli_json_output(&args, false)
+        }
         "export_citations" => {
             let style = string_arg(&merged, "style");
             if !matches!(style.as_str(), "bibtex" | "csl-json" | "apa" | "mla") {
@@ -406,13 +481,32 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
                     true,
                 );
             }
-            ("[]".to_string(), false)
+            let mut args = vec!["cite".to_string(), "--style".to_string(), style];
+            let results = merged.get("results").cloned().unwrap_or(Value::Null);
+            if let Value::Array(items) = results {
+                for item in items {
+                    match item {
+                        Value::String(text) => args.push(text),
+                        other => args.push(serde_json::to_string(&other).unwrap_or_default()),
+                    }
+                }
+            }
+            cli_output(&args)
         }
         "check_sources" => {
             let mode = merged.get("mode").and_then(Value::as_str);
             let urls = merged.get("urls");
             let plan = check_sources_plan(mode, urls, "list");
-            (pretty(&plan), plan.get("error").is_some())
+            if plan.get("error").is_some() {
+                return (pretty(&plan), false);
+            }
+            let mut args = vec!["check".to_string()];
+            if let Some(mode) = mode {
+                args.push("--mode".to_string());
+                args.push(mode.to_string());
+            }
+            args.extend(string_values(urls));
+            cli_json_output(&args, false)
         }
         other => (format!("Unknown tool: {other}"), true),
     }

@@ -1,6 +1,8 @@
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -37,9 +39,13 @@ PROTOCOL_REQUESTS = [
 ]
 
 
-def run_rpc(requests, expected_ids):
+def run_rpc(requests, expected_ids, cache_dir=None):
+    env = dict(os.environ)
+    if cache_dir is not None:
+        env["GOSSAMER_CACHE_DIR"] = str(cache_dir)
     process = subprocess.Popen(
         [str(EXE)],
+        env=env,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -64,7 +70,8 @@ def run_rpc(requests, expected_ids):
 def test_protocol_fixture_matches_rust_server():
     loaded = json.loads((ROOT / "rust/fixtures/mcp_protocol.json").read_text(encoding="utf-8"))
     expected = {int(key): value for key, value in loaded.items()}
-    actual = run_rpc(PROTOCOL_REQUESTS, [1, 2, 3, 4, 5])
+    with tempfile.TemporaryDirectory() as cache_dir:
+        actual = run_rpc(PROTOCOL_REQUESTS, [1, 2, 3, 4, 5], cache_dir)
     assert actual == expected
 
 
@@ -79,7 +86,8 @@ def test_tool_call_fixture_matches_rust_server():
         }
         for index, case in enumerate(cases, 1)
     ]
-    responses = run_rpc(requests, range(1, len(cases) + 1))
+    with tempfile.TemporaryDirectory() as cache_dir:
+        responses = run_rpc(requests, range(1, len(cases) + 1), cache_dir)
     for index, case in enumerate(cases, 1):
         result = responses[index]["result"]
         assert result["content"][0]["text"] == case["text"]
