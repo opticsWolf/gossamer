@@ -168,6 +168,9 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - All 12 MCP tool bodies now dispatch to Rust code. Nine tool bodies reuse
   the pure Rust CLI binary and normalize JSON formatting to each tool's
   Python serialization shape; `web_search` keeps its Rust DDG parser.
+- CLI `research` now has Rust live bodies for every non-scholarly taxonomy
+  provider (legal, patent, financial, geo), with shared status/error envelopes;
+  parity verified live for open-meteo, coingecko, frankfurter and courtlistener.
 - Full pytest 11486 passed / 36 skipped; app replay 66/66.
 
 ### Download size-cap error parity (done 2026-11-25)
@@ -741,8 +744,7 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   download validation, extract validation, research validation, crawl validation, DuckDuckGo
   search, and static `inspect`/`batch`.
 - Rust does not yet own: browser transport and fallbacks, the full crawl state machine,
-  page-cache/visited/robots side effects, research provider paths outside the seven scholarly
-  CLI providers, and the final PyO3-wrapper retirement/cutover.
+  page-cache/visited/robots side effects, and the final PyO3-wrapper retirement/cutover.
 - Verification: 66 replay cases; Python suite is the behavioral oracle at 11,486 passing tests.
 
 ## Open questions

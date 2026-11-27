@@ -288,6 +288,9 @@ ProviderFailure {
 - `gossamer-mcp` now owns JSON-RPC framing and frozen protocol envelopes;
   all 12 tool names dispatch through Rust, with Python-parity fixtures for
   protocol shapes and deterministic tool errors (`tests/test_rust_mcp_transport.py`).
+- CLI `research` now dispatches all legal/patent/financial/geo providers in
+  Rust through the existing adapter kernels, with HTTP status checks and
+  provider-specific error envelopes. Four live calls matched Python exactly.
 - MCP tool bodies now all execute in Rust: `inspect_html_page` directly,
   `web_search` through the Rust DDG parser, and the remaining nine through
   the sibling pure Rust CLI binary with tool-specific JSON formatting.

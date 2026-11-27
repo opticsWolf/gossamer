@@ -4,13 +4,31 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 
 use clap::ArgMatches;
+use gossamer::adapters::finance::{
+    alphavantage_parse_search_impl, bis_parse_impl, bundesbank_parse_impl,
+    coingecko_parse_search_impl, eurostat_parse_cells_impl, frankfurter_parse_rates_impl,
+    yahoo_parse_search_impl,
+};
+use gossamer::adapters::legal::{
+    congress_parse_search_impl, courtlistener_parse_search_impl, ecfr_find_part_impl,
+    ecfr_part_record_impl, ecfr_title_record_impl, fed_parse_search_impl, hudoc_parse_search_impl,
+    oldp_parse_search_impl,
+};
+use gossamer::adapters::misc::{openmeteo_parse_search_impl, overpass_parse_search_impl};
+use gossamer::adapters::patents::{
+    epo_parse_search_impl, kipris_parse_search_impl, lens_parse_search_impl,
+    patentsview_parse_search_impl,
+};
 use gossamer::adapters::scholar::{
     arxiv_entry_raw, arxiv_parse_search_impl, crossref_parse_search_impl,
     huggingface_papers_parse_search_impl, huggingface_parse_search_impl,
     openalex_parse_search_impl, semanticscholar_parse_search_impl, zenodo_parse_search_impl,
 };
 use gossamer::categories::classify_query;
-use gossamer::discovery::{fetch_text, fetch_text_with_status, fetch_text_with_user_agent};
+use gossamer::discovery::{
+    fetch_text, fetch_text_with_status, fetch_text_with_status_and_user_agent,
+    fetch_text_with_user_agent,
+};
 use gossamer::jsonfmt::py_dumps;
 use gossamer::research_merge::merge_scholarly_records;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
@@ -206,6 +224,522 @@ fn fetch_provider_records(
                 .map_err(|error| error.to_string())?;
             attach_raw(&mut records, items.as_ref());
             Ok(records)
+        }
+        other => Err(format!("unknown provider: {other}")),
+    }
+}
+
+fn env_key(name: &str) -> String {
+    std::env::var(name).unwrap_or_default()
+}
+
+fn bounded_limit(value: usize, lower: usize, upper: usize) -> usize {
+    if value < lower {
+        lower
+    } else if value > upper {
+        upper
+    } else {
+        value
+    }
+}
+
+fn with_raw(records: &mut [Value], items: Option<&Vec<Value>>) {
+    attach_raw(records, items);
+}
+
+fn http_reason(status: u16) -> &'static str {
+    match status {
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        408 => "Request Timeout",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        504 => "Gateway Timeout",
+        _ => "Unknown Status",
+    }
+}
+
+fn fetch_provider_text(url: &str, timeout: f64) -> Result<String, String> {
+    let (body, _, status) = fetch_text_with_status(url, timeout)?;
+    if status >= 400 {
+        return Err(format!(
+            "Client error '{} {}' for url '{}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{}",
+            status,
+            http_reason(status),
+            url,
+            status
+        ));
+    }
+    Ok(body)
+}
+
+fn fetch_provider_text_with_user_agent(
+    url: &str,
+    timeout: f64,
+    user_agent: &str,
+) -> Result<String, String> {
+    let (body, _, status) = fetch_text_with_status_and_user_agent(url, timeout, user_agent)?;
+    if status >= 400 {
+        return Err(format!(
+            "Client error '{} {}' for url '{}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{}",
+            status,
+            http_reason(status),
+            url,
+            status
+        ));
+    }
+    Ok(body)
+}
+
+fn generic_provider_records(
+    provider: &str,
+    query: &str,
+    max_results: usize,
+) -> Result<Vec<Value>, String> {
+    let limit = max_results as i64;
+    let minor = Some(13u32);
+    match provider {
+        "courtlistener" => {
+            let url = url::Url::parse_with_params(
+                "https://www.courtlistener.com/api/rest/v4/search/",
+                &[
+                    ("q", if query.trim().is_empty() { "*" } else { query }),
+                    ("per_page", &max_results.min(100).to_string()),
+                    ("format", "json"),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            let mut records = courtlistener_parse_search_impl(&body, limit, minor)
+                .map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("results").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "open-meteo" => {
+            let url = url::Url::parse_with_params(
+                "https://geocoding-api.open-meteo.com/v1/search",
+                &[
+                    ("name", query),
+                    ("count", &max_results.to_string()),
+                    ("language", "en"),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 15.0).map_err(|error| error.to_string())?;
+            let mut records = openmeteo_parse_search_impl(
+                &body,
+                limit,
+                "https://api.open-meteo.com/v1/forecast",
+                minor,
+            )
+            .map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("results").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "yahoo" => {
+            let url = url::Url::parse_with_params(
+                "https://query2.finance.yahoo.com/v1/finance/search",
+                &[
+                    ("q", query),
+                    ("quotesCount", &max_results.min(20).to_string()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            let mut records =
+                yahoo_parse_search_impl(&body, limit, minor).map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("quotes").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "frankfurter" => {
+            let base = query.trim().to_uppercase();
+            let url = format!("https://api.frankfurter.dev/v2/rates?base={base}");
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            let mut records = frankfurter_parse_rates_impl(&body, &base, None, limit)
+                .map_err(|error| error.to_string())?;
+            for record in &mut records {
+                if let Some(fields) = record.get("fields") {
+                    let raw = json!({
+                        "base": fields.get("base").cloned().unwrap_or(Value::Null),
+                        "quote": fields.get("quote").cloned().unwrap_or(Value::Null),
+                        "rate": fields.get("rate").cloned().unwrap_or(Value::Null),
+                        "date": fields.get("date").cloned().unwrap_or(Value::Null),
+                    });
+                    if let Some(object) = record.as_object_mut() {
+                        object.insert("raw".to_string(), Value::String(py_dumps(&raw)));
+                    }
+                }
+            }
+            Ok(records)
+        }
+        "eurostat" => {
+            let code = query.trim();
+            if code.is_empty() {
+                return Err("EurostatAdapter needs a dataset code".to_string());
+            }
+            let url = format!(
+                "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{code}?lang=en&format=JSON"
+            );
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            eurostat_parse_cells_impl(&body, code, limit).map_err(|error| error.to_string())
+        }
+        "coingecko" => {
+            let url = url::Url::parse_with_params(
+                "https://api.coingecko.com/api/v3/search",
+                &[("query", query)],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text_with_user_agent(&url, 20.0, "python-httpx/0.28.1")
+                .map_err(|error| error.to_string())?;
+            let mut records = coingecko_parse_search_impl(&body, limit, minor)
+                .map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("coins").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "oldp" => {
+            let url = url::Url::parse_with_params(
+                "https://de.openlegaldata.io/api/cases/search/",
+                &[
+                    ("text", query),
+                    ("page_size", &max_results.min(100).to_string()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            let mut records =
+                oldp_parse_search_impl(&body, limit, minor).map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("results").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "hudoc" => {
+            let url = url::Url::parse_with_params(
+                "https://hudoc.echr.coe.int/app/query/results",
+                &[
+                    ("query", query),
+                    ("select", "itemid,title,docname,date,doctype"),
+                    ("sort", "itemid Ascending"),
+                    ("start", "0"),
+                    ("length", &max_results.min(100).to_string()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 25.0).map_err(|error| error.to_string())?;
+            let mut records = hudoc_parse_search_impl(&body).map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("results").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "federalregister" => {
+            let url = url::Url::parse_with_params(
+                "https://www.federalregister.gov/api/v1/documents.json",
+                &[
+                    ("conditions[term]", query),
+                    ("per_page", &max_results.min(100).to_string()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            let mut records =
+                fed_parse_search_impl(&body, limit, minor).map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            let items = parsed.as_ref().and_then(|value| {
+                value
+                    .get("results")
+                    .and_then(Value::as_array)
+                    .or_else(|| value.get("documents").and_then(Value::as_array))
+            });
+            with_raw(&mut records, items);
+            Ok(records)
+        }
+        "overpass" => {
+            let text = query.trim();
+            if text.is_empty() {
+                return Err("OverpassAdapter requires an Overpass QL query string".to_string());
+            }
+            let data = if text.starts_with("[out:") {
+                text.to_string()
+            } else {
+                format!("[out:json]{text}")
+            };
+            let url = url::Url::parse_with_params(
+                "https://overpass.kumi.systems/api/interpreter",
+                &[("data", data.as_str()), ("format", "json")],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 60.0).map_err(|error| error.to_string())?;
+            let mut records = overpass_parse_search_impl(&body, limit, minor)
+                .map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("elements").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "ecfr" => {
+            let text = query.trim();
+            let (title, part) = if let Some((left, right)) = text.split_once('/') {
+                (left.trim().to_string(), right.trim().to_string())
+            } else if text.to_uppercase().contains("CFR") {
+                let digits: Vec<&str> = text
+                    .split(|c: char| !c.is_ascii_digit())
+                    .filter(|v| !v.is_empty())
+                    .collect();
+                (
+                    digits.first().copied().unwrap_or("").to_string(),
+                    digits.get(1).copied().unwrap_or("").to_string(),
+                )
+            } else if let Some((left, right)) = text.split_once('.') {
+                (left.trim().to_string(), right.trim().to_string())
+            } else {
+                (text.to_string(), String::new())
+            };
+            if title.is_empty() {
+                return Err(format!("Could not parse an eCFR citation from {query:?}"));
+            }
+            let titles =
+                fetch_provider_text("https://www.ecfr.gov/api/versioner/v1/titles.json", 20.0)
+                    .map_err(|error| format!("eCFR search failed: {error}"))?;
+            let parsed =
+                serde_json::from_str::<Value>(&titles).map_err(|error| error.to_string())?;
+            let date = parsed
+                .get("titles")
+                .and_then(Value::as_array)
+                .and_then(|items| {
+                    items.iter().find(|item| {
+                        item.get("number").and_then(Value::as_str) == Some(title.as_str())
+                    })
+                })
+                .and_then(|item| item.get("latest_issue_date").and_then(Value::as_str))
+                .ok_or_else(|| format!("eCFR has no title {title:?}"))?;
+            let tree_url = format!(
+                "https://www.ecfr.gov/api/versioner/v1/structure/{date}/title-{title}.json"
+            );
+            let (tree, _) = fetch_text(&tree_url, 30.0)
+                .map_err(|error| format!("eCFR search failed: {error}"))?;
+            if part.is_empty() {
+                let mut record = ecfr_title_record_impl(&tree, &title, minor)
+                    .map_err(|error| error.to_string())?;
+                let value = serde_json::from_str::<Value>(&tree).unwrap_or(Value::Null);
+                let raw = json!({
+                    "identifier": value.get("identifier").cloned().unwrap_or(Value::Null),
+                    "label": value.get("label").cloned().unwrap_or(Value::Null),
+                    "type": value.get("type").cloned().unwrap_or(Value::Null),
+                });
+                if let Some(object) = record.as_object_mut() {
+                    object.insert("raw".to_string(), Value::String(py_dumps(&raw)));
+                }
+                return Ok(vec![record]);
+            }
+            let node = ecfr_find_part_impl(&tree, &part)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("eCFR title {title} has no part {part:?}"))?;
+            let node_json = py_dumps(&node);
+            let mut record = ecfr_part_record_impl(&node_json, &title, &part)
+                .map_err(|error| error.to_string())?;
+            if let Some(object) = record.as_object_mut() {
+                object.insert("raw".to_string(), Value::String(node_json));
+            }
+            Ok(vec![record])
+        }
+        "alphavantage" => {
+            let key = env_key("GOSSAMER_ALPHA_VANTAGE_KEY");
+            if key.is_empty() {
+                return Err("AlphaVantageAdapter needs GOSSAMER_ALPHA_VANTAGE_KEY".to_string());
+            }
+            let url = url::Url::parse_with_params(
+                "https://www.alphavantage.co/query",
+                &[
+                    ("function", "SEARCH"),
+                    ("keywords", query),
+                    ("apikey", key.as_str()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            alphavantage_parse_search_impl(&body, &json!(query), limit, minor)
+                .map_err(|error| error.to_string())
+        }
+        "congress" => {
+            let key = env_key("GOSSAMER_CONGRESS_KEY");
+            if key.is_empty() {
+                return Err("CongressAdapter needs GOSSAMER_CONGRESS_KEY".to_string());
+            }
+            let url = url::Url::parse_with_params(
+                "https://api.data.gov/congress/v1/members/search",
+                &[
+                    ("q", query),
+                    ("api_key", key.as_str()),
+                    ("limit", &max_results.min(50).to_string()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            let mut records = congress_parse_search_impl(&body, limit, minor)
+                .map_err(|error| error.to_string())?;
+            let parsed = serde_json::from_str::<Value>(&body).ok();
+            with_raw(
+                &mut records,
+                parsed
+                    .as_ref()
+                    .and_then(|value| value.get("results").and_then(Value::as_array)),
+            );
+            Ok(records)
+        }
+        "bundesbank" => {
+            let (flow, key) = query.trim().split_once('/').unwrap_or((query.trim(), ""));
+            if flow.is_empty() || key.is_empty() {
+                return Err("BundesbankAdapter needs a \"FLOW/KEY\" spec".to_string());
+            }
+            let url = format!(
+                "https://api.statistiken.bundesbank.de/rest/data/{flow}/{key}?format=csvfile"
+            );
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            bundesbank_parse_impl(&body, flow, key, limit).map_err(|error| error.to_string())
+        }
+        "bis" => {
+            let (flow, key) = query.trim().split_once('/').unwrap_or((query.trim(), ""));
+            if flow.is_empty() {
+                return Err("BisAdapter needs a \"FLOW[/KEY]\" spec".to_string());
+            }
+            let url = format!("https://stats.bis.org/api/v1/data/{flow}/{key}?format=csvfile");
+            let body = fetch_provider_text(&url, 20.0).map_err(|error| error.to_string())?;
+            bis_parse_impl(&body, flow, key, limit).map_err(|error| error.to_string())
+        }
+        "epo" => {
+            let key = env_key("GOSSAMER_EPO_KEY");
+            let secret = env_key("GOSSAMER_EPO_SECRET");
+            if key.is_empty() || secret.is_empty() {
+                return Err(
+                    "EpoOpsAdapter needs GOSSAMER_EPO_KEY and GOSSAMER_EPO_SECRET".to_string(),
+                );
+            }
+            let url = url::Url::parse_with_params(
+                "https://ops.epo.org/3.2/rest-services/published-data/search",
+                &[
+                    ("q", query),
+                    (
+                        "Range",
+                        &format!("1-{}", bounded_limit(max_results, 1, 100)),
+                    ),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let (body, _) = fetch_text_with_user_agent(&url, 30.0, "gossamer")
+                .map_err(|error| error.to_string())?;
+            epo_parse_search_impl(&body, limit).map_err(|error| error.to_string())
+        }
+        "kipris" => {
+            let key = env_key("GOSSAMER_KIPRIS_KEY");
+            if key.is_empty() {
+                return Err("KiprisAdapter needs GOSSAMER_KIPRIS_KEY".to_string());
+            }
+            let url = url::Url::parse_with_params(
+                "http://kipo-api.kipi.or.kr/openapi/service/patUtliInfoSearchService/getWordSearch",
+                &[
+                    ("serviceKey", key.as_str()),
+                    ("numOfRows", &max_results.min(100).to_string()),
+                    ("word", query),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let body = fetch_provider_text(&url, 25.0).map_err(|error| error.to_string())?;
+            kipris_parse_search_impl(&body, limit).map_err(|error| error.to_string())
+        }
+        "patentsview" => {
+            let key = env_key("GOSSAMER_PATENTSVIEW_API_KEY");
+            if key.is_empty() {
+                return Err("PatentsViewAdapter needs GOSSAMER_PATENTSVIEW_API_KEY".to_string());
+            }
+            let q = json!({"_text_all": {"patent_title": query}}).to_string();
+            let fields = json!(["patent_number", "patent_title", "patent_date"]).to_string();
+            let options = json!({"per_page": max_results.min(100)}).to_string();
+            let url = url::Url::parse_with_params(
+                "https://search.patentsview.org/api/v1/patents/",
+                &[
+                    ("q", q.as_str()),
+                    ("f", fields.as_str()),
+                    ("o", options.as_str()),
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            .to_string();
+            let user_agent = format!("gossamer api-key:{key}");
+            let (body, _) = fetch_text_with_user_agent(&url, 25.0, &user_agent)
+                .map_err(|error| error.to_string())?;
+            patentsview_parse_search_impl(&body, limit, minor).map_err(|error| error.to_string())
+        }
+        "lens" => {
+            let key = env_key("GOSSAMER_LENS_API_KEY");
+            if key.is_empty() {
+                return Err("LensAdapter needs GOSSAMER_LENS_API_KEY".to_string());
+            }
+            let user_agent = format!("Bearer {key}");
+            let url = format!(
+                "https://api.lens.org/patent/search?size={}",
+                bounded_limit(max_results, 1, 100)
+            );
+            let (body, _) = fetch_text_with_user_agent(&url, 25.0, &user_agent)
+                .map_err(|error| error.to_string())?;
+            lens_parse_search_impl(&body, limit, minor).map_err(|error| error.to_string())
+        }
+        "govinfo" => Err("GovInfoAdapter search requires GOSSAMER_GOVINFO_KEY".to_string()),
+        "google-patents" => {
+            Err("GooglePatentsAdapter needs a publication number (e.g. US5000575A)".to_string())
         }
         other => Err(format!("unknown provider: {other}")),
     }
@@ -763,7 +1297,26 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             }
         }
     } else {
-        return unsupported();
+        match generic_provider_records(&selected, &query, max_results) {
+            Ok(records) => records,
+            Err(message) => {
+                let payload = json!({
+                    "query": query,
+                    "category": category_name,
+                    "provider": selected,
+                    "available_providers": available,
+                    "provider_kind": entry.get("provider_kind").cloned().unwrap_or(Value::Null),
+                    "description": entry.get("description").cloned().unwrap_or(Value::Null),
+                    "results": [],
+                    "error": format!("{selected} search failed: {message}"),
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        }
     };
     let payload = json!({
         "query": query,

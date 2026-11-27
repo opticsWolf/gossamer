@@ -80,6 +80,15 @@ pub fn fetch_text_with_status(
     fetch_text_inner(url, timeout_seconds, None)
 }
 
+/// Fetch text with an explicit User-Agent and return the final HTTP status.
+pub fn fetch_text_with_status_and_user_agent(
+    url: &str,
+    timeout_seconds: f64,
+    user_agent: &str,
+) -> Result<(String, String, u16), String> {
+    fetch_text_inner(url, timeout_seconds, Some(user_agent))
+}
+
 /// Fetch text with an explicit `User-Agent` for APIs that reject generic
 /// clients. The caller owns the user-agent value so provider identity rules
 /// stay outside the shared discovery helper.
