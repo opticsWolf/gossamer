@@ -288,6 +288,8 @@ ProviderFailure {
 - `gossamer-mcp` now owns JSON-RPC framing and frozen protocol envelopes;
   all 12 tool names dispatch through Rust, with Python-parity fixtures for
   protocol shapes and deterministic tool errors (`tests/test_rust_mcp_transport.py`).
+- CLI `cite` now supports `--enrich` (no adapter, best-effort no-op) and
+  `--from-pdf` via `document::pdf_markdown` + `cite::find_doi_in_text`.
 - CLI `research` now dispatches all legal/patent/financial/geo providers in
   Rust through the existing adapter kernels, with HTTP status checks and
   provider-specific error envelopes. Four live calls matched Python exactly.

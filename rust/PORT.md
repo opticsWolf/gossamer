@@ -171,6 +171,9 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - CLI `research` now has Rust live bodies for every non-scholarly taxonomy
   provider (legal, patent, financial, geo), with shared status/error envelopes;
   parity verified live for open-meteo, coingecko, frankfurter and courtlistener.
+- CLI `cite --enrich` is accepted as a no-op adapter path and
+  `cite --from-pdf` detects DOIs through the pure-core PDF text kernel;
+  exact parity verified on missing/no-DOI/enrich cases.
 - Full pytest 11486 passed / 36 skipped; app replay 66/66.
 
 ### Download size-cap error parity (done 2026-11-25)
