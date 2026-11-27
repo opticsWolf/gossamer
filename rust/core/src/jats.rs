@@ -104,7 +104,7 @@ pub fn extract_doi_candidate(text: &str) -> Option<String> {
         }
         return Some(
             text[index..tail]
-                .trim_end_matches(|ch| matches!(ch, ')' | '.' | ',' | ';' | '"' | '\'' | '<' | '>'))
+                .trim_end_matches([')', '.', ',', ';', '"', '\'', '<', '>'])
                 .to_string(),
         );
     }
@@ -118,7 +118,7 @@ pub fn doi_from_source_string(source: &str) -> Option<String> {
     }
     let candidate = extract_doi_candidate(source)?;
     let cut = candidate
-        .find(|ch| matches!(ch, '?' | '#' | '&' | ' ' | '\t' | '\n'))
+        .find(['?', '#', '&', ' ', '\t', '\n'])
         .unwrap_or(candidate.len());
     normalize_doi_or_none(&candidate[..cut])
 }

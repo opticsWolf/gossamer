@@ -27,6 +27,80 @@ pub fn detect_ext_from_magic(data: &[u8]) -> Option<&'static str> {
     None
 }
 
+/// Filename decision for one downloaded resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredResource {
+    /// Canonical on-disk filename.
+    pub filename: String,
+    /// First 12 hex digits of the SHA-256 digest.
+    pub digest: String,
+}
+
+fn canonical_image_ext(ext: &str) -> Option<&'static str> {
+    Some(match ext.to_ascii_lowercase().as_str() {
+        "png" => "png",
+        "jpg" | "jpeg" => "jpg",
+        "gif" => "gif",
+        "webp" => "webp",
+        "bmp" => "bmp",
+        "svg" => "svg",
+        "tiff" | "tif" => "tiff",
+        _ => return None,
+    })
+}
+
+/// Plans the filename for one fetched image without touching the filesystem.
+///
+/// Returns `None` for non-image URLs, private URLs, empty/oversized bodies, and
+/// unknown image formats, matching `ResourceStore._store_url`.
+pub fn store_url_decision(
+    url: &str,
+    content_type: &str,
+    data: &[u8],
+    max_bytes: usize,
+    seen_filenames: &[String],
+) -> Option<StoredResource> {
+    if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("ftp://")) {
+        return None;
+    }
+    let allow_private = [
+        "GOSSAMER_ALLOW_PRIVATE",
+        "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE",
+    ]
+    .iter()
+    .any(|name| {
+        std::env::var(name).is_ok_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+    });
+    if !allow_private && crate::ssrf::check_url(url, false, None).is_err() {
+        return None;
+    }
+    if data.is_empty() || data.len() > max_bytes {
+        return None;
+    }
+    let detected = crate::cacheutils::resource_ext_from_content_type(content_type)
+        .or_else(|| detect_ext_from_magic(data).map(str::to_string))?;
+    let ext = canonical_image_ext(&detected)?;
+    let digest = crate::miscutils::sha256_bytes(data)[..12].to_string();
+    let base = url.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+    let stem = base.rfind('.').map(|index| &base[..index]).unwrap_or(base);
+    let stem = if stem.is_empty() { "image" } else { stem };
+    let mut candidate = resource_safe_name(stem, ext);
+    let mut n = 1usize;
+    while seen_filenames.iter().any(|name| name == &candidate) {
+        candidate = format!("{stem}-{n}-{digest}.{ext}");
+        n += 1;
+    }
+    Some(StoredResource {
+        filename: candidate,
+        digest,
+    })
+}
+
 /// Markdown inline image matcher, mirroring the Python regex exactly.
 static MD_IMG_ANY_RE: LazyLock<Regex> = LazyLock::new(|| {
     let pattern = r#"!\[([^\]]*)\]\(\s*([^)\s"']+)(?:\s+"([^"]*)")?\s*\)"#;

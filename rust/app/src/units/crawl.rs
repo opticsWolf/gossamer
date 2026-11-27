@@ -227,7 +227,7 @@ fn page_from_cache(runtime: &RuntimeState, url: &str, now: f64) -> Option<CrawlP
                 .filter_map(|item| {
                     let pair = item.as_array()?;
                     Some((
-                        pair.get(0)?.as_str()?.to_string(),
+                        pair.first()?.as_str()?.to_string(),
                         pair.get(1)?.as_str()?.to_string(),
                     ))
                 })

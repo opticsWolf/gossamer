@@ -35,8 +35,9 @@ confirm "2. Smoke-test the new binary beside the Python reference:
    Compare the two outputs."
 
 confirm "3. Point your shell alias / CI job / launcher at:
-   '$BIN'
-   Keep the Python package installed as the reference oracle."
+   '$ROOT/bin/gossamer' (or '$BIN' directly).
+   Installed console scripts already delegate to the Rust app via
+   gossamer.launcher; the Python modules stay installed as the replay oracle."
 
 confirm "4. Run one real research workflow through the new binary and inspect cache/MCP output."
 

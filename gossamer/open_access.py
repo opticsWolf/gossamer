@@ -100,179 +100,71 @@ class OpenAccessLocator:
                 "candidates": [],
             }
 
+        records: list[dict] = []
+        error: dict | None = None
+        include_unpaywall_error = False
         try:
             records = self._adapter_factory().fetch_by_doi(normalized)
         except ProviderRateLimitError as exc:
-            fallback, fallback_work, fallback_error = self._query_unpaywall(normalized)
-            if fallback:
-                return {
-                    "doi": normalized,
-                    "provider": "unpaywall",
-                    "sources": ["openalex", "unpaywall"],
-                    "status": "open_access",
-                    "work": fallback_work,
-                    "candidates": fallback,
-                    "provider_errors": [{"provider": "openalex", "message": str(exc)}],
-                }
-            error: dict = {"code": "rate_limited", "message": str(exc)}
-            if fallback_error:
-                error["unpaywall"] = fallback_error
-            return {
-                "doi": normalized,
-                "provider": "openalex",
-                "sources": ["openalex", "unpaywall"] if self._unpaywall_email else ["openalex"],
-                "status": "error",
-                "error": error,
-                "candidates": [],
-            }
+            error = {"code": "rate_limited", "message": str(exc)}
+            include_unpaywall_error = True
         except httpx.HTTPStatusError as exc:
-            code = "rate_limited" if exc.response.status_code == 429 else "provider_error"
-            fallback, fallback_work, _ = self._query_unpaywall(normalized)
-            if fallback:
-                return {
-                    "doi": normalized,
-                    "provider": "unpaywall",
-                    "sources": ["openalex", "unpaywall"],
-                    "status": "open_access",
-                    "work": fallback_work,
-                    "candidates": fallback,
-                    "provider_errors": [{"provider": "openalex", "message": str(exc)}],
-                }
-            return {
-                "doi": normalized,
-                "provider": "openalex",
-                "sources": ["openalex", "unpaywall"] if self._unpaywall_email else ["openalex"],
-                "status": "error",
-                "error": {"code": code, "message": str(exc)},
-                "candidates": [],
+            status = exc.response.status_code if exc.response is not None else 0
+            error = {
+                "code": "rate_limited" if status == 429 else "provider_error",
+                "message": str(exc),
             }
         except Exception as exc:  # noqa: BLE001 - surface provider failures as data
-            fallback, fallback_work, _ = self._query_unpaywall(normalized)
-            if fallback:
-                return {
-                    "doi": normalized,
-                    "provider": "unpaywall",
-                    "sources": ["openalex", "unpaywall"],
-                    "status": "open_access",
-                    "work": fallback_work,
-                    "candidates": fallback,
-                    "provider_errors": [{"provider": "openalex", "message": str(exc)}],
-                }
-            return {
-                "doi": normalized,
-                "provider": "openalex",
-                "sources": ["openalex", "unpaywall"] if self._unpaywall_email else ["openalex"],
-                "status": "error",
-                "error": {"code": "provider_error", "message": str(exc)},
-                "candidates": [],
-            }
+            error = {"code": "provider_error", "message": str(exc)}
 
-        if not records:
-            fallback, fallback_work, _ = self._query_unpaywall(normalized)
-            if fallback:
-                return {
-                    "doi": normalized,
-                    "provider": "unpaywall",
-                    "sources": ["openalex", "unpaywall"],
-                    "status": "open_access",
-                    "work": fallback_work,
-                    "candidates": fallback,
-                }
-            return {
-                "doi": normalized,
-                "provider": "openalex",
-                "sources": ["openalex", "unpaywall"] if self._unpaywall_email else ["openalex"],
-                "status": "not_found",
-                "candidates": [],
-            }
+        fallback_candidates: list[dict] = []
+        fallback_work: dict = {}
+        fallback_error: dict | None = None
+        need_fallback = error is not None or not records
+        invalid_message = ""
+        if records and error is None:
+            record = records[0]
+            try:
+                raw = json.loads(record.get("raw") or "{}")
+            except (TypeError, json.JSONDecodeError) as exc:
+                invalid_message = str(exc)
+            else:
+                open_access = raw.get("open_access") or {}
+                work_is_oa = bool(open_access.get("is_oa"))
+                best = raw.get("best_oa_location")
+                locations = raw.get("locations") or []
+                ordered: list[tuple[dict, bool]] = []
+                if isinstance(best, dict):
+                    ordered.append((best, True))
+                if isinstance(locations, list):
+                    ordered.extend((item, False) for item in locations)
+                urls: set[str] = set()
+                for location, is_best in ordered:
+                    candidate = _oa_candidate(
+                        location, is_best=is_best, work_is_oa=work_is_oa
+                    )
+                    if candidate is not None and candidate["url"] not in urls:
+                        urls.add(candidate["url"])
+                        break
+                else:
+                    need_fallback = True
+        if need_fallback:
+            fallback_candidates, fallback_work, fallback_error = self._query_unpaywall(
+                normalized
+            )
 
-        record = records[0]
-        try:
-            raw = json.loads(record.get("raw") or "{}")
-        except (TypeError, json.JSONDecodeError) as exc:
-            return {
-                "doi": normalized,
-                "provider": "openalex",
-                "status": "error",
-                "error": {"code": "invalid_provider_record", "message": str(exc)},
-                "candidates": [],
-            }
+        return _service_locate_result(
+            normalized,
+            records,
+            error,
+            fallback_candidates,
+            fallback_work,
+            fallback_error,
+            bool(self._unpaywall_email),
+            include_unpaywall_error,
+            invalid_message,
+        )
 
-        open_access = raw.get("open_access") or {}
-        work_is_oa = bool(open_access.get("is_oa"))
-        best = raw.get("best_oa_location")
-        locations = raw.get("locations") or []
-        ordered = []
-        if isinstance(best, dict):
-            ordered.append((best, True))
-        if isinstance(locations, list):
-            ordered.extend((location, False) for location in locations)
-
-        candidates = []
-        seen_urls = set()
-        for location, is_best in ordered:
-            candidate = _oa_candidate(location, is_best=is_best, work_is_oa=work_is_oa)
-            if candidate is None or candidate["url"] in seen_urls:
-                continue
-            seen_urls.add(candidate["url"])
-            candidates.append(candidate)
-
-        if candidates:
-            return {
-                "doi": normalized,
-                "provider": "openalex",
-                "sources": ["openalex"],
-                "status": "open_access",
-                "work": {
-                    "id": record.get("id"),
-                    "title": record.get("title"),
-                    "url": record.get("url"),
-                    "published": record.get("published"),
-                    "is_oa": work_is_oa,
-                    "oa_status": open_access.get("oa_status"),
-                },
-                "candidates": candidates,
-            }
-        fallback, fallback_work, _ = self._query_unpaywall(normalized)
-        if fallback:
-            merged = list(candidates)
-            seen = set(seen_urls)
-            for item in fallback:
-                if item["url"] in seen:
-                    continue
-                seen.add(item["url"])
-                merged.append(item)
-            return {
-                "doi": normalized,
-                "provider": "unpaywall",
-                "sources": ["openalex", "unpaywall"],
-                "status": "open_access",
-                "work": {
-                    "id": record.get("id"),
-                    "title": record.get("title") or fallback_work.get("title"),
-                    "url": record.get("url"),
-                    "published": record.get("published") or fallback_work.get("published"),
-                    "is_oa": True,
-                    "oa_status": open_access.get("oa_status") or fallback_work.get("oa_status"),
-                },
-                "candidates": merged or fallback,
-            }
-        status = "open_access_no_location" if work_is_oa else "closed_access"
-        return {
-            "doi": normalized,
-            "provider": "openalex",
-            "sources": ["openalex", "unpaywall"] if self._unpaywall_email else ["openalex"],
-            "status": status,
-            "work": {
-                "id": record.get("id"),
-                "title": record.get("title"),
-                "url": record.get("url"),
-                "published": record.get("published"),
-                "is_oa": work_is_oa,
-                "oa_status": open_access.get("oa_status"),
-            },
-            "candidates": candidates,
-        }
 
 def _service_normalize_doi(value):
     if not isinstance(value, str):
@@ -307,7 +199,7 @@ def _rust_anything_open_access_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_normalize_doi"]})
+    globals().update({name: getattr(native, name) for name in ["_service_normalize_doi", "_service_locate_result"]})
 
 
 _rust_anything_open_access_rs()

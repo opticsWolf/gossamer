@@ -67,7 +67,7 @@ fn entry_from_cache(url: &str, entry: &Value) -> Value {
                 .filter_map(|item| {
                     let pair = item.as_array()?;
                     Some((
-                        pair.get(0)?.as_str()?.to_string(),
+                        pair.first()?.as_str()?.to_string(),
                         pair.get(1)?.as_str()?.to_string(),
                     ))
                 })

@@ -94,6 +94,72 @@ fn service_unpaywall_candidate(
         .and_then(|v| crate::pyconv::ToPy::to_py(&v, py))
 }
 
+fn service_locate_result_inner(
+    doi: String,
+    records: Bound<'_, PyAny>,
+    openalex_error: Option<Bound<'_, PyAny>>,
+    fallback_candidates: Bound<'_, PyAny>,
+    fallback_work: Bound<'_, PyAny>,
+    unpaywall_error: Option<Bound<'_, PyAny>>,
+    unpaywall_enabled: bool,
+    include_unpaywall_error: bool,
+    invalid_record_message: String,
+) -> Result<Value, String> {
+    let records: Value = crate::pyconv::FromPy::from_py(&records)?;
+    let openalex_error = openalex_error
+        .map(|value| crate::pyconv::FromPy::from_py(&value))
+        .transpose()?;
+    let fallback_candidates: Value = crate::pyconv::FromPy::from_py(&fallback_candidates)?;
+    let fallback_work: Value = crate::pyconv::FromPy::from_py(&fallback_work)?;
+    let unpaywall_error = unpaywall_error
+        .map(|value| crate::pyconv::FromPy::from_py(&value))
+        .transpose()?;
+    port::service_locate_result(
+        doi,
+        records,
+        openalex_error,
+        fallback_candidates,
+        fallback_work,
+        unpaywall_error,
+        unpaywall_enabled,
+        include_unpaywall_error,
+        invalid_record_message,
+    )
+}
+
+/// `_service_locate_result`.
+#[pyfunction]
+#[pyo3(
+    name = "_service_locate_result",
+    signature = (doi, records, openalex_error, fallback_candidates, fallback_work, unpaywall_error, unpaywall_enabled, include_unpaywall_error, invalid_record_message)
+)]
+fn service_locate_result(
+    py: Python<'_>,
+    doi: String,
+    records: Bound<'_, PyAny>,
+    openalex_error: Option<Bound<'_, PyAny>>,
+    fallback_candidates: Bound<'_, PyAny>,
+    fallback_work: Bound<'_, PyAny>,
+    unpaywall_error: Option<Bound<'_, PyAny>>,
+    unpaywall_enabled: bool,
+    include_unpaywall_error: bool,
+    invalid_record_message: String,
+) -> PyResult<Py<PyAny>> {
+    service_locate_result_inner(
+        doi,
+        records,
+        openalex_error,
+        fallback_candidates,
+        fallback_work,
+        unpaywall_error,
+        unpaywall_enabled,
+        include_unpaywall_error,
+        invalid_record_message,
+    )
+    .map_err(error)
+    .and_then(|value| crate::pyconv::ToPy::to_py(&value, py))
+}
+
 fn service_unpaywall_candidates_inner(payload: Bound<'_, PyAny>) -> Result<Value, String> {
     let payload: Value = crate::pyconv::FromPy::from_py(&payload)?;
     let out = port::service_unpaywall_candidates(payload)?;
@@ -116,5 +182,6 @@ fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_oa_candidate, m)?)?;
     m.add_function(wrap_pyfunction!(service_unpaywall_candidate, m)?)?;
     m.add_function(wrap_pyfunction!(service_unpaywall_candidates, m)?)?;
+    m.add_function(wrap_pyfunction!(service_locate_result, m)?)?;
     Ok(())
 }

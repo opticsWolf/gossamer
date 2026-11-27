@@ -265,3 +265,25 @@ Consequences:
   contractual floor: contributions may not raise it without a new ADR.
 - The legacy root PyO3 wrapper crate remains outside the production launcher
   contract and is retained only as the Python replay oracle until cutover.
+
+## ADR-017: installed commands launch the Rust app
+
+- Date: 2026-11-27.
+- `gossamer`, `gossamer-mcp`, and the legacy MCP alias start the lifted Rust
+  binaries through `gossamer.launcher`. The shell/CMD shims under `bin/` are
+  the repository-local equivalent.
+- `python -m gossamer.cli` and the Python test suite remain the replay oracle;
+  they are no longer the production launcher contract.
+- `GOSSAMER_RUST_BIN` overrides discovery for custom packaging. The launcher
+  preserves the child's stdout, stderr, and exit status.
+- PyO3 harness crates and root wrappers stay in the tree as compatibility
+  adapters only. Deleting them is deferred until the oracle is no longer
+  needed; it is not part of this cutover.
+
+## ADR-018: no separate text-links CLI
+
+- Date: 2026-11-27.
+- `text-links-rs` remains a pure-core kernel plus PyO3 compatibility adapter.
+  It does not get a new gossamer CLI command or MCP tool.
+- Adding that command would change the frozen CLI/MCP schema and therefore
+  requires a separate ADR before implementation.

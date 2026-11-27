@@ -115,6 +115,10 @@ struct JatsHit {
     content_type: Value,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the hit carries the extracted document on a cold path"
+)]
 enum JatsOutcome {
     NotApplicable,
     Hit(JatsHit),
@@ -136,8 +140,7 @@ fn jats_fetch_bytes(
     if sleep > 0.0 {
         std::thread::sleep(std::time::Duration::from_secs_f64(sleep));
     }
-    let (bytes, status, final_url, content_type) =
-        download_bytes(url, 20.0, 50_000_000).map_err(|error| error)?;
+    let (bytes, status, final_url, content_type) = download_bytes(url, 20.0, 50_000_000)?;
     if status >= 400 {
         return Err(format!("HTTP {status}"));
     }
@@ -326,7 +329,7 @@ fn jats_route(runtime: &RuntimeState, source: &str, tables_as: &str) -> JatsOutc
         .and_then(|payload| parse_europepmc_search(&payload));
     if let Some(hit) = picked {
         let mut candidates = vec![europepmc_fulltext_url(&hit.source, &hit.id)];
-        if hit.source.to_ascii_uppercase() != "PMC" {
+        if !hit.source.eq_ignore_ascii_case("PMC") {
             candidates.push(europepmc_fulltext_url("PMC", &hit.pmcid));
         }
         for candidate in candidates {

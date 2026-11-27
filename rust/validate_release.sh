@@ -17,6 +17,7 @@ MCP_BIN="$ROOT/rust/app/target/release/gossamer-mcp.exe"
 [ -x "$MCP_BIN" ] || MCP_BIN="$ROOT/rust/app/target/release/gossamer-mcp"
 
 "$BIN" --help >/dev/null
+bash "$ROOT/bin/gossamer" --help >/dev/null
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"validate","version":"1"}}}' \
   | "$MCP_BIN" | grep -q '"serverInfo"'

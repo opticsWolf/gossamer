@@ -309,6 +309,22 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   matches except the expected `cache_hit` difference when one side runs first.
   App replay is 74/74.
 
+### U9 library integration and U10 launcher cutover (done 2026-11-27)
+
+- `resourcestore::store_url_decision` now owns SSRF/size/content-type/magic,
+  digest, and collision-safe filename decisions. Python `ResourceStore`
+  delegates `_store_url` and `_write_bytes` to the Rust adapter while keeping
+  HTTP transport and logging at the library boundary.
+- `openaccess::locate_result` now owns the full `OpenAccessLocator.locate`
+  envelope, including provider failures, Unpaywall fallback, candidate merge,
+  invalid-record errors, and closed/no-location statuses. Python keeps the
+  injected provider calls.
+- Citation enrichment keeps its existing Rust plan kernel; the injected
+  adapter remains a caller-side dependency.
+- Installed `gossamer` / `gossamer-mcp` commands and repository `bin/` shims
+  now launch the Rust binaries. Python remains the replay oracle but is no
+  longer the production launcher. See ADR-017 and ADR-018.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final
@@ -863,12 +879,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Thin bindings: `rust/search-service-rs` (5/5), `rust/research-service-rs`
   (3/3), `rust/orchestration-rs` (4/4), `rust/adapter-base-rs` (7/7).
 - Full Python suite after the provider-policy slice: 11424 passed / 36 skipped.
-- Still in Python: HTTP/browser/provider transport, binary document extraction,
-  MCP transport, full CLI execution, and the browser lane.
+- Historical note: this snapshot predates the lift. HTTP/browser/provider transport,
+  binary extraction, MCP transport, full CLI execution, cache/visited state, JATS
+  routing, resource-store decisions, and OA envelopes are now Rust-owned; Python
+  remains only as the replay oracle and thin compatibility adapters.
 
 ## Current state
 
-- `dev_rustify` after U6: pure Rust front door lifted, replay 66/66, fallback 0, no fallback path.
+- `dev_rustify` after U10: pure Rust front door and installed launchers, replay 74/74,
+  fallback 0, no fallback path in the shipped app.
 - Rust owns: config resolution, documents payload helpers, deterministic FetchService kernels,
   deterministic `_core` kernels, `benchmarks`, `skills`, `audit-cargo`,
   `verify-bundled-assets`, the full two-tier `Cache`, `categories`, document URL rejection,
@@ -879,11 +898,13 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Rust now owns substantial live CLI bodies: `check`, `discover`, `cite`, `locate-pdf`,
   download validation, extract validation, research validation, crawl validation, DuckDuckGo
   search, and static `inspect`/`batch`.
-- Rust does not yet own: browser transport and fallbacks, the full crawl state machine,
-  page-cache/visited/robots side effects, and the final PyO3-wrapper retirement/cutover.
-- Verification: 66 replay cases; Python suite is the behavioral oracle at 11,486 passing tests.
+- Remaining outside the shipped app: optional browser transport/fallback backend
+  (explicitly default-off until SSRF/interception exists) and PyO3 harness crates
+  retained solely for the Python oracle. They are not on the production launcher path.
+- Verification: 74 replay cases; Python suite is the behavioral oracle at 11,486 passing tests.
 
 ## Open questions
 
-- Minimum supported Rust version and release packaging for the `gossamer` binary.
-- Whether `rust/text-links-rs` gains a CLI surface when `documents` lands (ADR required).
+- Resolved by ADR-016: Rust 1.97 is the MSRV; release packaging is validated by
+  `bash rust/cutover.sh --check`.
+- Resolved by ADR-018: `text-links-rs` gets no separate CLI/MCP surface without a new ADR.

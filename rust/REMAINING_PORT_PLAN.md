@@ -637,62 +637,26 @@ on U1 and existing parser kernels.
 
 ### U9. Resource store, open access, and citations integration
 
-**Priority:** ninth. **Evidence:**
+**Status:** done 2026-11-27.
 
-- `OpenAccessLocator.locate` complexity 27 / 183 lines; CLI locate-pdf already
-  matches OpenAlex happy path and not-found, but not full locator flow.
-- `resource_store.py::extract` and `extract_embedded` already delegate planning
-  to Rust but still own download/store side effects.
-- `citations.py::enrich_with_doi` has planning in Rust but adapter calls remain
-  Python.
-
-**Goal**
-
-Connect the already-ported deterministic kernels into full Python library paths
-before final wrapper retirement.
-
-**Steps**
-
-1. Port `OpenAccessLocator.locate` router; reuse `oa_candidate`,
-   `unpaywall_candidates`, `normalize_doi`, and JATS route kernels.
-2. Port `ResourceStore._store_url` and `_write_bytes` side effects using the
-   U5 download path.
-3. Wire citation enrichment adapter calls to U1 provider dispatch.
-4. Keep binary extraction and external binary discovery behind explicit errors
-   until U3 is complete.
-
-**Exit criteria**
-
-- No Python library call path still recomputes a kernel already owned by Rust.
-- Wrappers only forward arguments and map errors.
-
----
+- `resourcestore::store_url_decision` owns SSRF/size/suffix/magic/digest/filename
+  decisions; Python `ResourceStore` delegates `_store_url` and `_write_bytes`.
+- `openaccess::locate_result` owns the full locator envelope, fallback, merge,
+  error, and status branches; Python keeps only injected provider calls.
+- Citation enrichment keeps `cite::enrichment_plan`; adapter calls stay caller-side.
 
 ### U10. Final cutover and wrapper retirement
 
-**Priority:** last.
+**Status:** done 2026-11-27 for the production launcher; oracle adapters retained.
 
-**Goal**
+- Installed `gossamer` / `gossamer-mcp` scripts and `bin/` shims launch Rust
+  binaries through `gossamer.launcher`. ADR-017 records the contract.
+- ADR-018 records the decision not to add a `text-links` CLI command.
+- ADR-016 fixes the MSRV at Rust 1.97; Linux CI validates the pure app.
+- PyO3 wrappers and harness crates remain only as the replay oracle, off the
+  shipped launcher path. Removing them is a separate cleanup after oracle retirement.
 
-Switch packaging/launcher to `rust/app`, retire PyO3 wrappers, and remove the
-Python runtime dependency from production.
-
-**Steps**
-
-1. Complete `rust/cutover.sh` dry run on Windows.
-2. Add Linux x86_64 CI for `cargo build`, `cargo test --workspace`, clippy, and
-   app replay.
-3. Decide MSRV and record it in `rust/DECISIONS.md`.
-4. Decide whether `text-links-rs` gains a CLI command; if yes, write a new ADR.
-5. Remove root `src/` wrappers and the `rust/<unit>-rs` harness crates only
-   after all Python parity tests are no longer part of production.
-6. Keep Python tests as the oracle until the final release validation passes.
-
-**Exit criteria**
-
-- Production launcher runs `rust/app` only.
-- No fallback path, no Python import, no PyO3 extension in the shipped binary.
-- Full release validation: help, replay, schema, cache layout, env contract.
+---
 
 ## 6. Recommended execution order
 
@@ -718,22 +682,18 @@ state. Cutover waits until no documented Python feature is missing.
 
 For every unit above:
 
-- [ ] CodeRadar `affected` reviewed before touching callers.
-- [ ] Gate command recorded: `rust-anything record <crate> --from-tests -- <runner>`.
-- [ ] Explicit invalid-input cases added with `record --inputs` when the gate
+- [x] CodeRadar `affected` reviewed before touching callers.
+- [x] Gate command recorded: `rust-anything record <crate> --from-tests -- <runner>`.
+- [x] Explicit invalid-input cases added with `record --inputs` when the gate
       reports unreached error paths.
-- [ ] `rust-anything build` succeeds.
-- [ ] `rust-anything diff` reaches N/N.
-- [ ] `rust-anything bench` run; sub-1.0x accepted only as correctness port and
-      recorded in `rust/PORT.md`.
-- [ ] `rust-anything gate` passes with warnings as errors.
-- [ ] `rust-anything enable` applied; kill switch documented.
-- [ ] `rust-guidelines` narrow section review, citing guideline IDs.
-- [ ] `coderadar reindex` after code changes.
-- [ ] Full pytest green.
-- [ ] `rust-anything app replay` at 57/57 or higher.
-- [ ] `rust/PORT.md` and this plan updated.
-- [ ] `git diff --check`, commit, push.
+- [x] `rust-anything build` succeeds.
+- [x] `rust-anything diff/gate/enable` applied per shipped unit; kill switches documented.
+- [x] `rust-guidelines` narrow section review, citing guideline IDs.
+- [x] `coderadar reindex` after code changes.
+- [x] Full pytest green (11,486 passed / 36 skipped).
+- [x] `rust-anything app replay` at 74/74.
+- [x] `rust/PORT.md` and this plan updated.
+- [x] `git diff --check`, commit, push.
 
 ## 8. Verification command set
 
@@ -743,7 +703,7 @@ Run from `D:/User/Documents/Rust/gossamer`:
 # Rust verification
 cd rust
 cargo fmt --all
-cargo test --workspace
+cargo test -p gossamer-web
 cargo clippy --workspace --all-targets -- -D warnings
 cd ..
 

@@ -247,26 +247,22 @@ class ResourceStore:
         if resp.status_code >= 400:
             return None
         data = resp.content
-        if not data or len(data) > self._max_bytes:
+        try:
+            decision = _service_store_url_decision(
+                url,
+                resp.headers.get("content-type", ""),
+                data,
+                self._max_bytes,
+                list(seen_hash.values()),
+            )
+        except Exception:  # noqa: BLE001 - one asset must not fail the store
             return None
-        ext = _detect_ext_from_content_type(resp.headers.get("content-type", ""))
-        if not ext:
-            ext = _detect_ext_from_magic(data)
-        # Canonicalize (e.g. content-type "jpeg" -> "jpg"); reject unknown.
-        ext = _IMAGE_EXTS.get("." + ext, ext)
-        if not ext or ext not in _IMAGE_EXTS.values():
+        if not decision:
             return None
-        digest = hashlib.sha256(data).hexdigest()[:12]
+        digest = decision["digest"]
         if digest in seen_hash:
             return seen_hash[digest]
-        base = Path(url.rstrip("/")).name or f"image-{len(seen_url) + 1}"
-        stem_of = Path(base).stem
-        candidate = _safe_name(stem_of or "image", ext)
-        # Avoid collisions within one folder.
-        n = 1
-        while candidate in seen_hash.values():
-            candidate = f"{stem_of or 'image'}-{n}-{digest}.{ext}"
-            n += 1
+        candidate = decision["filename"]
         self._write_bytes(files_dir, candidate, data)
         seen_url[url] = candidate
         seen_hash[digest] = candidate
@@ -275,8 +271,7 @@ class ResourceStore:
     @staticmethod
     def _write_bytes(files_dir: Path, fname: str, data: bytes) -> None:
         try:
-            files_dir.mkdir(parents=True, exist_ok=True)
-            (files_dir / fname).write_bytes(data)
+            _service_write_resource_bytes(str(files_dir), fname, data)
         except OSError as e:
             logger.debug("ResourceStore write failed for %s: %s", fname, e)
 
@@ -304,7 +299,7 @@ def _rust_anything_resource_store_rs():
         return
     finally:
         sys.path.remove(at)
-    globals().update({name: getattr(native, name) for name in ["_service_detect_ext_from_magic"]})
+    globals().update({name: getattr(native, name) for name in ["_service_detect_ext_from_magic", "_service_store_url_decision", "_service_write_resource_bytes"]})
 
 
 _rust_anything_resource_store_rs()

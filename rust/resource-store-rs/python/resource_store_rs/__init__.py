@@ -88,8 +88,10 @@ def _method(name, positions, names, json_result):
     return call
 
 _service_detect_ext_from_magic = _native._service_detect_ext_from_magic
+_service_store_url_decision = _native._service_store_url_decision
+_service_write_resource_bytes = _native._service_write_resource_bytes
 _service_extract_image_refs = _native._service_extract_image_refs
 _service_rewrite_image_refs = _native._service_rewrite_image_refs
 _service_embedded_figures = _native._service_embedded_figures
 
-__all__ = ['_service_detect_ext_from_magic', '_service_extract_image_refs', '_service_rewrite_image_refs', '_service_embedded_figures']
+__all__ = ['_service_detect_ext_from_magic', '_service_store_url_decision', '_service_write_resource_bytes', '_service_extract_image_refs', '_service_rewrite_image_refs', '_service_embedded_figures']

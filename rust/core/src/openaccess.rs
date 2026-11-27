@@ -1,9 +1,10 @@
 //! DOI normalization kernels shared by open-access lookup and citation paths.
 
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::compat::py_repr;
 
@@ -224,6 +225,202 @@ pub fn unpaywall_candidates(payload: &Value) -> (Vec<Value>, Value) {
         "oa_status": payload.get("oa_status").cloned().unwrap_or(Value::Null),
     });
     (candidates, work)
+}
+
+/// Builds the final `OpenAccessLocator.locate` envelope from caller-supplied
+/// provider results. All network access stays in the caller.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the locator envelope mirrors the Python call boundary"
+)]
+pub fn locate_result(
+    doi: &str,
+    records: &[Value],
+    openalex_error: Option<&Value>,
+    fallback_candidates: &[Value],
+    fallback_work: &Value,
+    unpaywall_error: Option<&Value>,
+    unpaywall_enabled: bool,
+    include_unpaywall_error: bool,
+    invalid_record_message: &str,
+) -> Value {
+    let sources = if unpaywall_enabled {
+        vec!["openalex", "unpaywall"]
+    } else {
+        vec!["openalex"]
+    };
+    let fallback_hit = |provider_errors: Option<Value>| {
+        let mut out = json!({
+            "doi": doi,
+            "provider": "unpaywall",
+            "sources": ["openalex", "unpaywall"],
+            "status": "open_access",
+            "work": fallback_work,
+            "candidates": fallback_candidates,
+        });
+        if let Some(errors) = provider_errors {
+            out["provider_errors"] = errors;
+        }
+        out
+    };
+
+    if let Some(error) = openalex_error {
+        if !fallback_candidates.is_empty() {
+            return fallback_hit(Some(json!([
+                {"provider": "openalex", "message": error.get("message").and_then(Value::as_str).unwrap_or("")}
+            ])));
+        }
+        let mut record = json!({
+            "code": error.get("code").and_then(Value::as_str).unwrap_or("provider_error"),
+            "message": error.get("message").and_then(Value::as_str).unwrap_or(""),
+        });
+        if include_unpaywall_error && let Some(unpaywall) = unpaywall_error {
+            record["unpaywall"] = unpaywall.clone();
+        }
+        return json!({
+            "doi": doi,
+            "provider": "openalex",
+            "sources": sources,
+            "status": "error",
+            "error": record,
+            "candidates": [],
+        });
+    }
+
+    let Some(record) = records.first() else {
+        if !fallback_candidates.is_empty() {
+            return fallback_hit(None);
+        }
+        return json!({
+            "doi": doi,
+            "provider": "openalex",
+            "sources": sources,
+            "status": "not_found",
+            "candidates": [],
+        });
+    };
+
+    let raw_text = record.get("raw").and_then(Value::as_str).unwrap_or("{}");
+    let Ok(raw) = serde_json::from_str::<Value>(raw_text) else {
+        return json!({
+            "doi": doi,
+            "provider": "openalex",
+            "status": "error",
+            "error": {
+                "code": "invalid_provider_record",
+                "message": invalid_record_message.to_string(),
+            },
+            "candidates": [],
+        });
+    };
+    let open_access = raw.get("open_access").cloned().unwrap_or_else(|| json!({}));
+    let work_is_oa = open_access
+        .get("is_oa")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let best = raw.get("best_oa_location").cloned();
+    let locations = raw
+        .get("locations")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut ordered: Vec<(Value, bool)> = Vec::new();
+    if let Some(best) = best {
+        ordered.push((best, true));
+    }
+    ordered.extend(locations.into_iter().map(|location| (location, false)));
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for (location, is_best) in ordered {
+        let Some(candidate) = oa_candidate(&location, is_best, work_is_oa) else {
+            continue;
+        };
+        let url = candidate
+            .get("url")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if !seen.insert(url) {
+            continue;
+        }
+        candidates.push(candidate);
+    }
+    let work = |fallback_work: Option<&Value>| {
+        json!({
+            "id": record.get("id").cloned().unwrap_or(Value::Null),
+            "title": record
+                .get("title")
+                .cloned()
+                .filter(|value| !value.is_null())
+                .or_else(|| fallback_work.and_then(|value| value.get("title").cloned()))
+                .unwrap_or(Value::Null),
+            "url": record.get("url").cloned().unwrap_or(Value::Null),
+            "published": record
+                .get("published")
+                .cloned()
+                .filter(|value| !value.is_null())
+                .or_else(|| {
+                    fallback_work
+                        .and_then(|value| value.get("published").cloned())
+                })
+                .unwrap_or(Value::Null),
+            "is_oa": work_is_oa || fallback_work.is_some(),
+            "oa_status": open_access
+                .get("oa_status")
+                .cloned()
+                .filter(|value| !value.is_null())
+                .or_else(|| {
+                    fallback_work
+                        .and_then(|value| value.get("oa_status").cloned())
+                })
+                .unwrap_or(Value::Null),
+        })
+    };
+    if !candidates.is_empty() {
+        return json!({
+            "doi": doi,
+            "provider": "openalex",
+            "sources": ["openalex"],
+            "status": "open_access",
+            "work": work(None),
+            "candidates": candidates,
+        });
+    }
+    if !fallback_candidates.is_empty() {
+        let mut merged = candidates;
+        let mut urls = seen;
+        for item in fallback_candidates {
+            let url = item
+                .get("url")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if urls.insert(url) {
+                merged.push(item.clone());
+            }
+        }
+        return json!({
+            "doi": doi,
+            "provider": "unpaywall",
+            "sources": ["openalex", "unpaywall"],
+            "status": "open_access",
+            "work": work(Some(fallback_work)),
+            "candidates": merged,
+        });
+    }
+    let status = if work_is_oa {
+        "open_access_no_location"
+    } else {
+        "closed_access"
+    };
+    json!({
+        "doi": doi,
+        "provider": "openalex",
+        "sources": sources,
+        "status": status,
+        "work": work(None),
+        "candidates": candidates,
+    })
 }
 
 #[cfg(test)]

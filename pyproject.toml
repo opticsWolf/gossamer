@@ -74,10 +74,10 @@ guard = ["jailguard>=0.1.2"]
 citations = ["citeproc-py>=0.11", "citeproc-py-styles>=0.1.6", "six>=1.16"]
 
 [project.scripts]
-gossamer-mcp = "gossamer.mcp_server:main"
-gossamer = "gossamer.cli:main"
+gossamer-mcp = "gossamer.launcher:mcp_main"
+gossamer = "gossamer.launcher:main"
 # Legacy alias from the stitch-web-researcher era; harmless to keep.
-stitch-web-researcher-mcp = "gossamer.mcp_server:main"
+stitch-web-researcher-mcp = "gossamer.launcher:mcp_main"
 
 [tool.maturin]
 module-name = "gossamer._core"

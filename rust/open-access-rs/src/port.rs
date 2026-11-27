@@ -26,6 +26,32 @@ pub fn service_unpaywall_candidate(
     Ok(unpaywall_candidate(&location, is_best))
 }
 
+pub fn service_locate_result(
+    doi: String,
+    records: Value,
+    openalex_error: Option<Value>,
+    fallback_candidates: Value,
+    fallback_work: Value,
+    unpaywall_error: Option<Value>,
+    unpaywall_enabled: bool,
+    include_unpaywall_error: bool,
+    invalid_record_message: String,
+) -> Result<Value, String> {
+    let records = records.as_array().cloned().unwrap_or_default();
+    let fallback_candidates = fallback_candidates.as_array().cloned().unwrap_or_default();
+    Ok(gossamer::openaccess::locate_result(
+        &doi,
+        &records,
+        openalex_error.as_ref(),
+        &fallback_candidates,
+        &fallback_work,
+        unpaywall_error.as_ref(),
+        unpaywall_enabled,
+        include_unpaywall_error,
+        &invalid_record_message,
+    ))
+}
+
 pub fn service_unpaywall_candidates(payload: Value) -> Result<Value, String> {
     let (candidates, work) = unpaywall_candidates(&payload);
     Ok(serde_json::json!({"$tuple": [candidates, work]}))

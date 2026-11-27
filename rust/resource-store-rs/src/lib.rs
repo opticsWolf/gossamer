@@ -48,6 +48,59 @@ fn service_detect_ext_from_magic(data: Bound<'_, PyAny>) -> PyResult<Option<Stri
     service_detect_ext_from_magic_inner(data).map_err(error)
 }
 
+fn service_store_url_decision_inner(
+    url: String,
+    content_type: String,
+    data: Bound<'_, PyAny>,
+    max_bytes: usize,
+    seen_filenames: Vec<String>,
+) -> Result<Option<Value>, String> {
+    let data: Value = crate::pyconv::FromPy::from_py(&data)?;
+    port::service_store_url_decision(url, content_type, data, max_bytes, seen_filenames)
+}
+
+/// `_service_store_url_decision`.
+#[pyfunction]
+#[pyo3(
+    name = "_service_store_url_decision",
+    signature = (url, content_type, data, max_bytes, seen_filenames)
+)]
+fn service_store_url_decision(
+    py: Python<'_>,
+    url: String,
+    content_type: String,
+    data: Bound<'_, PyAny>,
+    max_bytes: usize,
+    seen_filenames: Vec<String>,
+) -> PyResult<Py<PyAny>> {
+    service_store_url_decision_inner(url, content_type, data, max_bytes, seen_filenames)
+        .map_err(error)
+        .and_then(|value| match value {
+            Some(value) => crate::pyconv::ToPy::to_py(&value, py),
+            None => Ok(py.None()),
+        })
+}
+
+fn service_write_resource_bytes_inner(
+    files_dir: String,
+    filename: String,
+    data: Bound<'_, PyAny>,
+) -> Result<(), String> {
+    let data: Value = crate::pyconv::FromPy::from_py(&data)?;
+    port::service_write_resource_bytes(files_dir, filename, data)
+}
+
+/// `_service_write_resource_bytes`.
+#[pyfunction]
+#[pyo3(name = "_service_write_resource_bytes", signature = (files_dir, filename, data))]
+fn service_write_resource_bytes(
+    files_dir: String,
+    filename: String,
+    data: Bound<'_, PyAny>,
+) -> PyResult<()> {
+    service_write_resource_bytes_inner(files_dir, filename, data).map_err(error)
+}
+
 fn service_extract_image_refs_inner(
     markdown: String,
     base_url: String,
@@ -124,6 +177,8 @@ fn service_embedded_figures(
 #[pyo3(name = "_native")]
 fn native_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(service_detect_ext_from_magic, m)?)?;
+    m.add_function(wrap_pyfunction!(service_store_url_decision, m)?)?;
+    m.add_function(wrap_pyfunction!(service_write_resource_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(service_extract_image_refs, m)?)?;
     m.add_function(wrap_pyfunction!(service_rewrite_image_refs, m)?)?;
     m.add_function(wrap_pyfunction!(service_embedded_figures, m)?)?;

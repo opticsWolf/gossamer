@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Launch the pure Rust gossamer-mcp binary. Set GOSSAMER_RUST_BIN to override.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NAME="gossamer-mcp"
+if [[ -n "${GOSSAMER_RUST_BIN:-}" ]]; then
+  exec "$GOSSAMER_RUST_BIN" "$@"
+fi
+for PROFILE in release debug; do
+  for CANDIDATE in "$ROOT/rust/app/target/$PROFILE/$NAME.exe" "$ROOT/rust/app/target/$PROFILE/$NAME"; do
+    if [[ -x "$CANDIDATE" ]]; then
+      exec "$CANDIDATE" "$@"
+    fi
+  done
+done
+echo "gossamer-mcp Rust binary not found (set GOSSAMER_RUST_BIN)" >&2
+exit 1
