@@ -237,6 +237,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   all six combinations of strategy and structured mode on an HTTP 404; app
   replay remains 72/72.
 
+### Batch CLI options and metadata parity (done 2026-11-27)
+
+- CLI `batch` now accepts the documented `--cache-dir`, `--config`,
+  `--keystore`, `--log-level`, and `--fetch-mode` options instead of falling
+  back to the generic unsupported shape.
+- Batch entries no longer leak `fetch_strategy` into `metadata`; duplicate URLs
+  are still emitted once and all other envelope fields match the Python
+  oracle for `auto`, `static`, and `browser` strategies.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

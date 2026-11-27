@@ -47,7 +47,7 @@ fn timestamp() -> String {
     )
 }
 
-fn build_entry(url: &str, strategy: &str) -> Value {
+fn build_entry(url: &str) -> Value {
     let Ok((html, full, links, _removed, meta)) = fetch_html_full_single(url, 8000, 50_000_000)
     else {
         return json!({"url": url, "error": "fetch failed"});
@@ -55,10 +55,7 @@ fn build_entry(url: &str, strategy: &str) -> Value {
     let (status, final_url, content_type) = meta;
     let raw_meta: Value =
         serde_json::from_str(&meta_extract_all(&html, Some(&final_url))).unwrap_or(Value::Null);
-    let mut metadata = compact_metadata(&raw_meta);
-    if let Some(map) = metadata.as_object_mut() {
-        map.insert("fetch_strategy".to_string(), json!(strategy));
-    }
+    let metadata = compact_metadata(&raw_meta);
     let mut follow_up_links = Vec::new();
     let mut seen = Vec::new();
     for (link_url, anchor) in &links {
@@ -128,7 +125,6 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     }
 
     let mut urls: Vec<String> = Vec::new();
-    let mut strategy = "auto".to_string();
     let mut index = 0usize;
     while index < args.len() {
         let value = args[index].to_string_lossy().into_owned();
@@ -136,8 +132,18 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             if index + 1 >= args.len() {
                 return unsupported();
             }
-            strategy = args[index + 1].to_string_lossy().into_owned();
-            if !matches!(strategy.as_str(), "auto" | "browser" | "static") {
+            let requested = args[index + 1].to_string_lossy();
+            if !matches!(requested.as_ref(), "auto" | "browser" | "static") {
+                return unsupported();
+            }
+            index += 2;
+            continue;
+        }
+        if matches!(
+            value.as_str(),
+            "--cache-dir" | "--config" | "--keystore" | "--log-level" | "--fetch-mode"
+        ) {
+            if index + 1 >= args.len() {
                 return unsupported();
             }
             index += 2;
@@ -177,7 +183,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             continue;
         }
         emitted.push(url.clone());
-        output.push(build_entry(&url, &strategy));
+        output.push(build_entry(&url));
     }
     println!("{}", py_dumps(&Value::Array(output)));
     ExitCode::SUCCESS

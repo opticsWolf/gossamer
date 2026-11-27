@@ -157,7 +157,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `crawl` | bounded link graph | search prior, seeds, robots/cache side effects |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
 | CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failure envelopes | transport retries, browser/cache |
-| CLI `batch` | static batch envelope | browser/cache/visited state |
+| CLI `batch` | static batch envelope, documented options, dedupe, metadata parity | browser/cache/visited state |
 | CLI `cache` | prune/clear/reset | none known |
 | MCP schema/tool bodies | frozen schema + planning/envelope kernels | MCP transport and live tool execution |
 | Python library | many deterministic kernels delegated to Rust | live orchestration classes remain |
@@ -324,6 +324,8 @@ ProviderFailure {
 - CLI `inspect` now maps fetch failures through Python's dispatch verdicts
   for `auto`/`static`/`browser`, including structured-mode labels; all six
   live 404 combinations match the oracle exactly.
+- CLI `batch` now accepts all documented options and emits Python-compatible
+  metadata for `auto`/`static`/`browser`; duplicate URLs remain deduped.
 
 **Exit criteria**
 
