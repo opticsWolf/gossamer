@@ -214,6 +214,18 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Added `rust/fixtures/multipage.pdf` plus replay cases `extract-pdf-pages`
   and `extract-pdf-pages-oob`; app replay 71/71.
 
+### Search provider selection and fallback notes (done 2026-11-27)
+
+- CLI `search --search-only` now accepts no `--provider` and all recognized
+  aliases (`duckduckgo`, `ddg`, `google`, `bing`, `exa`, `browser`,
+  `browser_oxide`, `browseroxide`). Unknown names still emit the frozen
+  `available_providers` envelope.
+- Recognized-but-unregistered providers emit the exact `provider_fallback`
+  note from `service::search::fallback_note` alongside DDG results; registered
+  providers keep the bare result list. Empty-query stderr and error envelopes
+  stay byte-identical.
+- Added replay case `search-empty-query-known-provider`; app replay 72/72.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

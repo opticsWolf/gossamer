@@ -136,7 +136,7 @@ Source scan of `rust/app/src/units/*.rs` found these real contract gaps:
 | `research` | any provider other than DuckDuckGo |
 | `extract` | full JATS route |
 | `batch` | browser strategy (`--use-smart browser`) |
-| `search` | provider live calls beyond DuckDuckGo HTML |
+| `search` | page-fetch half of `web_search` (non-`--search-only`) |
 
 Most other `return unsupported()` calls are malformed-argument guards; they are
 acceptable only if they match Python argparse errors. Any supported documented
@@ -155,7 +155,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `extract` | local text/XML/RSS, PDF/Office, URL errors, local/URL store, links, tables-as CSV/JSON, paged PDF/Excel | full JATS route |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
 | CLI `crawl` | bounded link graph | search prior, seeds, robots/cache side effects |
-| CLI `search` | DuckDuckGo HTML | provider dispatch/auth/failover |
+| CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
 | CLI `inspect` | static fetch + markdown/links/metadata | structured mode, transport retries, browser/cache |
 | CLI `batch` | static batch envelope | browser/cache/visited state |
 | CLI `cache` | prune/clear/reset | none known |
@@ -317,6 +317,10 @@ ProviderFailure {
 - `document::document_page_range` now backs CLI `extract --pages` for PDF and
   Excel sources with exact page fields and Python error strings. Replay cases
   `extract-pdf-pages` and `extract-pdf-pages-oob` bring the app to 71/71.
+- CLI `search --search-only` now resolves all frozen provider aliases and
+  emits Python's `provider_fallback` note for recognized-but-unregistered
+  engines. Replay case `search-empty-query-known-provider` brings the app to
+  72/72.
 
 **Exit criteria**
 

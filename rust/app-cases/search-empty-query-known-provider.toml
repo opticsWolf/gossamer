@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["search", "", "--search-only", "--provider", "google"]
+status.code = 0
+fs.sandbox = true

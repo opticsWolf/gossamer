@@ -6,6 +6,8 @@ use std::process::ExitCode;
 use clap::ArgMatches;
 use gossamer::discovery::fetch_text;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url, unknown_provider_error};
+use gossamer::service::search::fallback_note;
+use serde_json::{Value, json};
 
 fn fallback(_args: &[OsString], _help_count: u8) -> ExitCode {
     unsupported()
@@ -82,11 +84,10 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         return fallback(&args, help_count);
     }
 
-    let Some(provider) = provider else {
-        return fallback(&args, help_count);
-    };
     let available = ["duckduckgo"];
-    if let Some(payload) = unknown_provider_error(&provider, &available) {
+    if let Some(name) = provider.as_deref()
+        && let Some(payload) = unknown_provider_error(name, &available)
+    {
         if !search_only {
             return fallback(&args, help_count);
         }
@@ -100,6 +101,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         // A non-search-only run would still fetch pages; keep it on the original.
         return fallback(&args, help_count);
     }
+    let note = provider
+        .as_deref()
+        .and_then(|name| fallback_note(Some(name), &json!(["duckduckgo"])));
     if query.trim().is_empty() {
         eprintln!("DuckDuckGo search failed: query is mandatory.");
         eprintln!(
@@ -134,10 +138,13 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             return ExitCode::SUCCESS;
         }
     };
+    let output: Value = match note {
+        Some(note) => json!({"results": results, "provider_fallback": note}),
+        None => Value::Array(results),
+    };
     println!(
         "{}",
-        serde_json::to_string_pretty(&serde_json::Value::Array(results))
-            .unwrap_or_else(|_| "[]".to_owned())
+        serde_json::to_string_pretty(&output).unwrap_or_else(|_| "[]".to_owned())
     );
     ExitCode::SUCCESS
 }
