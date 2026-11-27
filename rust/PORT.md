@@ -255,6 +255,16 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   query echoes, term counts, and page records now match the Python oracle on
   a live `https://example.com/` crawl.
 
+### Extract URL error logging and SSRF (done 2026-11-27)
+
+- CLI `extract` now validates URL sources through `prepare_url` before any
+  suffix check or download, emitting the frozen SSRF record and
+  `Blocked non-public URL` stderr line.
+- Unsupported-format, transport, and HTTP-status failures now emit the same
+  `Document extraction failed for <url>: <detail>` stderr line as the Python
+  oracle while keeping the existing JSON envelope.
+- Added replay case `extract-ssrf-url`; app replay 73/73.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

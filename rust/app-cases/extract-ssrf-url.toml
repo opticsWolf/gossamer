@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["extract", "https://192.168.1.1/x"]
+status.code = 0
+fs.sandbox = true

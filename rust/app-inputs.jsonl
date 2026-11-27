@@ -45,3 +45,4 @@
 {"name":"extract-pdf-pages","args":["extract", "rust/fixtures/multipage.pdf", "--pages", "2-3", "--cache-dir", "rust/fixtures/cache-pdf-pages"]}
 {"name":"extract-pdf-pages-oob","args":["extract", "rust/fixtures/multipage.pdf", "--pages", "9", "--cache-dir", "rust/fixtures/cache-pdf-pages-oob"]}
 {"name": "search-empty-query-known-provider", "args": ["search", "", "--search-only", "--provider", "google"]}
+{"name": "extract-ssrf-url", "args": ["extract", "https://192.168.1.1/x"]}

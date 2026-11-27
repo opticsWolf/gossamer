@@ -8,10 +8,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use clap::ArgMatches;
 use gossamer::document::{
     document_page_range, office_markdown, office_structured_payload, page_selection_error,
-    pdf_markdown, spreadsheet_tables, structured_format_error, xml_feed_text,
+    pdf_markdown, prepare_url, spreadsheet_tables, structured_format_error, xml_feed_text,
 };
 use gossamer::downloader::download_bytes;
-use gossamer::jsonfmt::py_dumps;
+use gossamer::jsonfmt::{pretty_record, py_dumps};
 use gossamer::mcp_dispatch::extract_validation;
 use gossamer::miscutils::sha256_bytes;
 use gossamer::textlinks::scan_text_links;
@@ -83,6 +83,13 @@ fn local_text(path: &Path, bytes: &[u8], tables_as: &str) -> Option<String> {
         return Some(xml_feed_text(text).unwrap_or_else(|| text.to_string()));
     }
     None
+}
+
+fn extraction_error(source: &str, detail: &str) -> ExitCode {
+    eprintln!("Document extraction failed for {source}: {detail}");
+    let payload = json!({"error": format!("Document extraction failed: {detail}")});
+    println!("{}", py_dumps(&payload));
+    ExitCode::SUCCESS
 }
 
 fn platform_display(path: &Path) -> String {
@@ -190,6 +197,17 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     // Pages, store and structured extraction keep their existing contract;
     // this slice owns the flat local-file path plus spreadsheet renderings.
     let is_url = source.starts_with("http://") || source.starts_with("https://");
+    if is_url && let Err(error) = prepare_url(&source, None) {
+        if error.error_type() == "SsrfBlockedError" {
+            eprintln!(
+                "Blocked non-public URL {}: {}",
+                error.raw(),
+                error.message()
+            );
+        }
+        println!("{}", pretty_record(&error.to_record()));
+        return ExitCode::SUCCESS;
+    }
     if structured {
         if let Some(error) = structured_format_error(&source, is_url) {
             let display = source.replace('\\', "/");
@@ -267,19 +285,16 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 | "xlsb"
         )
     {
-        let payload = json!({"error": format!("Document extraction failed: Unsupported document format: .{url_suffix}")});
-        println!("{}", py_dumps(&payload));
-        return ExitCode::SUCCESS;
+        return extraction_error(
+            &source,
+            &format!("Unsupported document format: .{url_suffix}"),
+        );
     }
     let (display, bytes, mut content, http_status, final_url, content_type) = if is_url {
         let (bytes, status, final_url, content_type) =
             match download_bytes(&source, 20.0, 50_000_000) {
                 Ok(value) => value,
-                Err(error) => {
-                    let payload = json!({"error": format!("Document extraction failed: {error}")});
-                    println!("{}", py_dumps(&payload));
-                    return ExitCode::SUCCESS;
-                }
+                Err(error) => return extraction_error(&source, &error),
             };
         if status >= 400 {
             let reason = match status {
@@ -299,9 +314,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             let message = format!(
                 "Client error '{status} {reason}' for url '{source}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
             );
-            let payload = json!({"error": format!("Document extraction failed: {message}")});
-            println!("{}", py_dumps(&payload));
-            return ExitCode::SUCCESS;
+            return extraction_error(&source, &message);
         }
         let raw = String::from_utf8_lossy(&bytes)
             .trim_start_matches('\u{feff}')
