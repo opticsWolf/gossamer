@@ -1,19 +1,23 @@
 //! `gossamer crawl`: bounded focused link-graph traversal in Rust.
 
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::ArgMatches;
+use gossamer::agent::crawl_host_key;
 use gossamer::discovery::fetch_text;
-use gossamer::document::prepare_url;
 use gossamer::fetch::fetch_html_full_single;
 use gossamer::metaextract::meta_extract_all;
+use gossamer::runtime::{RuntimeConfig, RuntimeState};
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::service::crawl::{
     crawl_anchor_context, crawl_excerpt, crawl_expand_query, crawl_is_document, crawl_path_prior,
     crawl_score, crawl_term_hits, crawl_thesaurus_clusters, crawl_tokens, crawl_topic_words,
 };
-use gossamer::service::fetch::compact_metadata;
+use gossamer::service::fetch::{compact_metadata, raw_entry_matches_strategy};
 use gossamer::ssrf::check_url;
 use gossamer::urls::normalize_url;
 use serde_json::{Value, json};
@@ -174,6 +178,122 @@ fn title_from_html(html: &str, url: &str) -> String {
         .to_string()
 }
 
+type CrawlPage = (String, String, Vec<(String, String)>, Value);
+
+fn timestamp() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs() as i64;
+    let days = secs.div_euclid(86_400);
+    let seconds = secs.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    format!(
+        "{year:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}+00:00",
+        month,
+        day,
+        seconds / 3600,
+        (seconds % 3600) / 60,
+        seconds % 60,
+        now.subsec_micros()
+    )
+}
+
+fn page_from_cache(runtime: &RuntimeState, url: &str, now: f64) -> Option<CrawlPage> {
+    let entry = runtime.page_cache_get(url, now)?;
+    if !raw_entry_matches_strategy(&entry, "auto") {
+        return None;
+    }
+    let full = entry
+        .get("markdown")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let links = entry
+        .get("links")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let pair = item.as_array()?;
+                    Some((
+                        pair.get(0)?.as_str()?.to_string(),
+                        pair.get(1)?.as_str()?.to_string(),
+                    ))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let meta = entry.get("meta").cloned().unwrap_or_else(|| json!({}));
+    Some((String::new(), full, links, meta))
+}
+
+fn fetch_page(
+    runtime: &RuntimeState,
+    url: &str,
+    politeness_root: &str,
+    now: f64,
+) -> Option<CrawlPage> {
+    if !runtime.robots_allows(url, now) || !runtime.claim(url) {
+        return None;
+    }
+    let sleep = runtime.throttle_gap(url, Some(politeness_root), now);
+    if sleep > 0.0 {
+        thread::sleep(Duration::from_secs_f64(sleep));
+    }
+    let Ok((html, full, links, _removed, meta)) = fetch_html_full_single(url, 500, 50_000_000)
+    else {
+        runtime.release(url);
+        return None;
+    };
+    let (status, final_url, content_type) = meta;
+    let final_url = if final_url.is_empty() {
+        url.to_string()
+    } else {
+        final_url
+    };
+    let raw_meta: Value =
+        serde_json::from_str(&meta_extract_all(&html, Some(&final_url))).unwrap_or(Value::Null);
+    let prov = json!({
+        "fetched_at": timestamp(),
+        "http_status": status,
+        "final_url": final_url,
+        "content_type": content_type,
+    });
+    let mut entry_meta = compact_metadata(&raw_meta);
+    if let Some(map) = entry_meta.as_object_mut() {
+        map.insert("provenance".to_string(), prov);
+        map.insert("fetch_strategy".to_string(), json!("auto"));
+    }
+    let link_pairs: Vec<Value> = links
+        .iter()
+        .map(|(link_url, anchor)| json!([link_url, anchor]))
+        .collect();
+    runtime.page_cache_put(
+        url,
+        &json!({
+            "markdown": full,
+            "links": link_pairs,
+            "meta": entry_meta,
+            "method": "static",
+        }),
+        runtime.now(),
+    );
+    runtime.mark_visited(url);
+    runtime.release(url);
+    Some((html, full, links, entry_meta))
+}
+
 pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     if let Some(code) = super::cli::maybe_run(command, matches) {
         return code;
@@ -198,6 +318,8 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut excerpts = false;
     let mut search_prior = false;
     let mut seeds: Vec<String> = Vec::new();
+    let mut cache_dir =
+        std::env::var("GOSSAMER_CACHE_DIR").unwrap_or_else(|_| ".gossamer_cache".into());
     let mut index = 0usize;
     while index < args.len() {
         let value = args[index].to_string_lossy().into_owned();
@@ -221,6 +343,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 return unsupported();
             }
             let next = args[index + 1].to_string_lossy().into_owned();
+            let next_value = next.clone();
             match value.as_str() {
                 "--query" => query = Some(next),
                 "--max-depth" => {
@@ -257,6 +380,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 | "--fetch-mode" => {}
                 _ => return unsupported(),
             }
+            if value == "--cache-dir" {
+                cache_dir = next_value;
+            }
             index += 2;
             continue;
         }
@@ -270,7 +396,15 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         return unsupported();
     };
 
-    let root = match prepare_url(&root, None) {
+    let runtime = match RuntimeState::new(RuntimeConfig::from_cache_dir(PathBuf::from(&cache_dir)))
+    {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("gossamer: error: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let root = match runtime.prepare_url(&root) {
         Ok(url) => url,
         Err(error) => {
             if error.error_type() == "SsrfBlockedError" {
@@ -293,17 +427,33 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             return ExitCode::SUCCESS;
         }
     };
-    let Ok((html, full, links, _removed, provenance)) =
-        fetch_html_full_single(&root, 8000, 50_000_000)
-    else {
-        let payload = json!({"error": format!("crawl: root fetch failed: {root}"), "root": root});
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-        );
-        return ExitCode::SUCCESS;
+    let now = runtime.now();
+    let root_host_key = crawl_host_key(&root);
+    let (html, full, links, root_meta) = match page_from_cache(&runtime, &root, now) {
+        Some(page) => page,
+        None => match fetch_page(&runtime, &root, &root_host_key, now) {
+            Some(page) => page,
+            None => {
+                let payload =
+                    json!({"error": format!("crawl: root fetch failed: {root}"), "root": root});
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
+                );
+                return ExitCode::SUCCESS;
+            }
+        },
     };
-    let root_title = title_from_html(&html, &provenance.1);
+    let root_title = if html.is_empty() {
+        root_meta
+            .get("title")
+            .or_else(|| root_meta.get("meta").and_then(|meta| meta.get("title")))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    } else {
+        title_from_html(&html, &root)
+    };
     let base_terms = match query.as_deref() {
         Some(value) if !value.trim().is_empty() => crawl_tokens(Some(value)),
         _ => crawl_topic_words(Some(&format!("{full} {root_title}")), 40),
@@ -471,8 +621,13 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         if depth >= max_depth {
             continue;
         }
-        let Ok((child_html, child_md, child_links, _child_removed, _child_prov)) =
-            fetch_html_full_single(&url, 8000, 50_000_000)
+        if runtime.is_visited(&url) {
+            continue;
+        }
+        let child_now = runtime.now();
+        let Some((child_html, child_md, child_links, _child_meta)) =
+            page_from_cache(&runtime, &url, child_now)
+                .or_else(|| fetch_page(&runtime, &url, &root_host_key, child_now))
         else {
             continue;
         };
@@ -486,10 +641,17 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             excerpts,
         );
         if let Some(map) = record.as_object_mut() {
-            map.insert(
-                "title".to_string(),
-                json!(title_from_html(&child_html, &url)),
-            );
+            let title = if child_html.is_empty() {
+                _child_meta
+                    .get("title")
+                    .or_else(|| _child_meta.get("meta").and_then(|meta| meta.get("title")))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                title_from_html(&child_html, &url)
+            };
+            map.insert("title".to_string(), json!(title));
         }
         pages.push(record);
     }

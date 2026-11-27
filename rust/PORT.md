@@ -277,6 +277,23 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   verified for default, `--offset/--max-chunks`, and `--query` reads. App replay
   remains 73/73.
 
+### U2/U4/U7 runtime state (done 2026-11-27)
+
+- Added `gossamer::runtime` with a `RuntimeState` that owns the two-tier page
+  cache, bounded FIFO visited set, in-flight claims, bounded per-domain
+  timestamps, and the per-host robots.txt cache. Time is caller-supplied for
+  deterministic tests; robots fetches are fail-open and use the same Chrome UA
+  as the Python oracle.
+- Added `service::fetch::throttle_gap`, matching Python's minimum-gap + jitter
+  + `Crawl-delay` verdict.
+- CLI `inspect`, `batch`, and `crawl` now share the runtime state: page-cache
+  hits preserve the original provenance and set `cache_hit`, robots-disallowed
+  and already-visited URLs are skipped/warned, throttle gaps are applied, and
+  successful fetches mark URLs visited. Cache entries are cross-compatible
+  with Python: Python→Rust and Rust→Python cache hits agree on all fields.
+- Core tests 3/3 for runtime state and 1/1 for throttle parity; app replay
+  remains 73/73.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

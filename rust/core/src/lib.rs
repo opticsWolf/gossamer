@@ -38,6 +38,7 @@ pub mod providers;
 pub mod research_merge;
 pub mod resourcestore;
 pub mod robots;
+pub mod runtime;
 pub mod search;
 pub mod sections;
 pub mod service;

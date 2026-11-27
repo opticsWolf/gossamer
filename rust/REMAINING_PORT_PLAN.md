@@ -154,10 +154,10 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `download` | Bounded HTTP, validation, errors | mirrors, resume, streaming/multi-candidate loop |
 | CLI `extract` | local text/XML/RSS, PDF/Office, URL errors + SSRF/logging, local/URL store, links, tables-as CSV/JSON, paged PDF/Excel | full JATS route |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
-| CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, 40-word topic vocabulary | robots/cache side effects, full document scoring state |
+| CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, runtime cache/visited/robots state | full document scoring state |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
-| CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failures, paging/query selection | transport retries, browser/cache |
-| CLI `batch` | static batch envelope, documented options, dedupe, 500-link cap, metadata parity | browser/cache/visited state |
+| CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failures, paging/query selection, runtime cache/visited/robots/throttle | transport retries, browser |
+| CLI `batch` | static batch envelope, documented options, dedupe, 500-link cap, metadata parity, runtime cache/visited/robots/throttle | browser strategies |
 | CLI `cache` | prune/clear/reset | none known |
 | MCP schema/tool bodies | frozen schema + planning/envelope kernels | MCP transport and live tool execution |
 | Python library | many deterministic kernels delegated to Rust | live orchestration classes remain |
@@ -328,6 +328,9 @@ ProviderFailure {
   metadata for `auto`/`static`/`browser`; duplicate URLs remain deduped.
 - CLI `inspect` now computes Python's truncation flag and query-section
   envelope; `inspect` and `batch` both use the 500-link candidate cap.
+- `gossamer::runtime` now owns page-cache, visited/in-flight, robots and domain
+  throttle state; `inspect`, `batch` and `crawl` are wired to it and cache
+  entries are cross-compatible with the Python oracle.
 - `service::crawl` now embeds the Python thesaurus and uses the 40-word topic
   vocabulary; live crawl query echoes, term hits, and page records match.
 - CLI `extract` now validates SSRF before URL routing and logs URL failures

@@ -304,6 +304,29 @@ pub fn format_follow_ups(links: &Value) -> Vec<Value> {
 ///
 /// # Errors
 /// [`FetchServiceError`] when `auto` falls back and no browser is installed.
+/// Per-domain politeness verdict for one fetch.
+///
+/// The gap is the configured minimum interval plus jitter, raised to a
+/// site's `Crawl-delay` when larger. Only the excess over `elapsed` is
+/// returned as sleep time. Negative inputs degrade to zero.
+pub fn throttle_gap(
+    elapsed: f64,
+    fetch_interval: f64,
+    jitter: f64,
+    crawl_delay: Option<f64>,
+) -> (f64, f64) {
+    let mut gap = fetch_interval.max(0.0);
+    if gap > 0.0 {
+        gap += jitter.max(0.0);
+    }
+    if let Some(delay) = crawl_delay
+        && delay > gap
+    {
+        gap = delay;
+    }
+    (gap, (gap - elapsed).max(0.0))
+}
+
 fn as_sequence(value: &Value) -> Option<&Vec<Value>> {
     value
         .get("$tuple")
@@ -363,6 +386,13 @@ pub fn dispatch_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn throttle_gap_respects_crawl_delay() {
+        assert_eq!(throttle_gap(0.1, 0.5, 0.25, None), (0.75, 0.65));
+        assert_eq!(throttle_gap(1.0, 0.5, 0.25, Some(2.0)), (2.0, 1.0));
+        assert_eq!(throttle_gap(3.0, 0.0, 0.0, None), (0.0, 0.0));
+    }
 
     #[test]
     fn strategies_match_the_reference_table() {
