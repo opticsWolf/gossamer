@@ -17,10 +17,14 @@ confirm() {
 echo "gossamer Rust cutover"
 echo "Binary: $BIN"
 
+if [ "${1:-}" = "--check" ]; then
+  bash "$ROOT/rust/validate_release.sh"
+  exit 0
+fi
+
 confirm "1. Rebuild and prove the Rust app:
    cd '$ROOT'
-   cargo build --manifest-path rust/app/Cargo.toml --release
-   rust-anything app replay . --build rust/app/target/release/gossamer.exe"
+   bash rust/validate_release.sh"
 
 "$BIN" --help >/dev/null
 echo "ok: binary answers --help"
