@@ -173,7 +173,10 @@ mod tests {
             &context,
         )
         .expect("openalex plan");
-        assert_eq!(plan["headers"]["User-Agent"], "gossamer/1");
+        assert_eq!(
+            plan["headers"]["User-Agent"],
+            "gossamer/1 (mailto:dev@example.test)"
+        );
         assert_eq!(
             plan["headers"]["Contact-Agent"],
             "gossamer/1 (mailto:dev@example.test)"

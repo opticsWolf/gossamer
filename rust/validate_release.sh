@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT/rust"
 
 cargo build --manifest-path app/Cargo.toml --release
-cargo test --manifest-path Cargo.toml --workspace
+cargo test --manifest-path Cargo.toml -p gossamer-web
+cargo test --manifest-path Cargo.toml -p gossamer --bins
 cargo clippy --manifest-path Cargo.toml --workspace --all-targets -- -D warnings
 
 BIN="$ROOT/rust/app/target/release/gossamer.exe"

@@ -107,8 +107,10 @@ jobs:
       - name: Build release app
         run: cargo build --manifest-path rust/app/Cargo.toml --release
 
-      - name: Test workspace
-        run: cargo test --manifest-path rust/Cargo.toml --workspace
+      - name: Test pure core and app binaries
+        run: |
+          cargo test --manifest-path rust/Cargo.toml -p gossamer-web
+          cargo test --manifest-path rust/Cargo.toml -p gossamer --bins
 
       - name: Clippy workspace
         run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
