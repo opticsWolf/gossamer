@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master, dev, dev_rust]
+    branches: [main, master, dev, dev_rust, dev_rustify]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, dev_rustify]
 
 jobs:
   test:
@@ -79,6 +79,42 @@ jobs:
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
         run: .venv\Scripts\pytest.exe tests/ -v --tb=short
+
+  rust-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/app/target
+          key: ${{ runner.os }}-rust-app-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-app-
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+
+      - name: Build release app
+        run: cargo build --manifest-path rust/app/Cargo.toml --release
+
+      - name: Test workspace
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
+
+      - name: Clippy workspace
+        run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+
+      - name: Smoke-test release binary
+        run: rust/app/target/release/gossamer --help >/dev/null
 
   supply-chain:
     runs-on: ubuntu-latest

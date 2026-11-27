@@ -256,3 +256,12 @@ Consequences:
 - Extraction is format-extension driven and uses `Document::from_reader`;
   parity is compared on Markdown output against the Python oracle.
 - No editing, rendering, or external binaries are enabled.
+
+## ADR-016: minimum supported Rust version is 1.97
+
+- Date: 2026-11-27.
+- The `rust/app` package declares `rust-version = "1.97"` and the Linux CI
+  job builds/tests/clippy-checks the workspace on stable. Rust 1.97 is the
+  contractual floor: contributions may not raise it without a new ADR.
+- The legacy root PyO3 wrapper crate remains outside the production launcher
+  contract and is retained only as the Python replay oracle until cutover.
