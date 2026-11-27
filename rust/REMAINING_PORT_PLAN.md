@@ -154,7 +154,7 @@ flag that still returns the generic unsupported message is a port gap.
 | CLI `download` | Bounded HTTP, validation, errors | mirrors, resume, streaming/multi-candidate loop |
 | CLI `extract` | local text/XML/RSS, PDF/Office, URL errors, local/URL store, links, tables-as CSV/JSON, paged PDF/Excel | full JATS route |
 | CLI `research` | taxonomy + DuckDuckGo category results | provider fan-out |
-| CLI `crawl` | bounded link graph | search prior, seeds, robots/cache side effects |
+| CLI `crawl` | bounded link graph, seeds, search prior, thesaurus expansion, 40-word topic vocabulary | robots/cache side effects, full document scoring state |
 | CLI `search` | DuckDuckGo HTML, provider aliases, fallback notes | page-fetch half of `web_search` |
 | CLI `inspect` | static fetch + markdown/links/metadata, structured mode, dispatch failure envelopes | transport retries, browser/cache |
 | CLI `batch` | static batch envelope, documented options, dedupe, metadata parity | browser/cache/visited state |
@@ -326,6 +326,8 @@ ProviderFailure {
   live 404 combinations match the oracle exactly.
 - CLI `batch` now accepts all documented options and emits Python-compatible
   metadata for `auto`/`static`/`browser`; duplicate URLs remain deduped.
+- `service::crawl` now embeds the Python thesaurus and uses the 40-word topic
+  vocabulary; live crawl query echoes, term hits, and page records match.
 
 **Exit criteria**
 

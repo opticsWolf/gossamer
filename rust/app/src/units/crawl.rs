@@ -11,7 +11,7 @@ use gossamer::metaextract::meta_extract_all;
 use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
 use gossamer::service::crawl::{
     crawl_anchor_context, crawl_excerpt, crawl_expand_query, crawl_is_document, crawl_path_prior,
-    crawl_score, crawl_term_hits, crawl_tokens, crawl_topic_words,
+    crawl_score, crawl_term_hits, crawl_thesaurus_clusters, crawl_tokens, crawl_topic_words,
 };
 use gossamer::service::fetch::compact_metadata;
 use gossamer::ssrf::check_url;
@@ -306,7 +306,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let root_title = title_from_html(&html, &provenance.1);
     let base_terms = match query.as_deref() {
         Some(value) if !value.trim().is_empty() => crawl_tokens(Some(value)),
-        _ => crawl_topic_words(Some(&format!("{full} {root_title}")), 12),
+        _ => crawl_topic_words(Some(&format!("{full} {root_title}")), 40),
     };
     let query_echo = if query
         .as_deref()
@@ -316,8 +316,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     } else {
         "derived from root page".to_string()
     };
-    let empty_clusters = json!({});
-    let (terms, expanded) = crawl_expand_query(&base_terms, &empty_clusters);
+    let (terms, expanded) = crawl_expand_query(&base_terms, crawl_thesaurus_clusters());
     let query_echo = if expanded == 0 {
         query_echo
     } else {
@@ -345,7 +344,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut seq = 0usize;
     let mut skipped: Vec<Value> = Vec::new();
     let mut search_results = 0usize;
-    let page_terms = crawl_topic_words(Some(&full), 12);
+    let page_terms = crawl_topic_words(Some(&full), 40);
     for (link_url, anchor) in &links {
         let Ok(candidate) = Url::parse(link_url) else {
             continue;
@@ -389,7 +388,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         seq += 1;
     }
 
-    let root_terms = crawl_topic_words(Some(&format!("{full} {root_title}")), 12);
+    let root_terms = crawl_topic_words(Some(&format!("{full} {root_title}")), 40);
     for seed in &seeds {
         let candidate = match normalize_url(Some(seed), Some(&root), None) {
             Ok(url) => url,

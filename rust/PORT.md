@@ -246,6 +246,15 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
   are still emitted once and all other envelope fields match the Python
   oracle for `auto`, `static`, and `browser` strategies.
 
+### Crawl query expansion parity (done 2026-11-27)
+
+- Embedded `gossamer/thesaurus.json` in pure core as
+  `service::crawl::crawl_thesaurus_clusters`, replacing the empty cluster set
+  that suppressed offline query expansion in the Rust CLI.
+- Raised the crawl topic vocabulary from 12 to Python's 40 words; root-page
+  query echoes, term counts, and page records now match the Python oracle on
+  a live `https://example.com/` crawl.
+
 ### Download size-cap error parity (done 2026-11-25)
 
 - `gossamer::downloader::download_bytes` now reports declared body size, final

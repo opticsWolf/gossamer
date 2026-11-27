@@ -1,11 +1,30 @@
 //! Deterministic crawl frontier scoring kernels.
 
-use serde_json::Value;
+use std::sync::LazyLock;
+
+use serde_json::{Value, json};
 
 const QUERY_WEIGHT: f64 = 0.7;
 const CONTEXT_WEIGHT: f64 = 0.3;
 const EXPANSION_WEIGHT: f64 = 0.5;
 const IDF_MIN_CORPUS: i64 = 3;
+
+/// Bundled offline synonym clusters, embedded from `gossamer/thesaurus.json`.
+///
+/// The file is the same deterministic source the Python oracle loads. A
+/// malformed or missing file degrades to no clusters instead of failing a
+/// crawl (the Python loader is fail-open too).
+static THESAURUS_CLUSTERS: LazyLock<Value> = LazyLock::new(|| {
+    serde_json::from_str::<Value>(include_str!("../../../../gossamer/thesaurus.json"))
+        .ok()
+        .and_then(|value| value.get("clusters").cloned())
+        .unwrap_or_else(|| json!([]))
+});
+
+/// Frozen synonym clusters used by [`crawl_expand_query`] callers.
+pub fn crawl_thesaurus_clusters() -> &'static Value {
+    &THESAURUS_CLUSTERS
+}
 
 fn idf_value(idf: Option<&Value>, term: &str) -> f64 {
     idf.and_then(Value::as_object)
@@ -315,5 +334,13 @@ mod tests {
         let query = vec!["rust".to_string()];
         let page = vec!["lang".to_string()];
         assert!((crawl_score(&label, &query, &page, None, None, 0, 1.0) - 0.85).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bundled_thesaurus_expands_query_terms() {
+        let base = vec!["transformer".to_string()];
+        let (terms, added) = crawl_expand_query(&base, crawl_thesaurus_clusters());
+        assert_eq!(added, 1);
+        assert!(terms.contains(&"transformers".to_string()));
     }
 }
