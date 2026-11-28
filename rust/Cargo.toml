@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
   "app",
-  "browser-sidecar",
   "core",
   "audit-cargo-rs",
   "benchmarks-rs",
@@ -35,7 +34,7 @@ members = [
   "verify-bundled-assets-rs",
 ]
 default-members = ["app"]
-exclude = ["core/vendor/meta_oxide"]
+exclude = ["core/vendor/meta_oxide", "browser-sidecar"]
 
 [profile.release]
 lto = true

@@ -21,11 +21,11 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: gossamer-browser-linux-x86_64
-            binary: app/target/release/gossamer-browser
+            binary: target/release/gossamer-browser
             binary_name: gossamer-browser
           - os: windows-latest
             artifact: gossamer-browser-windows-x86_64
-            binary: app/target/release/gossamer-browser.exe
+            binary: target/release/gossamer-browser.exe
             binary_name: gossamer-browser.exe
 
     steps:
@@ -55,17 +55,17 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rust/app/target
-          key: ${{ runner.os }}-browser-sidecar-${{ hashFiles('rust/Cargo.lock') }}
+            rust/browser-sidecar/target
+          key: ${{ runner.os }}-browser-sidecar-${{ hashFiles('rust/browser-sidecar/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-browser-sidecar-
 
       - name: Build sidecar
-        working-directory: rust
-        run: cargo build -p gossamer-browser --release --locked
+        working-directory: rust/browser-sidecar
+        run: cargo build --release --locked
 
       - name: Smoke check
-        working-directory: rust
+        working-directory: rust/browser-sidecar
         shell: bash
         run: |
           test -f "${{ matrix.binary }}"
@@ -82,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: rust/${{ matrix.binary }}
+          path: rust/browser-sidecar/${{ matrix.binary }}
           if-no-files-found: error
           retention-days: 30
 
