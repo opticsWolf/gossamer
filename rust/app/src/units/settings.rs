@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Once;
 
 use gossamer::cli_args::Parsed;
-use gossamer::config::{Paths, ProcessEnv, find_config_file};
+use gossamer::config::{ConfigStore, Paths, ProcessEnv, find_config_file, load_json_file};
 use gossamer::runtime::RuntimeConfig;
 use serde_json::Value;
 
@@ -31,36 +31,20 @@ pub fn config(parsed: &Parsed) -> Option<Value> {
         });
         return None;
     }
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(error) => {
-            CONFIG_WARNING.call_once(|| {
-                pyeprintln!(
-                    "ignoring gossamer.json: config file not found: {}",
-                    path.display()
-                );
-            });
-            let _ = error;
-            return None;
-        }
-    };
-    match serde_json::from_str::<Value>(&text) {
+    let mut store = ConfigStore::new();
+    let display = path.display().to_string();
+    match load_json_file(&mut store, &path, &display) {
         Ok(value) if value.is_object() => Some(value),
         Ok(_) => {
             CONFIG_WARNING.call_once(|| {
-                pyeprintln!(
-                    "ignoring gossamer.json: gossamer.json must hold an object: {}",
-                    path.display()
-                );
+                pyeprintln!("ignoring gossamer.json: gossamer.json must hold an object: {display}");
             });
             None
         }
         Err(error) => {
+            let message = error.message().to_string();
             CONFIG_WARNING.call_once(|| {
-                pyeprintln!(
-                    "ignoring gossamer.json: invalid JSON in {}: {error}",
-                    path.display()
-                );
+                pyeprintln!("ignoring gossamer.json: {message}");
             });
             None
         }
