@@ -21,11 +21,11 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: gossamer-browser-linux-x86_64
-            binary: rust/app/target/release/gossamer-browser
+            binary: app/target/release/gossamer-browser
             binary_name: gossamer-browser
           - os: windows-latest
             artifact: gossamer-browser-windows-x86_64
-            binary: rust/app/target/release/gossamer-browser.exe
+            binary: app/target/release/gossamer-browser.exe
             binary_name: gossamer-browser.exe
 
     steps:
@@ -69,9 +69,11 @@ jobs:
             ${{ runner.os }}-browser-sidecar-
 
       - name: Build sidecar
-        run: cargo build --manifest-path rust/Cargo.toml -p gossamer-browser --release --locked
+        working-directory: rust
+        run: cargo build -p gossamer-browser --release --locked
 
       - name: Smoke check
+        working-directory: rust
         shell: bash
         run: |
           test -f "${{ matrix.binary }}"
@@ -88,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.binary }}
+          path: rust/${{ matrix.binary }}
           if-no-files-found: error
           retention-days: 30
 
