@@ -1046,7 +1046,8 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let select = parsed.value("select").map(str::to_string);
     let title = parsed.value("title").map(str::to_string);
     let author = parsed.value("author").map(str::to_string);
-    let max_results = parsed.int("max_results").unwrap_or(5).max(0) as usize;
+    let max_results_raw = parsed.int("max_results").unwrap_or(5);
+    let max_results = max_results_raw.max(0) as usize;
     let has_options = filter.is_some() || select.is_some() || title.is_some() || author.is_some();
 
     let taxonomy: Value = match serde_json::from_str(CATEGORIES_JSON) {
@@ -1182,6 +1183,16 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             "results": [],
         }));
     }
+    if selected == "duckduckgo" && max_results_raw < 0 {
+        return scholarly_failure(
+            &query,
+            &category_name,
+            &selected,
+            &available,
+            &entry,
+            "can't convert negative int to unsigned",
+        );
+    }
     let fetched: Result<Vec<Value>, String> = if selected == "openalex" {
         openalex_records(
             &query,
@@ -1197,8 +1208,13 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     ) {
         fetch_provider_records(&selected, &query, max_results)
     } else if selected == "duckduckgo" {
+        let limit = if max_results == 0 {
+            usize::MAX
+        } else {
+            max_results
+        };
         match fetch_text(&duckduckgo_search_url(&query), 20.0) {
-            Ok((body, _)) => Ok(duckduckgo_results(&body, max_results)),
+            Ok((body, _)) => Ok(duckduckgo_results(&body, limit)),
             Err(error) => Err(error),
         }
     } else {

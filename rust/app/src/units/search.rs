@@ -312,7 +312,10 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             parsed,
         );
     }
-    let max_results = max_results.max(0) as usize;
+    let max_results = match max_results {
+        0 => usize::MAX,
+        value => value.max(0) as usize,
+    };
     match provider_search(&query, max_results, provider.as_deref()) {
         Ok((results, note, _)) => pyprintln!("{}", finish_search(results, note, parsed)),
         Err(payload) => {

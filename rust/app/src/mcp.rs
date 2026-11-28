@@ -306,11 +306,16 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
                 );
             }
             let url = duckduckgo_search_url(&query);
+            let max_results = string_arg(&merged, "max_results")
+                .parse::<usize>()
+                .unwrap_or(5);
             let results = fetch_results(
                 &url,
-                string_arg(&merged, "max_results")
-                    .parse::<usize>()
-                    .unwrap_or(5),
+                if max_results == 0 {
+                    usize::MAX
+                } else {
+                    max_results
+                },
             );
             (pretty(&Value::Array(results)), false)
         }
