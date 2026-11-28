@@ -111,6 +111,8 @@ class SearchService:
             Per-call render strategy for fetched pages (ignored when
             ``search_only=True``).
         """
+        if max_results < 0:
+            return json.dumps({"error": "max_results must be >= 0"}, indent=2)
         route = _service_web_search_route(search_only)
         if route == "search_web":
             return self.search_web(
@@ -131,6 +133,8 @@ class SearchService:
         max_results: int = 5,
         provider: Optional[str] = None,
     ) -> str:
+        if max_results < 0:
+            return json.dumps({"error": "max_results must be >= 0"}, indent=2)
         """
         Search the web using a specific provider or the default.
 
@@ -157,6 +161,8 @@ class SearchService:
         str
             JSON-serialised list of results or error dict.
         """
+        if max_results < 0:
+            return json.dumps({"error": "max_results must be >= 0"}, indent=2)
         cache_key = self._search_cache_key(query, max_results, provider)
         cached = self._search_cache_get(cache_key)
         if cached is not None:

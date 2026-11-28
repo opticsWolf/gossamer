@@ -75,6 +75,51 @@ def test_protocol_fixture_matches_rust_server():
     assert actual == expected
 
 
+def _python_tools(cache_dir):
+    pytest.importorskip("mcp")
+    process = subprocess.Popen(
+        [sys.executable, "-m", "gossamer.mcp_server"],
+        env={**os.environ, "GOSSAMER_CACHE_DIR": str(cache_dir)},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        requests = [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "probe", "version": "1"},
+                },
+            },
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        ]
+        for request in requests:
+            process.stdin.write(json.dumps(request) + "\n")
+            process.stdin.flush()
+        process.stdout.readline()
+        return json.loads(process.stdout.readline())["result"]["tools"]
+    finally:
+        process.stdin.close()
+        process.terminate()
+        process.wait(timeout=10)
+
+
+def test_tools_list_schema_matches_python_server():
+    loaded = json.loads((ROOT / "rust/fixtures/mcp_protocol.json").read_text(encoding="utf-8"))
+    expected = loaded["3"]["result"]["tools"]
+    with tempfile.TemporaryDirectory() as cache_dir:
+        actual = _python_tools(cache_dir)
+    assert [tool["name"] for tool in actual] == [tool["name"] for tool in expected]
+    assert actual == expected
+
+
 def test_tool_call_fixture_matches_rust_server():
     cases = json.loads((ROOT / "rust/fixtures/mcp_tool_calls.json").read_text(encoding="utf-8"))
     requests = [

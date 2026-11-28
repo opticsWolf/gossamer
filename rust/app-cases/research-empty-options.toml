@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["research", "", "--filter", "x"]
+status.code = 1
+fs.sandbox = true

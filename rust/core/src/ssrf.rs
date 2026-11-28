@@ -235,6 +235,28 @@ fn split_host_port(hostport: &str) -> (&str, Option<&str>) {
 /// DNS resolver seam. Tests inject a deterministic implementation so literals never hit DNS.
 pub type Resolver = dyn Fn(&str, u16) -> Result<Vec<IpAddr>, String>;
 
+/// Resolve the process-wide SSRF bypass from the environment.
+///
+/// Mirrors Python's `gossamer.ssrf._allow_private`: a non-empty current
+/// `GOSSAMER_ALLOW_PRIVATE` wins over the legacy
+/// `STITCH_WEB_RESEARCHER_ALLOW_PRIVATE`.
+pub fn env_allow_private() -> bool {
+    let raw = std::env::var("GOSSAMER_ALLOW_PRIVATE")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("STITCH_WEB_RESEARCHER_ALLOW_PRIVATE")
+                .ok()
+                .filter(|value| !value.is_empty())
+        });
+    raw.is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
 /// Validates a URL against the SSRF policy with an injected resolver.
 ///
 /// `runtime_minor` selects CPython error spellings; `None` uses the newest supported spelling.

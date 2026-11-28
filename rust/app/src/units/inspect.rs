@@ -281,6 +281,13 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let max_tokens = config_int(parsed, "max_tokens", "GOSSAMER_MAX_TOKENS", 0);
     let model = config_str(parsed, "model_name", "GOSSAMER_MODEL_NAME", "gpt-4o");
     let max_links = config_int(parsed, "max_links", "GOSSAMER_MAX_LINKS", 20).max(0);
+    let max_response_bytes = config_int(
+        parsed,
+        "max_response_bytes",
+        "GOSSAMER_MAX_RESPONSE_BYTES",
+        5 * 1024 * 1024,
+    )
+    .max(0) as usize;
     let candidate_cap = config_int(parsed, "candidate_cap", "GOSSAMER_CANDIDATE_CAP", 500).max(1);
     let (md_chars, md_tokens) = gossamer::budget::content_split(max_chars, max_tokens, 0.25);
 
@@ -392,7 +399,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             let (html, full_markdown, links, removed, meta) =
-                match fetch_html_full_single(&url, candidate_cap as usize, 50_000_000) {
+                match fetch_html_full_single(&url, candidate_cap as usize, max_response_bytes) {
                     Ok(value) => value,
                     Err(error) => {
                         runtime.release(&url);

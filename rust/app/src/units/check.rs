@@ -25,7 +25,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let probe = if mode == "content" { "get" } else { "head" };
     let mut results = Vec::with_capacity(urls.len());
     for url in &urls {
-        if let Err(error) = check_url(url, false, None) {
+        if let Err(error) = check_url(url, gossamer::ssrf::env_allow_private(), None) {
             results.push(blocked(url, error.message()));
             continue;
         }

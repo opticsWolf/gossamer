@@ -197,6 +197,7 @@ fn download_one(
     cap: usize,
     min_bytes: i64,
     expect_pdf: bool,
+    target_existed: bool,
 ) -> Value {
     let (bytes, status, final_url, content_type) = match download_bytes(url, 30.0, cap) {
         Ok(value) => value,
@@ -207,7 +208,7 @@ fn download_one(
             return json!({
                 "source": url,
                 "status": "error",
-                "error": {"code": "download_error", "message": error},
+                "error": {"code": "network_error", "message": error},
             });
         }
     };
@@ -232,6 +233,17 @@ fn download_one(
         &final_url,
     ) {
         return json!({"source": url, "status": "error", "error": payload});
+    }
+    if target_existed {
+        return json!({
+            "source": url,
+            "status": "error",
+            "error": {
+                "code": "file_exists",
+                "message": format!("Output already exists: {}", target.display()),
+                "output_path": display_path(target),
+            },
+        });
     }
     if std::fs::write(target, &bytes).is_err() {
         return json!({
@@ -284,7 +296,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         source.clone()
     };
     if mirrors.is_empty()
-        && let Err(error) = check_url(&url, false, None)
+        && let Err(error) = check_url(&url, gossamer::ssrf::env_allow_private(), None)
     {
         pyeprintln!("Blocked non-public URL {}: {}", url, error.message());
         return emit_error(
@@ -362,7 +374,8 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         );
     }
     let cap = cap_i64 as usize;
-    if target.exists() && !overwrite && !resume {
+    let resumable_file = resume && target.is_file();
+    if target.exists() && !overwrite && !resumable_file {
         return emit_error_details(
             &url,
             "file_exists",
@@ -370,6 +383,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             &json!({"output_path": display_path(&target)}),
         );
     }
+    let target_existed = target.exists() && !overwrite;
     if let Some(parent) = target.parent()
         && std::fs::create_dir_all(parent).is_err()
     {
@@ -403,7 +417,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                     if let Some(payload) = parse_too_large_error(&error) {
                         return emit_error_payload(&url, payload);
                     }
-                    return emit_error(&url, "download_error", &error);
+                    return emit_error(&url, "network_error", &error);
                 }
             };
             if status == 416 {
@@ -563,7 +577,8 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                     continue;
                 }
             };
-            if let Err(error) = check_url(&candidate_url, false, None) {
+            if let Err(error) = check_url(&candidate_url, gossamer::ssrf::env_allow_private(), None)
+            {
                 pyeprintln!(
                     "Blocked non-public URL {}: {}",
                     candidate_url,
@@ -583,7 +598,14 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 results.push(result);
                 continue;
             }
-            let result = download_one(&candidate_url, &target, cap, min_bytes, expect_pdf);
+            let result = download_one(
+                &candidate_url,
+                &target,
+                cap,
+                min_bytes,
+                expect_pdf,
+                target_existed,
+            );
             let terminal = result.get("status").and_then(Value::as_str) == Some("downloaded")
                 || result
                     .get("error")
@@ -609,7 +631,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             ExitCode::SUCCESS
         };
     }
-    let payload = download_one(&url, &target, cap, min_bytes, expect_pdf);
+    let payload = download_one(&url, &target, cap, min_bytes, expect_pdf, target_existed);
     pyprintln!("{}", pretty(&payload));
     if payload.get("error").is_some() {
         ExitCode::FAILURE

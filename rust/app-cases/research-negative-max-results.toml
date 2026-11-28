@@ -1,0 +1,4 @@
+bin.name = "gossamer"
+args = ["research", "x", "--provider", "crossref", "--max-results", "-1"]
+status.code = 1
+fs.sandbox = true

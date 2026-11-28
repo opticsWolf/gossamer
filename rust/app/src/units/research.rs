@@ -1047,7 +1047,10 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let title = parsed.value("title").map(str::to_string);
     let author = parsed.value("author").map(str::to_string);
     let max_results_raw = parsed.int("max_results").unwrap_or(5);
-    let max_results = max_results_raw.max(0) as usize;
+    if max_results_raw < 0 {
+        return print_failure(&json!({"error": "max_results must be >= 0"}));
+    }
+    let max_results = max_results_raw as usize;
     let has_options = filter.is_some() || select.is_some() || title.is_some() || author.is_some();
 
     let taxonomy: Value = match serde_json::from_str(CATEGORIES_JSON) {
@@ -1056,10 +1059,10 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     };
     if query.trim().is_empty() {
         if has_options || !providers.is_empty() {
-            return empty_provider_error(
-                &query,
-                "filter/select/title/author/providers options require a research query".to_string(),
-            );
+            return print_failure(&json!({
+                "results": [],
+                "error": "filter/select/title/author/providers options require a research query",
+            }));
         }
         pyprintln!("{}", py_dumps_pretty(&taxonomy));
         return ExitCode::SUCCESS;

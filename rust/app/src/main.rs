@@ -66,6 +66,10 @@ fn main() -> ExitCode {
         Outcome::Run(parsed) => {
             if parsed.command != "skills" {
                 units::settings::configure_http(&parsed);
+                if let Err(error) = units::settings::validate(&parsed) {
+                    pyeprintln!("gossamer: error: {error}");
+                    return ExitCode::FAILURE;
+                }
             }
             units::dispatch(&parsed).unwrap_or_else(|| {
                 pyeprintln!("gossamer: no handler for `{}`", parsed.command);

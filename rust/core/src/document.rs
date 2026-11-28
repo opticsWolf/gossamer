@@ -93,7 +93,7 @@ impl Error for UrlPrepError {}
 pub fn prepare_url(raw: &str, runtime_minor: Option<u32>) -> Result<String, UrlPrepError> {
     let normalized = normalize_url(Some(raw), None, runtime_minor)
         .map_err(|e| UrlPrepError::new(UrlPrepErrorKind::Value, raw, e.message().to_owned()))?;
-    check_url(&normalized, false, runtime_minor).map_err(|e| {
+    check_url(&normalized, crate::ssrf::env_allow_private(), runtime_minor).map_err(|e| {
         UrlPrepError::new(UrlPrepErrorKind::SsrfBlocked, raw, e.message().to_owned())
     })?;
     Ok(normalized)

@@ -6,7 +6,6 @@
 
 use std::io::{self, BufRead, Write};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 const MCP_NEWLINE: &str = "\r\n";
@@ -14,22 +13,14 @@ const MCP_NEWLINE: &str = "\r\n";
 const MCP_NEWLINE: &str = "\n";
 
 use gossamer::agent::url_error;
-use gossamer::document::{prepare_url, structured_html_payload};
-use gossamer::fetch::fetch_html_full_single;
+use gossamer::document::prepare_url;
 use gossamer::mcp_dispatch::{check_sources_plan, extract_validation, tool_arguments};
 use gossamer::mcp_transport::{
     error_response, initialize_result, list_resources_result, list_tools_result, read_resource,
     response, tool_call_result,
 };
-use gossamer::metaextract::meta_extract_all;
-use gossamer::miscutils::{classify_link, sha256_hex};
 use gossamer::openaccess::normalize_doi;
-use gossamer::search::{duckduckgo_results, duckduckgo_search_url};
-use gossamer::service::fetch::{compact_metadata, slice_markdown};
 use gossamer::ssrf::check_url;
-use gossamer::tables::extract_tables;
-use gossamer::taxonomy::CATEGORIES_JSON;
-use gossamer::tokens::count_tokens;
 use gossamer::urls::normalize_url;
 use serde_json::{Value, json};
 
@@ -61,7 +52,7 @@ fn string_arg(arguments: &Value, key: &str) -> String {
 }
 
 fn ssrf_error(raw: &str, url: &str) -> (String, bool) {
-    match check_url(url, false, None) {
+    match check_url(url, gossamer::ssrf::env_allow_private(), None) {
         Ok(()) => (String::new(), false),
         Err(error) => {
             let message = error
@@ -71,144 +62,6 @@ fn ssrf_error(raw: &str, url: &str) -> (String, bool) {
             (pretty(&url_error(raw, message, "SsrfBlockedError")), true)
         }
     }
-}
-
-fn timestamp() -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs() as i64;
-    let days = secs.div_euclid(86_400);
-    let seconds = secs.rem_euclid(86_400);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = year + i64::from(month <= 2);
-    format!(
-        "{year:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}+00:00",
-        month,
-        day,
-        seconds / 3600,
-        (seconds % 3600) / 60,
-        seconds % 60,
-        now.subsec_micros()
-    )
-}
-
-fn inspect_live(
-    raw: &str,
-    structured: bool,
-    query: Option<String>,
-    offset: i64,
-    max_chunks: i64,
-) -> (String, bool) {
-    let url = match prepare_url(raw, None) {
-        Ok(url) => url,
-        Err(error) => return (pretty(&error.to_record()), true),
-    };
-    let (text, failed) = ssrf_error(raw, &url);
-    if failed {
-        return (text, failed);
-    }
-    let Ok((html, full_markdown, links, _removed, meta)) =
-        fetch_html_full_single(&url, 8000, 50_000_000)
-    else {
-        return (
-            pretty(&json!({"error": format!("HTML inspection failed for {url}")})),
-            true,
-        );
-    };
-    let (http_status, final_url, content_type) = meta;
-    let raw_metadata: Value =
-        serde_json::from_str(&meta_extract_all(&html, Some(&final_url))).unwrap_or(Value::Null);
-    if structured {
-        let link_pairs: Vec<Value> = links
-            .iter()
-            .map(|(link_url, anchor)| json!([link_url, anchor]))
-            .collect();
-        let tables = extract_tables(&html, 20, 500);
-        let payload = structured_html_payload(
-            &full_markdown,
-            &Value::Array(link_pairs),
-            &raw_metadata,
-            &url,
-            20,
-            &tables,
-        );
-        return (
-            serde_json::to_string(&payload).unwrap_or_else(|_| pretty(&payload)),
-            false,
-        );
-    }
-    let metadata = compact_metadata(&raw_metadata);
-    let mut follow_up_links = Vec::new();
-    let mut seen = Vec::new();
-    for (link_url, anchor) in &links {
-        if link_url.is_empty() || seen.contains(link_url) {
-            continue;
-        }
-        seen.push(link_url.clone());
-        let title = anchor.trim();
-        follow_up_links.push(json!({
-            "url": link_url,
-            "title": if title.is_empty() { "(untitled)" } else { title },
-            "type": classify_link(link_url),
-        }));
-    }
-    let total_links = follow_up_links.len();
-    let slice = slice_markdown(&full_markdown, offset, max_chunks, 8000, 0, "gpt-4o")
-        .unwrap_or_else(|_| json!([full_markdown.clone(), full_markdown.chars().count(), false]));
-    let markdown = slice
-        .get(0)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let next_offset = slice.get(1).and_then(Value::as_i64);
-    let has_more = slice.get(2).and_then(Value::as_bool).unwrap_or(false);
-    let tokens = count_tokens(&markdown, "gpt-4o").unwrap_or(0);
-    let mut payload = json!({
-        "url": url,
-        "markdown": markdown,
-        "markdown_tokens": tokens,
-        "follow_up_links": follow_up_links,
-        "delivered_links": total_links,
-        "total_links": total_links,
-        "truncated": false,
-        "fetch_method": "static",
-        "cache_hit": false,
-        "revalidated": false,
-        "metadata": metadata,
-        "query": query,
-        "sections_available": 0,
-        "sections_selected": 0,
-        "section_anchors": [],
-        "offset": offset,
-        "next_offset": next_offset,
-        "has_more": has_more,
-        "chars_total": full_markdown.chars().count(),
-        "fetched_at": timestamp(),
-        "http_status": http_status,
-        "final_url": final_url,
-        "content_type": content_type,
-        "content_hash": sha256_hex(&full_markdown),
-        "guard": Value::Null,
-    });
-    if offset > 0 && offset >= full_markdown.chars().count() as i64 && !full_markdown.is_empty() {
-        payload["warning"] = json!(format!(
-            "offset {offset} is past the end of the content ({} chars); nothing new was returned",
-            full_markdown.chars().count()
-        ));
-    }
-    (
-        serde_json::to_string(&payload).unwrap_or_else(|_| pretty(&payload)),
-        false,
-    )
 }
 
 fn value_text(value: &Value) -> String {
@@ -236,7 +89,9 @@ fn cli_output(arguments: &[String]) -> (String, bool) {
                 text = String::from_utf8_lossy(&output.stderr).to_string();
             }
             (
-                text.trim_end_matches(['\n', '\r']).to_string(),
+                text.replace("\r\n", "\n")
+                    .trim_end_matches(['\n', '\r'])
+                    .to_string(),
                 !output.status.success(),
             )
         }
@@ -287,54 +142,41 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
     match name {
         "research_by_category" => {
             let query = string_arg(&merged, "query");
-            if query.trim().is_empty() {
-                let taxonomy: Value =
-                    serde_json::from_str(CATEGORIES_JSON).unwrap_or_else(|_| json!([]));
-                return (pretty(&taxonomy), false);
-            }
             let mut args = vec!["research".to_string(), query];
             option(&merged, "category", "--category", &mut args);
+            option(&merged, "provider", "--provider", &mut args);
             option(&merged, "max_results", "--max-results", &mut args);
-            cli_json_output(&args, false)
+            option(&merged, "filter", "--filter", &mut args);
+            option(&merged, "select", "--select", &mut args);
+            option(&merged, "title", "--title", &mut args);
+            option(&merged, "author", "--author", &mut args);
+            let providers = string_values(merged.get("providers"));
+            if !providers.is_empty() {
+                args.push("--providers".to_string());
+                args.extend(providers);
+            }
+            cli_output(&args)
         }
         "web_search" => {
             let query = string_arg(&merged, "query");
-            if query.trim().is_empty() {
-                return (
-                    pretty(&json!({"error": "research: topic is required"})),
-                    true,
-                );
-            }
-            let url = duckduckgo_search_url(&query);
-            let max_results = string_arg(&merged, "max_results")
-                .parse::<usize>()
-                .unwrap_or(5);
-            let results = fetch_results(
-                &url,
-                if max_results == 0 {
-                    usize::MAX
-                } else {
-                    max_results
-                },
-            );
-            (pretty(&Value::Array(results)), false)
+            let mut args = vec!["search".to_string(), query];
+            flag(&merged, "search_only", "--search-only", &mut args);
+            option(&merged, "max_results", "--max-results", &mut args);
+            option(&merged, "depth", "--depth", &mut args);
+            option(&merged, "max_tokens", "--max-tokens", &mut args);
+            option(&merged, "provider", "--provider", &mut args);
+            option(&merged, "use_smart", "--use-smart", &mut args);
+            cli_output(&args)
         }
         "inspect_html_page" => {
             let raw = string_arg(&merged, "url");
-            let structured = merged
-                .get("structured")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let query = merged
-                .get("query")
-                .and_then(Value::as_str)
-                .map(str::to_string);
-            let offset = merged.get("offset").and_then(Value::as_i64).unwrap_or(0);
-            let max_chunks = merged
-                .get("max_chunks")
-                .and_then(Value::as_i64)
-                .unwrap_or(1);
-            inspect_live(&raw, structured, query, offset, max_chunks)
+            let mut args = vec!["inspect".to_string(), raw];
+            option(&merged, "use_smart", "--use-smart", &mut args);
+            option(&merged, "query", "--query", &mut args);
+            option(&merged, "offset", "--offset", &mut args);
+            option(&merged, "max_chunks", "--max-chunks", &mut args);
+            flag(&merged, "structured", "--structured", &mut args);
+            cli_output(&args)
         }
         "batch_inspect_pages" => {
             let urls = merged.get("urls").cloned().unwrap_or(Value::Null);
@@ -347,7 +189,8 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             }
             let mut args = vec!["batch".to_string()];
             args.extend(items.iter().map(value_text));
-            cli_json_output(&args, false)
+            option(&merged, "use_smart", "--use-smart", &mut args);
+            cli_output(&args)
         }
         "download_file" => {
             let source = string_arg(&merged, "source");
@@ -381,16 +224,15 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             ];
             option(&merged, "min_bytes", "--min-bytes", &mut args);
             option(&merged, "max_bytes", "--max-bytes", &mut args);
+            option(&merged, "expected_format", "--expect-format", &mut args);
             flag(&merged, "overwrite", "--overwrite", &mut args);
             flag(&merged, "resume", "--resume", &mut args);
-            if let Some(mirrors) = merged.get("mirrors") {
-                let values = string_values(Some(mirrors));
-                if !values.is_empty() {
-                    args.push("--try-mirrors".to_string());
-                    args.extend(values);
-                }
+            let mirrors = string_values(merged.get("fallback_urls"));
+            if !mirrors.is_empty() {
+                args.push("--try-mirrors".to_string());
+                args.extend(mirrors);
             }
-            cli_json_output(&args, false)
+            cli_output(&args)
         }
         "locate_pdf" => {
             let doi = string_arg(&merged, "doi");
@@ -435,7 +277,10 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             flag(&merged, "structured", "--structured", &mut args);
             flag(&merged, "store", "--store", &mut args);
             flag(&merged, "include_images", "--include-images", &mut args);
-            cli_json_output(&args, true)
+            if merged.get("prefer_jats").and_then(Value::as_bool) == Some(false) {
+                args.push("--no-prefer-jats".to_string());
+            }
+            cli_output(&args)
         }
         "discover_resources" => {
             let raw = string_arg(&merged, "url");
@@ -447,7 +292,7 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
             if failed {
                 return (text, failed);
             }
-            cli_json_output(&["discover".to_string(), raw], false)
+            cli_output(&["discover".to_string(), raw])
         }
         "crawl" => {
             let raw = string_arg(&merged, "root_url");
@@ -457,7 +302,17 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
                     option(&merged, "query", "--query", &mut args);
                     option(&merged, "max_depth", "--max-depth", &mut args);
                     option(&merged, "max_pages", "--max-pages", &mut args);
-                    cli_json_output(&args, false)
+                    flag(&merged, "same_host", "--same-host", &mut args);
+                    option(&merged, "min_score", "--min-score", &mut args);
+                    flag(&merged, "excerpts", "--excerpts", &mut args);
+                    flag(&merged, "search_prior", "--search-prior", &mut args);
+                    let seeds = string_values(merged.get("seed_urls"));
+                    if !seeds.is_empty() {
+                        args.push("--seed-urls".to_string());
+                        args.extend(seeds);
+                    }
+                    option(&merged, "use_smart", "--use-smart", &mut args);
+                    cli_output(&args)
                 }
                 Err(error) => {
                     let message = error
@@ -492,6 +347,11 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
                 );
             }
             let mut args = vec!["cite".to_string(), "--style".to_string(), style];
+            flag(&merged, "enrich", "--enrich", &mut args);
+            if merged.get("dedupe").and_then(Value::as_bool) == Some(false) {
+                args.push("--no-dedupe".to_string());
+            }
+            flag(&merged, "from_pdf", "--from-pdf", &mut args);
             let results = merged.get("results").cloned().unwrap_or(Value::Null);
             if let Value::Array(items) = results {
                 for item in items {
@@ -520,18 +380,6 @@ fn dispatch_tool(name: &str, arguments: &Value) -> (String, bool) {
         }
         other => (format!("Unknown tool: {other}"), true),
     }
-}
-
-fn fetch_results(url: &str, max_results: usize) -> Vec<Value> {
-    let body = match fetch_text(url) {
-        Ok(body) => body,
-        Err(_) => return Vec::new(),
-    };
-    duckduckgo_results(&body, max_results)
-}
-
-fn fetch_text(url: &str) -> Result<String, String> {
-    gossamer::discovery::fetch_text(url, 20.0).map(|(body, _)| body)
 }
 
 fn handle_request(request: &Value) -> Option<Value> {

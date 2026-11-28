@@ -138,3 +138,18 @@ def test_invalid_fetch_mode_env_is_a_clean_error(monkeypatch, capsys, tmp_path):
     err = capsys.readouterr().err
     assert "gossamer: error:" in err
     assert "fetch_mode" in err
+
+
+def test_negative_max_results_is_a_clean_error(monkeypatch, capsys):
+    class Stub:
+        def web_search(self, query, **kwargs):  # pragma: no cover - guard runs first
+            return json.dumps({"results": []})
+
+        def research_by_category(self, query, **kwargs):  # pragma: no cover
+            return json.dumps({"results": []})
+
+    monkeypatch.setattr(cli, "_build_toolbox", lambda args: Stub())
+    for command in (["search", "q", "--search-only"], ["research", "q"]):
+        assert main([*command, "--max-results", "-1"]) == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload == {"error": "max_results must be >= 0"}

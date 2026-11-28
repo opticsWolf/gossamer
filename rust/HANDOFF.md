@@ -43,16 +43,49 @@ Fallback rate: 0.0% (0/74 cases answered by the original)
   budget fitting; crawl delegates page fetches to the inspect subprocess.
 - Cache stores are cross-language compatible (Python and Rust read each other's
   page and document entries).
+- `GOSSAMER_ALLOW_PRIVATE` (and legacy `STITCH_WEB_RESEARCHER_ALLOW_PRIVATE`)
+  is honored by every Rust SSRF gate, including prepared URLs, downloads,
+  crawl seeds, discovery sitemap probes, and resource storage.
+- Inspect, batch, and discover enforce config `max_response_bytes` on page
+  fetches and reproduce Python's size-cap errors, including the browser
+  fallback error text on `auto`.
+- Crawl skips root link expansion at `--max-depth 0`, clamps the frontier to
+  Python's 5-depth/50-page caps, matches batch's detailed fetch errors, and
+  emits Python's already-visited / robots / in-flight batch warnings.
+- Download treats an existing empty file with `--resume` like Python: the
+  request runs and a successful response reports `file_exists` without
+  replacing the file.
+- MCP tool calls delegate to the same CLI bodies, preserving Python's
+  compact-vs-pretty payloads and LF text, honoring SSRF/config/env settings,
+  forwarding every schema option (use_smart, filters, providers, crawl flags,
+  citation flags, fallback mirrors, prefer_jats), and normalizing child CRLF
+  back to the LF strings Python's MCP server returns.
+- `research "" --filter ...` now emits Python's query-less validation envelope.
+- Startup validates `fetch_mode`, `candidate_cap`, `max_concurrency`, and
+  `max_response_bytes` with Python's exact messages, so malformed config/env
+  fails before any command body runs.
+- `search` and `research` reject negative `--max-results` before dispatch with
+  `{"error": "max_results must be >= 0"}` and exit 1; zero still follows the
+  provider-specific default/unbounded behavior. The same guard is in the
+  Python service/tool methods and MCP tool calls.
+- The Python MCP server's live `tools/list` is compared field-for-field with
+  the frozen Rust fixture, and captured DuckDuckGo HTML fixtures exercise the
+  Rust result/redirect/empty-page parser without live network access.
 
 - HTTP transport overrides (`http_proxy`, `user_agent`, `custom_headers`,
   `cookies` from env or `gossamer.json`) now configure the shared Rust client.
 - Extract normalizes bare domains/DOIs after the JATS attempt and reproduces
   Python's httpx-style JATS fetch warnings.
 
-Known non-parity deltas: live DuckDuckGo scrape results differ from the `ddgs`
-library; `search --search-only --max-results -1` still returns an empty list
-instead of Python's traceback; and structured URL extraction names its temporary
-PDF from the URL rather than a random `NamedTemporaryFile` suffix.
+Known non-parity deltas: live DuckDuckGo scrape results can differ from the
+`ddgs` library (shape/contract checks and static parser fixtures cover this);
+structured URL extraction names its temporary PDF deterministically from the
+URL rather than a random `NamedTemporaryFile` suffix; and transport-level
+connection failures use reqwest's wording instead of httpx's localized
+`OSError` text (the `network_error`/`timeout`/`dns_error` classifications still
+match; the parity harness normalizes both kinds of noise). Full MCP
+`tools/list` serialization can differ in whitespace/key order, so the gate
+compares parsed JSON while retaining the frozen fixture as the oracle.
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
 replay shim `rust/original_entry.py`, not something to port. Python remains only as the behavioral
@@ -69,9 +102,7 @@ oracle and thin compatibility adapters.
 - Shared errors: [port-error](port-error) — `ErrorKind` / `PortError`
 - Pure core: [core](core) — crates.io name `gossamer-web`, internal lib `gossamer`, no PyO3
 - Front door: [app](app) — glue in `src/units/`
-- App cases: [app-cases](app-cases) — 32 deterministic CLI/script cases, including six
-  review-fix regressions for malformed `skills install` args and mixed supported/unsupported
-  verify targets
+- App cases: [app-cases](app-cases) — 75 deterministic CLI/script replay cases
 - Fixtures: [fixtures](fixtures) — locks and wheel/sdist artifacts used by record/replay
 - Research: [skills-unit-risks.md](research/skills-unit-risks.md),
   [scripts-unit-risks.md](research/scripts-unit-risks.md),
@@ -91,7 +122,7 @@ oracle and thin compatibility adapters.
   `content_hash` (`M-CANONICAL-DOCS`), and made percent-escape panics include the offending bytes
   (`M-PANIC-MESSAGE`).
 - The Rust clone venv now has the `documents` and `mcp` extras installed. Full
-  `pytest -q -p no:cacheprovider` passes: 11391 passed / 36 skipped.
+  `pytest -q -p no:cacheprovider` passes: 11486 passed / 36 skipped.
 - `audit-cargo` parses Cargo.lock in Rust; the OSV HTTP query still falls back to Python. This is
   intentional for wave 0.
 - PyO3 `check` remains faithful to the original non-Path error contract. Real archive checking is

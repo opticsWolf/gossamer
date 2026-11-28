@@ -360,6 +360,9 @@ def main(argv=None) -> int:
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"gossamer: error: {exc}", file=sys.stderr)
         return 1
+    if args.command in {"search", "research"} and args.max_results < 0:
+        print(json.dumps({"error": "max_results must be >= 0"}, indent=2))
+        return 1
     commands = {
         "search": lambda: toolbox.web_search(
             args.query, search_only=args.search_only,

@@ -453,8 +453,8 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         return unsupported();
     };
     let query = parsed.value("query").map(str::to_string);
-    let max_depth = parsed.int("max_depth").unwrap_or(3).clamp(0, 10) as usize;
-    let max_pages = parsed.int("max_pages").unwrap_or(15).clamp(1, 100) as usize;
+    let max_depth = parsed.int("max_depth").unwrap_or(3).clamp(0, 5) as usize;
+    let max_pages = parsed.int("max_pages").unwrap_or(15).clamp(1, 50) as usize;
     let min_score = parsed.float("min_score").unwrap_or(0.05).max(0.0);
     let same_host = parsed.flag("same_host");
     let excerpts = parsed.flag("excerpts");
@@ -564,25 +564,84 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let idf = corpus.idf();
     let corpus_n = corpus.len();
     let mut context_cache: HashMap<String, Vec<String>> = HashMap::new();
-    for (link_url, raw_anchor) in &links {
-        let Ok(candidate) = Url::parse(link_url) else {
-            continue;
-        };
-        if !matches!(candidate.scheme(), "http" | "https") {
-            continue;
-        }
-        if seen.iter().any(|value| value == link_url) {
-            continue;
-        }
-        let anchor = raw_anchor.trim();
-        if crawl_is_document(link_url) {
-            let key = runtime.identity_key(link_url);
-            if !doc_seen.insert(key) {
+    if max_depth >= 1 {
+        for (link_url, raw_anchor) in &links {
+            let Ok(candidate) = Url::parse(link_url) else {
+                continue;
+            };
+            if !matches!(candidate.scheme(), "http" | "https") {
                 continue;
             }
-            documents_total += 1;
-            let label = crawl_label(link_url, anchor, None);
-            let doc_score = crawl_score(
+            if seen.iter().any(|value| value == link_url) {
+                continue;
+            }
+            let anchor = raw_anchor.trim();
+            if crawl_is_document(link_url) {
+                let key = runtime.identity_key(link_url);
+                if !doc_seen.insert(key) {
+                    continue;
+                }
+                documents_total += 1;
+                let label = crawl_label(link_url, anchor, None);
+                let doc_score = crawl_score(
+                    &label,
+                    &terms,
+                    &page_terms,
+                    Some(&idf),
+                    Some(&base_terms),
+                    corpus_n,
+                    crawl_path_prior(link_url),
+                );
+                if doc_score < min_score {
+                    documents_below_score += 1;
+                    note_skipped(
+                        &mut skipped,
+                        &mut skip_seen,
+                        &mut skipped_total,
+                        link_url,
+                        "below min score",
+                    );
+                } else if documents.len() < 30 {
+                    documents.push(json!({
+                        "url": link_url,
+                        "anchor": anchor,
+                        "score": round3(doc_score),
+                    }));
+                }
+                continue;
+            }
+            if same_host && root_host.as_deref() != candidate.host_str() {
+                note_skipped(
+                    &mut skipped,
+                    &mut skip_seen,
+                    &mut skipped_total,
+                    link_url,
+                    "external host",
+                );
+                continue;
+            }
+            let path = candidate.path().to_ascii_lowercase();
+            if let Some(reason) = skip_reason(&path) {
+                note_skipped(
+                    &mut skipped,
+                    &mut skip_seen,
+                    &mut skipped_total,
+                    link_url,
+                    reason,
+                );
+                continue;
+            }
+            let context = if anchor.is_empty() || anchor == "(untitled)" {
+                None
+            } else if let Some(context) = context_cache.get(anchor) {
+                Some(context.clone())
+            } else {
+                let context = crawl_anchor_context(Some(&full), Some(anchor), 50, 8);
+                context_cache.insert(anchor.to_string(), context.clone());
+                Some(context)
+            };
+            let label = crawl_label(link_url, anchor, context);
+            let score = crawl_score(
                 &label,
                 &terms,
                 &page_terms,
@@ -591,8 +650,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 corpus_n,
                 crawl_path_prior(link_url),
             );
-            if doc_score < min_score {
-                documents_below_score += 1;
+            if score < min_score {
                 note_skipped(
                     &mut skipped,
                     &mut skip_seen,
@@ -600,76 +658,20 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                     link_url,
                     "below min score",
                 );
-            } else if documents.len() < 30 {
-                documents.push(json!({
-                    "url": link_url,
-                    "anchor": anchor,
-                    "score": round3(doc_score),
-                }));
+                continue;
             }
-            continue;
+            seen.push(link_url.clone());
+            queue.push((
+                score * 0.7_f64.powi(1),
+                seq,
+                1,
+                link_url.clone(),
+                anchor.to_string(),
+            ));
+            seq += 1;
         }
-        if same_host && root_host.as_deref() != candidate.host_str() {
-            note_skipped(
-                &mut skipped,
-                &mut skip_seen,
-                &mut skipped_total,
-                link_url,
-                "external host",
-            );
-            continue;
-        }
-        let path = candidate.path().to_ascii_lowercase();
-        if let Some(reason) = skip_reason(&path) {
-            note_skipped(
-                &mut skipped,
-                &mut skip_seen,
-                &mut skipped_total,
-                link_url,
-                reason,
-            );
-            continue;
-        }
-        let context = if anchor.is_empty() || anchor == "(untitled)" {
-            None
-        } else if let Some(context) = context_cache.get(anchor) {
-            Some(context.clone())
-        } else {
-            let context = crawl_anchor_context(Some(&full), Some(anchor), 50, 8);
-            context_cache.insert(anchor.to_string(), context.clone());
-            Some(context)
-        };
-        let label = crawl_label(link_url, anchor, context);
-        let score = crawl_score(
-            &label,
-            &terms,
-            &page_terms,
-            Some(&idf),
-            Some(&base_terms),
-            corpus_n,
-            crawl_path_prior(link_url),
-        );
-        if score < min_score {
-            note_skipped(
-                &mut skipped,
-                &mut skip_seen,
-                &mut skipped_total,
-                link_url,
-                "below min score",
-            );
-            continue;
-        }
-        seen.push(link_url.clone());
-        queue.push((
-            score * 0.7_f64.powi(1),
-            seq,
-            1,
-            link_url.clone(),
-            anchor.to_string(),
-        ));
-        seq += 1;
+        trim_queue(&mut queue, &mut queue_dropped);
     }
-    trim_queue(&mut queue, &mut queue_dropped);
 
     let root_terms = crawl_topic_words(Some(&format!("{full} {root_title}")), 40);
     for seed in &seeds {
@@ -686,7 +688,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 continue;
             }
         };
-        if let Err(error) = check_url(&candidate, false, None) {
+        if let Err(error) = check_url(&candidate, gossamer::ssrf::env_allow_private(), None) {
             pyeprintln!("Blocked non-public URL {candidate}: {}", error.message());
             note_skipped(
                 &mut skipped,

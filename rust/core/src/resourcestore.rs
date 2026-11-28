@@ -63,19 +63,7 @@ pub fn store_url_decision(
     if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("ftp://")) {
         return None;
     }
-    let allow_private = [
-        "GOSSAMER_ALLOW_PRIVATE",
-        "STITCH_WEB_RESEARCHER_ALLOW_PRIVATE",
-    ]
-    .iter()
-    .any(|name| {
-        std::env::var(name).is_ok_and(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-    });
+    let allow_private = crate::ssrf::env_allow_private();
     if !allow_private && crate::ssrf::check_url(url, false, None).is_err() {
         return None;
     }

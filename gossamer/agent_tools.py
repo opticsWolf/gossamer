@@ -601,6 +601,8 @@ class WebResearcherToolbox:
         Provider failures keep ``results`` as a list and add a top-level
         ``error`` field.
         """
+        if max_results < 0:
+            return json.dumps({"error": "max_results must be >= 0"}, indent=2)
         if providers == []:
             providers = None
         if not (query or "").strip():

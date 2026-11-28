@@ -189,7 +189,7 @@ fn research(
         let Ok(url) = normalize_url(Some(raw_url), None, None) else {
             continue;
         };
-        if gossamer::ssrf::check_url(&url, false, None).is_err() {
+        if gossamer::ssrf::check_url(&url, gossamer::ssrf::env_allow_private(), None).is_err() {
             continue;
         }
         fetched += 1;
@@ -301,6 +301,10 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let search_only = parsed.flag("search_only");
     let max_results = parsed.int("max_results").unwrap_or(5);
     let use_smart = parsed.value("use_smart").unwrap_or("auto");
+    if max_results < 0 {
+        pyprintln!("{}", pretty(&json!({"error": "max_results must be >= 0"})));
+        return ExitCode::FAILURE;
+    }
     if !search_only {
         let depth = parsed.int("depth").unwrap_or(5);
         return research(

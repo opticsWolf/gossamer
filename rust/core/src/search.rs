@@ -92,3 +92,50 @@ pub fn duckduckgo_results(html: &str, max_results: usize) -> Vec<Value> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::duckduckgo_results;
+
+    const STANDARD: &str = include_str!("../../fixtures/ddg-standard.html");
+    const EMPTY: &str = include_str!("../../fixtures/ddg-empty.html");
+
+    #[test]
+    fn parses_captured_duckduckgo_results() {
+        let results = duckduckgo_results(STANDARD, 5);
+        assert_eq!(results.len(), 5);
+        assert_eq!(results[0]["url"], "https://rust-lang.org/");
+        assert_eq!(results[0]["title"], "Rust Programming Language");
+        assert!(!results[0]["snippet"].as_str().unwrap().is_empty());
+        assert!(results.iter().all(|item| {
+            item["title"].as_str().is_some_and(|text| !text.is_empty())
+                && item["url"]
+                    .as_str()
+                    .is_some_and(|url| url.starts_with("http"))
+                && item["snippet"]
+                    .as_str()
+                    .is_some_and(|text| !text.is_empty())
+        }));
+    }
+
+    #[test]
+    fn decodes_duckduckgo_redirect_links() {
+        let results = duckduckgo_results(STANDARD, 5);
+        assert!(
+            results
+                .iter()
+                .all(|item| !item["url"].as_str().unwrap().contains("duckduckgo.com/l/"))
+        );
+    }
+
+    #[test]
+    fn empty_duckduckgo_page_yields_no_results() {
+        assert!(duckduckgo_results(EMPTY, 5).is_empty());
+    }
+
+    #[test]
+    fn duckduckgo_result_cap_is_enforced() {
+        assert_eq!(duckduckgo_results(STANDARD, 2).len(), 2);
+        assert_eq!(duckduckgo_results(STANDARD, 0).len(), 0);
+    }
+}

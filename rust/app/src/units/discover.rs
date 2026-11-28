@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use gossamer::cli_args::Parsed;
 use gossamer::discovery::{fetch_text, find_feed_links};
 use gossamer::document::prepare_url;
+use gossamer::fetch::fetch_html_full_single;
 use gossamer::jsonfmt::pretty_record;
 use gossamer::jsonfmt::py_dumps_pretty;
 use gossamer::runtime::RuntimeState;
@@ -68,13 +69,28 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     }
 
     let root = site_root(&url);
-    let feeds: Vec<Value> = match fetch_text(&url, 30.0) {
-        Ok((body, final_url)) => find_feed_links(&body, &final_url),
-        Err(error) => {
+    let max_response_bytes = crate::units::settings::int(
+        parsed,
+        "max_response_bytes",
+        "GOSSAMER_MAX_RESPONSE_BYTES",
+        5 * 1024 * 1024,
+    )
+    .max(0) as usize;
+    let feeds: Vec<Value> = match fetch_html_full_single(&url, 500, max_response_bytes) {
+        Ok((html, _markdown, _links, _removed, meta)) => {
+            let final_url = if meta.1.is_empty() {
+                url.clone()
+            } else {
+                meta.1
+            };
+            find_feed_links(&html, &final_url)
+        }
+        Err(_) => {
+            pyeprintln!("Discovery failed for {url}: browser_oxide is not installed");
             pyprintln!(
                 "{}",
                 py_dumps_pretty(&json!({
-                    "error": format!("Discovery failed: {error}"), "url": url
+                    "error": "Discovery failed: browser_oxide is not installed", "url": url
                 }))
             );
             return ExitCode::SUCCESS;
@@ -86,7 +102,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let mut truncated = false;
     if let Some(root) = root.clone() {
         let first = format!("{}/sitemap.xml", root.trim_end_matches('/'));
-        if check_url(&first, false, None).is_ok() {
+        if check_url(&first, gossamer::ssrf::env_allow_private(), None).is_ok() {
             let mut queue: VecDeque<(String, usize)> = VecDeque::from([(first, 0usize)]);
             let mut seen = HashSet::new();
             let mut fetched = 0usize;
@@ -94,7 +110,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 if fetched >= 10 || !seen.insert(sitemap_url.clone()) {
                     break;
                 }
-                if check_url(&sitemap_url, false, None).is_err() {
+                if check_url(&sitemap_url, gossamer::ssrf::env_allow_private(), None).is_err() {
                     continue;
                 }
                 fetched += 1;

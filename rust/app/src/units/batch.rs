@@ -174,6 +174,16 @@ fn candidate_cap_for(parsed: &Parsed) -> i64 {
     crate::units::settings::int(parsed, "candidate_cap", "GOSSAMER_CANDIDATE_CAP", 500).max(1)
 }
 
+fn max_response_for(parsed: &Parsed) -> usize {
+    crate::units::settings::int(
+        parsed,
+        "max_response_bytes",
+        "GOSSAMER_MAX_RESPONSE_BYTES",
+        5 * 1024 * 1024,
+    )
+    .max(0) as usize
+}
+
 fn build_entry(
     runtime: &RuntimeState,
     url: &str,
@@ -198,11 +208,16 @@ fn build_entry(
     if sleep > 0.0 {
         thread::sleep(Duration::from_secs_f64(sleep));
     }
-    let Ok((html, full, links, _removed, meta)) =
-        fetch_html_full_single(url, candidate_cap_for(parsed) as usize, 50_000_000)
-    else {
-        runtime.release(url);
-        return json!({"url": url, "error": "fetch failed"});
+    let (html, full, links, _removed, meta) = match fetch_html_full_single(
+        url,
+        candidate_cap_for(parsed) as usize,
+        max_response_for(parsed),
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            runtime.release(url);
+            return json!({"url": url, "error": error.to_string()});
+        }
     };
     let (status, final_url, content_type) = meta;
     let final_url = if final_url.is_empty() {
@@ -287,8 +302,16 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             if strategy != "auto" {
                 runtime.forget_visited(&url);
             }
-            if runtime.is_visited(&url) || !runtime.robots_allows(&url, now) || !runtime.claim(&url)
-            {
+            if runtime.is_visited(&url) {
+                pyeprintln!("Skipping already-visited URL in batch: {url}");
+                continue;
+            }
+            if !runtime.robots_allows(&url, now) {
+                pyeprintln!("Skipping robots-disallowed URL in batch: {url}");
+                continue;
+            }
+            if !runtime.claim(&url) {
+                pyeprintln!("URL already in flight: {url}");
                 continue;
             }
         }
