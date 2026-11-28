@@ -62,10 +62,14 @@ jobs:
 
       - name: Build sidecar
         working-directory: rust/browser-sidecar
+        env:
+          CARGO_TARGET_DIR: target
         run: cargo build --release --locked
 
       - name: Smoke check
         working-directory: rust/browser-sidecar
+        env:
+          CARGO_TARGET_DIR: target
         shell: bash
         run: |
           test -f "${{ matrix.binary }}"
