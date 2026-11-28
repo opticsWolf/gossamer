@@ -133,8 +133,6 @@ class SearchService:
         max_results: int = 5,
         provider: Optional[str] = None,
     ) -> str:
-        if max_results < 0:
-            return json.dumps({"error": "max_results must be >= 0"}, indent=2)
         """
         Search the web using a specific provider or the default.
 
