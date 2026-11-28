@@ -654,7 +654,55 @@ on U1 and existing parser kernels.
 - ADR-018 records the decision not to add a `text-links` CLI command.
 - ADR-016 fixes the MSRV at Rust 1.97; Linux CI validates the pure app.
 - PyO3 wrappers and harness crates remain only as the replay oracle, off the
-  shipped launcher path. Removing them is a separate cleanup after oracle retirement.
+  shipped launcher path. Removing them is tracked as U11, a post-acceptance
+  cleanup rather than a port gap.
+
+### U11. PyO3 oracle/compatibility wrapper retirement
+
+**Status:** deferred; cleanup/decision debt, not a functional port gap.
+
+**Current state:**
+
+- 24 PyO3 crates.
+- 22 Python modules with generated Rust delegation blocks.
+- 24 `python/*/__init__.py` compatibility shims.
+- The production launcher already uses the Rust binary.
+- Python wrappers remain for the parity oracle and Python library compatibility.
+
+#### When to clean up
+
+Do not remove them until all of these are true:
+
+1. The pure Rust app has passed production acceptance.
+2. The Python package is formally declared oracle-only, not a supported runtime API.
+3. The `test_rust_parity_*` suite has been migrated to Rust CLI tests or
+   intentionally retired.
+4. No external consumer depends on the Python library API.
+5. At least one stable release has shipped without the Python fallback path.
+
+#### How to retire, if that is the decision
+
+1. Remove generated `rust-anything` blocks from `gossamer/*.py`.
+2. Delete the PyO3 crates and `python/` shims, or move them to an archive branch.
+3. Remove `pyo3`, `maturin`, and extension-building packaging from
+   `pyproject.toml`.
+4. Rewrite parity tests to invoke `gossamer.exe` / `gossamer-mcp.exe`.
+5. Keep the pure Python source only if it remains a supported reference
+   implementation; otherwise archive it too.
+6. Run full pytest, replay, and `cutover.sh --check`.
+
+#### If they are kept
+
+Treat them as oracle infrastructure:
+
+- Add a regeneration check that preserves `_service_*` names and
+  `port_message` mappings.
+- Forbid new business logic in wrappers.
+- Document that they are not on the production path.
+- Run the oracle suite in CI.
+
+**Recommendation:** defer removal; add a regeneration guard now. Removing them
+today would weaken the parity oracle without improving the shipped app.
 
 ---
 
@@ -671,7 +719,11 @@ U1 live provider dispatch
               → U8 research fan-out
                 → U9 resource/OA/citations integration
                   → U10 final cutover
+                    → production acceptance
+                      → U11 wrapper-retirement decision (conditional)
 ```
+
+U11 is post-acceptance cleanup; it does not block U10 or feature parity.
 
 Rationale: U1 is highest fan-in and unblocks CLI search/research and MCP.
 U2 unblocks structured inspect and batch. U3 depends on U2 for fetched HTML.

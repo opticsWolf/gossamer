@@ -910,6 +910,8 @@ Not in the ordered list: `crawl.py`, `downloader.py`, `discovery.py`, `liveness.
 - Remaining outside the shipped app: optional browser transport/fallback backend
   (explicitly default-off until SSRF/interception exists) and PyO3 harness crates
   retained solely for the Python oracle. They are not on the production launcher path.
+  The PyO3 retirement decision and sequence are tracked in
+  [REMAINING_PORT_PLAN.md](REMAINING_PORT_PLAN.md) U11.
 - Verification: 74 replay cases; Python suite is the behavioral oracle at 11,486 passing tests.
 
 ## Open questions

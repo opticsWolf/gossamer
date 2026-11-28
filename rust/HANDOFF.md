@@ -89,7 +89,8 @@ compares parsed JSON while retaining the frozen fixture as the oracle.
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
 replay shim `rust/original_entry.py`, not something to port. Python remains only as the behavioral
-oracle and thin compatibility adapters.
+oracle and thin compatibility adapters. PyO3 wrappers are intentionally retained for now; the
+retirement criteria and sequence are in [REMAINING_PORT_PLAN.md](REMAINING_PORT_PLAN.md) U11.
 
 ## Files that matter now
 
