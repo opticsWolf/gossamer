@@ -38,15 +38,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            nasm \
-            clang \
-            libclang-dev \
-            llvm-dev \
-            cmake \
-            ninja-build \
-            perl \
-            pkg-config
+          sudo apt-get install -y nasm clang libclang-dev llvm-dev cmake ninja-build perl pkg-config libfreetype6-dev libfontconfig1-dev libfontconfig-dev
           echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> "$GITHUB_ENV"
 
       - name: Install native build dependencies (Windows)
