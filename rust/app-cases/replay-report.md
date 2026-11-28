@@ -1,6 +1,6 @@
 # App replay
 
-Build: `rust/app/target/debug/gossamer.exe`
+Build: `D:/User/Documents/Rust/gossamer/rust/app/target/release/gossamer.exe`
 
 Passed: 74/74
 

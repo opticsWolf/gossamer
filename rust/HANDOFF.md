@@ -1,4 +1,4 @@
-# Handoff — 2026-11-22
+# Handoff — 2026-11-28
 
 ## Where the port stands
 
@@ -15,18 +15,39 @@
 | `gossamer/text_links.py` → `rust/text-links-rs` | passed | 211/211 | 109 Rust LOC / 46 Python (2.4x); not front-door wired |
 | `benchmarks.py` → `rust/benchmarks-rs` | passed | 4/4 | all modes in Rust; timing fields normalized in app replay |
 | `gossamer/cache.py` → `gossamer::cache` | passed | 3 app cases | caller-supplied time; deterministic cache fixture |
-| `gossamer/document.py` → `gossamer::document` | passed | 2 app cases | URL rejection for `inspect`/`batch`; successful fetches fall back |
+| `gossamer/document.py` → `gossamer::document` | passed | app cases | structured document payloads and URL rejection |
 | `research_categories` table → `gossamer::taxonomy` | passed | 1 app case | static pretty-printed taxonomy |
-| `gossamer/search.py` → `gossamer::search` | passed | 1 app case | unknown provider payload; live searches fall back |
+| `gossamer/search.py` → `gossamer::search` | passed | app cases | unknown provider payload and live DDG parsing |
 | `gossamer/mcp_server.py` → `gossamer::mcp` | passed | schema fixture | frozen 12-tool list compared by Rust and Python tests |
 | `gossamer/cli.py` → `gossamer::cli_help` | passed | 17 fixtures + replay | help, argparse errors, and CLI framing owned by Rust |
 
 Front door replay:
 
 ```text
-43/43 cases passed
-Fallback rate: 0.0% (0/43 cases answered by the original)
+74/74 cases passed
+Fallback rate: 0.0% (0/74 cases answered by the original)
 ```
+
+## Parity hardening (2026-11-28)
+
+- CLI stdout/stderr and MCP stdio now byte-match the Python oracle on Windows,
+  including text-stream CRLF translation; non-Windows keeps LF.
+- `argparse` parsing is frozen in `cli_args.json`; extras, `--`, abbreviations,
+  negative numbers and missing-argument errors follow Python's parser.
+- `settings.rs` resolves explicit flag > `GOSSAMER_CONFIG` > `./gossamer.json` >
+  `~/.gossamer/config.json` and warns once for unreadable config files.
+- `guard.rs` mirrors the off-by-default prompt-injection guard, report block,
+  annotate framing, and withheld envelopes for inspect/extract/batch/search.
+- Inspect/batch/extract use config `candidate_cap`, `max_links`, content budgets,
+  model-aware token counts, markdown link absolutization, and structured-payload
+  budget fitting; crawl delegates page fetches to the inspect subprocess.
+- Cache stores are cross-language compatible (Python and Rust read each other's
+  page and document entries).
+
+Known non-parity deltas are live-only: DuckDuckGo scrape results differ from the
+`ddgs` library, JATS resolver failures do not reproduce Python's logger text, and
+structured URL extraction names its temporary PDF from the URL rather than a
+random `NamedTemporaryFile` suffix.
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
 replay shim `rust/original_entry.py`, not something to port; the Python orchestration modules are
