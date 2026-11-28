@@ -21,7 +21,7 @@ mod inspect;
 mod locate_pdf;
 mod research;
 mod search;
-mod settings;
+pub mod settings;
 mod skills;
 mod verify_bundled_assets;
 

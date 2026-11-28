@@ -90,6 +90,53 @@ pub fn value(parsed: &Parsed, key: &str) -> Option<Value> {
     config(parsed)?.get(key).cloned()
 }
 
+/// Apply process-wide HTTP transport overrides from env/config.
+pub fn configure_http(parsed: &Parsed) {
+    let file = config(parsed).unwrap_or(Value::Null);
+    let env_text = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+    let file_text = |key: &str| {
+        file.get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let proxy = env_text("GOSSAMER_HTTP_PROXY").or_else(|| file_text("http_proxy"));
+    let user_agent = env_text("GOSSAMER_USER_AGENT").or_else(|| file_text("user_agent"));
+    let headers = env_dict("GOSSAMER_CUSTOM_HEADERS").unwrap_or_else(|| {
+        file.get("custom_headers")
+            .and_then(dict_pairs)
+            .unwrap_or_default()
+    });
+    let cookies = env_dict("GOSSAMER_COOKIES")
+        .unwrap_or_else(|| file.get("cookies").and_then(dict_pairs).unwrap_or_default());
+    gossamer::fetch::configure_http(proxy, user_agent, headers, cookies);
+}
+
+fn env_dict(name: &str) -> Option<Vec<(String, String)>> {
+    let raw = std::env::var(name).ok()?;
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let value: Value = serde_json::from_str(&raw).ok()?;
+    dict_pairs(&value)
+}
+
+fn dict_pairs(value: &Value) -> Option<Vec<(String, String)>> {
+    let object = value.as_object()?;
+    Some(
+        object
+            .iter()
+            .map(|(key, value)| {
+                let text = value
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| value.to_string());
+                (key.clone(), text)
+            })
+            .collect(),
+    )
+}
+
 /// Cache directory: flag > env > `cache_dir` in the config file > default.
 pub fn cache_dir(parsed: &Parsed) -> String {
     if let Some(value) = parsed.cache_dir().filter(|value| !value.is_empty()) {

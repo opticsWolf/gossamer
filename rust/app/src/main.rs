@@ -63,10 +63,15 @@ fn main() -> ExitCode {
         return code;
     }
     match gossamer::cli_args::parse(&argv) {
-        Outcome::Run(parsed) => units::dispatch(&parsed).unwrap_or_else(|| {
-            pyeprintln!("gossamer: no handler for `{}`", parsed.command);
-            ExitCode::from(2)
-        }),
+        Outcome::Run(parsed) => {
+            if parsed.command != "skills" {
+                units::settings::configure_http(&parsed);
+            }
+            units::dispatch(&parsed).unwrap_or_else(|| {
+                pyeprintln!("gossamer: no handler for `{}`", parsed.command);
+                ExitCode::from(2)
+            })
+        }
         Outcome::Help(key) => units::cli::emit(&key),
         Outcome::Error { stderr, status } => {
             pyeprint!("{stderr}");
