@@ -19,6 +19,7 @@ path = "src/mcp.rs"
 [dependencies]
 gossamer = { package = "gossamer-web", path = "../core" }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "unbounded_depth"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 url = "2"
 audit-cargo-rs = { path = "../audit-cargo-rs", default-features = false }
 benchmarks-rs = { path = "../benchmarks-rs", default-features = false }

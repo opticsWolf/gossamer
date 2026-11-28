@@ -1,0 +1,105 @@
+name: Browser sidecar
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "browser-sidecar-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: gossamer-browser-linux-x86_64
+            binary: rust/app/target/release/gossamer-browser
+            binary_name: gossamer-browser
+          - os: windows-latest
+            artifact: gossamer-browser-windows-x86_64
+            binary: rust/app/target/release/gossamer-browser.exe
+            binary_name: gossamer-browser.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            nasm \
+            clang \
+            libclang-dev \
+            llvm-dev \
+            cmake \
+            ninja-build \
+            perl \
+            pkg-config
+          echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> "$GITHUB_ENV"
+
+      - name: Install native build dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm llvm --no-progress -y
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/app/target
+          key: ${{ runner.os }}-browser-sidecar-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-browser-sidecar-
+
+      - name: Build sidecar
+        run: cargo build --manifest-path rust/Cargo.toml -p gossamer-browser --release --locked
+
+      - name: Smoke check
+        shell: bash
+        run: |
+          test -f "${{ matrix.binary }}"
+          echo '{}' | "${{ matrix.binary }}" > /tmp/gossamer-browser-smoke.json || true
+          grep -q '"ok":false' /tmp/gossamer-browser-smoke.json
+          cat /tmp/gossamer-browser-smoke.json
+
+      - name: Upload sidecar
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Attach sidecars to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: sidecars
+          merge-multiple: true
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sidecars/*

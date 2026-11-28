@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "app",
+  "browser-sidecar",
   "core",
   "audit-cargo-rs",
   "benchmarks-rs",

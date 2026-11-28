@@ -68,10 +68,11 @@ def main(argv: list[str]) -> int:
         print(f"OSV query failed: {exc}", file=sys.stderr)
         return 2
 
-    vulns_by_index = result.get("vulns") or []
+    results = result.get("results") or []
     hits = 0
     for index, (name, version) in enumerate(packages):
-        vulns = vulns_by_index[index] if index < len(vulns_by_index) else None
+        entry = results[index] if index < len(results) else None
+        vulns = entry.get("vulns") if isinstance(entry, dict) else None
         if not vulns:
             continue
         for vuln in vulns:
