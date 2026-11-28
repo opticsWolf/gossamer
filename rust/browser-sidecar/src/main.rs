@@ -55,7 +55,7 @@ fn default_profile_name() -> &'static str {
 }
 
 fn profile(name: Option<&str>) -> Result<StealthProfile, String> {
-    let name = name.unwrap_or_else(default_profile_name);
+    let name = name.unwrap_or(default_profile_name());
     let profile = match name {
         "chrome" | "chrome_148_windows" => browser_oxide::stealth::presets::chrome_148_windows(),
         "chrome_148_macos" => browser_oxide::stealth::presets::chrome_148_macos(),
