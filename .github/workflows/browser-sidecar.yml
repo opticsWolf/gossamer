@@ -3,6 +3,8 @@ name: Browser sidecar
 on:
   workflow_dispatch:
   push:
+    branches:
+      - dev_rustify
     tags:
       - "browser-sidecar-v*"
 
