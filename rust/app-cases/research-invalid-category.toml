@@ -1,4 +1,4 @@
 bin.name = "gossamer"
 args = ["research", "x", "--category", "bogus"]
-status.code = 0
+status.code = 1
 fs.sandbox = true

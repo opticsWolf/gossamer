@@ -17,7 +17,6 @@ name = "gossamer-mcp"
 path = "src/mcp.rs"
 
 [dependencies]
-clap = "4"
 gossamer = { package = "gossamer-web", path = "../core" }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip", "unbounded_depth"] }
 url = "2"

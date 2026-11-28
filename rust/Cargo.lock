@@ -202,7 +202,6 @@ version = "0.1.0"
 dependencies = [
  "port-error",
  "regex",
- "serde",
  "serde_json",
 ]
 
@@ -417,7 +416,7 @@ version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da6bc11b07529f16944307272d5bd9b22530bc7d05751717c9d416586cedab49"
 dependencies = [
- "clap 3.2.25",
+ "clap",
  "heck 0.4.1",
  "indexmap 1.9.3",
  "log",
@@ -516,32 +515,11 @@ checksum = "4ea181bf566f71cb9a5d17a59e1871af638180a18fb0035c92ae62b705207123"
 dependencies = [
  "atty",
  "bitflags 1.3.2",
- "clap_lex 0.2.4",
+ "clap_lex",
  "indexmap 1.9.3",
- "strsim 0.10.0",
+ "strsim",
  "termcolor",
  "textwrap",
-]
-
-[[package]]
-name = "clap"
-version = "4.6.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "844c5c0b65be192cb68d570cca1b21a6444431d24e39c084dc0336177015337c"
-dependencies = [
- "clap_builder",
-]
-
-[[package]]
-name = "clap_builder"
-version = "4.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d"
-dependencies = [
- "anstream",
- "anstyle",
- "clap_lex 1.1.2",
- "strsim 0.11.1",
 ]
 
 [[package]]
@@ -552,12 +530,6 @@ checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
 dependencies = [
  "os_str_bytes",
 ]
-
-[[package]]
-name = "clap_lex"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0921b3876b3a1df8a1c9f912e7f94342458022c2e84288015893d83c4d62a79"
 
 [[package]]
 name = "cmov"
@@ -1309,7 +1281,6 @@ version = "0.1.0"
 dependencies = [
  "audit-cargo-rs",
  "benchmarks-rs",
- "clap 4.6.9",
  "gossamer-web",
  "serde_json",
  "skills-rs",
@@ -1332,7 +1303,9 @@ dependencies = [
  "regex",
  "reqwest",
  "roxmltree",
+ "ryu",
  "scraper 0.22.0",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
  "tiktoken-rs",
@@ -3394,7 +3367,6 @@ name = "skills-rs"
 version = "0.1.0"
 dependencies = [
  "port-error",
- "serde",
  "serde_json",
 ]
 
@@ -3552,12 +3524,6 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
-
-[[package]]
-name = "strsim"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "subsetter"
@@ -4203,7 +4169,6 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "port-error",
- "serde",
  "serde_json",
  "tar",
  "zip 2.6.1",

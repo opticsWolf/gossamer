@@ -1,29 +1,20 @@
 //! `gossamer locate-pdf`: open-access candidate reporting over Rust services.
 
-use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::ArgMatches;
 use gossamer::adapters::scholar::openalex_parse_fetch_impl;
+use gossamer::cli_args::Parsed;
 use gossamer::discovery::fetch_text;
+use gossamer::jsonfmt::py_dumps_pretty_utf8;
 use gossamer::openaccess::{normalize_doi, oa_candidate, unpaywall_candidates};
 use serde_json::{Value, json};
 
-const KNOWN_FLAGS: [&str; 5] = [
-    "--cache-dir",
-    "--config",
-    "--keystore",
-    "--log-level",
-    "--fetch-mode",
-];
-
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
-    ExitCode::from(1)
+    super::unsupported()
 }
 
 fn pretty(value: &Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+    py_dumps_pretty_utf8(value)
 }
 
 fn unpaywall_email() -> String {
@@ -79,46 +70,10 @@ fn unpaywall_fallback(doi: &str, email: &str) -> (Vec<Value>, Value, Option<Valu
     (candidates, work, None)
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
-    }
-
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    if matches.get_count("help") > 0 {
+pub fn run(parsed: &Parsed) -> ExitCode {
+    let Some(raw) = parsed.positional("doi") else {
         return unsupported();
-    }
-    let mut positional = Vec::new();
-    let mut index = 0usize;
-    while index < args.len() {
-        let value = args[index].to_string_lossy().into_owned();
-        if value.starts_with('-') {
-            if !KNOWN_FLAGS.contains(&value.as_str()) || index + 1 >= args.len() {
-                return unsupported();
-            }
-            if value == "--fetch-mode"
-                && !matches!(
-                    args[index + 1].to_string_lossy().as_ref(),
-                    "auto" | "browser" | "static"
-                )
-            {
-                return unsupported();
-            }
-            index += 2;
-            continue;
-        }
-        positional.push(value);
-        index += 1;
-    }
-    if positional.len() != 1 {
-        return unsupported();
-    }
-    let raw = &positional[0];
+    };
     let doi = match normalize_doi(raw) {
         Ok(doi) => doi,
         Err(error) => {
@@ -131,7 +86,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                     "candidates": [],
                 }))
             );
-            return ExitCode::SUCCESS;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -176,7 +131,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                     "candidates": [],
                 }))
             );
-            return ExitCode::SUCCESS;
+            return ExitCode::FAILURE;
         }
     };
     let parsed: Value = match serde_json::from_str(&payload) {
@@ -243,7 +198,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                     "candidates": [],
                 }))
             );
-            return ExitCode::SUCCESS;
+            return ExitCode::FAILURE;
         }
     };
     let open_access = work.get("open_access").cloned().unwrap_or(json!({}));

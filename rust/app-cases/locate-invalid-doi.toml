@@ -1,4 +1,4 @@
 bin.name = "gossamer"
 args = ["locate-pdf", "not-a-doi"]
-status.code = 0
+status.code = 1
 fs.sandbox = true

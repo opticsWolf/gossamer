@@ -1,4 +1,4 @@
 bin.name = "gossamer"
 args = ["research", "x", "--provider", "crossref", "--providers", "openalex"]
-status.code = 0
+status.code = 1
 fs.sandbox = true

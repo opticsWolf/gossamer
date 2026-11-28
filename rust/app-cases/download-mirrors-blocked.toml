@@ -1,4 +1,4 @@
 bin.name = "gossamer"
 args = ["download", "http://127.0.0.1", "-o", "tmp_mirror.bin", "--try-mirrors", "http://10.0.0.1"]
-status.code = 0
+status.code = 1
 fs.sandbox = true

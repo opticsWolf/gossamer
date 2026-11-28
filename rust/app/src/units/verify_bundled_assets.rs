@@ -1,17 +1,11 @@
 //! Glue for `gossamer verify-bundled-assets`: call the Rust archive checker for each artifact.
 //! Unsupported artifacts fall back to the original so its error text and exit code stay exact.
 
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::ArgMatches;
 use gossamer::cli_help::CLI_HELP_JSON;
 use serde_json::Value;
-
-fn fallback(_args: &[OsString], _help_count: u8) -> ExitCode {
-    unsupported()
-}
 
 fn artifacts(targets: &[String]) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -40,37 +34,30 @@ fn artifacts(targets: &[String]) -> Vec<PathBuf> {
     out
 }
 
+fn fallback() -> ExitCode {
+    unsupported()
+}
+
 fn unsupported() -> ExitCode {
     eprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
+pub fn run(argv: &[String]) -> ExitCode {
+    if argv
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
+        return fallback();
     }
-
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    let help_count = matches.get_count("help");
-    if help_count > 0 {
-        return fallback(&args, help_count);
-    }
-
-    let targets: Vec<String> = if args.is_empty() {
+    let targets: Vec<String> = if argv.is_empty() {
         vec!["dist".to_owned()]
     } else {
-        args.iter()
-            .map(|value| value.to_string_lossy().into_owned())
-            .collect()
+        argv.to_vec()
     };
     let artifacts = artifacts(&targets);
     if artifacts.is_empty() {
-        return fallback(&args, help_count);
+        return fallback();
     }
 
     // Prevalidate artifacts and reproduce the original's partial output before its ValueError.
@@ -88,10 +75,10 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     if let Some(artifact) = unsupported {
         let all: Value = match serde_json::from_str(CLI_HELP_JSON) {
             Ok(all) => all,
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return fallback(),
         };
         let Some(entry) = all.get("verify-unsupported") else {
-            return fallback(&args, help_count);
+            return fallback();
         };
         for (ok_artifact, _) in &results {
             let name = ok_artifact

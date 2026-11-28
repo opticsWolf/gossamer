@@ -1,29 +1,17 @@
 //! `gossamer discover`: feed/sitemap discovery over Rust HTTP and parsers.
 
 use std::collections::{HashSet, VecDeque};
-use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::ArgMatches;
+use gossamer::cli_args::Parsed;
 use gossamer::discovery::{fetch_text, find_feed_links};
 use gossamer::document::prepare_url;
 use gossamer::jsonfmt::pretty_record;
+use gossamer::jsonfmt::py_dumps_pretty;
+use gossamer::runtime::RuntimeState;
 use gossamer::sitemap::parse_sitemap;
 use gossamer::ssrf::check_url;
 use serde_json::{Value, json};
-
-const KNOWN_FLAGS: [&str; 5] = [
-    "--cache-dir",
-    "--config",
-    "--keystore",
-    "--log-level",
-    "--fetch-mode",
-];
-
-fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
-    ExitCode::from(1)
-}
 
 fn site_root(url: &str) -> Option<String> {
     let start = url.find("://")? + 3;
@@ -33,47 +21,11 @@ fn site_root(url: &str) -> Option<String> {
     (!authority.is_empty()).then(|| format!("{}://{}", &url[..start - 3], authority))
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
-    }
+pub fn run(parsed: &Parsed) -> ExitCode {
+    let Some(raw) = parsed.positional("url") else {
+        return super::unsupported();
+    };
 
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    if matches.get_count("help") > 0 {
-        return unsupported();
-    }
-    let mut positional = Vec::new();
-    let mut index = 0usize;
-    while index < args.len() {
-        let value = args[index].to_string_lossy().into_owned();
-        if value.starts_with('-') {
-            if !KNOWN_FLAGS.contains(&value.as_str()) || index + 1 >= args.len() {
-                return unsupported();
-            }
-            if value == "--fetch-mode"
-                && !matches!(
-                    args[index + 1].to_string_lossy().as_ref(),
-                    "auto" | "browser" | "static"
-                )
-            {
-                return unsupported();
-            }
-            index += 2;
-            continue;
-        }
-        positional.push(value);
-        index += 1;
-    }
-    if positional.len() != 1 {
-        return unsupported();
-    }
-
-    let raw = &positional[0];
     let url = match prepare_url(raw, None) {
         Ok(url) => url,
         Err(error) => {
@@ -89,16 +41,41 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         }
     };
 
+    let cache_dir = crate::units::settings::cache_dir(parsed);
+    let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("gossamer: error: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let now = runtime.now();
+    if !runtime.robots_allows(&url, now) {
+        eprintln!("URL disallowed by robots.txt: {url}");
+        println!(
+            "{}",
+            py_dumps_pretty(&json!({"warning": "URL disallowed by robots.txt", "url": url}))
+        );
+        return ExitCode::SUCCESS;
+    }
+    if !runtime.claim(&url) {
+        eprintln!("URL already visited or in flight: {url}");
+        println!(
+            "{}",
+            py_dumps_pretty(&json!({"warning": "URL already visited", "url": url}))
+        );
+        return ExitCode::SUCCESS;
+    }
+
     let root = site_root(&url);
     let feeds: Vec<Value> = match fetch_text(&url, 30.0) {
         Ok((body, final_url)) => find_feed_links(&body, &final_url),
         Err(error) => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&json!({
+                py_dumps_pretty(&json!({
                     "error": format!("Discovery failed: {error}"), "url": url
                 }))
-                .unwrap_or_default()
             );
             return ExitCode::SUCCESS;
         }
@@ -174,9 +151,6 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "count": found.len(),
         "truncated": truncated,
     });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-    );
+    println!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }

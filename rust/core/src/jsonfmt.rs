@@ -49,15 +49,41 @@ pub fn py_round(value: f64, digits: u32) -> f64 {
 /// shortest round-tripping mantissa, but Python pads the exponent to at least
 /// two digits and always includes its sign.
 fn py_float(value: f64) -> String {
-    let rendered = format!("{value:?}");
-    let Some((mantissa, exponent)) = rendered.split_once('e') else {
-        return rendered;
-    };
-    let Ok(number) = exponent.parse::<i32>() else {
-        return rendered;
-    };
-    let sign = if number < 0 { '-' } else { '+' };
-    format!("{mantissa}e{sign}{:02}", number.unsigned_abs())
+    let mut buffer = ryu::Buffer::new();
+    let rendered = buffer.format_finite(value);
+    if let Some((mantissa, exponent)) = rendered.split_once('e') {
+        let Ok(number) = exponent.parse::<i32>() else {
+            return rendered.to_string();
+        };
+        let sign = if number < 0 { '-' } else { '+' };
+        return format!("{mantissa}e{sign}{:02}", number.unsigned_abs());
+    }
+    if value != 0.0 && value.abs() < 1e-4 {
+        let sign = if value < 0.0 { "-" } else { "" };
+        let body = rendered.trim_start_matches('-');
+        let Some((_, fraction)) = body.split_once('.') else {
+            return rendered.to_string();
+        };
+        let zeros = fraction.chars().take_while(|ch| *ch == '0').count();
+        let digits = &fraction[zeros..];
+        if digits.is_empty() {
+            return format!("{sign}0.0");
+        }
+        let exponent = -(zeros as i32) - 1;
+        let mut mantissa = String::new();
+        let mut chars = digits.chars();
+        if let Some(first) = chars.next() {
+            mantissa.push(first);
+        }
+        let rest: String = chars.collect();
+        if !rest.is_empty() {
+            mantissa.push('.');
+            mantissa.push_str(&rest);
+        }
+        let exp_sign = if exponent < 0 { '-' } else { '+' };
+        return format!("{sign}{mantissa}e{exp_sign}{:02}", exponent.unsigned_abs());
+    }
+    rendered.to_string()
 }
 
 /// Quote a string the way Python's `json.dumps` does with `ensure_ascii=True`.
@@ -84,78 +110,141 @@ fn py_string(text: &str) -> String {
     out
 }
 
-/// Serialize JSON with Python `json.dumps` default separators (`, ` and `: `).
-pub fn py_dumps(value: &Value) -> String {
-    match value {
-        Value::Null => "null".to_string(),
-        Value::Bool(flag) => flag.to_string(),
-        Value::Number(number) => match number.as_f64() {
-            Some(value) if number.is_f64() => py_float(value),
-            _ => number.to_string(),
-        },
-        Value::String(text) => py_string(text),
-        Value::Array(items) => format!(
-            "[{}]",
-            items.iter().map(py_dumps).collect::<Vec<_>>().join(", ")
-        ),
-        Value::Object(map) => format!(
-            "{{{}}}",
-            map.iter()
-                .map(|(key, value)| format!("{}: {}", py_string(key), py_dumps(value)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+fn quote(text: &str, ascii: bool) -> String {
+    if ascii {
+        return py_string(text);
+    }
+    serde_json::to_string(text).unwrap_or_else(|_| "\"".to_owned())
+}
+
+/// Encode a float for Python's `json.dumps`, which emits non-finite values
+/// as the bare tokens `NaN`/`Infinity`/`-Infinity` (invalid strict JSON, but
+/// observable CLI output). Finite values stay ordinary JSON numbers.
+pub fn py_float_value(value: f64) -> Value {
+    if value.is_nan() {
+        Value::String("\u{1f}NaN".to_string())
+    } else if value == f64::INFINITY {
+        Value::String("\u{1f}Infinity".to_string())
+    } else if value == f64::NEG_INFINITY {
+        Value::String("\u{1f}-Infinity".to_string())
+    } else {
+        serde_json::Number::from_f64(value)
+            .map(Value::Number)
+            .unwrap_or(Value::Null)
     }
 }
 
-/// Serialize JSON with Python `json.dumps(value, indent=2)` formatting.
-///
-/// Matches key order, two-space indentation, `ensure_ascii=True` escaping,
-/// and Python's float spelling. Empty arrays and objects stay on one line.
-pub fn py_dumps_pretty(value: &Value) -> String {
-    fn write_value(value: &Value, level: usize, out: &mut String) {
-        match value {
-            Value::Array(items) => {
-                if items.is_empty() {
-                    out.push_str("[]");
-                    return;
-                }
-                out.push_str("[\n");
-                for (index, item) in items.iter().enumerate() {
-                    out.push_str(&"  ".repeat(level + 1));
-                    write_value(item, level + 1, out);
-                    out.push_str(if index + 1 == items.len() {
-                        "\n"
-                    } else {
-                        ",\n"
-                    });
-                }
-                out.push_str(&"  ".repeat(level));
-                out.push(']');
+fn write_json(value: &Value, level: Option<usize>, ascii: bool, out: &mut String) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
+        Value::Number(number) => {
+            if number.is_f64() {
+                out.push_str(&py_float(number.as_f64().unwrap_or(0.0)));
+            } else {
+                out.push_str(&number.to_string());
             }
-            Value::Object(map) => {
-                if map.is_empty() {
-                    out.push_str("{}");
-                    return;
-                }
-                out.push_str("{\n");
-                for (index, (key, item)) in map.iter().enumerate() {
-                    out.push_str(&"  ".repeat(level + 1));
-                    out.push_str(&py_string(key));
-                    out.push_str(": ");
-                    write_value(item, level + 1, out);
-                    out.push_str(if index + 1 == map.len() { "\n" } else { ",\n" });
-                }
-                out.push_str(&"  ".repeat(level));
-                out.push('}');
+        }
+        Value::String(text) => match text.as_str() {
+            "\u{1f}NaN" => out.push_str("NaN"),
+            "\u{1f}Infinity" => out.push_str("Infinity"),
+            "\u{1f}-Infinity" => out.push_str("-Infinity"),
+            _ => out.push_str(&quote(text, ascii)),
+        },
+        Value::Array(items) => {
+            if items.is_empty() {
+                out.push_str("[]");
+                return;
             }
-            _ => out.push_str(&py_dumps(value)),
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                match level {
+                    Some(level) => {
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(level + 1));
+                    }
+                    None => {
+                        if index > 0 {
+                            out.push(' ');
+                        }
+                    }
+                }
+                write_json(item, level.map(|level| level + 1), ascii, out);
+            }
+            if let Some(level) = level {
+                out.push('\n');
+                out.push_str(&"  ".repeat(level));
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            if map.is_empty() {
+                out.push_str("{}");
+                return;
+            }
+            out.push('{');
+            for (index, (key, item)) in map.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                match level {
+                    Some(level) => {
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(level + 1));
+                    }
+                    None => {
+                        if index > 0 {
+                            out.push(' ');
+                        }
+                    }
+                }
+                out.push_str(&quote(key, ascii));
+                out.push_str(": ");
+                write_json(item, level.map(|level| level + 1), ascii, out);
+            }
+            if let Some(level) = level {
+                out.push('\n');
+                out.push_str(&"  ".repeat(level));
+            }
+            out.push('}');
         }
     }
+}
 
+/// Serialize JSON with Python `json.dumps` default separators (`, ` and `: `).
+pub fn py_dumps(value: &Value) -> String {
     let mut out = String::new();
-    write_value(value, 0, &mut out);
+    write_json(value, None, true, &mut out);
     out
+}
+
+/// Serialize JSON like `json.dumps(value, ensure_ascii=False)`.
+pub fn py_dumps_utf8(value: &Value) -> String {
+    let mut out = String::new();
+    write_json(value, None, false, &mut out);
+    out
+}
+
+/// Serialize JSON with Python `json.dumps(value, indent=2)` formatting.
+pub fn py_dumps_pretty(value: &Value) -> String {
+    let mut out = String::new();
+    write_json(value, Some(0), true, &mut out);
+    out
+}
+
+/// Serialize JSON like `json.dumps(value, indent=2, ensure_ascii=False)`.
+pub fn py_dumps_pretty_utf8(value: &Value) -> String {
+    let mut out = String::new();
+    write_json(value, Some(0), false, &mut out);
+    out
+}
+
+/// Serialize like Pydantic's `model_dump_json()`: compact and UTF-8.
+pub fn pydantic_json(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
 }
 
 #[cfg(test)]

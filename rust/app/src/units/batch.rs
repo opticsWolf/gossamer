@@ -1,28 +1,21 @@
 //! `gossamer batch`: parallel-equivalent inspection envelope over Rust fetches.
 
 use std::collections::HashSet;
-use std::ffi::OsString;
-use std::path::PathBuf;
 use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use clap::ArgMatches;
+use gossamer::budget::{content_split, truncate_text};
+use gossamer::cli_args::Parsed;
+use gossamer::documents::absolutize_markdown_links;
 use gossamer::fetch::fetch_html_full_single;
-use gossamer::jsonfmt::py_dumps;
+use gossamer::jsonfmt::py_dumps_utf8;
 use gossamer::metaextract::meta_extract_all;
 use gossamer::miscutils::{classify_link, sha256_hex};
-use gossamer::runtime::{RuntimeConfig, RuntimeState};
-use gossamer::service::fetch::{
-    compact_metadata, raw_entry_matches_strategy, resolve_strategy, slice_markdown,
-};
+use gossamer::runtime::RuntimeState;
+use gossamer::service::fetch::{compact_metadata, raw_entry_matches_strategy, resolve_strategy};
 use gossamer::tokens::count_tokens;
 use serde_json::{Value, json};
-
-fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
-    ExitCode::from(1)
-}
 
 fn timestamp() -> String {
     let now = SystemTime::now()
@@ -52,7 +45,7 @@ fn timestamp() -> String {
     )
 }
 
-fn entry_from_cache(url: &str, entry: &Value) -> Value {
+fn entry_from_cache(url: &str, entry: &Value, parsed: &Parsed) -> Value {
     let full = entry
         .get("markdown")
         .and_then(Value::as_str)
@@ -76,7 +69,11 @@ fn entry_from_cache(url: &str, entry: &Value) -> Value {
         .unwrap_or_default();
     let meta = entry.get("meta").cloned().unwrap_or_else(|| json!({}));
     let prov = meta.get("provenance").cloned().unwrap_or_else(|| json!({}));
-    finalize_entry(url, &full, links, &meta, &prov, true)
+    finalize_entry(url, &full, links, &meta, &prov, true, parsed)
+}
+
+fn out_len_reached(items: &[Value], cap: i64) -> bool {
+    cap > 0 && items.len() as i64 >= cap
 }
 
 fn finalize_entry(
@@ -86,40 +83,56 @@ fn finalize_entry(
     meta: &Value,
     prov: &Value,
     from_cache: bool,
+    parsed: &Parsed,
 ) -> Value {
     let metadata = compact_metadata(meta);
+    let full = absolutize_markdown_links(full, url);
+    let max_chars = crate::units::settings::int(
+        parsed,
+        "max_markdown_chars",
+        "GOSSAMER_MAX_MARKDOWN_CHARS",
+        8000,
+    );
+    let max_tokens = crate::units::settings::int(parsed, "max_tokens", "GOSSAMER_MAX_TOKENS", 0);
+    let model = crate::units::settings::text(parsed, "model_name", "GOSSAMER_MODEL_NAME", "gpt-4o");
+    let candidate_cap =
+        crate::units::settings::int(parsed, "candidate_cap", "GOSSAMER_CANDIDATE_CAP", 500).max(1);
+    let (md_chars, md_tokens) = content_split(max_chars, max_tokens, 0.25);
     let mut follow_up_links = Vec::new();
     let mut seen = Vec::new();
     for (link_url, anchor) in &links {
+        if out_len_reached(&follow_up_links, candidate_cap) {
+            break;
+        }
         if link_url.is_empty() || seen.contains(link_url) {
             continue;
         }
         seen.push(link_url.clone());
         let title = anchor.trim();
         follow_up_links.push(json!({
-            "url": link_url,
             "title": if title.is_empty() { "(untitled)" } else { title },
+            "url": link_url,
             "type": classify_link(link_url),
         }));
     }
     let total_links = follow_up_links.len();
-    let slice = slice_markdown(full, 0, 1, 8000, 0, "gpt-4o")
-        .unwrap_or_else(|_| json!([full.to_string(), full.chars().count(), false]));
-    let markdown = slice
-        .get(0)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let next_offset = slice.get(1).and_then(Value::as_i64);
-    let has_more = slice.get(2).and_then(Value::as_bool).unwrap_or(false);
-    json!({
+    let markdown =
+        truncate_text(&full, md_chars, md_tokens, &model).unwrap_or_else(|_| full.clone());
+    let markdown_truncated = markdown != full;
+    let next_offset = if markdown_truncated {
+        markdown.chars().count()
+    } else {
+        full.chars().count()
+    };
+    let has_more = markdown_truncated;
+    let mut payload = json!({
         "url": url,
         "markdown": markdown,
-        "markdown_tokens": count_tokens(&markdown, "gpt-4o").unwrap_or(0),
+        "markdown_tokens": count_tokens(&markdown, &model).unwrap_or(0),
         "follow_up_links": follow_up_links,
         "delivered_links": total_links,
         "total_links": total_links,
-        "truncated": has_more || markdown != full || total_links >= 500,
+        "truncated": markdown_truncated || total_links as i64 >= candidate_cap,
         "fetch_method": "static",
         "cache_hit": from_cache,
         "revalidated": false,
@@ -143,23 +156,50 @@ fn finalize_entry(
             .cloned()
             .unwrap_or_else(|| json!(url)),
         "content_type": prov.get("content_type").cloned().unwrap_or(Value::Null),
-        "content_hash": sha256_hex(full),
+        "content_hash": sha256_hex(&full),
         "guard": Value::Null,
-    })
+    });
+    if crate::units::inspect::apply_guard(&mut payload, parsed, url, "page_markdown") {
+        return json!({
+            "url": url,
+            "error": "content withheld by prompt-injection guard",
+            "guard": payload.get("guard").cloned().unwrap_or(Value::Null),
+        });
+    }
+    crate::units::inspect::fit_inspection(&mut payload, max_chars, max_tokens, &model);
+    payload
 }
 
-fn build_entry(runtime: &RuntimeState, url: &str, strategy: &str, now: f64) -> Value {
+fn candidate_cap_for(parsed: &Parsed) -> i64 {
+    crate::units::settings::int(parsed, "candidate_cap", "GOSSAMER_CANDIDATE_CAP", 500).max(1)
+}
+
+fn build_entry(
+    runtime: &RuntimeState,
+    url: &str,
+    strategy: &str,
+    now: f64,
+    parsed: &Parsed,
+) -> Value {
     if let Some(entry) = runtime
         .page_cache_get(url, now)
         .filter(|entry| raw_entry_matches_strategy(entry, strategy))
     {
-        return entry_from_cache(url, &entry);
+        return entry_from_cache(url, &entry, parsed);
+    }
+    if strategy == "browser-only" {
+        runtime.release(url);
+        return json!({
+            "url": url,
+            "error": "browser_oxide is not installed; install the optional extra (pip install \"gossamer-web[browser]\") or use use_smart='static'",
+        });
     }
     let sleep = runtime.throttle_gap(url, None, now);
     if sleep > 0.0 {
         thread::sleep(Duration::from_secs_f64(sleep));
     }
-    let Ok((html, full, links, _removed, meta)) = fetch_html_full_single(url, 500, 50_000_000)
+    let Ok((html, full, links, _removed, meta)) =
+        fetch_html_full_single(url, candidate_cap_for(parsed) as usize, 50_000_000)
     else {
         runtime.release(url);
         return json!({"url": url, "error": "fetch failed"});
@@ -178,7 +218,7 @@ fn build_entry(runtime: &RuntimeState, url: &str, strategy: &str, now: f64) -> V
         "final_url": final_url,
         "content_type": content_type,
     });
-    let mut meta = compact_metadata(&raw_meta);
+    let mut meta = raw_meta;
     if let Some(map) = meta.as_object_mut() {
         map.insert("provenance".to_string(), prov.clone());
         map.insert("fetch_strategy".to_string(), json!(strategy));
@@ -196,72 +236,18 @@ fn build_entry(runtime: &RuntimeState, url: &str, strategy: &str, now: f64) -> V
     runtime.page_cache_put(url, &entry, runtime.now());
     runtime.mark_visited(url);
     runtime.release(url);
-    finalize_entry(url, &full, links, &meta, &prov, false)
+    finalize_entry(url, &full, links, &meta, &prov, false, parsed)
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
-    }
+pub fn run(parsed: &Parsed) -> ExitCode {
+    let urls: Vec<String> = parsed.positionals("urls").to_vec();
+    let use_smart = parsed.value("use_smart").unwrap_or("auto").to_string();
+    let fetch_mode = parsed.fetch_mode().map(str::to_string).unwrap_or_else(|| {
+        crate::units::settings::text(parsed, "fetch_mode", "GOSSAMER_FETCH_MODE", "auto")
+    });
+    let cache_dir = crate::units::settings::cache_dir(parsed);
 
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    if matches.get_count("help") > 0 {
-        return unsupported();
-    }
-
-    let mut urls: Vec<String> = Vec::new();
-    let mut use_smart = "auto".to_string();
-    let mut fetch_mode = std::env::var("GOSSAMER_FETCH_MODE").unwrap_or_else(|_| "auto".into());
-    let mut cache_dir =
-        std::env::var("GOSSAMER_CACHE_DIR").unwrap_or_else(|_| ".gossamer_cache".into());
-    let mut index = 0usize;
-    while index < args.len() {
-        let value = args[index].to_string_lossy().into_owned();
-        if value == "--use-smart" {
-            if index + 1 >= args.len() {
-                return unsupported();
-            }
-            let requested = args[index + 1].to_string_lossy().into_owned();
-            if !matches!(requested.as_str(), "auto" | "browser" | "static") {
-                return unsupported();
-            }
-            use_smart = requested;
-            index += 2;
-            continue;
-        }
-        if matches!(
-            value.as_str(),
-            "--cache-dir" | "--config" | "--keystore" | "--log-level" | "--fetch-mode"
-        ) {
-            if index + 1 >= args.len() {
-                return unsupported();
-            }
-            let flag_value = args[index + 1].to_string_lossy().into_owned();
-            if value == "--cache-dir" {
-                cache_dir = flag_value;
-            } else if value == "--fetch-mode" {
-                fetch_mode = flag_value;
-            }
-            index += 2;
-            continue;
-        }
-        if value.starts_with('-') {
-            return unsupported();
-        }
-        urls.push(value);
-        index += 1;
-    }
-    if urls.is_empty() {
-        return unsupported();
-    }
-
-    let runtime = match RuntimeState::new(RuntimeConfig::from_cache_dir(PathBuf::from(&cache_dir)))
-    {
+    let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(value) => value,
         Err(error) => {
             eprintln!("gossamer: error: {error}");
@@ -306,8 +292,8 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 continue;
             }
         }
-        output.push(build_entry(&runtime, &url, strategy, now));
+        output.push(build_entry(&runtime, &url, strategy, now, parsed));
     }
-    println!("{}", py_dumps(&Value::Array(output)));
+    println!("{}", py_dumps_utf8(&Value::Array(output)));
     ExitCode::SUCCESS
 }

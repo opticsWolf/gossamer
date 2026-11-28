@@ -1,17 +1,16 @@
 //! Glue for `gossamer cache`: Rust owns cache maintenance with the same JSON contract.
 
 use std::env;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use clap::ArgMatches;
 use gossamer::cache::{Cache, CacheConfig};
+use gossamer::cli_args::Parsed;
 use serde_json::{Value, json};
 
-fn fallback(_args: &[OsString], _help_count: u8) -> ExitCode {
-    unsupported()
+fn unsupported() -> ExitCode {
+    super::unsupported()
 }
 
 fn int_env_or_file(env_name: &str, file: &serde_json::Value, key: &str, default: i64) -> i64 {
@@ -66,61 +65,10 @@ fn pretty(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 }
 
-fn is_known_cache_flag(name: &str) -> bool {
-    matches!(
-        name,
-        "--action" | "--cache-dir" | "--config" | "--keystore" | "--log-level" | "--fetch-mode"
-    )
-}
-
-fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
-    ExitCode::from(1)
-}
-
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
-    }
-
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    let help_count = matches.get_count("help");
-    if help_count > 0 {
-        return fallback(&args, help_count);
-    }
-
-    let mut action = "prune".to_owned();
-    let mut cache_dir: Option<String> = None;
-    let mut config: Option<String> = None;
-    let mut index = 0usize;
-    while index < args.len() {
-        let flag = args[index].to_string_lossy().into_owned();
-        if !is_known_cache_flag(&flag) {
-            return fallback(&args, help_count);
-        }
-        if index + 1 >= args.len() {
-            return fallback(&args, help_count);
-        }
-        let value = args[index + 1].to_string_lossy().into_owned();
-        match flag.as_str() {
-            "--action" => {
-                if !matches!(value.as_str(), "prune" | "clear" | "reset") {
-                    return fallback(&args, help_count);
-                }
-                action = value;
-            }
-            "--cache-dir" => cache_dir = Some(value),
-            "--config" => config = Some(value),
-            "--keystore" | "--log-level" | "--fetch-mode" => {}
-            _ => return fallback(&args, help_count),
-        }
-        index += 2;
-    }
+pub fn run(parsed: &Parsed) -> ExitCode {
+    let action = parsed.value("action").unwrap_or("prune").to_string();
+    let cache_dir = parsed.cache_dir().map(str::to_string);
+    let config = parsed.config().map(str::to_string);
 
     let file_cfg = load_config(&config);
     let cache_dir = cache_dir
@@ -152,26 +100,26 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     };
     let cache = match Cache::new(cache_cfg) {
         Ok(cache) => cache,
-        Err(_) => return fallback(&args, help_count),
+        Err(_) => return unsupported(),
     };
     let now = now_seconds();
 
     let output = match action.as_str() {
         "prune" => match cache.prune(now) {
             Ok(prune) => json!({"prune": prune}),
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return unsupported(),
         },
         "clear" => {
             if cache.clear().is_err() {
-                return fallback(&args, help_count);
+                return unsupported();
             }
             match cache.stats() {
                 Ok(stats) => json!({"cache_cleared": true, "stats": stats}),
-                Err(_) => return fallback(&args, help_count),
+                Err(_) => return unsupported(),
             }
         }
         "reset" => json!({"visited_cleared": true, "visited_urls_count": 0}),
-        _ => return fallback(&args, help_count),
+        _ => return unsupported(),
     };
 
     println!("{}", pretty(&output));

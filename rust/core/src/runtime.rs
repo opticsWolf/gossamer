@@ -40,6 +40,13 @@ fn env_f64(name: &str, default: f64) -> f64 {
         .unwrap_or(default)
 }
 
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
 fn env_bool(name: &str, default: bool) -> bool {
     match std::env::var(name) {
         Ok(value) => !matches!(
@@ -80,6 +87,8 @@ pub struct RuntimeConfig {
     pub visited_cap: usize,
     /// Bounded domain-timestamp size.
     pub domain_cap: usize,
+    /// Maximum accepted response or local-document size in bytes.
+    pub max_response_bytes: u64,
 }
 
 impl RuntimeConfig {
@@ -108,6 +117,7 @@ impl RuntimeConfig {
             user_agent: ROBOTS_USER_AGENT.to_string(),
             visited_cap: VISITED_URL_CAP,
             domain_cap: DOMAIN_TS_CAP,
+            max_response_bytes: env_u64("GOSSAMER_MAX_RESPONSE_BYTES", 5 * 1024 * 1024).max(1),
         }
     }
 }
@@ -175,6 +185,11 @@ impl RuntimeState {
         &self.cache
     }
 
+    /// Maximum accepted response or local-document size in bytes.
+    pub fn max_response_bytes(&self) -> u64 {
+        self.config.max_response_bytes
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, RuntimeInner> {
         self.inner
             .lock()
@@ -209,6 +224,16 @@ impl RuntimeState {
         if let Ok(raw) = serde_json::to_string(entry) {
             self.cache.put(&self.page_cache_key(url), &raw, now);
         }
+    }
+
+    /// Read a raw document-cache entry (local paths use the path string as key).
+    pub fn document_cache_get(&self, key: &str) -> Option<String> {
+        self.cache.get(key, self.now())
+    }
+
+    /// Store an untruncated document extraction under a caller-supplied key.
+    pub fn document_cache_put(&self, key: &str, content: &str) {
+        self.cache.put(key, content, self.now());
     }
 
     /// Claim a URL for fetching; returns false when already visited or in flight.

@@ -3,32 +3,26 @@
 //! All three benchmark modes are implemented in Rust. Timing values are normalized during app
 //! replay; deterministic counts, verdicts, rates, and skip reasons are compared exactly.
 
-use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::ArgMatches;
 use gossamer::cli_help::CLI_HELP_JSON;
 use serde_json::Value;
 
-fn fallback(_args: &[OsString], _help_count: u8) -> ExitCode {
+fn fallback() -> ExitCode {
     unsupported()
 }
 
-fn unknown_flag_error(args: &[OsString]) -> Option<ExitCode> {
-    let unknown = args
-        .iter()
-        .map(|arg| arg.to_string_lossy().into_owned())
-        .find(|arg| {
-            arg.starts_with('-')
-                && !matches!(arg.as_str(), "--corpus" | "--guard" | "--help" | "-h")
-        })?;
+fn unknown_flag_error(args: &[String]) -> Option<ExitCode> {
+    let unknown = args.iter().find(|arg| {
+        arg.starts_with('-') && !matches!(arg.as_str(), "--corpus" | "--guard" | "--help" | "-h")
+    })?;
     let all: Value = serde_json::from_str(CLI_HELP_JSON).ok()?;
     let entry = all.get("benchmarks-unknown")?;
     let stderr = entry
         .get("stderr")
         .and_then(Value::as_str)
         .unwrap_or("")
-        .replace("--bogus", &unknown);
+        .replace("--bogus", unknown.as_str());
     eprint!("{stderr}");
     let status = entry.get("status").and_then(Value::as_u64).unwrap_or(2);
     Some(ExitCode::from(status.min(255) as u8))
@@ -244,21 +238,14 @@ fn unsupported() -> ExitCode {
     ExitCode::from(1)
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
+pub fn run(argv: &[String]) -> ExitCode {
+    if argv
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
+        return super::cli::emit("benchmarks-help");
     }
-
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    let help_count = matches.get_count("help");
-    if help_count > 0 {
-        return fallback(&args, help_count);
-    }
+    let args: Vec<String> = argv.to_vec();
     if let Some(code) = unknown_flag_error(&args) {
         return code;
     }
@@ -266,18 +253,18 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         0 => "all",
         1 if args[0] == "--corpus" => "corpus",
         1 if args[0] == "--guard" => "guard",
-        _ => return fallback(&args, help_count),
+        _ => return fallback(),
     };
 
     // Precompute before writing anything so a failure can fall back cleanly.
     let corpus = match benchmarks_rs::port::corpus_report() {
         Ok(report) => report,
-        Err(_) => return fallback(&args, help_count),
+        Err(_) => return fallback(),
     };
     let guard = if mode == "all" || mode == "guard" {
         match benchmarks_rs::port::guard_benchmark_report() {
             Ok(report) => Some(report),
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return fallback(),
         }
     } else {
         None
@@ -285,19 +272,19 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let rest = if mode == "all" {
         let fetched = match benchmarks_rs::port::rust_fetch_report() {
             Ok(report) => report,
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return fallback(),
         };
         let meta = match benchmarks_rs::port::meta_oxide_report() {
             Ok(report) => report,
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return fallback(),
         };
         let tokens = match benchmarks_rs::port::token_budget_report() {
             Ok(report) => report,
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return fallback(),
         };
         let batch = match benchmarks_rs::port::batch_fetch_report() {
             Ok(report) => report,
-            Err(_) => return fallback(&args, help_count),
+            Err(_) => return fallback(),
         };
         Some((fetched, meta, tokens, batch))
     } else {

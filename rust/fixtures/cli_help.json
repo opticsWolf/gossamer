@@ -113,5 +113,20 @@
     "stdout": "OK   good.whl\n",
     "stderr": "Traceback (most recent call last):\n  File \"D:\\User\\Documents\\Rust\\gossamer\\rust\\original_entry.py\", line 33, in <module>\n    raise SystemExit(main(sys.argv[1:]))\n                     ~~~~^^^^^^^^^^^^^^\n  File \"D:\\User\\Documents\\Rust\\gossamer\\scripts\\verify_bundled_assets.py\", line 77, in main\n    problems = check(artifact)\n  File \"D:\\User\\Documents\\Rust\\gossamer\\scripts\\verify_bundled_assets.py\", line 52, in check\n    found = dict(_payloads(artifact))\n  File \"D:\\User\\Documents\\Rust\\gossamer\\scripts\\verify_bundled_assets.py\", line 48, in _payloads\n    raise ValueError(f\"unsupported artifact: {artifact}\")\nValueError: unsupported artifact: rust\\fixtures\\unsupported.zip\n",
     "status": 1
+  },
+  "skills-list-help": {
+    "stdout": "usage: gossamer skills list [-h]\n\noptions:\n  -h, --help  show this help message and exit\n",
+    "stderr": "",
+    "status": 0
+  },
+  "skills-show-help": {
+    "stdout": "usage: gossamer skills show [-h] name\n\npositional arguments:\n  name        Bundled skill name (see `gossamer skills list`)\n\noptions:\n  -h, --help  show this help message and exit\n",
+    "stderr": "",
+    "status": 0
+  },
+  "skills-install-help": {
+    "stdout": "usage: gossamer skills install [-h] [--dest DIR] [--project] [--skill NAME]\n                               [--force]\n\noptions:\n  -h, --help    show this help message and exit\n  --dest DIR    Skills directory to install into (repeatable). Default:\n                ~/.claude/skills and ~/.config/opencode/skills\n  --project     Install into ./.claude/skills and ./.opencode/skills instead\n  --skill NAME  Only this skill (repeatable). Default: every bundled skill\n  --force       Overwrite existing skill directories\n",
+    "stderr": "",
+    "status": 0
   }
 }

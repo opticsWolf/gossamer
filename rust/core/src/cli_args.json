@@ -1,0 +1,1904 @@
+{
+ "root": {
+  "prog": "gossamer",
+  "usage": "usage: gossamer [-h] [--cache-dir CACHE_DIR] [--config CONFIG]\n                [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                [--fetch-mode {auto,browser,static}]\n                {search,research,categories,inspect,batch,download,locate-pdf,extract,check,discover,crawl,cache,cite,skills} ...\n",
+  "positionals": [],
+  "options": [
+   {
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "dest": "help",
+    "nargs": 0,
+    "choices": null,
+    "type": null,
+    "required": false,
+    "action": "help"
+   },
+   {
+    "option_strings": [
+     "--cache-dir"
+    ],
+    "dest": "cache_dir",
+    "nargs": null,
+    "choices": null,
+    "type": null,
+    "required": false,
+    "action": "store"
+   },
+   {
+    "option_strings": [
+     "--config"
+    ],
+    "dest": "config",
+    "nargs": null,
+    "choices": null,
+    "type": null,
+    "required": false,
+    "action": "store"
+   },
+   {
+    "option_strings": [
+     "--keystore"
+    ],
+    "dest": "keystore",
+    "nargs": null,
+    "choices": null,
+    "type": null,
+    "required": false,
+    "action": "store"
+   },
+   {
+    "option_strings": [
+     "--log-level"
+    ],
+    "dest": "log_level",
+    "nargs": null,
+    "choices": null,
+    "type": null,
+    "required": false,
+    "action": "store"
+   },
+   {
+    "option_strings": [
+     "--fetch-mode"
+    ],
+    "dest": "fetch_mode",
+    "nargs": null,
+    "choices": [
+     "auto",
+     "browser",
+     "static"
+    ],
+    "type": null,
+    "required": false,
+    "action": "store"
+   }
+  ],
+  "subcommand_dest": "command",
+  "subcommand_required": true,
+  "subcommands": {
+   "search": {
+    "prog": "gossamer search",
+    "usage": "usage: gossamer search [-h] [--max-results MAX_RESULTS] [--search-only]\n                       [--provider PROVIDER] [--depth DEPTH]\n                       [--max-tokens MAX_TOKENS]\n                       [--use-smart {auto,browser,static}]\n                       [--cache-dir CACHE_DIR] [--config CONFIG]\n                       [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                       [--fetch-mode {auto,browser,static}]\n                       query\n",
+    "positionals": [
+     {
+      "dest": "query",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--max-results"
+      ],
+      "dest": "max_results",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--search-only"
+      ],
+      "dest": "search_only",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--provider"
+      ],
+      "dest": "provider",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--depth"
+      ],
+      "dest": "depth",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--max-tokens"
+      ],
+      "dest": "max_tokens",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--use-smart"
+      ],
+      "dest": "use_smart",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "research": {
+    "prog": "gossamer research",
+    "usage": "usage: gossamer research [-h] [--max-results MAX_RESULTS]\n                         [--category CATEGORY] [--provider PROVIDER]\n                         [--filter FILTER] [--select SELECT] [--title TITLE]\n                         [--author AUTHOR]\n                         [--providers PROVIDERS [PROVIDERS ...]]\n                         [--cache-dir CACHE_DIR] [--config CONFIG]\n                         [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                         [--fetch-mode {auto,browser,static}]\n                         query\n",
+    "positionals": [
+     {
+      "dest": "query",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--max-results"
+      ],
+      "dest": "max_results",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--category"
+      ],
+      "dest": "category",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--provider"
+      ],
+      "dest": "provider",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--filter"
+      ],
+      "dest": "filter",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--select"
+      ],
+      "dest": "select",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--title"
+      ],
+      "dest": "title",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--author"
+      ],
+      "dest": "author",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--providers"
+      ],
+      "dest": "providers",
+      "nargs": "+",
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "categories": {
+    "prog": "gossamer categories",
+    "usage": "usage: gossamer categories [-h] [--cache-dir CACHE_DIR] [--config CONFIG]\n                           [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                           [--fetch-mode {auto,browser,static}]\n",
+    "positionals": [],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "inspect": {
+    "prog": "gossamer inspect",
+    "usage": "usage: gossamer inspect [-h] [--query QUERY]\n                        [--use-smart {auto,browser,static}] [--offset OFFSET]\n                        [--max-chunks MAX_CHUNKS] [--structured]\n                        [--cache-dir CACHE_DIR] [--config CONFIG]\n                        [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                        [--fetch-mode {auto,browser,static}]\n                        url\n",
+    "positionals": [
+     {
+      "dest": "url",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--query"
+      ],
+      "dest": "query",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--use-smart"
+      ],
+      "dest": "use_smart",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--offset"
+      ],
+      "dest": "offset",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--max-chunks"
+      ],
+      "dest": "max_chunks",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--structured"
+      ],
+      "dest": "structured",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "batch": {
+    "prog": "gossamer batch",
+    "usage": "usage: gossamer batch [-h] [--use-smart {auto,browser,static}]\n                      [--cache-dir CACHE_DIR] [--config CONFIG]\n                      [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                      [--fetch-mode {auto,browser,static}]\n                      urls [urls ...]\n",
+    "positionals": [
+     {
+      "dest": "urls",
+      "nargs": "+",
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--use-smart"
+      ],
+      "dest": "use_smart",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "download": {
+    "prog": "gossamer download",
+    "usage": "usage: gossamer download [-h] -o OUTPUT_PATH [--min-bytes MIN_BYTES]\n                         [--max-bytes MAX_BYTES] [--expect-format {auto,pdf}]\n                         [--overwrite] [--try-mirrors URL [URL ...]]\n                         [--resume] [--cache-dir CACHE_DIR] [--config CONFIG]\n                         [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                         [--fetch-mode {auto,browser,static}]\n                         source\n",
+    "positionals": [
+     {
+      "dest": "source",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "-o",
+       "--output"
+      ],
+      "dest": "output_path",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": true,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--min-bytes"
+      ],
+      "dest": "min_bytes",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--max-bytes"
+      ],
+      "dest": "max_bytes",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--expect-format"
+      ],
+      "dest": "expect_format",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "pdf"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--overwrite"
+      ],
+      "dest": "overwrite",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--try-mirrors"
+      ],
+      "dest": "try_mirrors",
+      "nargs": "+",
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--resume"
+      ],
+      "dest": "resume",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "locate-pdf": {
+    "prog": "gossamer locate-pdf",
+    "usage": "usage: gossamer locate-pdf [-h] [--cache-dir CACHE_DIR] [--config CONFIG]\n                           [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                           [--fetch-mode {auto,browser,static}]\n                           doi\n",
+    "positionals": [
+     {
+      "dest": "doi",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "extract": {
+    "prog": "gossamer extract",
+    "usage": "usage: gossamer extract [-h] [--pages PAGES] [--structured] [--store]\n                        [--store-dir STORE_DIR] [--include-images]\n                        [--tables-as {markdown,csv,json}] [--prefer-jats]\n                        [--no-prefer-jats] [--cache-dir CACHE_DIR]\n                        [--config CONFIG] [--keystore KEYSTORE]\n                        [--log-level LOG_LEVEL]\n                        [--fetch-mode {auto,browser,static}]\n                        source\n",
+    "positionals": [
+     {
+      "dest": "source",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--pages"
+      ],
+      "dest": "pages",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--structured"
+      ],
+      "dest": "structured",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--store"
+      ],
+      "dest": "store",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--store-dir"
+      ],
+      "dest": "store_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--include-images"
+      ],
+      "dest": "include_images",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--tables-as"
+      ],
+      "dest": "tables_as",
+      "nargs": null,
+      "choices": [
+       "markdown",
+       "csv",
+       "json"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--prefer-jats"
+      ],
+      "dest": "prefer_jats",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--no-prefer-jats"
+      ],
+      "dest": "prefer_jats",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_false"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "check": {
+    "prog": "gossamer check",
+    "usage": "usage: gossamer check [-h] [--mode {status,content}] [--cache-dir CACHE_DIR]\n                      [--config CONFIG] [--keystore KEYSTORE]\n                      [--log-level LOG_LEVEL]\n                      [--fetch-mode {auto,browser,static}]\n                      urls [urls ...]\n",
+    "positionals": [
+     {
+      "dest": "urls",
+      "nargs": "+",
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--mode"
+      ],
+      "dest": "mode",
+      "nargs": null,
+      "choices": [
+       "status",
+       "content"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "discover": {
+    "prog": "gossamer discover",
+    "usage": "usage: gossamer discover [-h] [--cache-dir CACHE_DIR] [--config CONFIG]\n                         [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                         [--fetch-mode {auto,browser,static}]\n                         url\n",
+    "positionals": [
+     {
+      "dest": "url",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "crawl": {
+    "prog": "gossamer crawl",
+    "usage": "usage: gossamer crawl [-h] [--query QUERY] [--max-depth MAX_DEPTH]\n                      [--max-pages MAX_PAGES] [--same-host]\n                      [--min-score MIN_SCORE] [--excerpts] [--search-prior]\n                      [--seed-urls [SEED_URLS ...]]\n                      [--use-smart {auto,browser,static}]\n                      [--cache-dir CACHE_DIR] [--config CONFIG]\n                      [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                      [--fetch-mode {auto,browser,static}]\n                      root_url\n",
+    "positionals": [
+     {
+      "dest": "root_url",
+      "nargs": null,
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--query"
+      ],
+      "dest": "query",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--max-depth"
+      ],
+      "dest": "max_depth",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--max-pages"
+      ],
+      "dest": "max_pages",
+      "nargs": null,
+      "choices": null,
+      "type": "int",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--same-host"
+      ],
+      "dest": "same_host",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--min-score"
+      ],
+      "dest": "min_score",
+      "nargs": null,
+      "choices": null,
+      "type": "float",
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--excerpts"
+      ],
+      "dest": "excerpts",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--search-prior"
+      ],
+      "dest": "search_prior",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--seed-urls"
+      ],
+      "dest": "seed_urls",
+      "nargs": "*",
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--use-smart"
+      ],
+      "dest": "use_smart",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "cache": {
+    "prog": "gossamer cache",
+    "usage": "usage: gossamer cache [-h] [--action {prune,clear,reset}]\n                      [--cache-dir CACHE_DIR] [--config CONFIG]\n                      [--keystore KEYSTORE] [--log-level LOG_LEVEL]\n                      [--fetch-mode {auto,browser,static}]\n",
+    "positionals": [],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--action"
+      ],
+      "dest": "action",
+      "nargs": null,
+      "choices": [
+       "prune",
+       "clear",
+       "reset"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "cite": {
+    "prog": "gossamer cite",
+    "usage": "usage: gossamer cite [-h] [--style {bibtex,csl-json,apa,mla}] [--enrich]\n                     [--no-dedupe] [--from-pdf] [--cache-dir CACHE_DIR]\n                     [--config CONFIG] [--keystore KEYSTORE]\n                     [--log-level LOG_LEVEL]\n                     [--fetch-mode {auto,browser,static}]\n                     results [results ...]\n",
+    "positionals": [
+     {
+      "dest": "results",
+      "nargs": "+",
+      "choices": null,
+      "metavar": null,
+      "required": true
+     }
+    ],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     },
+     {
+      "option_strings": [
+       "--style"
+      ],
+      "dest": "style",
+      "nargs": null,
+      "choices": [
+       "bibtex",
+       "csl-json",
+       "apa",
+       "mla"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--enrich"
+      ],
+      "dest": "enrich",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--no-dedupe"
+      ],
+      "dest": "no_dedupe",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--from-pdf"
+      ],
+      "dest": "from_pdf",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store_true"
+     },
+     {
+      "option_strings": [
+       "--cache-dir"
+      ],
+      "dest": "cache_dir",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--config"
+      ],
+      "dest": "config",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--keystore"
+      ],
+      "dest": "keystore",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--log-level"
+      ],
+      "dest": "log_level",
+      "nargs": null,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "store"
+     },
+     {
+      "option_strings": [
+       "--fetch-mode"
+      ],
+      "dest": "fetch_mode",
+      "nargs": null,
+      "choices": [
+       "auto",
+       "browser",
+       "static"
+      ],
+      "type": null,
+      "required": false,
+      "action": "store"
+     }
+    ]
+   },
+   "skills": {
+    "prog": "gossamer skills",
+    "usage": "usage: gossamer skills [-h] {list,show,install} ...\n",
+    "positionals": [],
+    "options": [
+     {
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "dest": "help",
+      "nargs": 0,
+      "choices": null,
+      "type": null,
+      "required": false,
+      "action": "help"
+     }
+    ],
+    "subcommand_dest": "skills_command",
+    "subcommand_required": true,
+    "subcommands": {
+     "list": {
+      "prog": "gossamer skills list",
+      "usage": "usage: gossamer skills list [-h]\n",
+      "positionals": [],
+      "options": [
+       {
+        "option_strings": [
+         "-h",
+         "--help"
+        ],
+        "dest": "help",
+        "nargs": 0,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "help"
+       }
+      ]
+     },
+     "show": {
+      "prog": "gossamer skills show",
+      "usage": "usage: gossamer skills show [-h] name\n",
+      "positionals": [
+       {
+        "dest": "name",
+        "nargs": null,
+        "choices": null,
+        "metavar": null,
+        "required": true
+       }
+      ],
+      "options": [
+       {
+        "option_strings": [
+         "-h",
+         "--help"
+        ],
+        "dest": "help",
+        "nargs": 0,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "help"
+       }
+      ]
+     },
+     "install": {
+      "prog": "gossamer skills install",
+      "usage": "usage: gossamer skills install [-h] [--dest DIR] [--project] [--skill NAME]\n                               [--force]\n",
+      "positionals": [],
+      "options": [
+       {
+        "option_strings": [
+         "-h",
+         "--help"
+        ],
+        "dest": "help",
+        "nargs": 0,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "help"
+       },
+       {
+        "option_strings": [
+         "--dest"
+        ],
+        "dest": "dest",
+        "nargs": null,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "append"
+       },
+       {
+        "option_strings": [
+         "--project"
+        ],
+        "dest": "project",
+        "nargs": 0,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "store_true"
+       },
+       {
+        "option_strings": [
+         "--skill"
+        ],
+        "dest": "skill",
+        "nargs": null,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "append"
+       },
+       {
+        "option_strings": [
+         "--force"
+        ],
+        "dest": "force",
+        "nargs": 0,
+        "choices": null,
+        "type": null,
+        "required": false,
+        "action": "store_true"
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+}

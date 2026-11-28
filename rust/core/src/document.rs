@@ -509,7 +509,7 @@ pub fn office_structured_payload(
             "page_number": 1,
             "raw_text": plain,
             "markdown": markdown,
-            "tables": tables,
+            "tables": [],
         }],
         "tables": tables,
         "links": [],
@@ -521,13 +521,186 @@ fn map_get<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     value.get(key).filter(|value| !value.is_null())
 }
 
+fn normalize_xmp_datetime(raw: &str) -> Option<String> {
+    if raw.len() == 10
+        && raw.as_bytes()[4] == b'-'
+        && raw.as_bytes()[7] == b'-'
+        && raw[..4].chars().all(|c| c.is_ascii_digit())
+    {
+        return Some(format!("{raw}T00:00:00"));
+    }
+    if raw.len() == 20 && raw.ends_with('Z') && raw.as_bytes()[10] == b'T' {
+        return Some(raw[..19].to_string());
+    }
+    if raw.len() == 19 && raw.as_bytes()[10] == b'T' {
+        return Some(raw.to_string());
+    }
+    if raw.len() == 24 && raw.as_bytes()[10] == b'T' && matches!(raw.as_bytes()[19], b'+' | b'-') {
+        return Some(format!("{}{}:{}", &raw[..22], &raw[22..24], ""));
+    }
+    if raw.len() == 25
+        && raw.as_bytes()[10] == b'T'
+        && matches!(raw.as_bytes()[19], b'+' | b'-')
+        && raw.as_bytes()[22] == b':'
+    {
+        return Some(raw.to_string());
+    }
+    None
+}
+
+/// Build a structured `ParsedDocumentPayload` for PDF bytes.
+pub fn pdf_structured_payload(
+    bytes: &[u8],
+    file_name: &str,
+    file_size_bytes: u64,
+) -> Result<Value, String> {
+    use pdf_oxide::extractors::xmp::XmpExtractor;
+
+    let document = pdf_oxide::PdfDocument::from_bytes(bytes.to_vec())
+        .map_err(|error| format!("Failed to open PDF from bytes: {error}"))?;
+    let page_count = document.page_count().unwrap_or(0);
+    let xmp = XmpExtractor::extract(&document).ok().flatten();
+    let title = xmp
+        .as_ref()
+        .and_then(|meta| meta.dc_title.clone())
+        .map(Value::String)
+        .unwrap_or(Value::Null);
+    let author = xmp
+        .as_ref()
+        .and_then(|meta| meta.dc_creator.first().cloned())
+        .map(Value::String)
+        .unwrap_or(Value::Null);
+    let created_at = xmp
+        .as_ref()
+        .and_then(|meta| meta.xmp_create_date.as_deref())
+        .and_then(normalize_xmp_datetime)
+        .map(Value::String)
+        .unwrap_or(Value::Null);
+    let modified_at = xmp
+        .as_ref()
+        .and_then(|meta| meta.xmp_modify_date.as_deref())
+        .and_then(normalize_xmp_datetime)
+        .map(Value::String)
+        .unwrap_or(Value::Null);
+    let mut extra_meta = serde_json::Map::new();
+    if let Some(meta) = &xmp {
+        for (key, value) in [
+            ("dc_description", meta.dc_description.as_ref()),
+            ("dc_language", meta.dc_language.as_ref()),
+            ("xmp_creator_tool", meta.xmp_creator_tool.as_ref()),
+            ("pdf_producer", meta.pdf_producer.as_ref()),
+            ("pdf_keywords", meta.pdf_keywords.as_ref()),
+        ] {
+            if let Some(value) = value {
+                extra_meta.insert(key.to_string(), Value::String(value.clone()));
+            }
+        }
+        if !meta.dc_subject.is_empty() {
+            extra_meta.insert(
+                "dc_subject".to_string(),
+                Value::String(meta.dc_subject.join(", ")),
+            );
+        }
+    }
+    let options = pdf_oxide::converters::ConversionOptions::default();
+    let mut pages = Vec::new();
+    let mut all_tables = Vec::new();
+    for index in 0..page_count {
+        let raw_text = document
+            .extract_text(index)
+            .map_err(|error| error.to_string())?;
+        let markdown = document
+            .to_markdown(index, &options)
+            .map_err(|error| error.to_string())?;
+        let mut page_tables = Vec::new();
+        if let Ok(tables) = document.extract_tables(index) {
+            for (table_index, table) in tables.iter().enumerate() {
+                let mut headers: Vec<String> = Vec::new();
+                let mut rows: Vec<Value> = Vec::new();
+                for row in &table.rows {
+                    let cells: Vec<String> = row
+                        .cells
+                        .iter()
+                        .map(|cell| cell.text.trim().to_string())
+                        .collect();
+                    if cells.is_empty() {
+                        continue;
+                    }
+                    if headers.is_empty() {
+                        headers = cells;
+                    } else {
+                        rows.push(Value::Array(cells.into_iter().map(Value::String).collect()));
+                    }
+                }
+                if headers.is_empty() {
+                    continue;
+                }
+                page_tables.push(json!({
+                    "name": format!("page_table_{table_index}"),
+                    "headers": headers,
+                    "rows": rows,
+                }));
+            }
+        }
+        all_tables.extend(page_tables.iter().cloned());
+        pages.push(json!({
+            "page_number": index + 1,
+            "raw_text": raw_text,
+            "markdown": markdown,
+            "tables": page_tables,
+        }));
+    }
+    let metadata = json!({
+        "jsonld": Value::Null,
+        "microdata": Value::Null,
+        "microformats": Value::Null,
+        "dublin_core": Value::Null,
+        "rdfa": Value::Null,
+        "rel_links": Value::Null,
+        "manifest": Value::Null,
+        "extra_meta": extra_meta,
+        "twitter_card": Value::Null,
+        "twitter_title": Value::Null,
+        "twitter_description": Value::Null,
+        "twitter_image": Value::Null,
+        "twitter_site": Value::Null,
+        "og_title": Value::Null,
+        "og_type": Value::Null,
+        "og_image": Value::Null,
+        "og_images": Value::Null,
+        "og_description": Value::Null,
+        "og_site_name": Value::Null,
+        "og_url": Value::Null,
+        "canonical": Value::Null,
+        "language": Value::Null,
+        "keywords": Value::Null,
+        "robots": Value::Null,
+        "file_name": file_name,
+        "file_size_bytes": file_size_bytes,
+        "format": "pdf",
+        "title": title,
+        "author": author,
+        "description": Value::Null,
+        "created_at": created_at,
+        "modified_at": modified_at,
+        "page_count": page_count,
+    });
+    Ok(json!({
+        "metadata": metadata,
+        "pages": pages,
+        "tables": all_tables,
+        "links": [],
+        "guard": Value::Null,
+    }))
+}
+
 /// Extract Markdown from PDF bytes with the embedded `pdf_oxide` engine.
 ///
 /// Errors are returned as strings so CLI/Python adapters can preserve their
 /// own error envelopes instead of panicking on malformed input.
 pub fn pdf_markdown(bytes: &[u8]) -> Result<String, String> {
-    let document =
-        pdf_oxide::PdfDocument::from_bytes(bytes.to_vec()).map_err(|error| error.to_string())?;
+    let document = pdf_oxide::PdfDocument::from_bytes(bytes.to_vec())
+        .map_err(|error| format!("Failed to open PDF from bytes: {error}"))?;
     let options = pdf_oxide::converters::ConversionOptions::default();
     document
         .to_markdown_all(&options)

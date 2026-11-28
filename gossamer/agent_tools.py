@@ -32,6 +32,12 @@ from gossamer.guard import (
     build_guard,
 )
 
+try:  # httpx only decodes content encodings whose codec is installed.
+    import brotli as _brotli  # noqa: F401
+except ImportError:  # pragma: no cover - depends on the installation extras
+    _brotli = None
+_ACCEPT_ENCODING = "gzip, deflate, br" if _brotli is not None else "gzip, deflate"
+
 # ────────────────────────────────────────────────────────────────────────
 # Re-exports for backwards compatibility.
 #
@@ -291,7 +297,7 @@ class WebResearcherToolbox:
             "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": _ACCEPT_ENCODING,
             "DNT": "1",
             "Connection": "keep-alive",
         }

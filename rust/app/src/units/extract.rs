@@ -1,15 +1,14 @@
 //! `gossamer extract`: argument validation for the extraction contract.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use clap::ArgMatches;
 use gossamer::budget::truncate_text;
+use gossamer::cli_args::Parsed;
 use gossamer::document::{
     document_page_range, jats_tables_allows, office_markdown, office_structured_payload,
-    page_selection_error, pdf_markdown, prepare_url, spreadsheet_tables, structured_format_error,
+    page_selection_error, pdf_markdown, pdf_structured_payload, prepare_url, spreadsheet_tables,
     xml_feed_text,
 };
 use gossamer::downloader::download_bytes;
@@ -17,10 +16,10 @@ use gossamer::jats::{
     convert_jats_str, doi_from_pdf_path, doi_from_source_string, europepmc_fulltext_url,
     is_xml_body, parse_europepmc_search, plos_file_url,
 };
-use gossamer::jsonfmt::{pretty_record, py_dumps};
+use gossamer::jsonfmt::{pretty_record, py_dumps_pretty, pydantic_json};
 use gossamer::mcp_dispatch::extract_validation;
 use gossamer::miscutils::sha256_bytes;
-use gossamer::runtime::{RuntimeConfig, RuntimeState};
+use gossamer::runtime::RuntimeState;
 use gossamer::textlinks::scan_text_links;
 use gossamer::tokens::count_tokens;
 use serde_json::{Value, json};
@@ -58,44 +57,88 @@ fn timestamp() -> String {
     )
 }
 
-fn local_text(path: &Path, bytes: &[u8], tables_as: &str) -> Option<String> {
+fn unsupported_format(suffix: &str) -> String {
+    match suffix {
+        ".odt" => "Unsupported document format: .odt (convert the file to .docx).".to_string(),
+        ".ods" => "Unsupported document format: .ods (convert the file to .xlsx).".to_string(),
+        ".odp" => "Unsupported document format: .odp (convert the file to .pptx).".to_string(),
+        ".rtf" => {
+            "Unsupported document format: .rtf (convert the file to .docx or PDF).".to_string()
+        }
+        ".epub" => "Unsupported document format: .epub (convert the file to PDF).".to_string(),
+        other => format!("Unsupported document format: {other}"),
+    }
+}
+
+/// Extract readable text from local bytes using the full path for the suffix.
+fn local_text(path: &Path, bytes: &[u8], tables_as: &str) -> Result<String, String> {
     let ext = path
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
+    let suffix = if ext.is_empty() {
+        String::new()
+    } else {
+        format!(".{ext}")
+    };
+    let raw_text = || -> String {
+        let text = String::from_utf8_lossy(bytes);
+        text.strip_prefix('\u{feff}').unwrap_or(&text).to_string()
+    };
     if matches!(ext.as_str(), "txt" | "md" | "csv") {
-        return std::str::from_utf8(bytes).ok().map(str::to_string);
+        return Ok(raw_text());
     }
     if ext == "pdf" {
-        return pdf_markdown(bytes).ok();
+        return pdf_markdown(bytes).map_err(|error| error.to_string());
     }
     if matches!(ext.as_str(), "xlsx" | "xls" | "xlsb") && matches!(tables_as, "csv" | "json") {
-        return spreadsheet_tables(bytes, &ext, tables_as).ok();
+        return spreadsheet_tables(bytes, &ext, tables_as).map_err(|error| error.to_string());
     }
     if matches!(
         ext.as_str(),
         "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb"
     ) {
-        return office_markdown(bytes, &ext).ok();
+        return office_markdown(bytes, &ext).map_err(|error| error.to_string());
     }
     if ext == "json" {
-        let value: Value = serde_json::from_slice(bytes).ok()?;
-        return serde_json::to_string_pretty(&value).ok();
+        let raw = raw_text();
+        return Ok(match serde_json::from_str::<Value>(&raw) {
+            Ok(value) => gossamer::jsonfmt::py_dumps_pretty_utf8(&value),
+            Err(_) => raw,
+        });
     }
     if matches!(ext.as_str(), "xml" | "rss" | "atom") {
-        let text = std::str::from_utf8(bytes)
-            .ok()?
-            .trim_start_matches('\u{feff}');
-        return Some(xml_feed_text(text).unwrap_or_else(|| text.to_string()));
+        let text = raw_text();
+        return Ok(xml_feed_text(&text).unwrap_or(text));
     }
-    None
+    Err(unsupported_format(&suffix))
+}
+
+/// Read local bytes with the same existence and size guards as `_extract_local`.
+fn read_local_bytes(source: &str, path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
+    if !path.exists() {
+        return Err(format!("File not found: {source}"));
+    }
+    if let Ok(metadata) = path.metadata()
+        && metadata.len() > max_bytes
+    {
+        return Err(format!(
+            "Document too large: {} bytes (cap {max_bytes})",
+            metadata.len()
+        ));
+    }
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!("Document too large: exceeds {max_bytes} bytes"));
+    }
+    Ok(bytes)
 }
 
 fn extraction_error(source: &str, detail: &str) -> ExitCode {
     eprintln!("Document extraction failed for {source}: {detail}");
     let payload = json!({"error": format!("Document extraction failed: {detail}")});
-    println!("{}", py_dumps(&payload));
+    println!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }
 
@@ -387,93 +430,400 @@ fn platform_display(path: &Path) -> String {
     }
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
-    }
-
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    if matches.get_count("help") > 0 {
-        return unsupported();
-    }
-
-    let mut tables_as = "json".to_string();
-    let mut include_images = false;
-    let mut structured = false;
-    let mut store = false;
-    let mut store_dir: Option<String> = None;
-    let mut pages: Option<String> = None;
-    let mut cache_dir =
-        std::env::var("GOSSAMER_CACHE_DIR").unwrap_or_else(|_| ".gossamer_cache".into());
-    let mut prefer_jats = true;
-    let mut source: Option<String> = None;
-    let mut index = 0usize;
-    while index < args.len() {
-        let value = args[index].to_string_lossy().into_owned();
-        match value.as_str() {
-            "--structured" => structured = true,
-            "--store" => store = true,
-            "--include-images" => include_images = true,
-            "--prefer-jats" => prefer_jats = true,
-            "--no-prefer-jats" => prefer_jats = false,
-            "--pages" | "--store-dir" | "--cache-dir" | "--config" | "--keystore"
-            | "--log-level" | "--fetch-mode" => {
-                if index + 1 >= args.len() {
-                    return unsupported();
-                }
-                if value == "--pages" {
-                    pages = Some(args[index + 1].to_string_lossy().into_owned());
-                } else if value == "--store-dir" {
-                    store_dir = Some(args[index + 1].to_string_lossy().into_owned());
-                } else if value == "--cache-dir" {
-                    cache_dir = args[index + 1].to_string_lossy().into_owned();
-                }
-                index += 1;
-            }
-            "--tables-as" => {
-                if index + 1 >= args.len() {
-                    return unsupported();
-                }
-                tables_as = args[index + 1].to_string_lossy().into_owned();
-                index += 1;
-            }
-            _ if value.starts_with('-') => return unsupported(),
-            _ => {
-                if source.is_some() {
-                    return unsupported();
-                }
-                source = Some(value);
-            }
+fn jats_store_stem(source: &str) -> String {
+    let mut out = String::new();
+    let mut gap = false;
+    for ch in source.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            gap = false;
+        } else if !gap {
+            out.push('_');
+            gap = true;
         }
-        index += 1;
     }
-    if source.is_none() {
+    let trimmed = out.trim_matches('_');
+    let stem: String = trimmed.chars().take(120).collect();
+    if stem.is_empty() {
+        "document".to_string()
+    } else {
+        stem
+    }
+}
+
+fn content_type_format(content_type: &str) -> Option<&'static str> {
+    match content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "application/pdf" => Some("pdf"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
+        "application/vnd.msword" => Some("doc"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+        "application/vnd.ms-excel" => Some("xls"),
+        "application/vnd.ms-excel.sheet.binary.macroenabled.12" => Some("xlsb"),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Some("pptx"),
+        "application/vnd.ms-powerpoint" => Some("ppt"),
+        _ => None,
+    }
+}
+
+fn text_like_kind(content_type: &str) -> Option<&'static str> {
+    match content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "text/plain" | "text/markdown" | "text/csv" => Some("text"),
+        "application/json" => Some("json"),
+        "text/xml" | "application/xml" | "application/rss+xml" | "application/atom+xml" => {
+            Some("xml")
+        }
+        _ => None,
+    }
+}
+
+fn parse_document_bytes(bytes: &[u8], format: &str, tables_as: &str) -> Result<String, String> {
+    match format {
+        "pdf" => pdf_markdown(bytes),
+        "xlsx" | "xls" | "xlsb" if matches!(tables_as, "csv" | "json") => {
+            spreadsheet_tables(bytes, format, tables_as)
+        }
+        "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb" => office_markdown(bytes, format),
+        other => Err(format!("Unsupported document format: .{other}")),
+    }
+}
+
+fn extract_url_body(
+    bytes: &[u8],
+    source: &str,
+    content_type: &str,
+    tables_as: &str,
+) -> Result<String, String> {
+    let suffix = Path::new(source)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{}", value.to_ascii_lowercase()))
+        .unwrap_or_default();
+    let raw = || {
+        String::from_utf8_lossy(bytes)
+            .trim_start_matches('\u{feff}')
+            .to_string()
+    };
+    let direct = match suffix.as_str() {
+        ".pdf" => pdf_markdown(bytes),
+        ".xlsx" | ".xls" | ".xlsb" if matches!(tables_as, "csv" | "json") => {
+            spreadsheet_tables(bytes, &suffix[1..], tables_as)
+        }
+        ".docx" | ".xlsx" | ".pptx" | ".doc" | ".xls" | ".ppt" | ".xlsb" => {
+            office_markdown(bytes, &suffix[1..])
+        }
+        ".txt" | ".md" | ".csv" => Ok(raw()),
+        ".json" => Ok(serde_json::from_slice::<Value>(bytes)
+            .ok()
+            .map(|value| gossamer::jsonfmt::py_dumps_pretty_utf8(&value))
+            .unwrap_or_else(raw)),
+        ".xml" | ".rss" | ".atom" => {
+            let text = raw();
+            Ok(xml_feed_text(&text).unwrap_or(text))
+        }
+        ".odt" => Err("Unsupported document format: .odt (convert the file to .docx).".to_string()),
+        ".ods" => Err("Unsupported document format: .ods (convert the file to .xlsx).".to_string()),
+        ".odp" => Err("Unsupported document format: .odp (convert the file to .pptx).".to_string()),
+        ".rtf" => {
+            Err("Unsupported document format: .rtf (convert the file to .docx or PDF).".to_string())
+        }
+        ".epub" => Err("Unsupported document format: .epub (convert the file to PDF).".to_string()),
+        _ => Err(format!("Unsupported document format: {suffix}")),
+    };
+    if direct.is_ok() {
+        return direct;
+    }
+    if let Some(format) = content_type_format(content_type) {
+        return parse_document_bytes(bytes, format, tables_as);
+    }
+    match text_like_kind(content_type) {
+        Some("json") => Ok(serde_json::from_slice::<Value>(bytes)
+            .ok()
+            .map(|value| gossamer::jsonfmt::py_dumps_pretty_utf8(&value))
+            .unwrap_or_else(raw)),
+        Some("xml") => {
+            let text = raw();
+            Ok(xml_feed_text(&text).unwrap_or(text))
+        }
+        Some(_) => Ok(raw()),
+        None => direct,
+    }
+}
+
+fn document_download_error(error: &str) -> String {
+    let Some(rest) = error.strip_prefix("too_large\u{1e}") else {
+        return error.to_string();
+    };
+    let parts: Vec<&str> = rest.split('\u{1e}').collect();
+    if parts.len() != 5 {
+        return error.to_string();
+    }
+    let Ok(amount) = parts[3].parse::<u64>() else {
+        return error.to_string();
+    };
+    let Ok(cap) = parts[4].parse::<u64>() else {
+        return error.to_string();
+    };
+    if parts[2] == "declared" {
+        format!("Document too large: declared {amount} bytes (cap {cap})")
+    } else {
+        format!("Document too large: exceeds {cap} bytes")
+    }
+}
+
+fn page_range_failure(source: &str, detail: &str) -> ExitCode {
+    eprintln!("Page-range extraction failed for {source}: {detail}");
+    println!(
+        "{}",
+        py_dumps_pretty(&json!({
+            "error": format!("Page-range extraction failed: {detail}")
+        }))
+    );
+    ExitCode::SUCCESS
+}
+
+enum GuardedDocument {
+    Delivered(String, Value),
+    Withheld(Value),
+}
+
+fn apply_document_guard(content: &str, source: &str, parsed: &Parsed) -> GuardedDocument {
+    let Some(config) = crate::units::guard::config(parsed) else {
+        return GuardedDocument::Delivered(content.to_string(), Value::Null);
+    };
+    let pairs = [("document_text", content.to_string())];
+    let Some(outcome) = crate::units::guard::evaluate(&config, &pairs, "document_text") else {
+        return GuardedDocument::Delivered(content.to_string(), Value::Null);
+    };
+    if outcome.withheld {
+        return GuardedDocument::Withheld(json!({
+            "error": "content withheld by prompt-injection guard",
+            "source": source,
+            "guard": outcome.block,
+        }));
+    }
+    let text = crate::units::guard::annotate(&config, &outcome, content, source);
+    GuardedDocument::Delivered(text, outcome.block)
+}
+
+fn fit_structured_document(payload_json: &str, source: &str, parsed: &Parsed) -> String {
+    let max_chars = config_int(
+        parsed,
+        "max_markdown_chars",
+        "GOSSAMER_MAX_MARKDOWN_CHARS",
+        8000,
+    );
+    let max_tokens = config_int(parsed, "max_tokens", "GOSSAMER_MAX_TOKENS", 0);
+    let model = config_text(parsed, "model_name", "GOSSAMER_MODEL_NAME", "gpt-4o");
+    let fits = |text: &str| {
+        gossamer::budget::json_fits(text, max_chars, max_tokens, &model).unwrap_or(false)
+    };
+    if fits(payload_json) {
+        return payload_json.to_string();
+    }
+    let mut budget = if max_chars > 0 {
+        max_chars
+    } else {
+        payload_json.chars().count() as i64
+    };
+    while budget > 240 {
+        budget /= 2;
+        if let Ok(candidate) = gossamer::budget::shrink_payload(payload_json, Some(budget as usize))
+            && fits(&candidate)
+        {
+            return candidate;
+        }
+    }
+    eprintln!(
+        "Payload could not be shrunk into the output budget; returning an overflow envelope instead of invalid JSON"
+    );
+    py_dumps_pretty(&json!({
+        "source": source,
+        "error": "document too large for the output budget",
+        "hint": "narrow the read with the pages parameter",
+    }))
+}
+
+fn structured_failure(source: &str, detail: &str) -> ExitCode {
+    eprintln!("Structured extraction failed for {source}: {detail}");
+    println!(
+        "{}",
+        py_dumps_pretty(&json!({
+            "error": format!("Structured document extraction failed: {detail}")
+        }))
+    );
+    ExitCode::SUCCESS
+}
+
+fn structured_parse(
+    bytes: &[u8],
+    suffix: &str,
+    file_name: &str,
+    file_size_bytes: u64,
+) -> Result<Value, String> {
+    match suffix {
+        "pdf" => pdf_structured_payload(bytes, file_name, file_size_bytes).map_err(|error| {
+            error.replacen("Failed to open PDF from bytes: ", "Failed to open PDF: ", 1)
+        }),
+        "xlsx" | "xls" | "xlsb" | "ods" | "docx" | "doc" | "pptx" | "ppt" => {
+            office_structured_payload(bytes, suffix, file_name, file_size_bytes)
+        }
+        _ => Err(format!(
+            "Unsupported file format '.{suffix}'. Supported: pdf, docx, xlsx, pptx, xls, ppt, xlsb, ods, doc."
+        )),
+    }
+}
+
+fn structured_extract(source: &str, is_url: bool, parsed: &Parsed) -> ExitCode {
+    if !is_url {
+        let raw_path = PathBuf::from(source);
+        let path = if raw_path.is_absolute() {
+            raw_path
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(raw_path)
+        };
+        if !path.exists() {
+            return structured_failure(
+                source,
+                &format!(
+                    "Source file not found at: {}",
+                    platform_display(Path::new(source))
+                ),
+            );
+        }
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => return structured_failure(source, &error.to_string()),
+        };
+        let suffix = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let file_name = path
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "document".to_string());
+        return match structured_parse(&bytes, &suffix, &file_name, bytes.len() as u64) {
+            Ok(payload) => {
+                let rendered =
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
+                println!("{}", fit_structured_document(&rendered, source, parsed));
+                ExitCode::SUCCESS
+            }
+            Err(detail) => structured_failure(source, &detail),
+        };
+    }
+
+    let cache_dir = crate::units::settings::cache_dir(parsed);
+    let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("gossamer: error: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if !runtime.robots_allows(source, runtime.now()) {
+        println!(
+            "{}",
+            py_dumps_pretty(&json!({
+                "error": format!("Document fetch disallowed by robots.txt: {source}")
+            }))
+        );
+        return ExitCode::SUCCESS;
+    }
+    let (bytes, status, _, _) = match download_bytes(source, 30.0, 200_000_000) {
+        Ok(value) => value,
+        Err(error) => return structured_failure(source, &error),
+    };
+    if status >= 400 {
+        let reason = match status {
+            400 => "Bad Request",
+            401 => "Unauthorized",
+            403 => "Forbidden",
+            404 => "Not Found",
+            405 => "Method Not Allowed",
+            408 => "Request Timeout",
+            429 => "Too Many Requests",
+            500 => "Internal Server Error",
+            502 => "Bad Gateway",
+            503 => "Service Unavailable",
+            504 => "Gateway Timeout",
+            _ => "HTTP Error",
+        };
+        let detail = format!(
+            "Client error '{status} {reason}' for url '{source}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
+        );
+        return structured_failure(source, &detail);
+    }
+    let suffix = Path::new(source)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_ascii_lowercase)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "pdf".to_string());
+    let file_name = Path::new(source)
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| format!("document.{suffix}"));
+    match structured_parse(&bytes, &suffix, &file_name, bytes.len() as u64) {
+        Ok(payload) => {
+            let rendered =
+                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
+            println!("{}", fit_structured_document(&rendered, source, parsed));
+            ExitCode::SUCCESS
+        }
+        Err(detail) => structured_failure(source, &detail),
+    }
+}
+
+fn config_int(parsed: &Parsed, key: &str, env: &str, default: i64) -> i64 {
+    crate::units::settings::int(parsed, key, env, default)
+}
+
+fn config_text(parsed: &Parsed, key: &str, env: &str, default: &str) -> String {
+    crate::units::settings::text(parsed, key, env, default)
+}
+
+pub fn run(parsed: &Parsed) -> ExitCode {
+    let tables_as = parsed.value("tables_as").unwrap_or("json").to_string();
+    let include_images = parsed.flag("include_images");
+    let structured = parsed.flag("structured");
+    let store = parsed.flag("store");
+    let store_dir = parsed.value("store_dir").map(str::to_string);
+    let pages = parsed.value("pages").map(str::to_string);
+    let cache_dir = crate::units::settings::cache_dir(parsed);
+    let prefer_jats = parsed.switch("prefer_jats").unwrap_or(true);
+    let Some(source) = parsed.positional("source").map(str::to_string) else {
         return unsupported();
-    }
+    };
 
     if let Some(error) = extract_validation(&tables_as, include_images, structured, store) {
-        let text = serde_json::to_string_pretty(&error).unwrap_or_else(|_| error.to_string());
-        println!("{text}");
+        println!("{}", py_dumps_pretty(&error));
         return ExitCode::SUCCESS;
     }
 
-    let Some(source) = source else {
-        return unsupported();
-    };
     if let Some(pages) = pages.as_deref()
         && !pages.trim().is_empty()
     {
         if store {
             let payload = json!({"error": "store=True cannot be combined with pages=...; store the full document instead"});
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-            );
+            println!("{}", py_dumps_pretty(&payload));
             return ExitCode::SUCCESS;
         }
         if prefer_jats && jats_resolvable_offline(&source, &tables_as) {
@@ -482,16 +832,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                     "pages='{pages}' is not supported for structured-source (JATS) extraction; re-run without pages or with --no-prefer-jats"
                 )
             });
-            println!("{}", py_dumps(&payload));
-            return ExitCode::SUCCESS;
-        }
-        let is_url = source.starts_with("http://") || source.starts_with("https://");
-        if let Some(error) = page_selection_error(&source, is_url) {
-            let payload = json!({"error": error});
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-            );
+            println!("{}", py_dumps_pretty(&payload));
             return ExitCode::SUCCESS;
         }
     }
@@ -510,87 +851,32 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     if structured {
-        if let Some(error) = structured_format_error(&source, is_url) {
-            let display = source.replace('\\', "/");
-            eprintln!("Structured extraction failed for {display}: {error}");
-            let payload =
-                json!({"error": format!("Structured document extraction failed: {error}")});
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-            );
-            return ExitCode::SUCCESS;
-        }
-        let suffix = Path::new(&source)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if !is_url
-            && matches!(
-                suffix.as_str(),
-                "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb"
-            )
-        {
-            let raw_path = PathBuf::from(&source);
-            let path = if raw_path.is_absolute() {
-                raw_path
-            } else {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| PathBuf::from("."))
-                    .join(raw_path)
-            };
-            let Ok(bytes) = std::fs::read(&path) else {
-                return unsupported();
-            };
-            let file_name = path
-                .file_name()
-                .map(|value| value.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "document".to_string());
-            let payload =
-                match office_structured_payload(&bytes, &suffix, &file_name, bytes.len() as u64) {
-                    Ok(payload) => payload,
-                    Err(_) => return unsupported(),
-                };
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-            );
-            return ExitCode::SUCCESS;
-        }
-        return unsupported();
+        return structured_extract(&source, is_url, parsed);
     }
-    let url_suffix = Path::new(&source)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if is_url
-        && !url_suffix.is_empty()
-        && !jats_resolvable_offline(&source, &tables_as)
-        && !matches!(
-            url_suffix.as_str(),
-            "txt"
-                | "md"
-                | "csv"
-                | "json"
-                | "xml"
-                | "rss"
-                | "atom"
-                | "pdf"
-                | "docx"
-                | "xlsx"
-                | "pptx"
-                | "doc"
-                | "xls"
-                | "ppt"
-                | "xlsb"
-        )
+    let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("gossamer: error: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if is_url {
+        let now = runtime.now();
+        if !runtime.robots_allows(&source, now) {
+            println!(
+                "{}",
+                py_dumps_pretty(&json!({
+                    "error": format!("Document fetch disallowed by robots.txt: {}", source)
+                }))
+            );
+            return ExitCode::SUCCESS;
+        }
+    }
+    if pages.as_deref().is_some_and(|spec| !spec.trim().is_empty())
+        && let Some(error) = page_selection_error(&source, is_url)
     {
-        return extraction_error(
-            &source,
-            &format!("Unsupported document format: .{url_suffix}"),
-        );
+        println!("{}", py_dumps_pretty(&json!({"error": error})));
+        return ExitCode::SUCCESS;
     }
     let mut jats_resolved_doi = Value::Null;
     let mut fetched_at: Value = json!(timestamp());
@@ -599,20 +885,12 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     let mut n_formulas = Value::Null;
     let mut n_figures = Value::Null;
     let mut n_tables = Value::Null;
-    let runtime = match RuntimeState::new(RuntimeConfig::from_cache_dir(PathBuf::from(&cache_dir)))
-    {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("gossamer: error: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
     let jats_hit = if prefer_jats && jats_resolvable_offline(&source, &tables_as) {
         match jats_route(&runtime, &source, &tables_as) {
             JatsOutcome::Hit(hit) => Some(hit),
             JatsOutcome::Error(error) => {
                 let payload = json!({"error": format!("Document extraction failed: {error}")});
-                println!("{}", py_dumps(&payload));
+                println!("{}", py_dumps_pretty(&payload));
                 return ExitCode::SUCCESS;
             }
             JatsOutcome::NotApplicable => None,
@@ -620,6 +898,96 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
     } else {
         None
     };
+    let pages_requested = pages.as_deref().is_some_and(|spec| !spec.trim().is_empty());
+    let had_jats = jats_hit.is_some();
+    let local_jats_candidate = !is_url
+        && prefer_jats
+        && jats_tables_allows(&source, &tables_as)
+        && matches!(
+            Path::new(&source)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .as_str(),
+            "xml" | "jats" | "nxml"
+        );
+    let base_document_key = if is_url {
+        runtime.identity_key(&source)
+    } else {
+        source.clone()
+    };
+    let document_key = if tables_as == "markdown" {
+        base_document_key.clone()
+    } else {
+        format!("{base_document_key}#tables={tables_as}")
+    };
+    let page_key = pages
+        .as_deref()
+        .filter(|spec| !spec.trim().is_empty())
+        .map(|spec| format!("{base_document_key}#pages={spec}"));
+    let cached_document = if had_jats || pages_requested || local_jats_candidate {
+        None
+    } else {
+        runtime.document_cache_get(&document_key)
+    };
+    let cached_hit = cached_document.is_some();
+    let max_document_bytes = config_int(
+        parsed,
+        "max_response_bytes",
+        "GOSSAMER_MAX_RESPONSE_BYTES",
+        runtime.max_response_bytes() as i64,
+    )
+    .max(0) as u64;
+    if let Some(key) = page_key.as_deref()
+        && let Some(cached) = runtime.document_cache_get(key)
+    {
+        let char_limit = config_int(
+            parsed,
+            "max_markdown_chars",
+            "GOSSAMER_MAX_MARKDOWN_CHARS",
+            8000,
+        )
+        .max(0) as usize;
+        let token_limit = config_int(parsed, "max_tokens", "GOSSAMER_MAX_TOKENS", 0);
+        let model = config_text(parsed, "model_name", "GOSSAMER_MODEL_NAME", "gpt-4o");
+        let delivered = truncate_text(&cached, char_limit, token_limit, &model)
+            .unwrap_or_else(|_| cached.clone());
+        let (delivered, guard) = match apply_document_guard(&delivered, &source, parsed) {
+            GuardedDocument::Delivered(text, block) => (text, block),
+            GuardedDocument::Withheld(error) => {
+                println!("{}", py_dumps_pretty(&error));
+                return ExitCode::SUCCESS;
+            }
+        };
+        let spec = pages.as_deref().unwrap_or("");
+        let payload = json!({
+            "source": source,
+            "content": delivered,
+            "content_tokens": count_tokens(&delivered, &model).unwrap_or(0),
+            "cache_hit": true,
+            "page_range": spec,
+            "page_start": 0,
+            "page_end": 0,
+            "total_pages": 0,
+            "fetched_at": Value::Null,
+            "http_status": Value::Null,
+            "final_url": Value::Null,
+            "content_type": Value::Null,
+            "content_hash": sha256_bytes(cached.as_bytes()),
+            "links": [],
+            "guard": guard,
+            "stored": Value::Null,
+            "resolved_doi": Value::Null,
+            "jats_source": Value::Null,
+            "jats_title": Value::Null,
+            "n_formulas": Value::Null,
+            "n_figures": Value::Null,
+            "n_tables": Value::Null,
+        });
+        println!("{}", pydantic_json(&payload));
+        return ExitCode::SUCCESS;
+    }
     let mut cache_hit = false;
     let mut jats_full_content: Option<String> = None;
     let (display, bytes, mut content, http_status, final_url, content_type) = if let Some(hit) =
@@ -634,7 +1002,7 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         cache_hit = hit.cache_hit;
         fetched_at = hit.fetched_at;
         let full = hit.content;
-        let content = truncate_text(&full, 8000, 0, "gpt-4o").unwrap_or_else(|_| full.clone());
+        let content = full.clone();
         jats_full_content = Some(full);
         // Local XML JATS uses its source spelling; URL/DOI hits use the source too.
         let display = source.clone();
@@ -646,11 +1014,46 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             hit.final_url,
             hit.content_type,
         )
+    } else if let Some(cached) = cached_document.clone() {
+        cache_hit = true;
+        fetched_at = Value::Null;
+        let bytes = if store {
+            if is_url {
+                match download_bytes(&source, 20.0, max_document_bytes as usize) {
+                    Ok((bytes, _, _, _)) => bytes,
+                    Err(error) => {
+                        return extraction_error(&source, &document_download_error(&error));
+                    }
+                }
+            } else {
+                match read_local_bytes(&source, Path::new(&source), max_document_bytes) {
+                    Ok(bytes) => bytes,
+                    Err(detail) => return extraction_error(&source, &detail),
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        (
+            source.clone(),
+            bytes,
+            cached,
+            Value::Null,
+            Value::Null,
+            Value::Null,
+        )
     } else if is_url {
         let (bytes, status, final_url, content_type) =
-            match download_bytes(&source, 20.0, 50_000_000) {
+            match download_bytes(&source, 20.0, max_document_bytes as usize) {
                 Ok(value) => value,
-                Err(error) => return extraction_error(&source, &error),
+                Err(error) => {
+                    let detail = document_download_error(&error);
+                    return if pages_requested {
+                        page_range_failure(&source, &detail)
+                    } else {
+                        extraction_error(&source, &detail)
+                    };
+                }
             };
         if status >= 400 {
             let reason = match status {
@@ -670,31 +1073,20 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             let message = format!(
                 "Client error '{status} {reason}' for url '{source}'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
             );
-            return extraction_error(&source, &message);
+            return if pages_requested {
+                page_range_failure(&source, &message)
+            } else {
+                extraction_error(&source, &message)
+            };
         }
-        let raw = String::from_utf8_lossy(&bytes)
-            .trim_start_matches('\u{feff}')
-            .to_string();
-        let content = if url_suffix == "json" {
-            serde_json::from_slice::<Value>(&bytes)
-                .ok()
-                .and_then(|value| serde_json::to_string_pretty(&value).ok())
-                .unwrap_or(raw)
-        } else if matches!(url_suffix.as_str(), "xml" | "rss" | "atom") {
-            xml_feed_text(&raw).unwrap_or(raw)
-        } else if url_suffix == "pdf" {
-            pdf_markdown(&bytes).unwrap_or(raw)
-        } else if matches!(url_suffix.as_str(), "xlsx" | "xls" | "xlsb")
-            && matches!(tables_as.as_str(), "csv" | "json")
-        {
-            spreadsheet_tables(&bytes, &url_suffix, &tables_as).unwrap_or(raw)
-        } else if matches!(
-            url_suffix.as_str(),
-            "docx" | "xlsx" | "pptx" | "doc" | "xls" | "ppt" | "xlsb"
+        let content = match extract_url_body(
+            &bytes,
+            &source,
+            content_type.as_deref().unwrap_or(""),
+            &tables_as,
         ) {
-            office_markdown(&bytes, &url_suffix).unwrap_or(raw)
-        } else {
-            raw
+            Ok(content) => content,
+            Err(error) => return extraction_error(&source, &error),
         };
         (
             source.clone(),
@@ -713,17 +1105,26 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 .unwrap_or_else(|_| PathBuf::from("."))
                 .join(raw_path)
         };
-        let Ok(bytes) = std::fs::read(&path) else {
-            return unsupported();
+        let bytes = match read_local_bytes(&source, &path, max_document_bytes) {
+            Ok(bytes) => bytes,
+            Err(detail) => {
+                return if pages_requested {
+                    page_range_failure(&source, &detail)
+                } else {
+                    extraction_error(&source, &detail)
+                };
+            }
         };
         let ext = path
             .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let jats_text = std::str::from_utf8(&bytes)
-            .ok()
-            .map(|text| text.trim_start_matches('\u{feff}').to_string());
+        let jats_text = Some(
+            String::from_utf8_lossy(&bytes)
+                .trim_start_matches('\u{feff}')
+                .to_string(),
+        );
         let jats_conv = if prefer_jats
             && jats_tables_allows(&source, &tables_as)
             && matches!(ext.as_str(), "xml" | "jats" | "nxml")
@@ -746,13 +1147,13 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
             n_tables = json!(conv.n_tables);
             conv.markdown
         } else {
-            let Some(content) = local_text(&path, &bytes, &tables_as) else {
-                return unsupported();
-            };
-            content
+            match local_text(&path, &bytes, &tables_as) {
+                Ok(content) => content,
+                Err(detail) => return extraction_error(&source, &detail),
+            }
         };
         (
-            source.replace('\\', "/"),
+            source.clone(),
             bytes,
             content,
             Value::Null,
@@ -761,6 +1162,10 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         )
     };
     let mut full_content = jats_full_content.unwrap_or_else(|| content.clone());
+    let local_jats_hit = local_jats_candidate && jats_source == json!("local");
+    if !had_jats && !cached_hit && !pages_requested && !local_jats_hit {
+        runtime.document_cache_put(&document_key, &full_content);
+    }
     let mut page_range = Value::Null;
     let mut page_start = 0i64;
     let mut page_end = 0i64;
@@ -785,10 +1190,20 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
                 page_start = range.page_start;
                 page_end = range.page_end;
                 total_pages = range.total_pages;
+                if let Some(key) = page_key.as_deref() {
+                    runtime.document_cache_put(key, &content);
+                }
             }
             Err(error) => {
-                let payload = json!({"error": error});
-                println!("{}", py_dumps(&payload));
+                if error.starts_with("Invalid page range")
+                    || error.starts_with("Page range ")
+                    || error.starts_with("Document has no pages")
+                    || error.starts_with("Page selection is supported")
+                {
+                    println!("{}", py_dumps_pretty(&json!({"error": error})));
+                } else {
+                    return page_range_failure(&source, &error);
+                }
                 return ExitCode::SUCCESS;
             }
         }
@@ -799,44 +1214,111 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         if std::fs::create_dir_all(&directory).is_err() {
             return unsupported();
         }
-        let raw_path = PathBuf::from(&source);
-        let stem = raw_path
-            .file_stem()
-            .map(|value| value.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "document".to_string());
-        let ext = raw_path
-            .extension()
-            .map(|value| format!(".{}", value.to_string_lossy()))
-            .unwrap_or_default();
-        let original_path = directory.join(format!("{stem}{ext}"));
-        let markdown_path = directory.join(format!("{stem}.md"));
-        let resources_dir = directory.join(format!("{stem}.files"));
-        if std::fs::write(&original_path, &bytes).is_err()
-            || std::fs::write(&markdown_path, full_content.as_bytes()).is_err()
-        {
-            return unsupported();
-        }
-        json!({
-            "directory": platform_display(&directory),
-            "original": platform_display(&original_path),
-            "markdown": platform_display(&markdown_path),
-            "original_bytes": bytes.len(),
-            "markdown_chars": full_content.chars().count(),
-            "content_type": content_type,
-            "resources": {
-                "dir": platform_display(&resources_dir),
+        if jats_source != Value::Null {
+            let stem_source = jats_resolved_doi
+                .as_str()
+                .filter(|value| !value.is_empty())
+                .unwrap_or(&source);
+            let stem = jats_store_stem(stem_source);
+            let original_path = directory.join(format!("{stem}.xml"));
+            let markdown_path = directory.join(format!("{stem}.md"));
+            if std::fs::write(&original_path, &bytes).is_err()
+                || std::fs::write(&markdown_path, full_content.as_bytes()).is_err()
+            {
+                return unsupported();
+            }
+            let mut resources = json!({
+                "dir": platform_display(&directory),
                 "files": [],
                 "referenced": 0,
                 "embedded": 0,
-            },
-        })
+            });
+            if include_images && let Some(map) = resources.as_object_mut() {
+                map.insert(
+                    "note".to_string(),
+                    json!("JATS figures are remote hrefs, not saved"),
+                );
+            }
+            json!({
+                "directory": platform_display(&directory),
+                "original": platform_display(&original_path),
+                "markdown": platform_display(&markdown_path),
+                "original_bytes": bytes.len(),
+                "markdown_chars": full_content.chars().count(),
+                "content_type": content_type,
+                "resources": resources,
+            })
+        } else {
+            let raw_path = PathBuf::from(&source);
+            let stem = raw_path
+                .file_stem()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "document".to_string());
+            let ext = raw_path
+                .extension()
+                .map(|value| format!(".{}", value.to_string_lossy()))
+                .unwrap_or_default();
+            let original_path = directory.join(format!("{stem}{ext}"));
+            let markdown_path = directory.join(format!("{stem}.md"));
+            let resources_dir = directory.join(format!("{stem}.files"));
+            if std::fs::write(&original_path, &bytes).is_err()
+                || std::fs::write(&markdown_path, full_content.as_bytes()).is_err()
+            {
+                return unsupported();
+            }
+            json!({
+                "directory": platform_display(&directory),
+                "original": platform_display(&original_path),
+                "markdown": platform_display(&markdown_path),
+                "original_bytes": bytes.len(),
+                "markdown_chars": full_content.chars().count(),
+                "content_type": content_type,
+                "resources": {
+                    "dir": platform_display(&resources_dir),
+                    "files": [],
+                    "referenced": 0,
+                    "embedded": 0,
+                },
+            })
+        }
     } else {
         Value::Null
     };
+    let char_limit = config_int(
+        parsed,
+        "max_markdown_chars",
+        "GOSSAMER_MAX_MARKDOWN_CHARS",
+        8000,
+    )
+    .max(0) as usize;
+    let token_limit = config_int(parsed, "max_tokens", "GOSSAMER_MAX_TOKENS", 0);
+    let model = config_text(parsed, "model_name", "GOSSAMER_MODEL_NAME", "gpt-4o");
+    let delivered = truncate_text(&full_content, char_limit, token_limit, &model)
+        .unwrap_or_else(|_| full_content.clone());
+    let (delivered, guard) = match apply_document_guard(&delivered, &display, parsed) {
+        GuardedDocument::Delivered(text, block) => (text, block),
+        GuardedDocument::Withheld(error) => {
+            println!("{}", py_dumps_pretty(&error));
+            return ExitCode::SUCCESS;
+        }
+    };
+    let delivered_hash = if pages_requested {
+        sha256_bytes(delivered.as_bytes())
+    } else {
+        sha256_bytes(full_content.as_bytes())
+    };
+    let delivered_links: Vec<Value> = if pages_requested {
+        Vec::new()
+    } else {
+        scan_text_links(&full_content, 50)
+            .into_iter()
+            .map(Value::String)
+            .collect()
+    };
     let payload = json!({
         "source": display,
-        "content": content,
-        "content_tokens": count_tokens(&content, "gpt-4o").unwrap_or(0),
+        "content": delivered,
+        "content_tokens": count_tokens(&delivered, &model).unwrap_or(0),
         "cache_hit": cache_hit,
         "page_range": page_range,
         "page_start": page_start,
@@ -846,12 +1328,9 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "http_status": http_status,
         "final_url": final_url,
         "content_type": content_type,
-        "content_hash": sha256_bytes(full_content.as_bytes()),
-        "links": scan_text_links(&full_content, 50)
-            .into_iter()
-            .map(Value::String)
-            .collect::<Vec<_>>(),
-        "guard": Value::Null,
+        "content_hash": delivered_hash,
+        "links": delivered_links,
+        "guard": guard,
         "stored": stored,
         "resolved_doi": jats_resolved_doi,
         "jats_source": jats_source,
@@ -860,6 +1339,6 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "n_figures": n_figures,
         "n_tables": n_tables,
     });
-    println!("{}", py_dumps(&payload));
+    println!("{}", pydantic_json(&payload));
     ExitCode::SUCCESS
 }

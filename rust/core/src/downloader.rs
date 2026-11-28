@@ -225,6 +225,50 @@ pub fn validate_finished_file(
     }))
 }
 
+const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+fn browser_client(timeout_seconds: f64) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
+        .user_agent(BROWSER_USER_AGENT)
+        .default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                reqwest::header::ACCEPT,
+                reqwest::header::HeaderValue::from_static(
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                ),
+            );
+            headers.insert(
+                reqwest::header::ACCEPT_LANGUAGE,
+                reqwest::header::HeaderValue::from_static("en-US,en;q=0.5"),
+            );
+            headers.insert(
+                reqwest::header::ACCEPT_ENCODING,
+                reqwest::header::HeaderValue::from_static("gzip, deflate"),
+            );
+            headers.insert(
+                reqwest::header::CONNECTION,
+                reqwest::header::HeaderValue::from_static("keep-alive"),
+            );
+            headers.insert("DNT", reqwest::header::HeaderValue::from_static("1"));
+            headers
+        })
+        .build()
+        .map_err(|error| format!("RuntimeError: {error}"))
+}
+
+/// Preserve a caller URL that differs from the transport form only by a
+/// trailing slash (`https://example.com` -> `https://example.com/`).
+fn requested_url_form(requested: &str, final_url: &str) -> String {
+    if final_url == format!("{requested}/") {
+        requested.to_string()
+    } else {
+        final_url.to_string()
+    }
+}
+
 /// Download a bounded byte payload with final provenance.
 pub fn download_bytes(
     url: &str,
@@ -235,11 +279,7 @@ pub fn download_bytes(
         .enable_all()
         .build()
         .map_err(|error| format!("RuntimeError: {error}"))?;
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
-        .build()
-        .map_err(|error| format!("RuntimeError: {error}"))?;
+    let client = browser_client(timeout_seconds)?;
     runtime.block_on(async {
         let response = client
             .get(url)
@@ -247,7 +287,7 @@ pub fn download_bytes(
             .await
             .map_err(|error| format!("HTTPError: {error}"))?;
         let status = response.status().as_u16();
-        let final_url = response.url().to_string();
+        let final_url = requested_url_form(url, response.url().as_ref());
         let content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -258,16 +298,28 @@ pub fn download_bytes(
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<usize>().ok());
-        let bytes = response
-            .bytes()
+        if (200..300).contains(&status)
+            && let Some(declared) = declared_bytes
+            && declared > max_bytes
+        {
+            return Err(format!(
+                "too_large\u{1e}{status}\u{1e}{final_url}\u{1e}declared\u{1e}{declared}\u{1e}{max_bytes}"
+            ));
+        }
+        let mut response = response;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
             .map_err(|error| format!("HTTPError: {error}"))?
-            .to_vec();
-        if bytes.len() > max_bytes {
-            let declared = declared_bytes.unwrap_or(bytes.len());
-            return Err(format!(
-                "too_large {status} {final_url} {declared} {max_bytes}"
-            ));
+        {
+            if (200..300).contains(&status) && bytes.len() + chunk.len() > max_bytes {
+                return Err(format!(
+                    "too_large\u{1e}{status}\u{1e}{final_url}\u{1e}exceeded\u{1e}{}\u{1e}{max_bytes}",
+                    bytes.len() + chunk.len()
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
         }
         Ok((bytes, status, final_url, content_type))
     })
@@ -297,11 +349,7 @@ pub fn download_range_bytes(
         .enable_all()
         .build()
         .map_err(|error| format!("RuntimeError: {error}"))?;
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .timeout(std::time::Duration::from_secs_f64(timeout_seconds.max(0.0)))
-        .build()
-        .map_err(|error| format!("RuntimeError: {error}"))?;
+    let client = browser_client(timeout_seconds)?;
     runtime.block_on(async {
         let mut request = client
             .get(url)
@@ -316,7 +364,7 @@ pub fn download_range_bytes(
             .await
             .map_err(|error| format!("HTTPError: {error}"))?;
         let status = response.status().as_u16();
-        let final_url = response.url().to_string();
+        let final_url = requested_url_form(url, response.url().as_ref());
         let content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -328,16 +376,31 @@ pub fn download_range_bytes(
                 headers.insert(name.as_str().to_ascii_lowercase(), text.to_string());
             }
         }
-        let body = response
-            .bytes()
+        let declared_bytes = headers
+            .get("content-length")
+            .and_then(|value| value.trim().parse::<usize>().ok());
+        if status == 206
+            && let Some(declared) = declared_bytes
+            && declared > max_bytes
+        {
+            return Err(format!(
+                "too_large\u{1e}{status}\u{1e}{final_url}\u{1e}declared\u{1e}{declared}\u{1e}{max_bytes}"
+            ));
+        }
+        let mut response = response;
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
             .map_err(|error| format!("HTTPError: {error}"))?
-            .to_vec();
-        if body.len() > max_bytes {
-            return Err(format!(
-                "too_large\u{0}{status}\u{0}{final_url}\u{0}{}\u{0}{max_bytes}",
-                body.len()
-            ));
+        {
+            if matches!(status, 200 | 206) && body.len() + chunk.len() > max_bytes {
+                return Err(format!(
+                    "too_large\u{1e}{status}\u{1e}{final_url}\u{1e}exceeded\u{1e}{}\u{1e}{max_bytes}",
+                    body.len() + chunk.len()
+                ));
+            }
+            body.extend_from_slice(&chunk);
         }
         Ok((status, final_url, content_type, headers, body))
     })

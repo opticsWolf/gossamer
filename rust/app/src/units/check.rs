@@ -1,26 +1,12 @@
 //! `gossamer check`: deterministic liveness envelopes over Rust HTTP probes.
 
-use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::ArgMatches;
+use gossamer::cli_args::Parsed;
+use gossamer::jsonfmt::py_dumps_pretty;
 use gossamer::service::liveness::{liveness_result, probe_liveness};
 use gossamer::ssrf::check_url;
 use serde_json::{Value, json};
-
-const KNOWN_FLAGS: [&str; 6] = [
-    "--mode",
-    "--cache-dir",
-    "--config",
-    "--keystore",
-    "--log-level",
-    "--fetch-mode",
-];
-
-fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
-    ExitCode::from(1)
-}
 
 fn blocked(url: &str, message: &str) -> Value {
     json!({
@@ -32,51 +18,9 @@ fn blocked(url: &str, message: &str) -> Value {
     })
 }
 
-pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
-    if let Some(code) = super::cli::maybe_run(command, matches) {
-        return code;
-    }
-
-    let args: Vec<OsString> = matches
-        .get_many::<OsString>("args")
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect();
-    if matches.get_count("help") > 0 {
-        return unsupported();
-    }
-
-    let mut mode = "status".to_string();
-    let mut urls: Vec<String> = Vec::new();
-    let mut index = 0usize;
-    while index < args.len() {
-        let value = args[index].to_string_lossy().into_owned();
-        if value.starts_with('-') {
-            if !KNOWN_FLAGS.contains(&value.as_str()) || index + 1 >= args.len() {
-                return unsupported();
-            }
-            let flag_value = args[index + 1].to_string_lossy().into_owned();
-            if value == "--mode" {
-                if !matches!(flag_value.as_str(), "status" | "content") {
-                    return unsupported();
-                }
-                mode = flag_value.clone();
-            }
-            if value == "--fetch-mode"
-                && !matches!(flag_value.as_str(), "auto" | "browser" | "static")
-            {
-                return unsupported();
-            }
-            index += 2;
-            continue;
-        }
-        urls.push(value);
-        index += 1;
-    }
-    if urls.is_empty() {
-        return unsupported();
-    }
+pub fn run(parsed: &Parsed) -> ExitCode {
+    let mode = parsed.value("mode").unwrap_or("status").to_string();
+    let urls: Vec<String> = parsed.positionals("urls").to_vec();
 
     let probe = if mode == "content" { "get" } else { "head" };
     let mut results = Vec::with_capacity(urls.len());
@@ -115,9 +59,6 @@ pub fn run(command: &str, matches: &ArgMatches) -> ExitCode {
         "summary": summary,
         "results": results,
     });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string())
-    );
+    println!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }

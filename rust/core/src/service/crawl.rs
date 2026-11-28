@@ -262,9 +262,11 @@ pub fn crawl_anchor_context(
     let Some(start) = text.find(&needle) else {
         return Vec::new();
     };
-    let from = start.saturating_sub(chars);
-    let to = (start + needle.len() + chars).min(text.len());
-    // Character slicing keeps parity with Python for non-ASCII markdown.
+    // Python str slicing uses character offsets; `find` returns bytes.
+    let char_start = text.get(..start).map_or(0, |head| head.chars().count());
+    let needle_chars = needle.chars().count();
+    let from = char_start.saturating_sub(chars);
+    let to = (char_start + needle_chars + chars).min(text.chars().count());
     let window: String = text
         .chars()
         .skip(from)

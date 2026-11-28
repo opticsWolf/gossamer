@@ -11,6 +11,7 @@ pub mod cache;
 pub mod cacheutils;
 pub mod categories;
 pub mod cite;
+pub mod cli_args;
 pub mod cli_help;
 pub mod cli_router;
 pub mod compat;
