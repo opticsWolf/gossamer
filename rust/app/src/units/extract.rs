@@ -22,6 +22,7 @@ use gossamer::miscutils::sha256_bytes;
 use gossamer::runtime::RuntimeState;
 use gossamer::textlinks::scan_text_links;
 use gossamer::tokens::count_tokens;
+use gossamer::urls::normalize_url;
 use serde_json::{Value, json};
 
 fn unsupported() -> ExitCode {
@@ -185,7 +186,7 @@ fn jats_fetch_bytes(
     }
     let (bytes, status, final_url, content_type) = download_bytes(url, 20.0, 50_000_000)?;
     if status >= 400 {
-        return Err(format!("HTTP {status}"));
+        return Err(http_status_error(url, status));
     }
     Ok((
         bytes,
@@ -196,6 +197,18 @@ fn jats_fetch_bytes(
             "content_type": content_type,
         }),
     ))
+}
+
+fn http_status_error(url: &str, status: u16) -> String {
+    let kind = if status >= 500 {
+        "Server error"
+    } else {
+        "Client error"
+    };
+    format!(
+        "{kind} '{status} ' for url '{url}'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{status}"
+    )
 }
 
 fn jats_cache_key(runtime: &RuntimeState, source: &str) -> String {
@@ -376,8 +389,12 @@ fn jats_route(runtime: &RuntimeState, source: &str, tables_as: &str) -> JatsOutc
             candidates.push(europepmc_fulltext_url("PMC", &hit.pmcid));
         }
         for candidate in candidates {
-            let Ok((bytes, prov)) = jats_fetch_bytes(runtime, &candidate, runtime.now()) else {
-                continue;
+            let (bytes, prov) = match jats_fetch_bytes(runtime, &candidate, runtime.now()) {
+                Ok(value) => value,
+                Err(error) => {
+                    pyeprintln!("JATS fetch failed for {candidate}: {error}");
+                    continue;
+                }
             };
             if !is_xml_body(prov.get("content_type").and_then(Value::as_str), &bytes) {
                 continue;
@@ -809,8 +826,9 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let pages = parsed.value("pages").map(str::to_string);
     let cache_dir = crate::units::settings::cache_dir(parsed);
     let prefer_jats = parsed.switch("prefer_jats").unwrap_or(true);
-    let Some(source) = parsed.positional("source").map(str::to_string) else {
-        return unsupported();
+    let mut source = match parsed.positional("source").map(str::to_string) {
+        Some(source) => source,
+        None => return unsupported(),
     };
 
     if let Some(error) = extract_validation(&tables_as, include_images, structured, store) {
@@ -838,7 +856,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     }
     // Pages, store and structured extraction keep their existing contract;
     // this slice owns the flat local-file path plus spreadsheet renderings.
-    let is_url = source.starts_with("http://") || source.starts_with("https://");
+    let mut is_url = source.starts_with("http://") || source.starts_with("https://");
     if is_url && let Err(error) = prepare_url(&source, None) {
         if error.error_type() == "SsrfBlockedError" {
             pyeprintln!(
@@ -872,12 +890,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             return ExitCode::SUCCESS;
         }
     }
-    if pages.as_deref().is_some_and(|spec| !spec.trim().is_empty())
-        && let Some(error) = page_selection_error(&source, is_url)
-    {
-        pyprintln!("{}", py_dumps_pretty(&json!({"error": error})));
-        return ExitCode::SUCCESS;
-    }
     let mut jats_resolved_doi = Value::Null;
     let mut fetched_at: Value = json!(timestamp());
     let mut jats_source = Value::Null;
@@ -885,7 +897,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let mut n_formulas = Value::Null;
     let mut n_figures = Value::Null;
     let mut n_tables = Value::Null;
-    let jats_hit = if prefer_jats && jats_resolvable_offline(&source, &tables_as) {
+    let mut jats_hit = if prefer_jats && jats_resolvable_offline(&source, &tables_as) {
         match jats_route(&runtime, &source, &tables_as) {
             JatsOutcome::Hit(hit) => Some(hit),
             JatsOutcome::Error(error) => {
@@ -898,6 +910,50 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     } else {
         None
     };
+    if !is_url
+        && jats_hit.is_none()
+        && let Ok(normalized) = normalize_url(Some(&source), None, None)
+    {
+        source = normalized;
+        is_url = true;
+        if let Err(error) = prepare_url(&source, None) {
+            if error.error_type() == "SsrfBlockedError" {
+                pyeprintln!(
+                    "Blocked non-public URL {}: {}",
+                    error.raw(),
+                    error.message()
+                );
+            }
+            pyprintln!("{}", pretty_record(&error.to_record()));
+            return ExitCode::SUCCESS;
+        }
+        if !runtime.robots_allows(&source, runtime.now()) {
+            pyprintln!(
+                "{}",
+                py_dumps_pretty(&json!({
+                    "error": format!("Document fetch disallowed by robots.txt: {}", source)
+                }))
+            );
+            return ExitCode::SUCCESS;
+        }
+        if prefer_jats && jats_resolvable_offline(&source, &tables_as) {
+            jats_hit = match jats_route(&runtime, &source, &tables_as) {
+                JatsOutcome::Hit(hit) => Some(hit),
+                JatsOutcome::Error(error) => {
+                    let payload = json!({"error": format!("Document extraction failed: {error}")});
+                    pyprintln!("{}", py_dumps_pretty(&payload));
+                    return ExitCode::SUCCESS;
+                }
+                JatsOutcome::NotApplicable => None,
+            };
+        }
+    }
+    if pages.as_deref().is_some_and(|spec| !spec.trim().is_empty())
+        && let Some(error) = page_selection_error(&source, is_url)
+    {
+        pyprintln!("{}", py_dumps_pretty(&json!({"error": error})));
+        return ExitCode::SUCCESS;
+    }
     let pages_requested = pages.as_deref().is_some_and(|spec| !spec.trim().is_empty());
     let had_jats = jats_hit.is_some();
     let local_jats_candidate = !is_url

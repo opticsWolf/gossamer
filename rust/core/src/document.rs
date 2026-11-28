@@ -265,10 +265,8 @@ pub fn xml_feed_text(xml: &str) -> Option<String> {
 pub fn page_selection_error(source: &str, is_url: bool) -> Option<String> {
     let suffix = if is_url {
         let after_scheme = source.split_once("://").map_or(source, |(_, rest)| rest);
-        let path = after_scheme
-            .split(['?', '#'])
-            .next()
-            .unwrap_or(after_scheme);
+        let path = after_scheme.split_once('/').map_or("", |(_, path)| path);
+        let path = path.split(['?', '#']).next().unwrap_or(path);
         let last = path.rsplit('/').next().unwrap_or(path);
         last.rfind('.')
             .map(|index| last[index..].to_ascii_lowercase())
@@ -283,8 +281,13 @@ pub fn page_selection_error(source: &str, is_url: bool) -> Option<String> {
     if matches!(suffix.as_str(), ".pdf" | ".xlsx" | ".xls" | ".xlsb") {
         return None;
     }
+    let label = if suffix.is_empty() {
+        "extensionless".to_string()
+    } else {
+        suffix
+    };
     Some(format!(
-        "Page selection is supported for PDF (pages) and Excel workbooks (sheets); this source is {suffix}. Call extract_document without pages, or convert the file to PDF."
+        "Page selection is supported for PDF (pages) and Excel workbooks (sheets); this source is {label}. Call extract_document without pages, or convert the file to PDF."
     ))
 }
 
@@ -912,10 +915,8 @@ mod xml_feed_tests {
 pub fn structured_format_error(source: &str, is_url: bool) -> Option<String> {
     let suffix = if is_url {
         let after_scheme = source.split_once("://").map_or(source, |(_, rest)| rest);
-        let path = after_scheme
-            .split(['?', '#'])
-            .next()
-            .unwrap_or(after_scheme);
+        let path = after_scheme.split_once('/').map_or("", |(_, path)| path);
+        let path = path.split(['?', '#']).next().unwrap_or(path);
         let last = path.rsplit('/').next().unwrap_or(path);
         last.rfind('.')
             .map(|index| last[index..].to_ascii_lowercase())
