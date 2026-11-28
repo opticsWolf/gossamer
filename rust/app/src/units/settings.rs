@@ -24,7 +24,7 @@ pub fn config(parsed: &Parsed) -> Option<Value> {
     let path = config_path(parsed)?;
     if is_missing_device(&path) {
         CONFIG_WARNING.call_once(|| {
-            eprintln!(
+            pyeprintln!(
                 "ignoring gossamer.json: config file not found: {}",
                 path.display()
             );
@@ -35,7 +35,7 @@ pub fn config(parsed: &Parsed) -> Option<Value> {
         Ok(text) => text,
         Err(error) => {
             CONFIG_WARNING.call_once(|| {
-                eprintln!(
+                pyeprintln!(
                     "ignoring gossamer.json: config file not found: {}",
                     path.display()
                 );
@@ -48,7 +48,7 @@ pub fn config(parsed: &Parsed) -> Option<Value> {
         Ok(value) if value.is_object() => Some(value),
         Ok(_) => {
             CONFIG_WARNING.call_once(|| {
-                eprintln!(
+                pyeprintln!(
                     "ignoring gossamer.json: gossamer.json must hold an object: {}",
                     path.display()
                 );
@@ -57,7 +57,7 @@ pub fn config(parsed: &Parsed) -> Option<Value> {
         }
         Err(error) => {
             CONFIG_WARNING.call_once(|| {
-                eprintln!(
+                pyeprintln!(
                     "ignoring gossamer.json: invalid JSON in {}: {error}",
                     path.display()
                 );

@@ -167,7 +167,7 @@ pub fn evaluate(
     }
     static WARNED: std::sync::Once = std::sync::Once::new();
     WARNED.call_once(|| {
-        eprintln!(
+        pyeprintln!(
             "guard disabled at runtime: jailguard not importable (No module named 'jailguard'); install gossamer[guard]"
         );
     });

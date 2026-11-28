@@ -6,6 +6,6 @@ use gossamer::cli_args::Parsed;
 use gossamer::taxonomy::CATEGORIES_JSON;
 
 pub fn run(_parsed: &Parsed) -> ExitCode {
-    println!("{CATEGORIES_JSON}");
+    pyprintln!("{CATEGORIES_JSON}");
     ExitCode::SUCCESS
 }

@@ -22,13 +22,13 @@ use gossamer::tokens::count_tokens;
 use serde_json::{Value, json};
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
 fn warning(payload: &str, url: &str) -> ExitCode {
     let body = json!({"warning": payload, "url": url});
-    println!("{}", py_dumps_pretty(&body));
+    pyprintln!("{}", py_dumps_pretty(&body));
     ExitCode::SUCCESS
 }
 
@@ -246,7 +246,7 @@ fn fit_structured(
             return candidate;
         }
     }
-    eprintln!(
+    pyeprintln!(
         "Payload could not be shrunk into the output budget; returning an overflow envelope instead of invalid JSON"
     );
     let mut overflow = json!({
@@ -287,7 +287,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("gossamer: error: {error}");
+            pyeprintln!("gossamer: error: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -295,13 +295,13 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         Ok(url) => url,
         Err(error) => {
             if error.error_type() == "SsrfBlockedError" {
-                eprintln!(
+                pyeprintln!(
                     "Blocked non-public URL {}: {}",
                     error.raw(),
                     error.message()
                 );
             }
-            println!("{}", pretty_record(&error.to_record()));
+            pyprintln!("{}", pretty_record(&error.to_record()));
             return ExitCode::SUCCESS;
         }
     };
@@ -315,7 +315,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         key
     };
     if structured && let Some(raw) = runtime.cache().get(&structured_key, now) {
-        println!(
+        pyprintln!(
             "{}",
             fit_structured(&raw, &url, max_chars, max_tokens, &model, true)
         );
@@ -365,11 +365,11 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             )
         } else {
             if !runtime.robots_allows(&url, now) {
-                eprintln!("URL disallowed by robots.txt: {url}");
+                pyeprintln!("URL disallowed by robots.txt: {url}");
                 return warning("URL disallowed by robots.txt", &url);
             }
             if !runtime.claim(&url) {
-                eprintln!("URL already visited or in flight: {url}");
+                pyeprintln!("URL already visited or in flight: {url}");
                 return warning("URL already visited", &url);
             }
             let sleep = runtime.throttle_gap(&url, None, now);
@@ -384,8 +384,8 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 } else {
                     "HTML inspection failed"
                 };
-                eprintln!("{label} for {url}: {detail}");
-                println!(
+                pyeprintln!("{label} for {url}: {detail}");
+                pyprintln!(
                     "{}",
                     py_dumps_pretty(&json!({"error": format!("{label}: {detail}")}))
                 );
@@ -406,9 +406,9 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                         } else {
                             "HTML inspection failed"
                         };
-                        eprintln!("{label} for {url}: {detail}");
+                        pyeprintln!("{label} for {url}: {detail}");
                         let payload = json!({"error": format!("{label}: {detail}")});
-                        println!("{}", py_dumps_pretty(&payload));
+                        pyprintln!("{}", py_dumps_pretty(&payload));
                         return ExitCode::SUCCESS;
                     }
                 };
@@ -500,14 +500,14 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 "url": url,
                 "guard": payload.get("guard").cloned().unwrap_or(Value::Null),
             });
-            println!("{}", py_dumps_pretty(&error));
+            pyprintln!("{}", py_dumps_pretty(&error));
             return ExitCode::SUCCESS;
         }
         let payload_json = gossamer::jsonfmt::py_dumps_pretty_utf8(&payload);
         runtime
             .cache()
             .put(&structured_key, &payload_json, runtime.now());
-        println!(
+        pyprintln!(
             "{}",
             fit_structured(&payload_json, &url, max_chars, max_tokens, &model, false,)
         );
@@ -646,10 +646,10 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             "url": url,
             "guard": payload.get("guard").cloned().unwrap_or(Value::Null),
         });
-        println!("{}", py_dumps_pretty(&error));
+        pyprintln!("{}", py_dumps_pretty(&error));
         return ExitCode::SUCCESS;
     }
     fit_inspection(&mut payload, max_chars, max_tokens, &model);
-    println!("{}", py_dumps_utf8(&payload));
+    pyprintln!("{}", py_dumps_utf8(&payload));
     ExitCode::SUCCESS
 }

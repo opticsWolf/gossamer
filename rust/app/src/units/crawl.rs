@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 use url::Url;
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
@@ -353,7 +353,7 @@ fn fit_crawl(result: &Value, parsed: &Parsed) -> String {
             return candidate;
         }
     }
-    eprintln!(
+    pyeprintln!(
         "Payload could not be shrunk into the output budget; returning an overflow envelope instead of invalid JSON"
     );
     py_dumps_pretty(&json!({
@@ -393,7 +393,7 @@ fn inspect_child(
     let output = command.output().map_err(|error| error.to_string())?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.is_empty() {
-        eprint!("{stderr}");
+        pyeprint!("{stderr}");
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let page: Value = serde_json::from_str(stdout.trim()).map_err(|_| stdout.trim().to_string())?;
@@ -465,7 +465,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("gossamer: error: {error}");
+            pyeprintln!("gossamer: error: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -473,7 +473,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         Ok(url) => url,
         Err(error) => {
             if error.error_type() == "SsrfBlockedError" {
-                eprintln!(
+                pyeprintln!(
                     "Blocked non-public URL {}: {}",
                     error.raw(),
                     error.message()
@@ -484,7 +484,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 .strip_prefix("ValueError: ")
                 .or_else(|| message.strip_prefix("SsrfBlockedError: "))
                 .unwrap_or(message);
-            println!(
+            pyprintln!(
                 "{}",
                 py_dumps_pretty(&json!({"error": format!("crawl: {message}")}))
             );
@@ -496,7 +496,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         Err(detail) => {
             let payload =
                 json!({"error": format!("crawl: root fetch failed: {detail}"), "root": root});
-            println!("{}", py_dumps_pretty(&payload));
+            pyprintln!("{}", py_dumps_pretty(&payload));
             return ExitCode::SUCCESS;
         }
     };
@@ -687,7 +687,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             }
         };
         if let Err(error) = check_url(&candidate, false, None) {
-            eprintln!("Blocked non-public URL {candidate}: {}", error.message());
+            pyeprintln!("Blocked non-public URL {candidate}: {}", error.message());
             note_skipped(
                 &mut skipped,
                 &mut skip_seen,
@@ -954,6 +954,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     if search_prior && let Some(object) = result.as_object_mut() {
         object.insert("search_results".to_string(), json!(search_results));
     }
-    println!("{}", fit_crawl(&result, parsed));
+    pyprintln!("{}", fit_crawl(&result, parsed));
     ExitCode::SUCCESS
 }

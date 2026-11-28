@@ -44,8 +44,8 @@ fn provider_search(
         return Err(payload);
     }
     if query.trim().is_empty() {
-        eprintln!("DuckDuckGo search failed: query is mandatory.");
-        eprintln!(
+        pyeprintln!("DuckDuckGo search failed: query is mandatory.");
+        pyeprintln!(
             "Provider DuckDuckGoProvider failed for '{query}': query is mandatory. — trying next"
         );
         return Err(json!({"error": "All search providers failed for: "}));
@@ -54,8 +54,8 @@ fn provider_search(
     let html = match fetch_text(&url, 20.0) {
         Ok((html, _)) => html,
         Err(error) => {
-            eprintln!("DuckDuckGo search failed: {error}");
-            eprintln!("Provider DuckDuckGoProvider failed for '{query}': {error} — trying next");
+            pyeprintln!("DuckDuckGo search failed: {error}");
+            pyeprintln!("Provider DuckDuckGoProvider failed for '{query}': {error} — trying next");
             return Err(json!({"error": format!("All search providers failed for: {query}")}));
         }
     };
@@ -137,7 +137,7 @@ fn inspect_page(url: &str, use_smart: &str, parsed: &Parsed) -> Result<Value, St
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.trim().is_empty() {
-        eprint!("{stderr}");
+        pyeprint!("{stderr}");
     }
     match serde_json::from_str::<Value>(stdout.trim()) {
         Ok(value) => Ok(value),
@@ -156,7 +156,7 @@ fn research(
 ) -> ExitCode {
     let plan = research_plan(query, depth, Some(max_results), 20);
     if plan.get("error").is_some() {
-        println!("{}", pretty(&plan));
+        pyprintln!("{}", pretty(&plan));
         return ExitCode::SUCCESS;
     }
     let topic = plan
@@ -239,7 +239,7 @@ fn research(
         object.insert("provider_fallback".to_string(), note);
     }
     let payload = fit_research(&result, parsed);
-    println!("{payload}");
+    pyprintln!("{payload}");
     ExitCode::SUCCESS
 }
 
@@ -284,7 +284,7 @@ fn fit_research(result: &Value, parsed: &Parsed) -> String {
             return candidate;
         }
     }
-    eprintln!(
+    pyeprintln!(
         "Payload could not be shrunk into the output budget; returning an overflow envelope instead of invalid JSON"
     );
     pretty(&json!({
@@ -314,9 +314,9 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     }
     let max_results = max_results.max(0) as usize;
     match provider_search(&query, max_results, provider.as_deref()) {
-        Ok((results, note, _)) => println!("{}", finish_search(results, note, parsed)),
+        Ok((results, note, _)) => pyprintln!("{}", finish_search(results, note, parsed)),
         Err(payload) => {
-            println!("{}", pretty(&payload));
+            pyprintln!("{}", pretty(&payload));
         }
     }
     ExitCode::SUCCESS

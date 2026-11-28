@@ -55,7 +55,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let resolved = match citation_style(Some(&style)) {
         Ok(style) => style,
         Err(error) => {
-            println!("{}", pretty(&json!({"error": error})));
+            pyprintln!("{}", pretty(&json!({"error": error})));
             return ExitCode::SUCCESS;
         }
     };
@@ -85,7 +85,10 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                     match citation_record_from_json(&fields.to_string()) {
                         Ok(record) => records.push(record),
                         Err(error) => {
-                            println!("{}", pretty(&json!({"error": error.message().to_string()})));
+                            pyprintln!(
+                                "{}",
+                                pretty(&json!({"error": error.message().to_string()}))
+                            );
                             return ExitCode::SUCCESS;
                         }
                     }
@@ -99,7 +102,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             match citation_record_from_json(&item) {
                 Ok(record) => record,
                 Err(error) => {
-                    println!("{}", pretty(&json!({"error": error.message().to_string()})));
+                    pyprintln!("{}", pretty(&json!({"error": error.message().to_string()})));
                     return ExitCode::SUCCESS;
                 }
             }
@@ -108,7 +111,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             match citation_record_from_json(&fields.to_string()) {
                 Ok(record) => record,
                 Err(error) => {
-                    println!("{}", pretty(&json!({"error": error.message().to_string()})));
+                    pyprintln!("{}", pretty(&json!({"error": error.message().to_string()})));
                     return ExitCode::SUCCESS;
                 }
             }
@@ -117,7 +120,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     }
 
     if !pdf_errors.is_empty() {
-        println!(
+        pyprintln!(
             "{}",
             pretty(&json!({"error": pdf_errors.join("; "), "count": 0}))
         );
@@ -143,7 +146,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         "csl-json" => match to_csl_json(&records) {
             Ok(text) => text,
             Err(error) => {
-                println!("{}", pretty(&json!({"error": error.message().to_string()})));
+                pyprintln!("{}", pretty(&json!({"error": error.message().to_string()})));
                 return ExitCode::SUCCESS;
             }
         },
@@ -152,7 +155,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         _ => unreachable!("citation_style validates the style"),
     };
     if output.trim().is_empty() {
-        println!(
+        pyprintln!(
             "{}",
             pretty(&json!({
                 "error": "no citable records: pass DOIs, URLs, or result dicts",
@@ -161,7 +164,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             }))
         );
     } else {
-        println!("{output}");
+        pyprintln!("{output}");
     }
     ExitCode::SUCCESS
 }

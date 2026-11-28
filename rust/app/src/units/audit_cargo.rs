@@ -23,7 +23,7 @@ pub fn run(argv: &[String]) -> ExitCode {
     };
 
     if packages.is_empty() {
-        println!("no registry packages found in {lock_path}");
+        pyprintln!("no registry packages found in {lock_path}");
         return ExitCode::SUCCESS;
     }
 

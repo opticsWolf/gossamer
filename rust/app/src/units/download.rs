@@ -17,7 +17,7 @@ use gossamer::urls::normalize_url;
 use serde_json::{Value, json};
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
@@ -77,7 +77,7 @@ fn parse_too_large_error(error: &str) -> Option<Value> {
 }
 
 fn emit_error_payload(source: &str, error: Value) -> ExitCode {
-    println!(
+    pyprintln!(
         "{}",
         pretty(&json!({"source": source, "status": "error", "error": error}))
     );
@@ -85,7 +85,7 @@ fn emit_error_payload(source: &str, error: Value) -> ExitCode {
 }
 
 fn emit_error(source: &str, code: &str, message: &str) -> ExitCode {
-    println!(
+    pyprintln!(
         "{}",
         pretty(&json!({
             "source": source,
@@ -103,7 +103,7 @@ fn emit_error_details(source: &str, code: &str, message: &str, details: &Value) 
             object.insert(key.clone(), value.clone());
         }
     }
-    println!(
+    pyprintln!(
         "{}",
         pretty(&json!({"source": source, "status": "error", "error": error}))
     );
@@ -286,7 +286,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     if mirrors.is_empty()
         && let Err(error) = check_url(&url, false, None)
     {
-        eprintln!("Blocked non-public URL {}: {}", url, error.message());
+        pyeprintln!("Blocked non-public URL {}: {}", url, error.message());
         return emit_error(
             &url,
             "url_rejected",
@@ -301,7 +301,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
             Ok(runtime) => runtime,
             Err(error) => {
-                eprintln!("gossamer: error: {error}");
+                pyeprintln!("gossamer: error: {error}");
                 return ExitCode::FAILURE;
             }
         };
@@ -465,7 +465,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 }
                 store_resume_validators(&state_path, &headers);
                 clear_resume_state(&state_path);
-                println!(
+                pyprintln!(
                     "{}",
                     pretty(&json!({
                         "source": url,
@@ -500,7 +500,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 }
                 store_resume_validators(&state_path, &headers);
                 clear_resume_state(&state_path);
-                println!(
+                pyprintln!(
                     "{}",
                     pretty(&json!({
                         "source": url,
@@ -564,7 +564,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 }
             };
             if let Err(error) = check_url(&candidate_url, false, None) {
-                eprintln!(
+                pyeprintln!(
                     "Blocked non-public URL {}: {}",
                     candidate_url,
                     error.message()
@@ -602,7 +602,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             }
         }
         let payload = finalize_candidates(&source, &list, &attempts, &results);
-        println!("{}", pretty(&payload));
+        pyprintln!("{}", pretty(&payload));
         return if payload.get("error").is_some() {
             ExitCode::FAILURE
         } else {
@@ -610,7 +610,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         };
     }
     let payload = download_one(&url, &target, cap, min_bytes, expect_pdf);
-    println!("{}", pretty(&payload));
+    pyprintln!("{}", pretty(&payload));
     if payload.get("error").is_some() {
         ExitCode::FAILURE
     } else {

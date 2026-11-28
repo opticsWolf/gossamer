@@ -77,7 +77,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let doi = match normalize_doi(raw) {
         Ok(doi) => doi,
         Err(error) => {
-            println!(
+            pyprintln!(
                 "{}",
                 pretty(&json!({
                     "doi": raw,
@@ -99,7 +99,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             let email = unpaywall_email();
             let (fallback, fallback_work, fallback_error) = unpaywall_fallback(&doi, &email);
             if !fallback.is_empty() {
-                println!(
+                pyprintln!(
                     "{}",
                     pretty(&json!({
                         "doi": doi,
@@ -120,7 +120,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             if let Some(unpaywall) = fallback_error {
                 failure["unpaywall"] = unpaywall;
             }
-            println!(
+            pyprintln!(
                 "{}",
                 pretty(&json!({
                     "doi": doi,
@@ -137,7 +137,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let parsed: Value = match serde_json::from_str(&payload) {
         Ok(value) => value,
         Err(error) => {
-            println!(
+            pyprintln!(
                 "{}",
                 pretty(&json!({
                     "doi": doi,
@@ -160,7 +160,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         let email = unpaywall_email();
         let (fallback, fallback_work, _) = unpaywall_fallback(&doi, &email);
         if !fallback.is_empty() {
-            println!(
+            pyprintln!(
                 "{}",
                 pretty(&json!({
                     "doi": doi,
@@ -173,7 +173,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             );
             return ExitCode::SUCCESS;
         }
-        println!(
+        pyprintln!(
             "{}",
             pretty(&json!({
                 "doi": doi,
@@ -188,7 +188,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let record = match openalex_parse_fetch_impl(&work.to_string()) {
         Ok(record) => record,
         Err(error) => {
-            println!(
+            pyprintln!(
                 "{}",
                 pretty(&json!({
                     "doi": doi,
@@ -284,7 +284,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                         .cloned()
                         .unwrap_or(Value::Null)
                 });
-            println!(
+            pyprintln!(
                 "{}",
                 pretty(&json!({
                     "doi": doi,
@@ -321,6 +321,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         "work": work_payload,
         "candidates": candidates,
     });
-    println!("{}", pretty(&payload));
+    pyprintln!("{}", pretty(&payload));
     ExitCode::SUCCESS
 }

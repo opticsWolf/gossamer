@@ -9,7 +9,7 @@ use gossamer::cli_args::Parsed;
 use serde_json::{Value, json};
 
 fn error(message: &str) -> ExitCode {
-    eprintln!("gossamer: error: {message}");
+    pyeprintln!("gossamer: error: {message}");
     ExitCode::from(1)
 }
 
@@ -58,18 +58,18 @@ fn list() -> ExitCode {
     };
     for name in names.iter().filter_map(Value::as_str) {
         match skills_rs::port::skill_description(name.to_owned()) {
-            Ok(description) => println!("{name}\n    {description}"),
+            Ok(description) => pyprintln!("{name}\n    {description}"),
             Err(err) => return error(err.message()),
         }
     }
-    println!("Install with `gossamer skills install`.");
+    pyprintln!("Install with `gossamer skills install`.");
     ExitCode::SUCCESS
 }
 
 fn show(name: &str) -> ExitCode {
     match skills_rs::port::skill_text(name.to_owned()) {
         Ok(text) => {
-            print!("{text}");
+            pyprint!("{text}");
             ExitCode::SUCCESS
         }
         Err(err) => error(err.message()),
@@ -122,7 +122,7 @@ fn install(parsed: &Parsed) -> ExitCode {
     for target in &targets {
         for name in &selected {
             if let Some(status) = statuses.get(position) {
-                println!("{status:<9} {}", target.join(name).display());
+                pyprintln!("{status:<9} {}", target.join(name).display());
             }
             position += 1;
         }
@@ -132,7 +132,7 @@ fn install(parsed: &Parsed) -> ExitCode {
         .filter(|status| status.as_str() == "skipped")
         .count();
     if skipped > 0 {
-        println!("{skipped} skill(s) already present; use --force to overwrite.");
+        pyprintln!("{skipped} skill(s) already present; use --force to overwrite.");
     }
     ExitCode::SUCCESS
 }

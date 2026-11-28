@@ -30,13 +30,13 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         Ok(url) => url,
         Err(error) => {
             if error.error_type() == "SsrfBlockedError" {
-                eprintln!(
+                pyeprintln!(
                     "Blocked non-public URL {}: {}",
                     error.raw(),
                     error.message()
                 );
             }
-            println!("{}", pretty_record(&error.to_record()));
+            pyprintln!("{}", pretty_record(&error.to_record()));
             return ExitCode::SUCCESS;
         }
     };
@@ -45,22 +45,22 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("gossamer: error: {error}");
+            pyeprintln!("gossamer: error: {error}");
             return ExitCode::FAILURE;
         }
     };
     let now = runtime.now();
     if !runtime.robots_allows(&url, now) {
-        eprintln!("URL disallowed by robots.txt: {url}");
-        println!(
+        pyeprintln!("URL disallowed by robots.txt: {url}");
+        pyprintln!(
             "{}",
             py_dumps_pretty(&json!({"warning": "URL disallowed by robots.txt", "url": url}))
         );
         return ExitCode::SUCCESS;
     }
     if !runtime.claim(&url) {
-        eprintln!("URL already visited or in flight: {url}");
-        println!(
+        pyeprintln!("URL already visited or in flight: {url}");
+        pyprintln!(
             "{}",
             py_dumps_pretty(&json!({"warning": "URL already visited", "url": url}))
         );
@@ -71,7 +71,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let feeds: Vec<Value> = match fetch_text(&url, 30.0) {
         Ok((body, final_url)) => find_feed_links(&body, &final_url),
         Err(error) => {
-            println!(
+            pyprintln!(
                 "{}",
                 py_dumps_pretty(&json!({
                     "error": format!("Discovery failed: {error}"), "url": url
@@ -151,6 +151,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         "count": found.len(),
         "truncated": truncated,
     });
-    println!("{}", py_dumps_pretty(&payload));
+    pyprintln!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }

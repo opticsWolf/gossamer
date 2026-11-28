@@ -250,7 +250,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("gossamer: error: {error}");
+            pyeprintln!("gossamer: error: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -263,7 +263,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             Ok(url) => url,
             Err(error) => {
                 if error.error_type() == "SsrfBlockedError" {
-                    eprintln!(
+                    pyeprintln!(
                         "Blocked non-public URL {}: {}",
                         error.raw(),
                         error.message()
@@ -294,6 +294,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         }
         output.push(build_entry(&runtime, &url, strategy, now, parsed));
     }
-    println!("{}", py_dumps_utf8(&Value::Array(output)));
+    pyprintln!("{}", py_dumps_utf8(&Value::Array(output)));
     ExitCode::SUCCESS
 }

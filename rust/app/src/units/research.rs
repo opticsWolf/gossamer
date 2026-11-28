@@ -36,7 +36,7 @@ use gossamer::taxonomy::CATEGORIES_JSON;
 use serde_json::{Value, json};
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
@@ -797,7 +797,7 @@ fn provider_names(value: &Value) -> Vec<String> {
 }
 
 fn print_failure(payload: &Value) -> ExitCode {
-    println!("{}", py_dumps_pretty(payload));
+    pyprintln!("{}", py_dumps_pretty(payload));
     ExitCode::FAILURE
 }
 
@@ -1027,7 +1027,7 @@ fn run_providers(query: &str, requested: &[String], max_results: usize) -> ExitC
             object.insert("error".to_string(), Value::String(message.to_string()));
         }
     }
-    println!("{}", py_dumps_pretty(&payload));
+    pyprintln!("{}", py_dumps_pretty(&payload));
     if payload.get("error").is_some() {
         ExitCode::FAILURE
     } else {
@@ -1060,7 +1060,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                 "filter/select/title/author/providers options require a research query".to_string(),
             );
         }
-        println!("{}", py_dumps_pretty(&taxonomy));
+        pyprintln!("{}", py_dumps_pretty(&taxonomy));
         return ExitCode::SUCCESS;
     }
     if provider.is_some() && !providers.is_empty() {
@@ -1226,6 +1226,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         "description": entry.get("description").cloned().unwrap_or(Value::Null),
         "results": results,
     });
-    println!("{}", py_dumps_pretty(&payload));
+    pyprintln!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }

@@ -59,6 +59,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         "summary": summary,
         "results": results,
     });
-    println!("{}", py_dumps_pretty(&payload));
+    pyprintln!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }

@@ -122,6 +122,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         _ => return unsupported(),
     };
 
-    println!("{}", pretty(&output));
+    pyprintln!("{}", pretty(&output));
     ExitCode::SUCCESS
 }

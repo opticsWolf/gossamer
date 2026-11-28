@@ -1,5 +1,52 @@
 use std::process::ExitCode;
 
+/// Match Python's Windows text-stream newline translation for CLI output.
+#[cfg(windows)]
+fn py_newlines(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.contains('\n') {
+        std::borrow::Cow::Owned(text.replace("\r\n", "\n").replace('\n', "\r\n"))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
+#[cfg(not(windows))]
+fn py_newlines(text: &str) -> std::borrow::Cow<'_, str> {
+    std::borrow::Cow::Borrowed(text)
+}
+
+macro_rules! pyprint {
+    ($($arg:tt)*) => {{
+        let text = format!($($arg)*);
+        ::std::print!("{}", $crate::py_newlines(&text));
+    }};
+}
+
+macro_rules! pyeprint {
+    ($($arg:tt)*) => {{
+        let text = format!($($arg)*);
+        ::std::eprint!("{}", $crate::py_newlines(&text));
+    }};
+}
+
+macro_rules! pyprintln {
+    () => {
+        pyprint!("\n")
+    };
+    ($($arg:tt)*) => {
+        pyprint!("{}\n", format_args!($($arg)*))
+    };
+}
+
+macro_rules! pyeprintln {
+    () => {
+        pyeprint!("\n")
+    };
+    ($($arg:tt)*) => {
+        pyeprint!("{}\n", format_args!($($arg)*))
+    };
+}
+
 mod units;
 
 use gossamer::cli_args::Outcome;
@@ -17,12 +64,12 @@ fn main() -> ExitCode {
     }
     match gossamer::cli_args::parse(&argv) {
         Outcome::Run(parsed) => units::dispatch(&parsed).unwrap_or_else(|| {
-            eprintln!("gossamer: no handler for `{}`", parsed.command);
+            pyeprintln!("gossamer: no handler for `{}`", parsed.command);
             ExitCode::from(2)
         }),
         Outcome::Help(key) => units::cli::emit(&key),
         Outcome::Error { stderr, status } => {
-            eprint!("{stderr}");
+            pyeprint!("{stderr}");
             ExitCode::from(status)
         }
     }

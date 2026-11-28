@@ -17,8 +17,8 @@ pub fn emit(key: &str) -> ExitCode {
     };
     let stdout = entry.get("stdout").and_then(Value::as_str).unwrap_or("");
     let stderr = entry.get("stderr").and_then(Value::as_str).unwrap_or("");
-    print!("{stdout}");
-    eprint!("{stderr}");
+    pyprint!("{stdout}");
+    pyeprint!("{stderr}");
     let status = entry.get("status").and_then(Value::as_u64).unwrap_or(0);
     ExitCode::from(status.min(255) as u8)
 }

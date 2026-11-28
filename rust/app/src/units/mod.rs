@@ -27,7 +27,7 @@ mod verify_bundled_assets;
 
 /// Error for a command shape the frozen contract does not implement.
 pub fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 

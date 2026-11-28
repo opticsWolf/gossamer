@@ -25,7 +25,7 @@ use gossamer::tokens::count_tokens;
 use serde_json::{Value, json};
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
@@ -136,9 +136,9 @@ fn read_local_bytes(source: &str, path: &Path, max_bytes: u64) -> Result<Vec<u8>
 }
 
 fn extraction_error(source: &str, detail: &str) -> ExitCode {
-    eprintln!("Document extraction failed for {source}: {detail}");
+    pyeprintln!("Document extraction failed for {source}: {detail}");
     let payload = json!({"error": format!("Document extraction failed: {detail}")});
-    println!("{}", py_dumps_pretty(&payload));
+    pyprintln!("{}", py_dumps_pretty(&payload));
     ExitCode::SUCCESS
 }
 
@@ -585,8 +585,8 @@ fn document_download_error(error: &str) -> String {
 }
 
 fn page_range_failure(source: &str, detail: &str) -> ExitCode {
-    eprintln!("Page-range extraction failed for {source}: {detail}");
-    println!(
+    pyeprintln!("Page-range extraction failed for {source}: {detail}");
+    pyprintln!(
         "{}",
         py_dumps_pretty(&json!({
             "error": format!("Page-range extraction failed: {detail}")
@@ -647,7 +647,7 @@ fn fit_structured_document(payload_json: &str, source: &str, parsed: &Parsed) ->
             return candidate;
         }
     }
-    eprintln!(
+    pyeprintln!(
         "Payload could not be shrunk into the output budget; returning an overflow envelope instead of invalid JSON"
     );
     py_dumps_pretty(&json!({
@@ -658,8 +658,8 @@ fn fit_structured_document(payload_json: &str, source: &str, parsed: &Parsed) ->
 }
 
 fn structured_failure(source: &str, detail: &str) -> ExitCode {
-    eprintln!("Structured extraction failed for {source}: {detail}");
-    println!(
+    pyeprintln!("Structured extraction failed for {source}: {detail}");
+    pyprintln!(
         "{}",
         py_dumps_pretty(&json!({
             "error": format!("Structured document extraction failed: {detail}")
@@ -723,7 +723,7 @@ fn structured_extract(source: &str, is_url: bool, parsed: &Parsed) -> ExitCode {
             Ok(payload) => {
                 let rendered =
                     serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
-                println!("{}", fit_structured_document(&rendered, source, parsed));
+                pyprintln!("{}", fit_structured_document(&rendered, source, parsed));
                 ExitCode::SUCCESS
             }
             Err(detail) => structured_failure(source, &detail),
@@ -734,12 +734,12 @@ fn structured_extract(source: &str, is_url: bool, parsed: &Parsed) -> ExitCode {
     let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(runtime) => runtime,
         Err(error) => {
-            eprintln!("gossamer: error: {error}");
+            pyeprintln!("gossamer: error: {error}");
             return ExitCode::FAILURE;
         }
     };
     if !runtime.robots_allows(source, runtime.now()) {
-        println!(
+        pyprintln!(
             "{}",
             py_dumps_pretty(&json!({
                 "error": format!("Document fetch disallowed by robots.txt: {source}")
@@ -785,7 +785,7 @@ fn structured_extract(source: &str, is_url: bool, parsed: &Parsed) -> ExitCode {
         Ok(payload) => {
             let rendered =
                 serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
-            println!("{}", fit_structured_document(&rendered, source, parsed));
+            pyprintln!("{}", fit_structured_document(&rendered, source, parsed));
             ExitCode::SUCCESS
         }
         Err(detail) => structured_failure(source, &detail),
@@ -814,7 +814,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     };
 
     if let Some(error) = extract_validation(&tables_as, include_images, structured, store) {
-        println!("{}", py_dumps_pretty(&error));
+        pyprintln!("{}", py_dumps_pretty(&error));
         return ExitCode::SUCCESS;
     }
 
@@ -823,7 +823,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     {
         if store {
             let payload = json!({"error": "store=True cannot be combined with pages=...; store the full document instead"});
-            println!("{}", py_dumps_pretty(&payload));
+            pyprintln!("{}", py_dumps_pretty(&payload));
             return ExitCode::SUCCESS;
         }
         if prefer_jats && jats_resolvable_offline(&source, &tables_as) {
@@ -832,7 +832,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                     "pages='{pages}' is not supported for structured-source (JATS) extraction; re-run without pages or with --no-prefer-jats"
                 )
             });
-            println!("{}", py_dumps_pretty(&payload));
+            pyprintln!("{}", py_dumps_pretty(&payload));
             return ExitCode::SUCCESS;
         }
     }
@@ -841,13 +841,13 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let is_url = source.starts_with("http://") || source.starts_with("https://");
     if is_url && let Err(error) = prepare_url(&source, None) {
         if error.error_type() == "SsrfBlockedError" {
-            eprintln!(
+            pyeprintln!(
                 "Blocked non-public URL {}: {}",
                 error.raw(),
                 error.message()
             );
         }
-        println!("{}", pretty_record(&error.to_record()));
+        pyprintln!("{}", pretty_record(&error.to_record()));
         return ExitCode::SUCCESS;
     }
     if structured {
@@ -856,14 +856,14 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let runtime = match RuntimeState::new(crate::units::settings::runtime(parsed, &cache_dir)) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("gossamer: error: {error}");
+            pyeprintln!("gossamer: error: {error}");
             return ExitCode::FAILURE;
         }
     };
     if is_url {
         let now = runtime.now();
         if !runtime.robots_allows(&source, now) {
-            println!(
+            pyprintln!(
                 "{}",
                 py_dumps_pretty(&json!({
                     "error": format!("Document fetch disallowed by robots.txt: {}", source)
@@ -875,7 +875,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     if pages.as_deref().is_some_and(|spec| !spec.trim().is_empty())
         && let Some(error) = page_selection_error(&source, is_url)
     {
-        println!("{}", py_dumps_pretty(&json!({"error": error})));
+        pyprintln!("{}", py_dumps_pretty(&json!({"error": error})));
         return ExitCode::SUCCESS;
     }
     let mut jats_resolved_doi = Value::Null;
@@ -890,7 +890,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             JatsOutcome::Hit(hit) => Some(hit),
             JatsOutcome::Error(error) => {
                 let payload = json!({"error": format!("Document extraction failed: {error}")});
-                println!("{}", py_dumps_pretty(&payload));
+                pyprintln!("{}", py_dumps_pretty(&payload));
                 return ExitCode::SUCCESS;
             }
             JatsOutcome::NotApplicable => None,
@@ -956,7 +956,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         let (delivered, guard) = match apply_document_guard(&delivered, &source, parsed) {
             GuardedDocument::Delivered(text, block) => (text, block),
             GuardedDocument::Withheld(error) => {
-                println!("{}", py_dumps_pretty(&error));
+                pyprintln!("{}", py_dumps_pretty(&error));
                 return ExitCode::SUCCESS;
             }
         };
@@ -985,7 +985,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
             "n_figures": Value::Null,
             "n_tables": Value::Null,
         });
-        println!("{}", pydantic_json(&payload));
+        pyprintln!("{}", pydantic_json(&payload));
         return ExitCode::SUCCESS;
     }
     let mut cache_hit = false;
@@ -1200,7 +1200,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
                     || error.starts_with("Document has no pages")
                     || error.starts_with("Page selection is supported")
                 {
-                    println!("{}", py_dumps_pretty(&json!({"error": error})));
+                    pyprintln!("{}", py_dumps_pretty(&json!({"error": error})));
                 } else {
                     return page_range_failure(&source, &error);
                 }
@@ -1298,7 +1298,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     let (delivered, guard) = match apply_document_guard(&delivered, &display, parsed) {
         GuardedDocument::Delivered(text, block) => (text, block),
         GuardedDocument::Withheld(error) => {
-            println!("{}", py_dumps_pretty(&error));
+            pyprintln!("{}", py_dumps_pretty(&error));
             return ExitCode::SUCCESS;
         }
     };
@@ -1339,6 +1339,6 @@ pub fn run(parsed: &Parsed) -> ExitCode {
         "n_figures": n_figures,
         "n_tables": n_tables,
     });
-    println!("{}", pydantic_json(&payload));
+    pyprintln!("{}", pydantic_json(&payload));
     ExitCode::SUCCESS
 }

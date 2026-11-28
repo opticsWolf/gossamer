@@ -39,7 +39,7 @@ fn fallback() -> ExitCode {
 }
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
@@ -85,7 +85,7 @@ pub fn run(argv: &[String]) -> ExitCode {
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy();
-            println!("OK   {name}");
+            pyprintln!("OK   {name}");
         }
         let shown = artifact.to_string_lossy().replace('/', "\\");
         let stderr = entry
@@ -93,7 +93,7 @@ pub fn run(argv: &[String]) -> ExitCode {
             .and_then(Value::as_str)
             .unwrap_or("")
             .replace(r"rust\fixtures\unsupported.zip", &shown);
-        eprint!("{stderr}");
+        pyeprint!("{stderr}");
         let status = entry.get("status").and_then(Value::as_u64).unwrap_or(1);
         return ExitCode::from(status.min(255) as u8);
     }
@@ -102,10 +102,10 @@ pub fn run(argv: &[String]) -> ExitCode {
     for (artifact, problems) in results {
         let name = artifact.file_name().unwrap_or_default().to_string_lossy();
         if problems.is_empty() {
-            println!("OK   {name}");
+            pyprintln!("OK   {name}");
         } else {
             failed = true;
-            eprintln!("FAIL {name}: {}", problems.join("; "));
+            pyeprintln!("FAIL {name}: {}", problems.join("; "));
         }
     }
 

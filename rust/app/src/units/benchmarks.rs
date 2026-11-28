@@ -23,7 +23,7 @@ fn unknown_flag_error(args: &[String]) -> Option<ExitCode> {
         .and_then(Value::as_str)
         .unwrap_or("")
         .replace("--bogus", unknown.as_str());
-    eprint!("{stderr}");
+    pyeprint!("{stderr}");
     let status = entry.get("status").and_then(Value::as_u64).unwrap_or(2);
     Some(ExitCode::from(status.min(255) as u8))
 }
@@ -41,11 +41,11 @@ fn str_field<'a>(value: &'a Value, key: &str) -> &'a str {
 }
 
 fn arrow(label: &str, value: &str) {
-    println!("    >> {label}: {value}");
+    pyprintln!("    >> {label}: {value}");
 }
 
 fn timing_line(label: &str, timing: &Value) {
-    println!(
+    pyprintln!(
         "  {label}: avg={:.1}ms  median={:.1}ms  p95={:.1}ms",
         f64_field(timing, "avg_ms"),
         f64_field(timing, "median_ms"),
@@ -54,21 +54,21 @@ fn timing_line(label: &str, timing: &Value) {
 }
 
 fn banner() {
-    println!("============================================================");
-    println!("  gossamer — Performance Benchmarks");
-    println!("============================================================");
+    pyprintln!("============================================================");
+    pyprintln!("  gossamer — Performance Benchmarks");
+    pyprintln!("============================================================");
 }
 
 fn done() {
-    println!();
-    println!("============================================================");
-    println!("  Done.");
-    println!("============================================================");
+    pyprintln!();
+    pyprintln!("============================================================");
+    pyprintln!("  Done.");
+    pyprintln!("============================================================");
 }
 
 fn print_fetch(report: &Value) {
-    println!();
-    println!("=== Rust Core Fetch (example.com) ===");
+    pyprintln!();
+    pyprintln!("=== Rust Core Fetch (example.com) ===");
     timing_line("fetch_and_extract (warm)", report);
     arrow(
         "result",
@@ -81,8 +81,8 @@ fn print_fetch(report: &Value) {
 }
 
 fn print_meta(report: &Value) {
-    println!();
-    println!("=== meta-oxide Extraction ===");
+    pyprintln!();
+    pyprintln!("=== meta-oxide Extraction ===");
     timing_line("extract_all (meta-oxide)", report);
     arrow(
         "result",
@@ -91,12 +91,12 @@ fn print_meta(report: &Value) {
             u64_field(report, "keys")
         ),
     );
-    println!("    (BeautifulSoup not installed — skipping comparison)");
+    pyprintln!("    (BeautifulSoup not installed — skipping comparison)");
 }
 
 fn print_tokens(report: &Value) {
-    println!();
-    println!("=== Token Budget (tiktoken) ===");
+    pyprintln!();
+    pyprintln!("=== Token Budget (tiktoken) ===");
     timing_line(
         "count_tokens (300KB text)",
         report.get("count").unwrap_or(report),
@@ -117,17 +117,17 @@ fn print_tokens(report: &Value) {
 }
 
 fn print_batch(report: &Value) {
-    println!();
-    println!("=== Batch Fetch (concurrent) ===");
-    println!(
+    pyprintln!();
+    pyprintln!("=== Batch Fetch (concurrent) ===");
+    pyprintln!(
         "  Sequential (5 × example.com): {:.1}ms",
         f64_field(report, "seq_ms")
     );
-    println!(
+    pyprintln!(
         "  Batch concurrent (5 × example.com): {:.1}ms",
         f64_field(report, "batch_ms")
     );
-    println!("  Speedup: {:.1}x", f64_field(report, "speedup"));
+    pyprintln!("  Speedup: {:.1}x", f64_field(report, "speedup"));
     arrow(
         "result",
         &format!(
@@ -139,14 +139,14 @@ fn print_batch(report: &Value) {
 }
 
 fn print_structured(report: &Value) {
-    println!();
-    println!("=== Structured Parser (pdf_oxide) ===");
-    println!("    (Skipped — {})", str_field(report, "skip"));
+    pyprintln!();
+    pyprintln!("=== Structured Parser (pdf_oxide) ===");
+    pyprintln!("    (Skipped — {})", str_field(report, "skip"));
 }
 
 fn print_guard(report: &Value) {
-    println!();
-    println!("=== Prompt-injection guard (enabled=False vs True) ===");
+    pyprintln!();
+    pyprintln!("=== Prompt-injection guard (enabled=False vs True) ===");
     arrow("backend", str_field(report, "backend"));
     arrow(
         "corpus",
@@ -156,9 +156,9 @@ fn print_guard(report: &Value) {
             u64_field(report, "corpus_chars")
         ),
     );
-    println!("  Guard off: {:.1}ms", f64_field(report, "off_ms"));
-    println!("  Guard on:  {:.1}ms", f64_field(report, "on_ms"));
-    println!(
+    pyprintln!("  Guard off: {:.1}ms", f64_field(report, "off_ms"));
+    pyprintln!("  Guard on:  {:.1}ms", f64_field(report, "on_ms"));
+    pyprintln!(
         "  Overhead:  +{:.1}ms ({:.1}ms per document)",
         f64_field(report, "overhead_ms"),
         f64_field(report, "per_document_ms")
@@ -184,8 +184,8 @@ fn print_guard(report: &Value) {
 }
 
 fn print_corpus(report: &Value) {
-    println!();
-    println!("=== Prompt-injection guard -- labelled corpus ===");
+    pyprintln!();
+    pyprintln!("=== Prompt-injection guard -- labelled corpus ===");
     arrow("backend", str_field(report, "backend"));
 
     if let Some(rows) = report.get("rows").and_then(Value::as_array) {
@@ -197,22 +197,22 @@ fn print_corpus(report: &Value) {
                 .unwrap_or(false);
             let flagged = row.get("flagged").and_then(Value::as_bool).unwrap_or(false);
             if injected && !flagged {
-                println!("  MISS  {name}");
+                pyprintln!("  MISS  {name}");
             } else if !injected && flagged {
-                println!("  FALSE {name}  (score={:.2})", f64_field(row, "max_score"));
+                pyprintln!("  FALSE {name}  (score={:.2})", f64_field(row, "max_score"));
             }
         }
     }
 
     let benign = u64_field(report, "benign");
     let inject = u64_field(report, "inject");
-    println!(
+    pyprintln!(
         "  benign   : {}/{} clean, {} false positive(s)",
         u64_field(report, "tn"),
         benign,
         u64_field(report, "fp")
     );
-    println!(
+    pyprintln!(
         "  injected : {}/{} detected, {} missed",
         u64_field(report, "tp"),
         inject,
@@ -234,7 +234,7 @@ fn print_corpus(report: &Value) {
 }
 
 fn unsupported() -> ExitCode {
-    eprintln!("gossamer: error: unsupported command shape");
+    pyeprintln!("gossamer: error: unsupported command shape");
     ExitCode::from(1)
 }
 
