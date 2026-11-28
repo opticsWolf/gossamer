@@ -370,12 +370,10 @@ fn inspect_child(
     cache_dir: &str,
 ) -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let config_path = crate::units::settings::config_path(parsed);
+    let config_path = crate::units::settings::config_path(parsed).filter(|path| path.is_file());
     let mut command = std::process::Command::new(exe);
     command.arg("--cache-dir").arg(cache_dir);
     if let Some(path) = config_path.as_deref() {
-        command.arg("--config").arg(path);
-    } else if let Some(path) = parsed.config() {
         command.arg("--config").arg(path);
     }
     if let Some(value) = parsed.keystore() {

@@ -66,16 +66,13 @@ fn provider_search(
 
 fn inspect_page(url: &str, use_smart: &str, parsed: &Parsed) -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let config_path = crate::units::settings::config_path(parsed);
+    let config_path = crate::units::settings::config_path(parsed).filter(|path| path.is_file());
     let mut command = Command::new(exe);
     for (flag, value) in [
         ("--cache-dir", parsed.cache_dir()),
         (
             "--config",
-            config_path
-                .as_deref()
-                .and_then(|path| path.to_str())
-                .or(parsed.config()),
+            config_path.as_deref().and_then(|path| path.to_str()),
         ),
         ("--keystore", parsed.keystore()),
         ("--log-level", parsed.log_level()),

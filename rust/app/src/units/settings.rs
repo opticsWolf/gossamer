@@ -1,6 +1,7 @@
 //! Resolve the same settings `gossamer.json` + environment contract as Python.
 
 use std::path::PathBuf;
+use std::sync::Once;
 
 use gossamer::cli_args::Parsed;
 use gossamer::config::{Paths, ProcessEnv, find_config_file};
@@ -16,11 +17,89 @@ pub fn config_path(parsed: &Parsed) -> Option<PathBuf> {
     find_config_file(&ProcessEnv, &paths, None)
 }
 
+static CONFIG_WARNING: Once = Once::new();
+
 /// Parsed config object, or `None` when no file is discovered.
 pub fn config(parsed: &Parsed) -> Option<Value> {
     let path = config_path(parsed)?;
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str::<Value>(&text).ok()
+    if is_missing_device(&path) {
+        CONFIG_WARNING.call_once(|| {
+            eprintln!(
+                "ignoring gossamer.json: config file not found: {}",
+                path.display()
+            );
+        });
+        return None;
+    }
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) => {
+            CONFIG_WARNING.call_once(|| {
+                eprintln!(
+                    "ignoring gossamer.json: config file not found: {}",
+                    path.display()
+                );
+            });
+            let _ = error;
+            return None;
+        }
+    };
+    match serde_json::from_str::<Value>(&text) {
+        Ok(value) if value.is_object() => Some(value),
+        Ok(_) => {
+            CONFIG_WARNING.call_once(|| {
+                eprintln!(
+                    "ignoring gossamer.json: gossamer.json must hold an object: {}",
+                    path.display()
+                );
+            });
+            None
+        }
+        Err(error) => {
+            CONFIG_WARNING.call_once(|| {
+                eprintln!(
+                    "ignoring gossamer.json: invalid JSON in {}: {error}",
+                    path.display()
+                );
+            });
+            None
+        }
+    }
+}
+
+fn is_missing_device(path: &std::path::Path) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_lowercase();
+    matches!(
+        stem.as_str(),
+        "nul"
+            | "con"
+            | "prn"
+            | "aux"
+            | "com1"
+            | "com2"
+            | "com3"
+            | "com4"
+            | "com5"
+            | "com6"
+            | "com7"
+            | "com8"
+            | "com9"
+            | "lpt1"
+            | "lpt2"
+            | "lpt3"
+            | "lpt4"
+            | "lpt5"
+            | "lpt6"
+            | "lpt7"
+            | "lpt8"
+            | "lpt9"
+    )
 }
 
 pub fn value(parsed: &Parsed, key: &str) -> Option<Value> {
