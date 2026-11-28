@@ -44,14 +44,19 @@ Fallback rate: 0.0% (0/74 cases answered by the original)
 - Cache stores are cross-language compatible (Python and Rust read each other's
   page and document entries).
 
-Known non-parity deltas are live-only: DuckDuckGo scrape results differ from the
-`ddgs` library, JATS resolver failures do not reproduce Python's logger text, and
-structured URL extraction names its temporary PDF from the URL rather than a
-random `NamedTemporaryFile` suffix.
+- HTTP transport overrides (`http_proxy`, `user_agent`, `custom_headers`,
+  `cookies` from env or `gossamer.json`) now configure the shared Rust client.
+- Extract normalizes bare domains/DOIs after the JATS attempt and reproduces
+  Python's httpx-style JATS fetch warnings.
+
+Known non-parity deltas: live DuckDuckGo scrape results differ from the `ddgs`
+library; `search --search-only --max-results -1` still returns an empty list
+instead of Python's traceback; and structured URL extraction names its temporary
+PDF from the URL rather than a random `NamedTemporaryFile` suffix.
 
 `rust-anything map --write` reports 5 of 6 whole-app units ported. The remaining unit is the
-replay shim `rust/original_entry.py`, not something to port; the Python orchestration modules are
-tracked under the claimed `gossamer/` wave-1 unit and will be handled in the next checkpoint.
+replay shim `rust/original_entry.py`, not something to port. Python remains only as the behavioral
+oracle and thin compatibility adapters.
 
 ## Files that matter now
 
