@@ -75,11 +75,16 @@ jobs:
         shell: bash
         run: |
           test -f "${{ matrix.binary }}"
-          echo '{}' | "${{ matrix.binary }}" > /tmp/gossamer-browser-smoke.json || true
+          set +e
+          echo '{}' | "${{ matrix.binary }}" > /tmp/gossamer-browser-smoke.json
+          code=$?
+          set -e
+          echo "sidecar exit=$code"
+          cat /tmp/gossamer-browser-smoke.json || true
           grep -q '"ok":false' /tmp/gossamer-browser-smoke.json
-          cat /tmp/gossamer-browser-smoke.json
 
       - name: Upload sidecar
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
