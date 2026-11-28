@@ -64,6 +64,52 @@ fn provider_search(
     Ok((results, note, dropped))
 }
 
+fn finish_search(results: Vec<Value>, note: Option<Value>, parsed: &Parsed) -> String {
+    let Some(config) = crate::units::guard::config(parsed) else {
+        return match note {
+            Some(note) => {
+                py_dumps_pretty_utf8(&json!({"results": results, "provider_fallback": note}))
+            }
+            None => py_dumps_pretty_utf8(&Value::Array(results)),
+        };
+    };
+    let text = results
+        .iter()
+        .filter_map(Value::as_object)
+        .map(|item| {
+            format!(
+                "{} {}",
+                item.get("title").and_then(Value::as_str).unwrap_or(""),
+                item.get("snippet").and_then(Value::as_str).unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let Some(outcome) =
+        crate::units::guard::evaluate(&config, &[("search_results", text)], "search_results")
+    else {
+        return match note {
+            Some(note) => {
+                py_dumps_pretty_utf8(&json!({"results": results, "provider_fallback": note}))
+            }
+            None => py_dumps_pretty_utf8(&Value::Array(results)),
+        };
+    };
+    if outcome.withheld {
+        return py_dumps_pretty_utf8(&json!({
+            "error": "results withheld by prompt-injection guard",
+            "guard": outcome.block,
+        }));
+    }
+    let mut envelope = json!({"results": results, "guard": outcome.block});
+    if let Some(note) = note
+        && let Some(object) = envelope.as_object_mut()
+    {
+        object.insert("provider_fallback".to_string(), note);
+    }
+    py_dumps_pretty_utf8(&envelope)
+}
+
 fn inspect_page(url: &str, use_smart: &str, parsed: &Parsed) -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let config_path = crate::units::settings::config_path(parsed).filter(|path| path.is_file());
@@ -268,15 +314,7 @@ pub fn run(parsed: &Parsed) -> ExitCode {
     }
     let max_results = max_results.max(0) as usize;
     match provider_search(&query, max_results, provider.as_deref()) {
-        Ok((results, Some(note), _)) => {
-            println!(
-                "{}",
-                py_dumps_pretty_utf8(&json!({"results": results, "provider_fallback": note}))
-            );
-        }
-        Ok((results, None, _)) => {
-            println!("{}", py_dumps_pretty_utf8(&Value::Array(results)));
-        }
+        Ok((results, note, _)) => println!("{}", finish_search(results, note, parsed)),
         Err(payload) => {
             println!("{}", pretty(&payload));
         }

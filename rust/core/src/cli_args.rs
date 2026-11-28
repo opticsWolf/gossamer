@@ -360,9 +360,24 @@ fn parse_level(
     let mut index = 0usize;
     let mut positional_index = 0usize;
     let mut after_terminator = false;
+    let mut unknown_tail = false;
+    let mut extras_after_positional = false;
     while index < tokens.len() {
         let token = tokens[index].as_str();
         if !after_terminator && token == "--" {
+            let all_positionals_have_values = spec.positionals.iter().all(|pos| {
+                level
+                    .positionals
+                    .get(&pos.dest)
+                    .is_some_and(|values| !values.is_empty())
+            });
+            if !level.extras.is_empty()
+                && extras_after_positional
+                && all_positionals_have_values
+                && spec.subcommands.is_empty()
+            {
+                level.extras.push("--".to_string());
+            }
             after_terminator = true;
             index += 1;
             continue;
@@ -460,6 +475,12 @@ fn parse_level(
                     continue;
                 }
                 Ok(None) => {
+                    let positional_used =
+                        level.positionals.values().any(|values| !values.is_empty());
+                    if positional_used {
+                        unknown_tail = true;
+                        extras_after_positional = true;
+                    }
                     level.extras.push(token.to_string());
                     index += 1;
                     continue;
@@ -468,6 +489,12 @@ fn parse_level(
             }
         }
         if spec.subcommands.is_empty() {
+            if unknown_tail {
+                level.extras.push(token.to_string());
+                extras_after_positional = true;
+                index += 1;
+                continue;
+            }
             if positional_index < spec.positionals.len() {
                 let pos = &spec.positionals[positional_index];
                 if let Some(choices) = &pos.choices
@@ -492,6 +519,7 @@ fn parse_level(
                 }
             } else {
                 level.extras.push(token.to_string());
+                extras_after_positional = true;
             }
             index += 1;
             continue;
@@ -781,6 +809,35 @@ mod tests {
     fn unknown_option_is_unrecognized() {
         let output = text(parse(&args(&["check", "--bogus", "https://example.com"])));
         assert!(output.ends_with("gossamer: error: unrecognized arguments: --bogus\n"));
+    }
+
+    #[test]
+    fn unknown_option_keeps_trailing_values_unrecognized() {
+        let output = text(parse(&args(&[
+            "batch",
+            "https://example.com",
+            "--offset",
+            "-1",
+        ])));
+        assert!(output.ends_with(
+            "gossamer: error: unrecognized arguments: --offset -1
+"
+        ));
+    }
+
+    #[test]
+    fn unknown_option_keeps_terminator_unrecognized() {
+        let output = text(parse(&args(&[
+            "inspect",
+            "https://example.com",
+            "--bogus",
+            "--",
+            "x",
+        ])));
+        assert!(output.ends_with(
+            "gossamer: error: unrecognized arguments: --bogus -- x
+"
+        ));
     }
 
     #[test]
