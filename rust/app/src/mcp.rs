@@ -8,6 +8,11 @@ use std::io::{self, BufRead, Write};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(windows)]
+const MCP_NEWLINE: &str = "\r\n";
+#[cfg(not(windows))]
+const MCP_NEWLINE: &str = "\n";
+
 use gossamer::agent::url_error;
 use gossamer::document::{prepare_url, structured_html_payload};
 use gossamer::fetch::fetch_html_full_single;
@@ -574,7 +579,11 @@ fn main() {
             continue;
         };
         if let Some(reply) = handle_request(&request) {
-            let _ = writeln!(out, "{}", serde_json::to_string(&reply).unwrap_or_default());
+            let _ = write!(
+                out,
+                "{}{MCP_NEWLINE}",
+                serde_json::to_string(&reply).unwrap_or_default()
+            );
             let _ = out.flush();
         }
     }
