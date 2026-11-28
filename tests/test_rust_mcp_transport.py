@@ -82,7 +82,7 @@ def _python_tools(cache_dir):
         env={**os.environ, "GOSSAMER_CACHE_DIR": str(cache_dir)},
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         text=True,
         bufsize=1,
     )
